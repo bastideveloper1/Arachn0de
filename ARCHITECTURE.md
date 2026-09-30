@@ -8,7 +8,9 @@ Antes de realizar cambios importantes en el proyecto, debe consultarse este docu
 
 El objetivo es mantener una arquitectura coherente, evitar implementaciones innecesarias y permitir que el proyecto crezca progresivamente sin tener que reconstruir su núcleo.
 
-La versión actual corresponde al primer MVP de Arachn0de.
+La versión actual corresponde al primer MVP de Arachn0de: **v0.1.0**.
+
+La configuración Android debe declarar `versionName = "0.1.0"`.
 
 ---
 
@@ -63,6 +65,12 @@ El MVP no utiliza servidores propios ni servicios cloud.
 ## Privacidad
 
 La arquitectura futura debe permitir incorporar cifrado local y otras protecciones sin abandonar el principio local-first.
+
+Para el MVP v0.1.0, los datos de la aplicación no deben participar en copias de seguridad administradas por Android ni en cloud backup. También deben excluirse de la transferencia de datos entre dispositivos administrada por Android.
+
+La configuración debe mantener `android:allowBackup="false"` y exclusiones explícitas de todos los dominios de datos en las reglas de backup para Android 11 y anteriores y en las reglas `cloud-backup` y `device-transfer` para Android 12 y posteriores.
+
+La persistencia exigida al cerrar la aplicación o reiniciar el dispositivo es almacenamiento local, no recuperación mediante backup.
 
 ## Modularidad
 
@@ -217,7 +225,9 @@ Un nodo sin `parentId` pertenece al nivel raíz del proyecto.
 
 Un nodo puede contener cero o más nodos hijos.
 
-No imponer una profundidad artificial pequeña a la jerarquía.
+“Profundidad arbitraria” significa profundidad práctica no limitada artificialmente por el modelo de dominio; no significa recursos infinitos.
+
+La implementación debe evitar supuestos sobre una profundidad fija y manejar razonablemente árboles profundos en navegación, cálculo de progreso y operaciones de datos, incluida la eliminación. Los recorridos y operaciones deben considerar los límites reales de memoria, pila y almacenamiento.
 
 ---
 
@@ -407,6 +417,8 @@ No añadir una dependencia cuando las herramientas estándar de Android/Kotlin r
 
 El proyecto utiliza Git para control de versiones.
 
+El repositorio ya está inicializado, la rama principal es `main` y existe un commit inicial limpio anterior a la implementación del MVP. No debe tratarse la inicialización de Git como una tarea pendiente.
+
 Los cambios deben realizarse en unidades comprensibles.
 
 Evitar mezclar refactors grandes con nuevas funcionalidades en el mismo cambio cuando sea posible.
@@ -416,6 +428,8 @@ No modificar archivos no relacionados con la tarea actual sin una razón técnic
 ---
 
 # 16. Pruebas mínimas del MVP
+
+Todas las comprobaciones de esta sección son criterios obligatorios de aceptación del MVP, incluidas la creación, edición y eliminación de proyectos y nodos.
 
 Comprobar como mínimo:
 
@@ -453,9 +467,29 @@ El MVP se considera funcional cuando un usuario puede:
 10. abrirla nuevamente;
 11. encontrar intacta la estructura creada.
 
+Además de este recorrido, deben cumplirse todas las comprobaciones de la sección 16. Este resumen no sustituye los criterios de creación, edición y eliminación allí descritos.
+
 El proyecto debe compilar correctamente.
 
 No deben existir crashes conocidos en los flujos principales.
+
+## Baseline de compilación anterior al MVP
+
+La compilación inicial fue verificada antes de comenzar la implementación mediante:
+
+```bash
+./gradlew assembleDebug
+```
+
+Resultado registrado:
+
+```text
+BUILD SUCCESSFUL in 2m 34s
+36 actionable tasks: 36 executed
+Configuration cache entry stored.
+```
+
+Este resultado corresponde a la base inicial, no a una validación de funcionalidades del MVP. Los cambios posteriores deben volver a compilarse y comprobarse según su alcance.
 
 ---
 

@@ -34,6 +34,8 @@ android {
         sourceCompatibility = JavaVersion.VERSION_11
         targetCompatibility = JavaVersion.VERSION_11
     }
+    sourceSets.getByName("test").resources.directories.add("$projectDir/schemas")
+
     testOptions {
         unitTests.isIncludeAndroidResources = true
     }

@@ -6,6 +6,8 @@ Este documento es la fuente principal de contexto técnico y funcional de Arachn
 
 Antes de realizar cambios importantes en el proyecto, debe consultarse este documento.
 
+Es una fuente de verdad viva: cada cambio arquitectónico o regla importante debe documentarse en la misma intervención que modifica el código. Distinguir siempre lo implementado, lo descartado y lo pendiente; no presentar objetivos de sprints futuros como capacidades actuales.
+
 El objetivo es mantener una arquitectura coherente, evitar implementaciones innecesarias y permitir que el proyecto crezca progresivamente sin tener que reconstruir su núcleo.
 
 La versión actual corresponde al primer MVP de Arachn0de: **v0.1.0**.
@@ -214,12 +216,15 @@ projectId
 parentId
 title
 description
-isCompletable
 isCompleted
 position
 createdAt
 updatedAt
 ```
+
+Desde el esquema Room 3, `isStructural` e `isCompletable` no son columnas persistidas ni parámetros de creación/edición. El dominio expone `hasChildren` derivado de las relaciones persistidas; `isStructural = hasChildren` e `isCompletable = !hasChildren` son propiedades calculadas de solo lectura.
+
+`isCompleted` conserva exclusivamente el completado manual de una hoja. Para una capa siempre es `false`; no equivale a su progreso derivado.
 
 `parentId` puede ser nulo.
 
@@ -255,29 +260,32 @@ No obstante, evitar implementar esas especializaciones durante el MVP.
 
 ---
 
-# 9. Modelo de progreso
+# 9. Regla tarea/capa, completado y progreso
 
-Los nodos pueden ser completables o estructurales.
+## Fuente de verdad del dominio
 
-Sin embargo, la experiencia de Arachn0de no expone esa elección al usuario como un tipo técnico.
+La estructura persistida es la única fuente de verdad:
 
-La estructura determina el comportamiento real:
+- Node sin hijos = hoja/tarea, siempre completable.
+- Node con uno o más hijos = capa/contenedor, nunca completable manualmente.
+- El usuario no elige un tipo técnico.
+- No existen hojas estructurales no completables, aunque versiones anteriores permitían crearlas.
 
-- un elemento sin hijos se comporta como tarea;
-- un elemento con hijos se comporta como una capa o contenedor;
-- el progreso de una capa se deriva de sus descendientes;
-- la interfaz no exige una elección manual de "tipo".
+Se descarta mantener `isStructural` e `isCompletable` almacenados como fuentes independientes de la estructura.
 
-El modelo interno puede seguir manteniendo `isCompletable` para simplificar persistencia y cálculo de progreso, pero la regla visible es que el usuario crea elementos y la jerarquía define si son tareas o capas.
+## Transiciones estabilizadas en Sprint 5.5, bloque 1
 
-Un nodo completable puede estar:
+- Hoja pendiente + primer hijo: pasa a capa y conserva `isCompleted = false`.
+- Hoja completada + primer hijo: pasa a capa y se borra su antiguo completado manual (`isCompleted = false`). Su progreso depende desde ese momento de las hojas descendientes.
+- Capa pierde su último hijo, por eliminación o traslado: vuelve a ser una hoja pendiente y completable. Nunca recupera un completado manual histórico.
+- Crear, trasladar o eliminar hijos aplica estas reglas en la misma operación atómica.
+- Editar título/descripción no modifica estructura, posición ni completado.
+- Completar/descompletar una capa se rechaza; nunca hay completado automático en cascada, ni hacia hijos ni hacia padres.
+- Completar una hoja no la elimina ni la oculta.
 
-```text
-Pending
-Completed
-```
+## Cálculo exacto de progreso
 
-Ejemplo:
+Cada hoja aporta una unidad de trabajo, con igual peso. Su progreso es 0/1 o 1/1. Una capa suma las hojas de todos sus descendientes; no se cuenta a sí misma ni se promedian los porcentajes de sus hijos.
 
 ```text
 Temporada 1
@@ -285,25 +293,15 @@ Temporada 1
 ├── Episodio 2 ✓
 ├── Episodio 3 ○
 └── Episodio 4 ○
+
+Progreso: 2 / 4 = 50 %
 ```
 
-El progreso de `Temporada 1` sería:
+El porcentaje entero se trunca: `completed * 100 / total`. Los estados son `NOT_STARTED`, `PARTIAL` y `COMPLETE`. Con estas reglas, todo nodo de un árbol válido tiene al menos una hoja relevante; un nodo vacío es una tarea pendiente con total 1. Un proyecto sin nodos tiene una instantánea vacía.
 
-```text
-50 %
-```
+Los porcentajes y contadores no se guardan en SQLite. `NodeTreeSnapshot` calcula todos los progresos de una instantánea con un recorrido iterativo de hojas a raíz, sin profundidad fija. Un ciclo o relación inválida produce un error de integridad controlado, no recursión infinita.
 
-Los contenedores deben poder derivar su progreso a partir de sus descendientes relevantes.
-
-Un nodo con hijos no debe poder marcarse manualmente como completado; su progreso debe derivarse de sus descendientes.
-
-Si un nodo tiene hijos, completar ese nodo nunca debe completar automáticamente a sus descendientes ni propagarse en cascada a la rama completa.
-
-El progreso puede propagarse hacia niveles superiores.
-
-Evitar almacenar porcentajes derivados si pueden calcularse de manera segura desde los datos originales.
-
-La implementación concreta debe mantenerse sencilla durante el MVP.
+La UI de capas consume `NodeRepository.observeProjectState`: una emisión contiene nodos, relaciones y progreso coherentes. Al cambiar un descendiente, el porcentaje de la capa abierta se recalcula sin salir, volver a entrar ni refrescar manualmente.
 
 ---
 
@@ -332,7 +330,7 @@ Debe permitir:
 
 ### Progreso
 
-- marcar nodos completables;
+- reconocer automáticamente las hojas como completables;
 - completar/descompletar nodos;
 - mostrar progreso derivado de los descendientes.
 
@@ -384,6 +382,33 @@ Utilizar:
 **Room + SQLite**
 
 Room debe proporcionar la capa de persistencia.
+
+El esquema actual es la versión 3. Se conservan los esquemas históricos 1 y 2 y sus rutas de migración; no se usa `fallbackToDestructiveMigration`.
+
+### Invariantes de nodos
+
+- Todo nodo pertenece a un proyecto existente. Identidad y proyecto de un nodo son inmutables.
+- El padre debe existir y pertenecer al mismo proyecto. SQLite lo exige mediante una clave foránea compuesta `(projectId, parentId)` → `(projectId, id)` y su índice único de referencia.
+- No se permite autoparentesco ni mover un ancestro debajo de un descendiente. Repository valida la cadena de padres dentro de la transacción; triggers SQLite rechazan ciclos incluso al escribir directamente sin Repository.
+- Los recorridos de ancestros usan IDs visitados. La consulta recursiva de defensa SQL usa `UNION` para no repetir IDs. El cálculo de descendientes/progreso es iterativo y verifica que todos los nodos hayan podido procesarse.
+- Triggers SQLite impiden completar manualmente contenedores y normalizan el completado de los padres afectados al insertar, mover o eliminar hijos. Se instalan en bases nuevas y durante la migración 2→3; no aparecen en el JSON de esquema de Room, por lo que tienen pruebas explícitas.
+- Crear, editar, trasladar, completar/descompletar, alternar completado y borrar nodos pasan por transacciones de Room. Las escrituras de contenido, estructura y completado actualizan únicamente sus campos respectivos.
+- La eliminación de un nodo elimina su subárbol; la eliminación de un proyecto elimina sus nodos. Actualmente se utiliza CASCADE de SQLite. La eliminación a profundidades extremas sigue pendiente de estabilización; no se promete profundidad ilimitada para esa operación.
+- `moveNode(id, parentId)` separa traslado de edición. `parentId = null` significa mover a raíz; no significa conservar el padre. No se añade una interfaz de traslado en este bloque.
+- Al crear o trasladar a otro padre, la posición se asigna como máximo entre hermanos + 1 dentro de la transacción. El orden de lectura usa posición, fecha de creación e ID. Las posiciones históricas duplicadas no se renumeran en esta migración; existe desempate determinista. Reordenar manualmente sigue pendiente.
+- Las fechas de los nodos reflejan sus escrituras directas. No se actualizan fechas de ancestros por progreso derivado; la normalización automática del completado de padres conserva sus fechas.
+
+### Migración 2→3 y datos anteriores
+
+Se reconstruye la tabla de nodos dentro de la transacción de migración, preservando IDs, proyectos, títulos, descripciones, posiciones y fechas. Se retiran las dos banderas de tipo y se conserva el completado de hojas válidas. El completado de antiguos contenedores se normaliza a pendiente; las antiguas hojas estructurales pasan a ser tareas.
+
+Ante relaciones antiguas corruptas:
+
+- padre ausente o de otro proyecto: el nodo se conserva como raíz de su propio proyecto;
+- ciclo: se corta solo el vínculo al padre del nodo con menor ID lexicográfico dentro del ciclo, conservando todos sus nodos;
+- proyecto ausente: se aborta la migración, con rollback a la base anterior; no se inventan proyectos ni se descartan nodos.
+
+Las relaciones válidas se conservan. Antes de reemplazar la tabla antigua se desconectan sus vínculos, dentro de la misma transacción, para evitar cascadas recursivas durante la reconstrucción. Se comprueba que se reinserte el mismo número de nodos. Esta reparación es exclusiva de datos heredados: las escrituras nuevas inválidas se rechazan.
 
 La base de datos es local.
 
@@ -477,7 +502,7 @@ El MVP se considera funcional cuando un usuario puede:
 3. entrar al proyecto;
 4. crear una estructura de Capas de cebolla;
 5. añadir varios niveles;
-6. marcar elementos completables;
+6. reconocer las hojas como tareas completables;
 7. completar elementos;
 8. observar cómo cambia el progreso;
 9. cerrar la aplicación;
@@ -532,11 +557,11 @@ Proyecto
 - El usuario debe poder volver al nivel anterior con un gesto claro o botón explícito.
 - La ruta actual debe permitir comprender la posición dentro de la jerarquía sin mostrar el árbol completo.
 - El diseño debe priorizar claridad sobre densidad visual.
-- Las capas vacías deben mostrarse como estado vacío, con la posibilidad de crear un nuevo nodo dentro de esa capa.
+- Al entrar en un nodo sin hijos se muestra un estado vacío con opción de añadir un hijo; en el dominio ese nodo sigue siendo una hoja hasta que tenga hijos.
 
 ## Reglas de implementación
 
-- Se mantiene la arquitectura actual de UI → Repository → Room.
+- Se mantiene el flujo UI → lógica de aplicación/dominio → Repository → Room. Actualmente los composables aún coordinan acciones; las invariantes viven en Repository/SQLite y el cálculo de progreso en el dominio. La separación del estado de pantalla y el refactor de MainActivity siguen pendientes en Sprint 5.5.
 - No se introduce una base de datos separada ni una nueva capa de backend.
 - La navegación visual debe reutilizar el modelo existente de `Node` y `NodeRepository`.
 - Los cambios en `Node` deben reflejarse reactivamente en la UI a través de `Flow` de Room y del Repository; no debe existir una segunda fuente de verdad local para la capa visible.
@@ -548,7 +573,7 @@ Proyecto
 - El mapa de capas responde a la pregunta: “¿Qué contiene este proyecto y a qué parte quiero ir?” y debe permitir navegar directamente a cualquier punto de la jerarquía, incluso fuera de la rama actual.
 - El selector de Capas de cebolla debe limitar su altura máxima y permitir scroll interno para soportar profundidades arbitrarias sin romper la interfaz.
 - El proyecto puede tener varias ramas, por lo que no existe una sola “capa siguiente”; la navegación debe permitir saltos a cualquier nodo del árbol completo desde el mapa.
-- Los nodos completable siguen representando trabajo medible en progreso.
+- Las hojas representan las unidades de trabajo medibles en progreso.
 - Los contenedores estructurales no deben tratarse como elementos completables manualmente.
 - La información derivada de progreso debe calcularse a partir de datos persistidos y no duplicarse como estado de base de datos.
 - La UI no debe pedir al usuario que elija un "tipo técnico" de elemento; la estructura define si el elemento funciona como tarea o como capa.
@@ -567,7 +592,7 @@ El sprint se considera realizado cuando el usuario puede:
 3. entrar a una capa y ver solo sus hijos;
 4. crear nuevos nodos dentro de la capa actual;
 5. volver a la capa anterior;
-6. completar o descompletar nodos completable;
+6. completar o descompletar hojas;
 7. ver progreso actualizado por capa y por nodo;
 8. cerrar y reabrir la aplicación y conservar la estructura.
 
@@ -575,7 +600,34 @@ Este sprint sigue siendo una mejora incremental del MVP, no una reescritura del 
 
 ---
 
-# 18. Fuera del alcance del MVP
+# 19. Sprint 5.5 — Estabilización del núcleo
+
+Fase formal entre Sprint 5 y Sprint 6. Su objetivo es corregir la deuda detectada por la auditoría, por bloques revisables, sin añadir funcionalidades futuras. Sprint 6 no está iniciado.
+
+## Bloque 1: invariantes y progreso reactivo
+
+Implementa las reglas de las secciones 7, 9 y 12: una sola fuente estructural de verdad, transiciones hoja → capa → hoja, ausencia de cascada de completado, protección contra ciclos, coherencia proyecto–padre, escrituras atómicas, migración explícita y progreso observable coherente.
+
+La UI solo recibe la instantánea observable y deja de decidir o persistir tipos. Se eliminan sus consultas repetidas por hijo para calcular progreso. No se realiza el gran refactor de MainActivity ni un rediseño.
+
+Las pruebas existentes de nodos se conservan adaptadas a la nueva regla: ya no se espera que una hoja estructural vacía carezca de trabajo; pasa a ser una tarea pendiente. Se añaden regresiones de transiciones, ciclos, claves foráneas y triggers, concurrencia, progreso reactivo, 32 niveles y migración desde esquemas 1 y 2, incluyendo datos corruptos y rollback. Las pruebas de migración se ejecutan en Robolectric API 24 y 28.
+
+## Pendiente para los siguientes bloques
+
+- **Navegación y estado:** atrás desde raíz, restauración ante recreación de Activity, navegación basada en IDs y pruebas de navegación/recreación.
+- **Orden y escala:** interfaz de reordenamiento y política para posiciones históricas repetidas; medición con cientos/miles de nodos; listas diferidas con claves estables; mapa aplanado y expansión funcional; eliminar recursión en el mapa visual; borrado de árboles extremos sin depender del límite de CASCADE. El cálculo de progreso ya es iterativo y compartido, pero la observación aún carga todo el proyecto.
+- **Arquitectura de UI:** separar pantallas, estado, diálogos y navegación de MainActivity; manejo de errores; conservar formularios al fallar; atender resultados booleanos; revisar propiedad y ciclo de vida de la base actualmente ligado a Activity.
+- **UI/UX y accesibilidad:** insets, descripciones accesibles, métricas Activos/Hoy simuladas, búsqueda vacía, drawer sin destinos funcionales, responsive de métricas, acciones secundarias de proyectos, continuidad del recorrido visual y soporte efectivo de modo claro.
+- **Assets y tema:** tinte del PNG de cebolla, vector antiguo sin uso, launcher de plantilla, colores heredados/dispersos, diálogo azul y política de densidad de PNG. No reemplazar el asset por iniciativa propia.
+- **Pruebas adicionales:** navegación, recreación, errores de guardado, listas/árboles grandes y profundidades extremas, pantallas pequeñas, fuente ampliada y accesibilidad. La prueba de progreso reactivo de este bloque verifica la instantánea consumida por la UI; no sustituye una prueba visual de Compose.
+
+Personas, responsables, tags, versiones/releases, Change Sets, historial especializado, sincronización LAN y cifrado pertenecen a sprints futuros y no se implementan en Sprint 5.5.
+
+Al terminar cada bloque se ejecutan pruebas, compilación, lint y `git diff --check`, se informa el resultado y se espera revisión antes de avanzar. No hacer commit ni push sin autorización.
+
+---
+
+# 20. Fuera del alcance del MVP
 
 NO implementar todavía:
 
@@ -617,7 +669,7 @@ Estas funciones pertenecen al roadmap futuro.
 
 ---
 
-# 19. Roadmap conceptual
+# 21. Roadmap conceptual
 
 La evolución prevista de Arachn0de incluye aproximadamente:
 
@@ -682,7 +734,7 @@ Arachn0de Desktop.
 
 ---
 
-# 20. Compatibilidad con el futuro
+# 22. Compatibilidad con el futuro
 
 El MVP no debe implementar funciones futuras.
 
@@ -707,7 +759,7 @@ El principio es:
 
 ---
 
-# 21. Instrucciones para agentes de código
+# 23. Instrucciones para agentes de código
 
 Antes de implementar una funcionalidad:
 
@@ -728,7 +780,7 @@ Se debe señalar el conflicto antes de realizar una modificación estructural im
 
 ---
 
-# 22. Principio rector
+# 24. Principio rector
 
 Arachn0de debe comenzar pequeño.
 

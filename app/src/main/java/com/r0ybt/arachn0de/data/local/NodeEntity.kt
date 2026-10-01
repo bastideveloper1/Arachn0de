@@ -11,20 +11,19 @@ import com.r0ybt.arachn0de.domain.model.Node
     foreignKeys = [
         ForeignKey(
             entity = ProjectEntity::class,
-            parentColumns = ["id"],
-            childColumns = ["projectId"],
+            parentColumns = ["id"], childColumns = ["projectId"],
             onDelete = ForeignKey.CASCADE,
-            onUpdate = ForeignKey.CASCADE,
         ),
         ForeignKey(
             entity = NodeEntity::class,
-            parentColumns = ["id"],
-            childColumns = ["parentId"],
+            parentColumns = ["projectId", "id"], childColumns = ["projectId", "parentId"],
             onDelete = ForeignKey.CASCADE,
-            onUpdate = ForeignKey.CASCADE,
         ),
     ],
-    indices = [Index(value = ["projectId"]), Index(value = ["parentId"])],
+    indices = [
+        Index(value = ["projectId", "id"], unique = true),
+        Index(value = ["projectId", "parentId"]),
+    ],
 )
 data class NodeEntity(
     @PrimaryKey val id: String,
@@ -32,24 +31,13 @@ data class NodeEntity(
     val parentId: String?,
     val title: String,
     val description: String,
-    val isStructural: Boolean,
-    val isCompletable: Boolean,
     val isCompleted: Boolean,
     val position: Int,
     val createdAt: Long,
     val updatedAt: Long,
 )
 
-internal fun NodeEntity.toNode() = Node(
-    id = id,
-    projectId = projectId,
-    parentId = parentId,
-    title = title,
-    description = description,
-    isStructural = isStructural,
-    isCompletable = isCompletable,
-    isCompleted = isCompleted,
-    position = position,
-    createdAt = createdAt,
-    updatedAt = updatedAt,
+internal fun NodeEntity.toNode(hasChildren: Boolean) = Node(
+    id, projectId, parentId, title, description, isCompleted,
+    position, createdAt, updatedAt, hasChildren,
 )

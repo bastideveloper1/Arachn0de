@@ -80,6 +80,7 @@ import com.r0ybt.arachn0de.data.repository.ProjectRepository
 import com.r0ybt.arachn0de.domain.model.Node
 import com.r0ybt.arachn0de.domain.model.NodeProgress
 import com.r0ybt.arachn0de.domain.model.NodeProgressState
+import com.r0ybt.arachn0de.domain.model.NodeTreeSnapshot
 import com.r0ybt.arachn0de.domain.model.Project
 import com.r0ybt.arachn0de.ui.theme.Arachn0deTheme
 import java.text.SimpleDateFormat
@@ -91,7 +92,7 @@ import kotlinx.coroutines.launch
 class MainActivity : ComponentActivity() {
     private val database by lazy { Arachn0deDatabase.create(applicationContext) }
     private val projectRepository by lazy { ProjectRepository(database.projectDao()) }
-    private val nodeRepository by lazy { NodeRepository(database.nodeDao()) }
+    private val nodeRepository by lazy { NodeRepository(database) }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -308,55 +309,25 @@ private fun ProjectNodeScreen(
 ) {
     val scope = rememberCoroutineScope()
     val currentPath = remember { mutableStateListOf<String>() }
-    val currentNodes = remember { mutableStateListOf<Node>() }
-    var currentNode by remember { mutableStateOf<Node?>(null) }
-    var currentProgress by remember { mutableStateOf<NodeProgress?>(null) }
-    var currentLayer by remember { mutableStateOf(0) }
-    var pathNodes by remember { mutableStateOf<List<Node>>(emptyList()) }
+    var projectState by remember(project.id) { mutableStateOf(NodeTreeSnapshot(emptyList())) }
     var showNodeDialog by remember { mutableStateOf(false) }
     var editingNode by remember { mutableStateOf<Node?>(null) }
     var deletingNode by remember { mutableStateOf<Node?>(null) }
     var showDrawer by remember { mutableStateOf(false) }
     var showPathDialog by remember { mutableStateOf(false) }
     var showLayerMapDialog by remember { mutableStateOf(false) }
-    var projectLayerMap by remember { mutableStateOf<List<Node>>(emptyList()) }
     var isSubmittingNode by remember { mutableStateOf(false) }
-    val progressMap = remember { mutableStateMapOf<String, NodeProgress>() }
-    val hasChildrenMap = remember { mutableStateMapOf<String, Boolean>() }
     val currentNodeId = currentPath.lastOrNull()
+    val currentNode = projectState.nodesById[currentNodeId]
+    val currentNodes = projectState.childrenOf(currentNodeId)
+    val currentProgress = projectState.progressById[currentNodeId]
+    val pathNodes = currentPath.mapNotNull { projectState.nodesById[it] }
+    val currentLayer = pathNodes.size
+    val projectLayerMap = projectState.nodes
+    val progressMap = projectState.progressById
 
-    LaunchedEffect(project.id, currentNodeId) {
-        currentNode = currentNodeId?.let { nodeRepository.getNode(it) }
-        currentProgress = currentNodeId?.let { nodeRepository.calculateProgress(it) }
-        currentLayer = currentNodeId?.let { nodeRepository.getNodeDepth(it) } ?: 0
-        pathNodes = currentPath.mapNotNull { nodeRepository.getNode(it) }
-    }
-
-    LaunchedEffect(project.id, currentNodeId) {
-        val layerFlow = if (currentNodeId == null) {
-            nodeRepository.observeRootNodes(project.id)
-        } else {
-            nodeRepository.observeChildren(project.id, currentNodeId)
-        }
-
-        layerFlow.collect { nodes ->
-            currentNodes.clear()
-            currentNodes.addAll(nodes)
-            progressMap.clear()
-            hasChildrenMap.clear()
-            nodes.forEach { child ->
-                hasChildrenMap[child.id] = nodeRepository.hasChildren(child.id)
-                nodeRepository.calculateProgress(child.id)?.let { progress ->
-                    progressMap[child.id] = progress
-                }
-            }
-        }
-    }
-
-    LaunchedEffect(project.id, showLayerMapDialog) {
-        if (showLayerMapDialog) {
-            projectLayerMap = nodeRepository.getProjectNodes(project.id)
-        }
+    LaunchedEffect(project.id, nodeRepository) {
+        nodeRepository.observeProjectState(project.id).collect { projectState = it }
     }
 
     BackHandler(enabled = currentPath.isNotEmpty()) {
@@ -500,8 +471,8 @@ private fun ProjectNodeScreen(
                             NodeCard(
                                 node = node,
                                 progress = progressMap[node.id],
-                                hasChildren = hasChildrenMap[node.id] == true,
-                                canToggleComplete = node.isCompletable && hasChildrenMap[node.id] != true,
+                                hasChildren = node.hasChildren,
+                                canToggleComplete = node.isCompletable,
                                 onOpen = {
                                     currentPath.add(node.id)
                                 },
@@ -514,7 +485,7 @@ private fun ProjectNodeScreen(
                                 },
                                 onToggleComplete = {
                                     scope.launch {
-                                        if (node.isCompletable && hasChildrenMap[node.id] != true) {
+                                        if (node.isCompletable) {
                                             nodeRepository.toggleCompleted(node.id)
                                         }
                                     }
@@ -584,33 +555,18 @@ private fun ProjectNodeScreen(
                 isSubmittingNode = true
                 scope.launch {
                     try {
-                        val effectiveIsStructural = if (editingNode == null) {
-                            false
-                        } else {
-                            editingNode!!.isStructural || hasChildrenMap[editingNode!!.id] == true
-                        }
-                        val effectiveIsCompletable = !effectiveIsStructural
-
                         if (editingNode == null) {
                             nodeRepository.createNode(
                                 projectId = project.id,
                                 parentId = currentPath.lastOrNull(),
                                 title = title,
                                 description = description,
-                                isStructural = false,
-                                isCompletable = true,
-                                isCompleted = false,
                             )
                         } else {
                             nodeRepository.updateNode(
                                 id = editingNode!!.id,
                                 title = title,
                                 description = description,
-                                parentId = editingNode!!.parentId,
-                                isStructural = effectiveIsStructural,
-                                isCompletable = effectiveIsCompletable,
-                                isCompleted = editingNode!!.isCompleted,
-                                position = editingNode!!.position,
                             )
                         }
                     } finally {

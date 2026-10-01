@@ -36,7 +36,7 @@ class NodePersistenceTest {
         context.deleteDatabase("arachn0de.db")
         database = Arachn0deDatabase.create(context)
         projectRepository = ProjectRepository(database.projectDao()) { now }
-        nodeRepository = NodeRepository(database.nodeDao()) { now }
+        nodeRepository = NodeRepository(database) { now }
         project = projectRepository.createProject("Project")
     }
 
@@ -53,7 +53,7 @@ class NodePersistenceTest {
         val childA1 = nodeRepository.createNode(project.id, rootA.id, "Child A1")
         val childA2 = nodeRepository.createNode(project.id, rootA.id, "Child A2")
 
-        assertEquals(listOf(rootA, rootB), nodeRepository.observeRootNodes(project.id).first())
+        assertEquals(listOf(rootA.copy(hasChildren = true), rootB), nodeRepository.observeRootNodes(project.id).first())
         assertEquals(listOf(childA1, childA2), nodeRepository.observeChildren(project.id, rootA.id).first())
         assertEquals(project.id, nodeRepository.getNode(childA1.id)?.projectId)
         assertEquals(rootA.id, nodeRepository.getNode(childA1.id)?.parentId)
@@ -77,29 +77,27 @@ class NodePersistenceTest {
     @Test
     fun deepHierarchyPersistsAcrossDatabaseReopen() = runBlocking {
         val root = nodeRepository.createNode(project.id, null, "Root")
-        val child = nodeRepository.createNode(project.id, root.id, "Child", isStructural = false, isCompletable = true)
+        val child = nodeRepository.createNode(project.id, root.id, "Child")
         val nested = nodeRepository.createNode(project.id, child.id, "Nested")
 
         database.close()
         database = Arachn0deDatabase.create(context)
-        nodeRepository = NodeRepository(database.nodeDao()) { now }
+        nodeRepository = NodeRepository(database) { now }
 
-        assertEquals(root, nodeRepository.getNode(root.id))
-        assertEquals(child, nodeRepository.getNode(child.id))
+        assertEquals(root.copy(hasChildren = true), nodeRepository.getNode(root.id))
+        assertEquals(child.copy(hasChildren = true), nodeRepository.getNode(child.id))
         assertEquals(nested, nodeRepository.getNode(nested.id))
-        assertEquals(listOf(child), nodeRepository.observeChildren(project.id, root.id).first())
+        assertEquals(listOf(child.copy(hasChildren = true)), nodeRepository.observeChildren(project.id, root.id).first())
         assertEquals(listOf(nested), nodeRepository.observeChildren(project.id, child.id).first())
     }
 
     @Test
     fun completableNodesCanToggleCompletionAndStructuralNodesIgnoreManualCompletion() = runBlocking {
-        val structural = nodeRepository.createNode(project.id, null, "Structural", isStructural = true)
+        val structural = nodeRepository.createNode(project.id, null, "Structural")
         val task = nodeRepository.createNode(
             projectId = project.id,
             parentId = structural.id,
             title = "Completable",
-            isStructural = false,
-            isCompletable = true,
         )
 
         assertFalse(nodeRepository.setCompleted(structural.id, true))
@@ -112,11 +110,11 @@ class NodePersistenceTest {
 
     @Test
     fun progressIsDerivedFromCompletableDescendantsAcrossMultipleLevels() = runBlocking {
-        val root = nodeRepository.createNode(project.id, null, "MVP", isStructural = true)
-        val data = nodeRepository.createNode(project.id, root.id, "Database", isStructural = false, isCompletable = true)
-        val layers = nodeRepository.createNode(project.id, root.id, "Capas", isStructural = false, isCompletable = true)
-        val progress = nodeRepository.createNode(project.id, root.id, "Progreso", isStructural = false, isCompletable = true)
-        val ui = nodeRepository.createNode(project.id, root.id, "Interfaz", isStructural = false, isCompletable = true)
+        val root = nodeRepository.createNode(project.id, null, "MVP")
+        val data = nodeRepository.createNode(project.id, root.id, "Database")
+        val layers = nodeRepository.createNode(project.id, root.id, "Capas")
+        val progress = nodeRepository.createNode(project.id, root.id, "Progreso")
+        val ui = nodeRepository.createNode(project.id, root.id, "Interfaz")
 
         nodeRepository.setCompleted(data.id, true)
         nodeRepository.setCompleted(layers.id, true)
@@ -144,13 +142,13 @@ class NodePersistenceTest {
         assertEquals(1, nodeRepository.getNodeDepth(root.id))
         assertEquals(2, nodeRepository.getNodeDepth(child.id))
         assertEquals(3, nodeRepository.getNodeDepth(grandChild.id))
-        assertEquals(listOf(root, child, grandChild), nodeRepository.getNodePath(grandChild.id))
+        assertEquals(listOf(root.copy(hasChildren = true), child.copy(hasChildren = true), grandChild), nodeRepository.getNodePath(grandChild.id))
     }
 
     @Test
     fun nodesWithChildrenCannotBeCompletedManuallyAndProgressDerivesFromDescendants() = runBlocking {
-        val parent = nodeRepository.createNode(project.id, null, "Parent task", isStructural = false, isCompletable = true)
-        val child = nodeRepository.createNode(project.id, parent.id, "Child task", isStructural = false, isCompletable = true)
+        val parent = nodeRepository.createNode(project.id, null, "Parent task")
+        val child = nodeRepository.createNode(project.id, parent.id, "Child task")
 
         assertFalse(nodeRepository.setCompleted(parent.id, true))
         assertFalse(nodeRepository.toggleCompleted(parent.id))
@@ -167,15 +165,15 @@ class NodePersistenceTest {
     }
 
     @Test
-    fun emptyStructuralContainersHaveNoMeasurableWork() = runBlocking {
-        val empty = nodeRepository.createNode(project.id, null, "Empty container", isStructural = true)
+    fun emptyNodesArePendingCompletableLeaves() = runBlocking {
+        val empty = nodeRepository.createNode(project.id, null, "Empty container")
 
         val progress = nodeRepository.calculateProgress(empty.id)
 
         assertEquals(0, progress?.completed)
-        assertEquals(0, progress?.total)
+        assertEquals(1, progress?.total)
         assertEquals(0, progress?.percentage)
-        assertEquals(NodeProgressState.NO_WORK, progress?.state)
+        assertEquals(NodeProgressState.NOT_STARTED, progress?.state)
         assertFalse(progress?.isComplete == true)
     }
 }

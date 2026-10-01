@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Native starting window on API 24–30; no extra Activity or launch delay. -->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:drawable="@color/arachn0de_background" />
+    <item android:width="180dp" android:height="180dp" android:gravity="center">
+        <bitmap android:src="@drawable/arachn0de_logo" android:gravity="fill" android:filter="true" />
+    </item>
+    <item android:width="200dp" android:height="80dp" android:gravity="bottom|center_horizontal"
+        android:bottom="24dp" android:drawable="@drawable/startup_wordmark" />
+</layer-list>

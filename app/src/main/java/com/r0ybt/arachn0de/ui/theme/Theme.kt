@@ -1,58 +1,35 @@
 package com.r0ybt.arachn0de.ui.theme
 
-import android.app.Activity
-import android.os.Build
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
-import androidx.compose.material3.dynamicDarkColorScheme
-import androidx.compose.material3.dynamicLightColorScheme
-import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.platform.LocalContext
 
 private val DarkColorScheme = darkColorScheme(
-    primary = Purple80,
-    secondary = PurpleGrey80,
-    tertiary = Pink80
+    primary = Arachn0deColors.Accent,
+    onPrimary = Arachn0deColors.Background,
+    primaryContainer = Arachn0deColors.AccentSurface,
+    onPrimaryContainer = Arachn0deColors.TextPrimary,
+    secondary = Arachn0deColors.Accent,
+    onSecondary = Arachn0deColors.Background,
+    secondaryContainer = Arachn0deColors.Selection,
+    onSecondaryContainer = Arachn0deColors.TextPrimary,
+    tertiary = Arachn0deColors.PathHighlight,
+    onTertiary = Arachn0deColors.Background,
+    background = Arachn0deColors.Background,
+    onBackground = Arachn0deColors.TextPrimary,
+    surface = Arachn0deColors.Surface,
+    onSurface = Arachn0deColors.TextPrimary,
+    surfaceVariant = Arachn0deColors.ControlSurface,
+    onSurfaceVariant = Arachn0deColors.TextSecondary,
+    surfaceTint = Arachn0deColors.Accent,
+    outline = Arachn0deColors.TextSecondary,
+    outlineVariant = Arachn0deColors.Outline,
+    error = Arachn0deColors.Destructive,
+    onError = Arachn0deColors.Background,
 )
 
-private val LightColorScheme = lightColorScheme(
-    primary = Purple40,
-    secondary = PurpleGrey40,
-    tertiary = Pink40
-
-    /* Other default colors to override
-    background = Color(0xFFFFFBFE),
-    surface = Color(0xFFFFFBFE),
-    onPrimary = Color.White,
-    onSecondary = Color.White,
-    onTertiary = Color.White,
-    onBackground = Color(0xFF1C1B1F),
-    onSurface = Color(0xFF1C1B1F),
-    */
-)
-
+/** Dark brand theme; light and wallpaper-derived palettes are not implemented yet. */
 @Composable
-fun Arachn0deTheme(
-    darkTheme: Boolean = isSystemInDarkTheme(),
-    // Dynamic color is available on Android 12+
-    dynamicColor: Boolean = true,
-    content: @Composable () -> Unit
-) {
-    val colorScheme = when {
-        dynamicColor && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S -> {
-            val context = LocalContext.current
-            if (darkTheme) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
-        }
-
-        darkTheme -> DarkColorScheme
-        else -> LightColorScheme
-    }
-
-    MaterialTheme(
-        colorScheme = colorScheme,
-        typography = Typography,
-        content = content
-    )
+fun Arachn0deTheme(content: @Composable () -> Unit) {
+    MaterialTheme(colorScheme = DarkColorScheme, typography = Typography, content = content)
 }

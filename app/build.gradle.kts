@@ -53,6 +53,8 @@ dependencies {
     implementation(libs.kotlinx.coroutines.core)
     ksp(libs.androidx.room.compiler)
     testImplementation(libs.robolectric)
+    testImplementation(platform(libs.androidx.compose.bom))
+    testImplementation(libs.androidx.compose.ui.test.junit4)
     implementation(platform(libs.androidx.compose.bom))
     implementation(libs.androidx.activity.compose)
     implementation(libs.androidx.compose.material3)

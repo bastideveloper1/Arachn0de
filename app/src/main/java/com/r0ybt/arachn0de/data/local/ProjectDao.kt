@@ -4,6 +4,7 @@ import androidx.room.Dao
 import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
+import androidx.room.Transaction
 import kotlinx.coroutines.flow.Flow
 
 @Dao
@@ -22,5 +23,15 @@ interface ProjectDao {
     suspend fun update(id: String, name: String, description: String, updatedAt: Long): Int
 
     @Query("DELETE FROM projects WHERE id = :id")
-    suspend fun delete(id: String): Int
+    suspend fun deleteProjectRow(id: String): Int
+
+    @Query("UPDATE nodes SET parentId = NULL WHERE projectId = :id AND parentId IS NOT NULL")
+    suspend fun detachProjectNodes(id: String)
+
+    /** Flatten first so the project cascade never recursively walks a deep tree. */
+    @Transaction
+    suspend fun delete(id: String): Int {
+        detachProjectNodes(id)
+        return deleteProjectRow(id)
+    }
 }

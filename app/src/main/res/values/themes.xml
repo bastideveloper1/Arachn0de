@@ -1,5 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-
-    <style name="Theme.Arachn0de" parent="android:Theme.Material.Light.NoActionBar" />
+    <style name="Theme.Arachn0de" parent="android:Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@drawable/startup_background</item>
+        <item name="android:statusBarColor">@color/arachn0de_background</item>
+        <item name="android:navigationBarColor">@color/arachn0de_background</item>
+        <item name="android:windowLightStatusBar">false</item>
+    </style>
 </resources>

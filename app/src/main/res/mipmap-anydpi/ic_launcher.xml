@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Legacy API 24–25 icon; bitmap scales to launcher bounds without density copies. -->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item><shape android:shape="oval"><solid android:color="@color/arachn0de_background" /></shape></item>
+    <item android:drawable="@drawable/ic_launcher_foreground" />
+</layer-list>

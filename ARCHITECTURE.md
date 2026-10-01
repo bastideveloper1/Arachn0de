@@ -393,7 +393,7 @@ El esquema actual es la versión 3. Se conservan los esquemas históricos 1 y 2 
 - Los recorridos de ancestros usan IDs visitados. La consulta recursiva de defensa SQL usa `UNION` para no repetir IDs. El cálculo de descendientes/progreso es iterativo y verifica que todos los nodos hayan podido procesarse.
 - Triggers SQLite impiden completar manualmente contenedores y normalizan el completado de los padres afectados al insertar, mover o eliminar hijos. Se instalan en bases nuevas y durante la migración 2→3; no aparecen en el JSON de esquema de Room, por lo que tienen pruebas explícitas.
 - Crear, editar, trasladar, completar/descompletar, alternar completado y borrar nodos pasan por transacciones de Room. Las escrituras de contenido, estructura y completado actualizan únicamente sus campos respectivos.
-- La eliminación de un nodo elimina su subárbol; la eliminación de un proyecto elimina sus nodos. Actualmente se utiliza CASCADE de SQLite. La eliminación a profundidades extremas sigue pendiente de estabilización; no se promete profundidad ilimitada para esa operación.
+- La eliminación de un nodo elimina su subárbol; la eliminación de un proyecto elimina sus nodos. El borrado por DAO/Repository desconecta los vínculos internos antes de eliminar, dentro de una única transacción, para evitar cascadas recursivas dependientes de la profundidad. Las claves foráneas CASCADE se conservan como defensa del esquema; SQL directo que omita este procedimiento sigue sujeto al límite de SQLite.
 - `moveNode(id, parentId)` separa traslado de edición. `parentId = null` significa mover a raíz; no significa conservar el padre. No se añade una interfaz de traslado en este bloque.
 - Al crear o trasladar a otro padre, la posición se asigna como máximo entre hermanos + 1 dentro de la transacción. El orden de lectura usa posición, fecha de creación e ID. Las posiciones históricas duplicadas no se renumeran en esta migración; existe desempate determinista. Reordenar manualmente sigue pendiente.
 - Las fechas de los nodos reflejan sus escrituras directas. No se actualizan fechas de ancestros por progreso derivado; la normalización automática del completado de padres conserva sus fechas.
@@ -561,7 +561,7 @@ Proyecto
 
 ## Reglas de implementación
 
-- Se mantiene el flujo UI → lógica de aplicación/dominio → Repository → Room. Actualmente los composables aún coordinan acciones; las invariantes viven en Repository/SQLite y el cálculo de progreso en el dominio. La separación del estado de pantalla y el refactor de MainActivity siguen pendientes en Sprint 5.5.
+- Se mantiene el flujo UI → lógica de aplicación/dominio → Repository → Room. Las invariantes viven en Repository/SQLite y el cálculo de progreso en el dominio. En Sprint 5.5, bloque 5, las escrituras pasan por acciones de presentación y MainActivity queda como punto de entrada; pantallas, navegación, diálogos y componentes están separados.
 - No se introduce una base de datos separada ni una nueva capa de backend.
 - La navegación visual debe reutilizar el modelo existente de `Node` y `NodeRepository`.
 - Los cambios en `Node` deben reflejarse reactivamente en la UI a través de `Flow` de Room y del Repository; no debe existir una segunda fuente de verdad local para la capa visible.
@@ -612,14 +612,72 @@ La UI solo recibe la instantánea observable y deja de decidir o persistir tipos
 
 Las pruebas existentes de nodos se conservan adaptadas a la nueva regla: ya no se espera que una hoja estructural vacía carezca de trabajo; pasa a ser una tarea pendiente. Se añaden regresiones de transiciones, ciclos, claves foráneas y triggers, concurrencia, progreso reactivo, 32 niveles y migración desde esquemas 1 y 2, incluyendo datos corruptos y rollback. Las pruebas de migración se ejecutan en Robolectric API 24 y 28.
 
+## Bloque 2: eliminación de árboles profundos
+
+`NodeDao.delete` captura los IDs del subárbol mediante una CTE con `UNION` (sin repetir IDs), desconecta sus relaciones y elimina los nodos en lotes de 500 IDs para respetar el límite de parámetros de SQLite en API 24. Todos los lotes se desconectan antes de comenzar a borrar. El padre externo y las ramas hermanas se conservan; los triggers existentes dejan al padre como hoja pendiente si pierde su último hijo.
+
+`ProjectDao.delete` desconecta todos los nodos del proyecto antes de borrar el proyecto; CASCADE elimina entonces nodos sin cadenas de descendencia. Ambas operaciones son transaccionales: los observadores no reciben estados intermedios y un fallo restaura relaciones, nodos y proyecto. Borrar un elemento ausente sigue devolviendo `false` en Repository.
+
+No cambia el esquema Room ni requiere migración. La selección del subárbol consume memoria proporcional a sus nodos; no se promete capacidad ilimitada. Las regresiones cubren 1200 niveles, preservación de ramas/otros proyectos y rollback ante un fallo inyectado después de desconectar, en API 24 y 28.
+
+Validación del bloque 2 (2026-10-01): `testDebugUnitTest --rerun-tasks` completó 47 pruebas sin fallos (6 ejecuciones nuevas); `assembleDebug`, `lintDebug` y `git diff --check` finalizaron correctamente.
+
+## Bloque 3: sistema visual
+
+La identidad de la aplicación es la araña: `arachn0de_logo.png` se conserva intacto y se usa en el inicio y el launcher. La cebolla identifica nodos con hijos (capas), nunca sustituye al logo de la aplicación. Los nodos hoja conservan el control de completado.
+
+Por indicación del usuario se sustituye el antiguo recurso circular `cebolla_icon.png` por el archivo proporcionado `cebollaicon.png` (1254 × 1254, RGBA), copiado sin modificar sus bytes. Se mantiene el nombre interno `cebolla_icon`. Las vistas conservan sus colores, sin tintes ni recorte; la tarjeta usa un espacio de 36 dp y `ContentScale.Fit` para mostrar su silueta completa. Ambos PNG están en `drawable-nodpi`; Compose controla su tamaño en dp.
+
+El launcher reutiliza exclusivamente el logo de araña: icono adaptativo desde API 26 con fondo oscuro y margen del 20 % por lado, y drawable compuesto para API 24–25. Se eliminan los WebP del robot Android, el fondo de plantilla y `cebolaicon.xml` sin uso. No se declara una variante monocromática temática. Referencia técnica: https://developer.android.com/reference/android/graphics/drawable/AdaptiveIconDrawable.
+
+`Arachn0deColors` centraliza la paleta semántica de Compose; se unifican variantes casi idénticas y el diálogo de eliminación de proyecto adopta la superficie oscura común. El tema Material utiliza estos mismos colores. Se retiran las paletas moradas/rosadas y colores XML de plantilla. El único color XML es el fondo utilizado por el launcher, documentado como reflejo de `Arachn0deColors.Background`.
+
+El tema actual es explícitamente oscuro, como ya lo era la pantalla principal. No se anuncia soporte claro ni colores dinámicos. Quedan pendientes modo claro, accesibilidad y comprobación visual en dispositivos/launchers reales. Este bloque no modifica persistencia, navegación ni distribución de pantallas.
+
+Validación del bloque visual (2026-10-01): 47 pruebas sin fallos con `testDebugUnitTest --rerun-tasks --console=plain`; `assembleDebug`, `lintDebug` y `git diff --check` correctos. Lint conserva 15 advertencias, incluidas dos por ausencia deliberada de icono monocromático. Tras trasladar también el logo a nodpi se repitieron build y lint. No había dispositivo/emulador conectado para validación visual.
+
+### Inicio e identidad en la navegación
+
+La ventana nativa de arranque tiene fondo negro y muestra la araña y el nombre Arachn0de. API 24–30 usa `startup_background`; desde API 31 se configuran los atributos nativos SplashScreen y un wordmark vectorial de 200 × 80 dp. No se agrega otra Activity ni una demora artificial; Android controla la duración y puede omitir el splash en un arranque caliente. Referencia: https://developer.android.com/develop/ui/views/launch/splash-screen.
+
+El logo de araña permanece junto al nombre en el menú lateral y se retira de la cabecera principal para liberar espacio. La cabecera conserva el nombre de la app y los controles existentes. La cebolla continúa reservada a las capas. Queda pendiente verificar visualmente el arranque en versiones de Android y tamaños reales.
+
+## Bloque 4: navegación y restauración
+
+`AppRoot` guarda únicamente el ID del proyecto mediante `rememberSaveable` y obtiene el proyecto vigente del flujo de Room. La ruta de capas guarda una lista de IDs con un `Saver` de Compose. Al recrear la Activity se recuperan proyecto y profundidad, sin serializar entidades ni instantáneas de base de datos.
+
+Atrás dentro de una capa sube un nivel; desde la raíz del proyecto vuelve a proyectos. En el dashboard se mantiene el comportamiento de salida del sistema. Si el menú lateral está abierto, atrás primero lo cierra. Los diálogos siguen usando su manejo modal de atrás.
+
+La ruta se valida después de recibir una instantánea persistida, nunca contra el estado vacío inicial. Si un nodo desapareció o cambió de padre, se conserva el prefijo válido hasta el ancestro existente; si desapareció el proyecto, se vuelve al dashboard. Mientras se recupera el proyecto no se muestra un proyecto obsoleto. La restauración utiliza el estado guardado de Android: no implica recordar una sesión después de una salida voluntaria ni force-stop.
+
+Las pruebas Compose/Robolectric ejercitan atrás desde raíz, varios niveles y recreación real mediante `ActivityScenario.recreate()`, cierre del menú y recuperación tras eliminar capas/proyectos. No se afirma haber probado muerte real del proceso ni gestos predictivos en dispositivos. Formularios, desplazamiento y diálogos transitorios no se restauran en este bloque. El ciclo de vida de Room y la separación de MainActivity se resuelven posteriormente en el bloque 5.
+
+Validación del bloque 4: `./gradlew testDebugUnitTest --rerun-tasks --console=plain` pasó 53 pruebas (6 nuevas de navegación); `./gradlew assembleDebug --console=plain`, `./gradlew lintDebug --console=plain` y `git diff --check` correctos.
+
+## Bloque 5: errores de persistencia y separación de UI
+
+`MainActivity` solo configura la ventana y el contenido. `Arachn0deApplication` conserva una instancia perezosa de Room y de los repositorios durante la vida del proceso. Recrear o destruir una Activity no cierra la base compartida. Las pruebas que crean bases propias siguen siendo responsables de cerrarlas.
+
+La UI se organiza en `AppRoot` (selección y restauración), `ProjectsScreen`, `ProjectScreen`, `EditDialogs`, componentes de proyectos/nodos, `LayerMap` y `NavigationChrome`. La extracción conserva comportamiento y aspecto; el mapa sigue siendo recursivo y no se presenta como optimizado.
+
+`ProjectActions` y `NodeActions` coordinan las escrituras. `OperationState` conserva el estado ocupado/error, impide envíos solapados y solo ejecuta el cierre del formulario o confirmación después de un resultado satisfactorio. Se comprueban los booleanos de editar, eliminar y completar; un `false` informa que el elemento desapareció o que la operación dejó de ser válida. Un fallo de SQLite conserva el editor y sus campos, presenta un mensaje comprensible y permite reintentar. Las confirmaciones de eliminación tampoco se cierran si falla la persistencia. Durante el envío se deshabilitan guardar, cancelar y descartar el diálogo.
+
+`LoadState` captura fallos de observación, conserva la última instantánea válida y ofrece reintento explícito. Los proyectos se observan una sola vez desde `AppRoot`; la pantalla de proyectos recibe la lista. No se muestran excepciones técnicas como mensajes al usuario. Tanto carga como escritura propagan `CancellationException`; no se presenta una cancelación como guardado exitoso ni como fallo de almacenamiento.
+
+Los estados de operaciones son objetos de presentación recordados por cada pantalla, con coroutines ligadas a su composición; no se introducen ViewModels ni una nueva librería de navegación. El estado transitorio de diálogos permanece en las pantallas y los campos en los editores. Un cambio de Activity conserva la ubicación, pero no promete conservar borradores ni mantener escrituras en segundo plano: si una operación ya se confirmó en Room, su resultado se recupera mediante los flujos. La recuperación de borradores sigue pendiente.
+
+Las regresiones incluyen fallos reales inyectados con triggers SQLite en crear proyectos/nodos, editar y eliminar proyectos; preservación de campos, reintento, rechazo por elemento desaparecido, bloqueo de doble envío, cancelación, error de lectura y conservación de la misma base al recrear Activity. Los triggers de fallo solo existen en las bases de prueba.
+
+Validación del bloque 5: `./gradlew testDebugUnitTest --rerun-tasks --console=plain` pasó 64 pruebas (11 nuevas); `./gradlew assembleDebug --console=plain`, `./gradlew lintDebug --console=plain` y `git diff --check` correctos. Lint conserva 15 advertencias y no registra errores. No se realizaron pruebas manuales en dispositivo.
+
 ## Pendiente para los siguientes bloques
 
-- **Navegación y estado:** atrás desde raíz, restauración ante recreación de Activity, navegación basada en IDs y pruebas de navegación/recreación.
-- **Orden y escala:** interfaz de reordenamiento y política para posiciones históricas repetidas; medición con cientos/miles de nodos; listas diferidas con claves estables; mapa aplanado y expansión funcional; eliminar recursión en el mapa visual; borrado de árboles extremos sin depender del límite de CASCADE. El cálculo de progreso ya es iterativo y compartido, pero la observación aún carga todo el proyecto.
-- **Arquitectura de UI:** separar pantallas, estado, diálogos y navegación de MainActivity; manejo de errores; conservar formularios al fallar; atender resultados booleanos; revisar propiedad y ciclo de vida de la base actualmente ligado a Activity.
+- **Navegación y estado:** validar muerte real del proceso y gestos predictivos en dispositivos; decidir restauración de borradores, diálogos y desplazamiento. Atrás desde raíz y ubicación ante recreación están cubiertos por el bloque 4.
+- **Orden y escala:** interfaz de reordenamiento y política para posiciones históricas repetidas; medición con cientos/miles de nodos; listas diferidas con claves estables; mapa aplanado y expansión funcional; eliminar recursión en el mapa visual. El cálculo de progreso ya es iterativo y compartido, pero la observación aún carga todo el proyecto.
+- **Arquitectura de UI:** extender estados de pantalla si se necesita recuperar borradores o mantener tareas fuera de la composición; evaluar ViewModels al abordar ese requisito. La extracción de MainActivity, los errores de persistencia y la propiedad de Room están resueltos en el bloque 5.
 - **UI/UX y accesibilidad:** insets, descripciones accesibles, métricas Activos/Hoy simuladas, búsqueda vacía, drawer sin destinos funcionales, responsive de métricas, acciones secundarias de proyectos, continuidad del recorrido visual y soporte efectivo de modo claro.
-- **Assets y tema:** tinte del PNG de cebolla, vector antiguo sin uso, launcher de plantilla, colores heredados/dispersos, diálogo azul y política de densidad de PNG. No reemplazar el asset por iniciativa propia.
-- **Pruebas adicionales:** navegación, recreación, errores de guardado, listas/árboles grandes y profundidades extremas, pantallas pequeñas, fuente ampliada y accesibilidad. La prueba de progreso reactivo de este bloque verifica la instantánea consumida por la UI; no sustituye una prueba visual de Compose.
+- **Assets y tema:** verificar el launcher en dispositivos y máscaras de fabricantes; variante monocromática temática si se decide incorporarla. El PNG original debe conservarse sin reemplazos no solicitados.
+- **Pruebas adicionales:** muerte del proceso y gestos en dispositivos, fallos de almacenamiento en dispositivos reales, listas/árboles grandes y profundidades extremas en navegación y UI, pantallas pequeñas, fuente ampliada y accesibilidad. La prueba de progreso reactivo de este bloque verifica la instantánea consumida por la UI; no sustituye una prueba visual de Compose.
 
 Personas, responsables, tags, versiones/releases, Change Sets, historial especializado, sincronización LAN y cifrado pertenecen a sprints futuros y no se implementan en Sprint 5.5.
 

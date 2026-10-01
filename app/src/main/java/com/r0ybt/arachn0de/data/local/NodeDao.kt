@@ -4,6 +4,7 @@ import androidx.room.Dao
 import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
+import androidx.room.Transaction
 import kotlinx.coroutines.flow.Flow
 
 @Dao
@@ -40,6 +41,31 @@ interface NodeDao {
     """)
     suspend fun setCompleted(id: String, completed: Boolean, updatedAt: Long): Int
 
-    @Query("DELETE FROM nodes WHERE id = :id")
-    suspend fun delete(id: String): Int
+    @Query("""
+        WITH RECURSIVE subtree(id) AS (
+            SELECT id FROM nodes WHERE id = :id
+            UNION
+            SELECT child.id FROM nodes AS child JOIN subtree ON child.parentId = subtree.id
+        )
+        SELECT id FROM subtree
+    """)
+    suspend fun getSubtreeIds(id: String): List<String>
+
+    @Query("UPDATE nodes SET parentId = NULL WHERE id IN (:ids) AND parentId IS NOT NULL")
+    suspend fun detachNodes(ids: List<String>)
+
+    @Query("DELETE FROM nodes WHERE id IN (:ids)")
+    suspend fun deleteDetachedNodes(ids: List<String>)
+
+    /** Capture membership before detaching; observers only see the committed deletion. */
+    @Transaction
+    suspend fun delete(id: String): Int {
+        val ids = getSubtreeIds(id)
+        if (ids.isEmpty()) return 0
+        // Stay below the SQLite bind limit on API 24. Detach every batch before deleting any.
+        val batches = ids.chunked(500)
+        batches.forEach { detachNodes(it) }
+        batches.forEach { deleteDetachedNodes(it) }
+        return 1
+    }
 }

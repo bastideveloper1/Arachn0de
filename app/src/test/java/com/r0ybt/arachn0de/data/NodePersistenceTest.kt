@@ -136,6 +136,37 @@ class NodePersistenceTest {
     }
 
     @Test
+    fun depthAndAncestorsAreDerivedFromParentRelations() = runBlocking {
+        val root = nodeRepository.createNode(project.id, null, "Root")
+        val child = nodeRepository.createNode(project.id, root.id, "Child")
+        val grandChild = nodeRepository.createNode(project.id, child.id, "Grandchild")
+
+        assertEquals(1, nodeRepository.getNodeDepth(root.id))
+        assertEquals(2, nodeRepository.getNodeDepth(child.id))
+        assertEquals(3, nodeRepository.getNodeDepth(grandChild.id))
+        assertEquals(listOf(root, child, grandChild), nodeRepository.getNodePath(grandChild.id))
+    }
+
+    @Test
+    fun nodesWithChildrenCannotBeCompletedManuallyAndProgressDerivesFromDescendants() = runBlocking {
+        val parent = nodeRepository.createNode(project.id, null, "Parent task", isStructural = false, isCompletable = true)
+        val child = nodeRepository.createNode(project.id, parent.id, "Child task", isStructural = false, isCompletable = true)
+
+        assertFalse(nodeRepository.setCompleted(parent.id, true))
+        assertFalse(nodeRepository.toggleCompleted(parent.id))
+        assertFalse(nodeRepository.getNode(parent.id)?.isCompleted == true)
+
+        assertTrue(nodeRepository.setCompleted(child.id, true))
+
+        val parentProgress = nodeRepository.calculateProgress(parent.id)
+
+        assertEquals(1, parentProgress?.completed)
+        assertEquals(1, parentProgress?.total)
+        assertEquals(100, parentProgress?.percentage)
+        assertEquals(NodeProgressState.COMPLETE, parentProgress?.state)
+    }
+
+    @Test
     fun emptyStructuralContainersHaveNoMeasurableWork() = runBlocking {
         val empty = nodeRepository.createNode(project.id, null, "Empty container", isStructural = true)
 

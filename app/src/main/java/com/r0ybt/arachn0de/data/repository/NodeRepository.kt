@@ -96,6 +96,7 @@ class NodeRepository(
     suspend fun setCompleted(id: String, completed: Boolean): Boolean {
         val current = nodeDao.getById(id) ?: return false
         if (!current.isCompletable) return false
+        if (hasChildren(current.id)) return false
         val updatedAt = currentTimeMillis()
         return nodeDao.update(
             projectId = current.projectId,
@@ -114,6 +115,7 @@ class NodeRepository(
     suspend fun toggleCompleted(id: String): Boolean {
         val current = nodeDao.getById(id) ?: return false
         if (!current.isCompletable) return false
+        if (hasChildren(current.id)) return false
         return setCompleted(id, !current.isCompleted)
     }
 
@@ -122,7 +124,9 @@ class NodeRepository(
         val allNodes = nodeDao.getProjectNodes(current.projectId)
         val descendants = collectDescendantIds(nodeId, allNodes)
         val relevantNodes = allNodes.filter { it.id == nodeId || descendants.contains(it.id) }
-        val completableNodes = relevantNodes.filter { it.isCompletable }
+        val completableNodes = relevantNodes
+            .filter { it.isCompletable }
+            .filterNot { hasChildren(it.id, allNodes) }
         val total = completableNodes.size
         if (total == 0) {
             return NodeProgress(
@@ -151,6 +155,36 @@ class NodeRepository(
 
     suspend fun deleteNode(id: String): Boolean = nodeDao.delete(id) == 1
 
+    suspend fun getProjectNodes(projectId: String): List<Node> =
+        nodeDao.getProjectNodes(projectId).map(NodeEntity::toNode)
+
+    suspend fun hasChildren(nodeId: String): Boolean {
+        val current = nodeDao.getById(nodeId) ?: return false
+        return nodeDao.getChildren(current.projectId, nodeId).isNotEmpty()
+    }
+
+    suspend fun getNodeDepth(nodeId: String): Int {
+        val start = nodeDao.getById(nodeId) ?: return 0
+        var depth = 1
+        var current: NodeEntity? = start
+        while (current?.parentId != null) {
+            current = nodeDao.getById(current.parentId)
+            if (current != null) depth += 1
+        }
+        return depth
+    }
+
+    suspend fun getNodePath(nodeId: String): List<Node> {
+        val path = mutableListOf<Node>()
+        var currentId: String? = nodeId
+        while (currentId != null) {
+            val current = nodeDao.getById(currentId) ?: break
+            path.add(0, current.toNode())
+            currentId = current.parentId
+        }
+        return path
+    }
+
     private fun collectDescendantIds(rootId: String, nodes: List<NodeEntity>): Set<String> {
         val childrenByParent = nodes.groupBy { it.parentId }
         val results = mutableSetOf<String>()
@@ -163,6 +197,9 @@ class NodeRepository(
         walk(rootId)
         return results
     }
+
+    private fun hasChildren(nodeId: String, allNodes: List<NodeEntity>): Boolean =
+        allNodes.any { it.parentId == nodeId }
 
     private fun normalizeFlags(
         isStructural: Boolean,

@@ -182,6 +182,8 @@ La interfaz denomina este concepto:
 
 La implementación interna utiliza relaciones padre-hijo entre nodos.
 
+La representación visual de Capas de cebolla es una trayectoria de profundidad: el proyecto raíz actúa como origen y cada capa interna se sitúa a lo largo de una línea continua que comunica el recorrido de exploración dentro del proyecto. La cebolla visualiza la profundidad interna; la raíz conserva identidad propia y un tratamiento distinto.
+
 ---
 
 # 7. Modelo de dominio inicial
@@ -257,6 +259,17 @@ No obstante, evitar implementar esas especializaciones durante el MVP.
 
 Los nodos pueden ser completables o estructurales.
 
+Sin embargo, la experiencia de Arachn0de no expone esa elección al usuario como un tipo técnico.
+
+La estructura determina el comportamiento real:
+
+- un elemento sin hijos se comporta como tarea;
+- un elemento con hijos se comporta como una capa o contenedor;
+- el progreso de una capa se deriva de sus descendientes;
+- la interfaz no exige una elección manual de "tipo".
+
+El modelo interno puede seguir manteniendo `isCompletable` para simplificar persistencia y cálculo de progreso, pero la regla visible es que el usuario crea elementos y la jerarquía define si son tareas o capas.
+
 Un nodo completable puede estar:
 
 ```text
@@ -281,6 +294,10 @@ El progreso de `Temporada 1` sería:
 ```
 
 Los contenedores deben poder derivar su progreso a partir de sus descendientes relevantes.
+
+Un nodo con hijos no debe poder marcarse manualmente como completado; su progreso debe derivarse de sus descendientes.
+
+Si un nodo tiene hijos, completar ese nodo nunca debe completar automáticamente a sus descendientes ni propagarse en cascada a la rama completa.
 
 El progreso puede propagarse hacia niveles superiores.
 
@@ -490,6 +507,71 @@ Configuration cache entry stored.
 ```
 
 Este resultado corresponde a la base inicial, no a una validación de funcionalidades del MVP. Los cambios posteriores deben volver a compilarse y comprobarse según su alcance.
+
+---
+
+# 18. Sprint 5 — Capas de cebolla navegables
+
+Este sprint introduce la primera experiencia visual y navegable de la jerarquía del proyecto.
+
+La meta no es mostrar todo el árbol a la vez, sino que el usuario recorra una estructura tipo:
+
+```text
+Proyecto
+  └── Capa 1
+      └── Capa 2
+          └── Capa 3
+```
+
+## Reglas del sprint
+
+- El flujo principal es: Proyecto → Capa → Capa → Capa...
+- La pantalla debe ser mobile-first y legible en un teléfono.
+- La navegación debe permanecer por capas, una a la vez.
+- Cada nivel debe mostrar únicamente los nodos hijos del nivel actual.
+- El usuario debe poder volver al nivel anterior con un gesto claro o botón explícito.
+- La ruta actual debe permitir comprender la posición dentro de la jerarquía sin mostrar el árbol completo.
+- El diseño debe priorizar claridad sobre densidad visual.
+- Las capas vacías deben mostrarse como estado vacío, con la posibilidad de crear un nuevo nodo dentro de esa capa.
+
+## Reglas de implementación
+
+- Se mantiene la arquitectura actual de UI → Repository → Room.
+- No se introduce una base de datos separada ni una nueva capa de backend.
+- La navegación visual debe reutilizar el modelo existente de `Node` y `NodeRepository`.
+- Los cambios en `Node` deben reflejarse reactivamente en la UI a través de `Flow` de Room y del Repository; no debe existir una segunda fuente de verdad local para la capa visible.
+- La capa visible debe actualizarse automáticamente tras crear, editar, eliminar y completar/descompletar un elemento sin salir de la pantalla.
+- El proyecto raíz no cuenta como capa; la primera capa real es `Capa 1`.
+- La capa actual debe poder retroceder de forma inmediata con botón de retroceso, `BackHandler`/atrás del sistema y también mediante un selector de Capas de cebolla.
+- La navegación por capas debe ser accesible de forma compacta y permitir saltar directamente a cualquier capa previa sin volver paso a paso.
+- Las Capas de cebolla responden a la pregunta: “¿Cómo llegué hasta aquí?” y se mantienen separadas del mapa de capas del proyecto.
+- El mapa de capas responde a la pregunta: “¿Qué contiene este proyecto y a qué parte quiero ir?” y debe permitir navegar directamente a cualquier punto de la jerarquía, incluso fuera de la rama actual.
+- El selector de Capas de cebolla debe limitar su altura máxima y permitir scroll interno para soportar profundidades arbitrarias sin romper la interfaz.
+- El proyecto puede tener varias ramas, por lo que no existe una sola “capa siguiente”; la navegación debe permitir saltos a cualquier nodo del árbol completo desde el mapa.
+- Los nodos completable siguen representando trabajo medible en progreso.
+- Los contenedores estructurales no deben tratarse como elementos completables manualmente.
+- La información derivada de progreso debe calcularse a partir de datos persistidos y no duplicarse como estado de base de datos.
+- La UI no debe pedir al usuario que elija un "tipo técnico" de elemento; la estructura define si el elemento funciona como tarea o como capa.
+- Los elementos completados deben seguir visibles, accesibles y reabiertos para descompletar.
+- Las tarjetas priorizan el estado del elemento, su nombre y la navegación sobre la exposición permanente de acciones secundarias.
+- Las acciones de edición y eliminación se reservan para un menú contextual para no saturar la interfaz móvil ni competir con la acción principal de completar.
+- El concepto visible de navegación profunda se llama `Capas de cebolla`, no `ruta de ancestros`.
+- La UI puede presentar conceptos amigables como `Tarea` y `Capa / contenedor`, pero el modelo interno sigue siendo `Node`.
+
+## Criterio de aceptación del sprint
+
+El sprint se considera realizado cuando el usuario puede:
+
+1. abrir un proyecto desde el dashboard;
+2. navegar por la jerarquía de capas desde el nivel raíz;
+3. entrar a una capa y ver solo sus hijos;
+4. crear nuevos nodos dentro de la capa actual;
+5. volver a la capa anterior;
+6. completar o descompletar nodos completable;
+7. ver progreso actualizado por capa y por nodo;
+8. cerrar y reabrir la aplicación y conservar la estructura.
+
+Este sprint sigue siendo una mejora incremental del MVP, no una reescritura del núcleo de datos.
 
 ---
 

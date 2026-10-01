@@ -4,10 +4,13 @@ import android.content.Context
 import androidx.room.Database
 import androidx.room.Room
 import androidx.room.RoomDatabase
+import androidx.room.migration.Migration
+import androidx.sqlite.db.SupportSQLiteDatabase
 
-@Database(entities = [ProjectEntity::class], version = 1, exportSchema = true)
+@Database(entities = [ProjectEntity::class, NodeEntity::class], version = 2, exportSchema = true)
 abstract class Arachn0deDatabase : RoomDatabase() {
     abstract fun projectDao(): ProjectDao
+    abstract fun nodeDao(): NodeDao
 
     companion object {
         /** The application owner should retain one instance and close it when no longer needed. */
@@ -15,6 +18,34 @@ abstract class Arachn0deDatabase : RoomDatabase() {
             context.applicationContext,
             Arachn0deDatabase::class.java,
             "arachn0de.db",
-        ).build()
+        )
+            .addMigrations(MIGRATION_1_2)
+            .build()
+
+        private val MIGRATION_1_2 = object : Migration(1, 2) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS nodes (
+                        id TEXT NOT NULL PRIMARY KEY,
+                        projectId TEXT NOT NULL,
+                        parentId TEXT,
+                        title TEXT NOT NULL,
+                        description TEXT NOT NULL,
+                        isStructural INTEGER NOT NULL,
+                        isCompletable INTEGER NOT NULL,
+                        isCompleted INTEGER NOT NULL,
+                        position INTEGER NOT NULL,
+                        createdAt INTEGER NOT NULL,
+                        updatedAt INTEGER NOT NULL,
+                        FOREIGN KEY(projectId) REFERENCES projects(id) ON DELETE CASCADE ON UPDATE CASCADE,
+                        FOREIGN KEY(parentId) REFERENCES nodes(id) ON DELETE CASCADE ON UPDATE CASCADE
+                    )
+                    """.trimIndent(),
+                )
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_nodes_projectId ON nodes(projectId)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_nodes_parentId ON nodes(parentId)")
+            }
+        }
     }
 }

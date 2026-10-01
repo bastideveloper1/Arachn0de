@@ -14,6 +14,9 @@ interface NodeDao {
     @Query("SELECT * FROM nodes WHERE projectId = :projectId AND parentId = :parentId ORDER BY position ASC, createdAt ASC, id ASC")
     fun observeChildren(projectId: String, parentId: String): Flow<List<NodeEntity>>
 
+    @Query("SELECT * FROM nodes WHERE projectId = :projectId ORDER BY parentId IS NULL DESC, position ASC, createdAt ASC, id ASC")
+    suspend fun getProjectNodes(projectId: String): List<NodeEntity>
+
     @Query("SELECT * FROM nodes WHERE projectId = :projectId AND parentId IS :parentId ORDER BY position ASC, createdAt ASC, id ASC")
     suspend fun getChildren(projectId: String, parentId: String?): List<NodeEntity>
 

@@ -2,8 +2,10 @@ package com.r0ybt.arachn0de.data
 
 import com.r0ybt.arachn0de.data.local.Arachn0deDatabase
 import com.r0ybt.arachn0de.data.local.NodeEntity
+import com.r0ybt.arachn0de.data.local.toNode
 import com.r0ybt.arachn0de.data.repository.NodeRepository
 import com.r0ybt.arachn0de.data.repository.ProjectRepository
+import com.r0ybt.arachn0de.domain.model.NodeTreeSnapshot
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.first
 import org.junit.*
@@ -41,6 +43,20 @@ class NodeOrderTest {
         assertEquals(listOf("a","b","c"), ids())
         assertTrue(nodes.reorderNode("c", null, false))
         assertEquals(listOf(0,1,2),db.nodeDao().getSiblings(project,null).map { it.position })
+    }
+
+    @Test fun pendingTasksStayBeforeCompletedTasksWhileKeepingManualOrderWithinEachGroup() = runBlocking {
+        insert("pending-a", 0)
+        insert("done-a", 1, created = 2)
+        db.nodeDao().setCompleted("done-a", true, 99L)
+        insert("pending-b", 2)
+        insert("done-b", 3, created = 3)
+        db.nodeDao().setCompleted("done-b", true, 99L)
+        val snapshot = NodeTreeSnapshot(
+            db.nodeDao().getProjectNodes(project).map { it.toNode(false) },
+        )
+        assertEquals(listOf("pending-a", "pending-b", "done-a", "done-b"), snapshot.childrenOf(null).map { it.id })
+        assertEquals(listOf(0, 1, 2, 3), db.nodeDao().getSiblings(project, null).map { it.position })
     }
 
     @Test fun normalizationPreservesDeterministicOrderContentAndDates() = runBlocking {
@@ -110,4 +126,24 @@ class NodeOrderTest {
         assertEquals(listOf(0,1),state.childrenOf(null).map { it.position })
         assertEquals(listOf(0,1),state.childrenOf("a").map { it.position })
     }
+    @Test fun dropKeepsGroupsParentsAndSurvivesDatabaseReopen() = runBlocking {
+        insert("a", 8); insert("b", 8); insert("c", 8); insert("done", 9)
+        nodes.setCompleted("done", true)
+        insert("child", 0, "c")
+        assertFalse(nodes.reorderNodeTo("a", null, "done"))
+        assertFalse(nodes.reorderNodeTo("a", null, "child"))
+        assertTrue(nodes.reorderNodeTo("a", null, "c"))
+        assertEquals(listOf("b", "c", "a", "done"), ids())
+        assertEquals(listOf(0,1,2,3), db.nodeDao().getSiblings(project,null).map { it.position })
+        assertEquals("c", nodes.getNode("child")!!.parentId)
+        db.close()
+        db = Arachn0deDatabase.create(RuntimeEnvironment.getApplication())
+        nodes = NodeRepository(db)
+        assertEquals(listOf("b", "c", "a", "done"), ids())
+        nodes.setCompleted("b", true)
+        assertEquals(listOf("c", "a", "b", "done"), nodes.observeRootNodes(project).first().map { it.id })
+        nodes.setCompleted("b", false)
+        assertEquals(listOf("b", "c", "a", "done"), nodes.observeRootNodes(project).first().map { it.id })
+    }
+
 }

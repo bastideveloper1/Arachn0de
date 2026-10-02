@@ -26,6 +26,7 @@ class ScrollRestorationTest {
                 repeat(35) { i ->
                     ProjectRepository(app.database.projectDao()) { 100L + i }.createProject("Proyecto $i")
                     val node = app.nodeRepository.createNode(project.id, null, "Raíz $i")
+                    if (i != 20) app.nodeRepository.createNode(project.id, node.id, "Tarea")
                     if (i == 20) repeat(35) { j -> app.nodeRepository.createNode(project.id, node.id, "Hijo $j") }
                 }
             }
@@ -45,9 +46,9 @@ class ScrollRestorationTest {
 
     @Test fun eachLayerKeepsItsScrollAfterRecreationAndBack() {
         openProject()
-        compose.onNodeWithTag("nodes-list").performScrollToIndex(21)
+        compose.onNodeWithTag("nodes-list").performScrollToIndex(22)
         compose.onNodeWithText("Raíz 20").performClick()
-        compose.onNodeWithTag("nodes-list").performScrollToIndex(21)
+        compose.onNodeWithTag("nodes-list").performScrollToIndex(22)
         compose.onNodeWithText("Hijo 20").assertIsDisplayed()
         compose.activityRule.scenario.recreate()
         awaitTag("nodes-list")
@@ -61,7 +62,7 @@ class ScrollRestorationTest {
         compose.onNodeWithTag("projects-list").performScrollToIndex(21)
         compose.onNodeWithText("Proyecto 20").performClick()
         compose.activityRule.scenario.recreate()
-        compose.waitUntil(10_000) { compose.onAllNodesWithText("Volver a proyectos").fetchSemanticsNodes().isNotEmpty() }
+        compose.waitUntil(10_000) { compose.onAllNodesWithText("Capas de cebolla").fetchSemanticsNodes().isNotEmpty() }
         back()
         awaitTag("projects-list")
         compose.onNodeWithText("Proyecto 20").assertIsDisplayed()
@@ -72,16 +73,16 @@ class ScrollRestorationTest {
 
     @Test fun mapRetainsScrollWhileClosedAndAcrossRecreation() {
         openProject()
-        compose.onNodeWithText("Mapa de capas").performClick()
-        compose.onNodeWithTag("layer-map").performScrollToIndex(20)
+        compose.onNodeWithText("Capas de cebolla").performClick()
+        compose.onNodeWithTag("layer-navigator").performScrollToIndex(22)
         compose.onNodeWithText("Raíz 20").assertIsDisplayed()
         compose.onNodeWithText("Cerrar").performClick()
         compose.activityRule.scenario.recreate()
         awaitTag("nodes-list")
-        compose.onNodeWithText("Mapa de capas").performClick()
+        compose.onNodeWithText("Capas de cebolla").performClick()
         compose.onNodeWithText("Raíz 20").assertIsDisplayed()
         compose.activityRule.scenario.recreate()
-        awaitTag("layer-map")
+        awaitTag("layer-navigator")
         compose.onNodeWithText("Raíz 20").assertIsDisplayed()
     }
 }

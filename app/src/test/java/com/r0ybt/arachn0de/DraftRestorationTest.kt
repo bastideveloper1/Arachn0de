@@ -133,7 +133,7 @@ class DraftRestorationTest {
 
     @Test fun openMapSurvivesRecreation() {
         openProject()
-        compose.onNodeWithText("Mapa de capas").performClick()
+        compose.onNodeWithText("Capas de cebolla").performClick()
         compose.activityRule.scenario.recreate()
         awaitText("Cerrar")
         compose.onNodeWithText("Cerrar").performClick()

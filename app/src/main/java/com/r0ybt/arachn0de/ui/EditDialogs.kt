@@ -13,6 +13,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.r0ybt.arachn0de.domain.model.TitleLimits
 import com.r0ybt.arachn0de.ui.state.EditorDraft
 import com.r0ybt.arachn0de.ui.theme.Arachn0deColors
 
@@ -38,6 +39,8 @@ internal fun NodeDialog(
                     value = title,
                     onValueChange = { if (!isSubmitting) title = it },
                     label = { Text("Título") },
+                    supportingText = { Text("${TitleLimits.count(title)} / ${TitleLimits.NODE}") },
+                    isError = TitleLimits.count(title) > TitleLimits.NODE,
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth(),
                     enabled = !isSubmitting,
@@ -58,10 +61,10 @@ internal fun NodeDialog(
         },
         confirmButton = {
             TextButton(
-                enabled = !isSubmitting && title.trim().isNotEmpty(),
+                enabled = !isSubmitting && title.trim().isNotEmpty() && TitleLimits.count(title) <= TitleLimits.NODE,
                 onClick = {
                     val cleanTitle = title.trim()
-                    if (!isSubmitting && cleanTitle.isNotEmpty()) {
+                    if (!isSubmitting && cleanTitle.isNotEmpty() && TitleLimits.count(cleanTitle) <= TitleLimits.NODE) {
                         onSave(cleanTitle, description.trim())
                     }
                 },
@@ -100,6 +103,8 @@ internal fun ProjectDialog(
                     onValueChange = { name = it },
                     enabled = !isSubmitting,
                     label = { Text("Nombre") },
+                    supportingText = { Text("${TitleLimits.count(name)} / ${TitleLimits.PROJECT}") },
+                    isError = TitleLimits.count(name) > TitleLimits.PROJECT,
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth(),
                 )
@@ -114,10 +119,10 @@ internal fun ProjectDialog(
         },
         confirmButton = {
             TextButton(
-                enabled = !isSubmitting && name.trim().isNotEmpty(),
+                enabled = !isSubmitting && name.trim().isNotEmpty() && TitleLimits.count(name) <= TitleLimits.PROJECT,
                 onClick = {
                     val cleanName = name.trim()
-                    if (!isSubmitting && cleanName.isNotEmpty()) {
+                    if (!isSubmitting && cleanName.isNotEmpty() && TitleLimits.count(cleanName) <= TitleLimits.PROJECT) {
                         onSave(cleanName, description.trim())
                     }
                 },

@@ -33,28 +33,78 @@ class NodeOrderUiTest {
         compose.waitUntil(10_000) { compose.onAllNodesWithText("Order project").fetchSemanticsNodes().isNotEmpty() }
         compose.onNodeWithText("Order project").performClick()
         compose.waitUntil(10_000) { compose.onAllNodesWithText("Alpha").fetchSemanticsNodes().isNotEmpty() }
-        compose.onAllNodesWithContentDescription("Más opciones")[0].performClick()
+
     }
-    @Test fun menuMovesNodeAndPersistsAcrossRecreation() {
+
+    private fun dragAlphaBelowBeta() {
+        val from = compose.onNodeWithText("Alpha").fetchSemanticsNode().boundsInRoot.center
+        val to = compose.onNodeWithText("Beta").fetchSemanticsNode().boundsInRoot.center
+        compose.onRoot().performTouchInput {
+            down(from)
+            advanceEventTime(700)
+            moveTo(from)
+        }
+        repeat(6) { step ->
+            compose.onRoot().performTouchInput {
+                moveTo(from + (to - from) * ((step + 1) / 6f), delayMillis = 40)
+            }
+            compose.waitForIdle()
+        }
+        compose.onRoot().performTouchInput { up() }
+        compose.waitForIdle()
+    }
+    @Test fun dragPersistsAcrossRecreationAndLeafTapDoesNotNavigate() {
         open()
-        compose.onNodeWithText("Mover arriba").assertIsNotEnabled()
-        compose.onNodeWithText("Mover abajo").performClick()
-        compose.waitUntil(10_000) { compose.onAllNodesWithText("Mover abajo").fetchSemanticsNodes().isEmpty() }
-        runBlocking { check(app.nodeRepository.getProjectNodes(projectId).map { it.title } == listOf("Beta","Alpha")) }
+        compose.onNodeWithText("Alpha").performTouchInput { click() }
+        compose.onNodeWithContentDescription("Volver a la capa anterior").assertDoesNotExist()
+        dragAlphaBelowBeta()
+        compose.waitUntil(10_000) {
+            runBlocking { app.nodeRepository.getProjectNodes(projectId).map { it.title } == listOf("Beta","Alpha") }
+        }
         compose.activityRule.scenario.recreate()
         compose.waitUntil(10_000) { compose.onAllNodesWithText("Beta").fetchSemanticsNodes().isNotEmpty() }
         check(compose.onNodeWithText("Beta").fetchSemanticsNode().boundsInRoot.top < compose.onNodeWithText("Alpha").fetchSemanticsNode().boundsInRoot.top)
     }
-    @Test fun failedReorderKeepsMenuForRetry() {
+    @Test fun failedDropRollsBackAndCanBeRetried() {
         open()
         app.database.openHelper.writableDatabase.execSQL("CREATE TRIGGER fail_order BEFORE UPDATE OF position ON nodes BEGIN SELECT RAISE(ABORT,'injected'); END")
-        compose.onNodeWithText("Mover abajo").performClick()
+        dragAlphaBelowBeta()
         compose.waitUntil(10_000) { compose.onAllNodesWithText("Entendido").fetchSemanticsNodes().isNotEmpty() }
         compose.onNodeWithText("Entendido").performClick()
-        compose.onNodeWithText("Mover abajo").assertExists()
         runBlocking { check(app.nodeRepository.getProjectNodes(projectId).map { it.title } == listOf("Alpha","Beta")) }
         app.database.openHelper.writableDatabase.execSQL("DROP TRIGGER fail_order")
-        compose.onNodeWithText("Mover abajo").performClick()
-        compose.waitUntil(10_000) { compose.onAllNodesWithText("Mover abajo").fetchSemanticsNodes().isEmpty() }
+        dragAlphaBelowBeta()
+        compose.waitUntil(10_000) {
+            runBlocking { app.nodeRepository.getProjectNodes(projectId).map { it.title } == listOf("Beta","Alpha") }
+        }
     }
+    @Test fun completedGroupHasItsOwnDragOrderAndReopenedTaskReturnsToAvailable() {
+        open()
+        compose.onNodeWithText("Disponibles").assertExists()
+        compose.onNodeWithText("Completadas").assertDoesNotExist()
+        runBlocking {
+            app.nodeRepository.getProjectNodes(projectId).forEach { app.nodeRepository.setCompleted(it.id, true) }
+        }
+        compose.waitUntil(10_000) { compose.onAllNodesWithText("Completadas").fetchSemanticsNodes().isNotEmpty() }
+        compose.onNodeWithText("Disponibles").assertDoesNotExist()
+        dragAlphaBelowBeta()
+        compose.waitUntil(10_000) {
+            runBlocking { app.nodeRepository.getProjectNodes(projectId).map { it.title } == listOf("Beta", "Alpha") }
+        }
+        runBlocking {
+            val alpha = app.nodeRepository.getProjectNodes(projectId).first { it.title == "Alpha" }
+            app.nodeRepository.setCompleted(alpha.id, false)
+        }
+        compose.waitUntil(10_000) {
+            compose.onAllNodesWithContentDescription("Completar: Alpha").fetchSemanticsNodes().isNotEmpty()
+        }
+        compose.onNodeWithTag("nodes-list").performScrollToIndex(0)
+        compose.onNodeWithText("Disponibles").assertExists()
+        compose.onNodeWithText("Completadas").assertExists()
+        compose.onNodeWithTag("nodes-list").performScrollToIndex(1)
+        val before = runBlocking { app.nodeRepository.getProjectNodes(projectId) }
+        dragAlphaBelowBeta()
+        check(before == runBlocking { app.nodeRepository.getProjectNodes(projectId) })
+    }
+
 }

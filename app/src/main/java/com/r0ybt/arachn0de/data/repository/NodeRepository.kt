@@ -8,6 +8,7 @@ import com.r0ybt.arachn0de.domain.model.Node
 import com.r0ybt.arachn0de.domain.model.NodeProgress
 import com.r0ybt.arachn0de.domain.model.NodeTreeSnapshot
 import java.util.UUID
+import com.r0ybt.arachn0de.domain.model.TitleLimits
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
@@ -32,7 +33,7 @@ class NodeRepository(
 
     suspend fun normalizeProjectOrder(projectId: String) = database.withTransaction {
         nodeDao.getProjectNodes(projectId).groupBy { it.parentId }.values.forEach { siblings ->
-            writeOrder(siblings)
+            writeOrder(sortSiblingsForDisplay(siblings))
         }
     }
 
@@ -40,17 +41,36 @@ class NodeRepository(
     suspend fun reorderNode(id: String, expectedParentId: String?, moveUp: Boolean): Boolean = database.withTransaction {
         val current = nodeDao.getById(id) ?: return@withTransaction false
         if (current.parentId != expectedParentId) return@withTransaction false
-        val siblings = nodeDao.getSiblings(current.projectId, current.parentId).toMutableList()
-        val from = siblings.indexOfFirst { it.id == id }
+        val siblings = sortSiblingsForDisplay(nodeDao.getSiblings(current.projectId, current.parentId))
+        val sameGroup = siblings.filter { it.isCompleted == current.isCompleted }
+        val from = sameGroup.indexOfFirst { it.id == id }
         check(from >= 0)
         val to = from + if (moveUp) -1 else 1
-        val changedIds = if (to in siblings.indices) {
-            val other = siblings[to]
-            siblings[to] = siblings[from]
-            siblings[from] = other
+        val changedIds = if (to in sameGroup.indices) {
+            val other = sameGroup[to]
+            val ordered = siblings.toMutableList()
+            val fromIndex = ordered.indexOfFirst { it.id == id }
+            val toIndex = ordered.indexOfFirst { it.id == other.id }
+            ordered[fromIndex] = other
+            ordered[toIndex] = current
+            writeOrder(ordered, setOf(id, other.id))
             setOf(id, other.id)
         } else emptySet()
-        writeOrder(siblings, changedIds)
+        if (changedIds.isEmpty()) return@withTransaction true
+        true
+    }
+
+    /** Drop onto a sibling's slot; reject stale parents or completion groups atomically. */
+    suspend fun reorderNodeTo(id: String, expectedParentId: String?, targetId: String): Boolean = database.withTransaction {
+        val current = nodeDao.getById(id) ?: return@withTransaction false
+        val target = nodeDao.getById(targetId) ?: return@withTransaction false
+        if (current.parentId != expectedParentId || target.parentId != expectedParentId ||
+            current.projectId != target.projectId || current.isCompleted != target.isCompleted) return@withTransaction false
+        val ordered = sortSiblingsForDisplay(nodeDao.getSiblings(current.projectId, expectedParentId)).toMutableList()
+        val from = ordered.indexOfFirst { it.id == id }
+        val to = ordered.indexOfFirst { it.id == targetId }
+        ordered.add(to, ordered.removeAt(from))
+        writeOrder(ordered, if (from == to) emptySet() else setOf(id, targetId))
         true
     }
 
@@ -62,6 +82,14 @@ class NodeRepository(
             }
         }
     }
+
+    private fun sortSiblingsForDisplay(siblings: List<NodeEntity>): List<NodeEntity> =
+        siblings.sortedWith(
+            compareBy<NodeEntity> { if (it.isCompleted) 1 else 0 }
+                .thenBy { it.position }
+                .thenBy { it.createdAt }
+                .thenBy { it.id },
+        )
 
     fun observeRootNodes(projectId: String): Flow<List<Node>> =
         observeProjectState(projectId).map { it.childrenOf(null) }
@@ -186,5 +214,6 @@ class NodeRepository(
 
     private fun validateTitle(title: String): String = title.trim().also {
         require(it.isNotEmpty()) { "Node title must not be blank" }
+        require(TitleLimits.count(it) <= TitleLimits.NODE) { "Node title exceeds 100 characters" }
     }
 }

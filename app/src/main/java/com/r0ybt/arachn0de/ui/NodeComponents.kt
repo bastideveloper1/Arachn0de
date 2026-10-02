@@ -4,7 +4,11 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.zIndex
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -39,6 +43,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -63,7 +68,7 @@ internal fun EmptyLayerState() {
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(containerColor = Arachn0deColors.Surface.copy(alpha = 0.96f)),
-        shape = RoundedCornerShape(20.dp),
+        shape = RoundedCornerShape(8.dp),
     ) {
         Column(
             modifier = Modifier
@@ -97,7 +102,7 @@ internal fun EmptyLayerState() {
 internal fun NodeProgressCard(progress: NodeProgress) {
     Card(
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(16.dp),
+        shape = RoundedCornerShape(8.dp),
         colors = CardDefaults.cardColors(containerColor = Arachn0deColors.Surface),
     ) {
         Row(
@@ -148,8 +153,12 @@ internal fun NodeCard(
     canMoveDown: Boolean,
     onReorder: (Boolean, () -> Unit) -> Unit,
     onToggleComplete: () -> Unit,
+    onDrop: (Float) -> Unit = {},
 ) {
     var showContextMenu by remember { mutableStateOf(false) }
+    var dragging by remember(node.id) { mutableStateOf(false) }
+    var dragOffset by remember(node.id) { mutableStateOf(0f) }
+    val latestOnDrop by rememberUpdatedState(onDrop)
 
     val completedTint = if (node.isCompleted) Arachn0deColors.Completed else Arachn0deColors.Primary
     val displayTextColor = if (node.isCompleted) Arachn0deColors.TextCompleted else Arachn0deColors.TextPrimary
@@ -159,15 +168,41 @@ internal fun NodeCard(
         modifier = Modifier
             .fillMaxWidth()
             .alpha(rowAlpha)
-            .border(1.dp, Arachn0deColors.Outline.copy(alpha = 0.9f), RoundedCornerShape(18.dp))
-            .clickable(onClick = onOpen),
-        shape = RoundedCornerShape(18.dp),
+            .border(1.dp, Arachn0deColors.Outline.copy(alpha = 0.9f), RoundedCornerShape(8.dp))
+            .zIndex(if (dragging) 1f else 0f)
+            .clickable(enabled = hasChildren, onClick = onOpen)
+            .pointerInput(node.id, node.isCompleted, canMoveUp || canMoveDown) {
+                detectDragGesturesAfterLongPress(
+                    onDragStart = {
+                        dragging = canMoveUp || canMoveDown
+                        dragOffset = 0f
+                    },
+                    onDrag = { change, amount ->
+                        if (dragging) {
+                            change.consume()
+                            dragOffset += amount.y
+                        }
+                    },
+                    onDragEnd = {
+                        if (dragging && dragOffset != 0f) latestOnDrop(dragOffset)
+                        dragging = false
+                        dragOffset = 0f
+                    },
+                    onDragCancel = { dragging = false; dragOffset = 0f },
+                )
+            }
+            .graphicsLayer {
+                translationY = dragOffset
+                shadowElevation = if (dragging) 8.dp.toPx() else 0f
+            },
+
+        shape = RoundedCornerShape(8.dp),
         colors = CardDefaults.cardColors(containerColor = Arachn0deColors.Surface),
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 12.dp, vertical = 12.dp),
+                .padding(horizontal = 12.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             if (canToggleComplete) {
@@ -219,6 +254,11 @@ internal fun NodeCard(
                     overflow = TextOverflow.Ellipsis,
                     textDecoration = if (node.isCompleted) TextDecoration.LineThrough else null,
                 )
+
+                if (node.description.isNotBlank()) {
+                    Text(node.description, color = Arachn0deColors.TextSecondary, fontSize = 12.sp,
+                        maxLines = 2, overflow = TextOverflow.Ellipsis)
+                }
 
                 if (progress != null) {
                     Spacer(modifier = Modifier.height(6.dp))
@@ -272,19 +312,9 @@ internal fun NodeCard(
             titleContentColor = Arachn0deColors.TextPrimary,
             textContentColor = Arachn0deColors.TextSecondary,
             onDismissRequest = { showContextMenu = false },
-            title = { Text(node.title) },
+            title = { Text(node.title, maxLines = 2, overflow = TextOverflow.Ellipsis) },
             text = {
                 Column(modifier = Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    TextButton(
-                        enabled = canMoveUp,
-                        onClick = { onReorder(true) { showContextMenu = false } },
-                        modifier = Modifier.fillMaxWidth(),
-                    ) { Text("Mover arriba", modifier = Modifier.fillMaxWidth()) }
-                    TextButton(
-                        enabled = canMoveDown,
-                        onClick = { onReorder(false) { showContextMenu = false } },
-                        modifier = Modifier.fillMaxWidth(),
-                    ) { Text("Mover abajo", modifier = Modifier.fillMaxWidth()) }
                     TextButton(
                         onClick = {
                             showContextMenu = false

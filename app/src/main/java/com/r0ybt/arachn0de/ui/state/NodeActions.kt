@@ -22,6 +22,11 @@ internal class NodeActions(private val repository: NodeRepository, scope: Corout
             repository.reorderNode(id, parentId, moveUp)
         }, onSuccess)
 
+    fun reorderTo(id: String, parentId: String?, targetId: String) =
+        operation.submit("No se pudo cambiar el orden. Puedes reintentar.", {
+            repository.reorderNodeTo(id, parentId, targetId)
+        })
+
     fun toggle(id: String) = operation.submit("No se pudo cambiar el completado. Puedes reintentar.", {
         repository.toggleCompleted(id)
     })

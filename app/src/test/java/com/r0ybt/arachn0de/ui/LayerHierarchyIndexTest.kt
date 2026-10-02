@@ -1,17 +1,17 @@
 package com.r0ybt.arachn0de.ui
 
 import com.r0ybt.arachn0de.domain.model.Node
-import com.r0ybt.arachn0de.ui.state.LayerMapIndex
+import com.r0ybt.arachn0de.ui.state.LayerHierarchyIndex
 import org.junit.Assert.*
 import org.junit.Test
 
-class LayerMapIndexTest {
+class LayerHierarchyIndexTest {
     private fun node(id: String, parent: String? = null, position: Int = 0) =
         Node(id, "project", parent, id, "", false, position, 0, 0, false)
 
     @Test fun tenThousandDeepNodesNeedNoCallStack() {
         val nodes = (0 until 10_000).map { node("n$it", if (it == 0) null else "n${it - 1}") }
-        val index = LayerMapIndex(nodes)
+        val index = LayerHierarchyIndex(nodes)
         assertEquals(1, index.visibleRows(emptySet()).size)
         val rows = index.visibleRows(nodes.map { it.id }.toSet())
         assertEquals(10_000, rows.size)
@@ -26,7 +26,7 @@ class LayerMapIndexTest {
                 repeat(5) { j -> add(node("task$i-$j", "layer$i", j)) }
             }
         }
-        val index = LayerMapIndex(nodes.reversed())
+        val index = LayerHierarchyIndex(nodes.reversed())
         val expanded = setOf("layer0", "layer1999")
         val rows = index.visibleRows(expanded)
         assertEquals(2_010, rows.size)
@@ -38,20 +38,20 @@ class LayerMapIndexTest {
 
     @Test fun tenThousandSiblingTasksHaveStableTieBreakers() {
         val nodes = (0 until 10_000).map { node(it.toString().padStart(5, '0')) }
-        val rows = LayerMapIndex(nodes.reversed()).visibleRows(emptySet())
+        val rows = LayerHierarchyIndex(nodes.reversed()).visibleRows(emptySet())
         assertEquals(nodes.map { it.id }, rows.map { it.node.id })
         assertTrue(rows.none { it.hasChildren })
     }
 
     @Test fun collapsingAncestorPreservesDescendantExpansionChoice() {
-        val index = LayerMapIndex(listOf(node("a"), node("b", "a"), node("c", "b")))
+        val index = LayerHierarchyIndex(listOf(node("a"), node("b", "a"), node("c", "b")))
         assertEquals(listOf("a", "b", "c"), index.visibleRows(setOf("a", "b")).map { it.node.id })
         assertEquals(listOf("a"), index.visibleRows(setOf("b")).map { it.node.id })
         assertEquals(listOf("a", "b", "c"), index.visibleRows(setOf("a", "b")).map { it.node.id })
     }
 
     @Test fun corruptCycleIsRejectedWithoutHanging() {
-        try { LayerMapIndex(listOf(node("a", "b"), node("b", "a"))); fail("Cycle accepted") }
+        try { LayerHierarchyIndex(listOf(node("a", "b"), node("b", "a"))); fail("Cycle accepted") }
         catch (expected: IllegalArgumentException) { }
     }
 }

@@ -68,7 +68,7 @@ internal fun SummaryCard(
         modifier = modifier
             .fillMaxWidth()
             .wrapContentHeight(),
-        shape = RoundedCornerShape(16.dp),
+        shape = RoundedCornerShape(8.dp),
         colors = CardDefaults.cardColors(containerColor = Arachn0deColors.Surface),
     ) {
         Row(
@@ -116,7 +116,7 @@ internal fun EmptyProjectsState(onCreateProject: () -> Unit) {
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(containerColor = Arachn0deColors.Surface.copy(alpha = 0.96f)),
-        shape = RoundedCornerShape(20.dp),
+        shape = RoundedCornerShape(8.dp),
     ) {
         Column(
             modifier = Modifier
@@ -170,7 +170,7 @@ internal fun ProjectList(
     LazyColumn(
         state = listState,
         modifier = Modifier.fillMaxWidth().testTag("projects-list"),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         items(projects, key = { "project:${it.id}" }, contentType = { "project" }) { project ->
             ProjectCard(
@@ -207,17 +207,17 @@ internal fun ProjectCard(
 ) {
     var showActions by remember { mutableStateOf(false) }
     Card(
-        shape = RoundedCornerShape(18.dp),
+        shape = RoundedCornerShape(8.dp),
         colors = CardDefaults.cardColors(containerColor = Arachn0deColors.Surface),
         modifier = Modifier
             .fillMaxWidth()
-            .border(1.dp, Arachn0deColors.Outline.copy(alpha = 0.85f), RoundedCornerShape(18.dp))
+            .border(1.dp, Arachn0deColors.Outline.copy(alpha = 0.85f), RoundedCornerShape(8.dp))
             .clickable(onClick = onOpen),
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 12.dp, vertical = 12.dp),
+                .padding(horizontal = 12.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Box(

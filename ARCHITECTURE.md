@@ -569,10 +569,9 @@ Proyecto
 - El proyecto raíz no cuenta como capa; la primera capa real es `Capa 1`.
 - La capa actual debe poder retroceder de forma inmediata con botón de retroceso, `BackHandler`/atrás del sistema y también mediante un selector de Capas de cebolla.
 - La navegación por capas debe ser accesible de forma compacta y permitir saltar directamente a cualquier capa previa sin volver paso a paso.
-- Las Capas de cebolla responden a la pregunta: “¿Cómo llegué hasta aquí?” y se mantienen separadas del mapa de capas del proyecto.
-- El mapa de capas responde a la pregunta: “¿Qué contiene este proyecto y a qué parte quiero ir?” y debe permitir navegar directamente a cualquier punto de la jerarquía, incluso fuera de la rama actual.
+- Capas de cebolla es el único navegador jerárquico: reúne ubicación actual, saltos entre ramas y regreso a Proyectos/Home. Sustituye al mapa independiente y al antiguo selector de ancestros.
 - El selector de Capas de cebolla debe limitar su altura máxima y permitir scroll interno para soportar profundidades arbitrarias sin romper la interfaz.
-- El proyecto puede tener varias ramas, por lo que no existe una sola “capa siguiente”; la navegación debe permitir saltos a cualquier nodo del árbol completo desde el mapa.
+- El proyecto puede tener varias ramas, por lo que no existe una sola “capa siguiente”; la navegación debe permitir saltos a cualquier nodo del árbol completo desde Capas de cebolla.
 - Las hojas representan las unidades de trabajo medibles en progreso.
 - Los contenedores estructurales no deben tratarse como elementos completables manualmente.
 - La información derivada de progreso debe calcularse a partir de datos persistidos y no duplicarse como estado de base de datos.
@@ -939,3 +938,14 @@ Persistencia local
 ```
 
 Si este núcleo es sólido, las capacidades posteriores podrán construirse progresivamente sobre él.
+
+## Ajustes finales del MVP tras prueba manual
+
+- El botón inferior **Capas de cebolla** sustituye a **Volver a proyectos** y usa el PNG oficial `iconovercapas.png` sin modificaciones, tintes ni filtros. Se elimina **Mapa de capas** como interfaz independiente.
+- El navegador vertical muestra primero **Proyectos/Home**, después la raíz del proyecto y sus ramas expandibles. Permite saltar directamente a cada destino. Solo la ubicación actual lleva punto naranja, tarjeta destacada, semántica de selección y texto **ACTUAL**; la flecha superior sigue subiendo exactamente un nivel.
+- Se reutiliza el índice iterativo de la jerarquía (ahora `LayerHierarchyIndex`) y una lista lazy con claves persistentes. Expansión, diálogo y desplazamiento siguen siendo estado restaurable; al abrir se expanden los ancestros de la ubicación actual. No se establece profundidad máxima.
+- Los títulos se validan tanto en formularios como en repositorios: proyectos hasta **60** caracteres y elementos hasta **100**. Se cuentan puntos de código Unicode tras quitar espacios de los extremos. Los formularios muestran contador y bloquean guardado fuera del límite; las vistas acotan títulos a dos líneas con ellipsis. Los datos históricos largos no se recortan automáticamente; para editarlos deben ajustarse al límite.
+- La descripción opcional del elemento ya existía en modelo, Room, borradores y formularios. Se conserva su creación/edición y persistencia; ahora también se muestra una vista previa en tarjetas y el texto completo al entrar al elemento. Puede quedar vacía.
+- **Sin cambio de esquema ni migración:** Room permanece en versión 3, sin modificar datos confirmados ni introducir guardado automático de borradores.
+
+- La lista de hermanos muestra secciones **Disponibles** y **Completadas**, omitiendo grupos vacíos. El arrastre conserva posiciones dentro del mismo grupo y padre, con validación transaccional; los encabezados tienen claves propias y no son destinos. El detector conserva coordenadas estables mientras la tarjeta se desplaza visualmente y no se reinicia por cambios de callback. Home usa el PNG original suministrado, sin recoloreado.

@@ -63,9 +63,9 @@ class NavigationTest {
 
     @Test fun recreationRestoresNestedLayerAndBackTraversesParents() {
         openProject()
-        compose.onNodeWithText("Nivel uno").performClick()
+        compose.onNodeWithText("Nivel uno").performTouchInput { click() }
         awaitText("Nivel dos")
-        compose.onNodeWithText("Nivel dos").performClick()
+        compose.onNodeWithText("Nivel dos").performTouchInput { click() }
         awaitText("Tarea final")
         compose.activityRule.scenario.recreate()
         awaitText("Tarea final")
@@ -93,11 +93,11 @@ class NavigationTest {
     }
     @Test fun deletedLayerRestoresToNearestExistingAncestor() {
         openProject()
-        compose.onNodeWithText("Nivel uno").performClick()
+        compose.onNodeWithText("Nivel uno").performTouchInput { click() }
         awaitText("Nivel dos")
         runBlocking { NodeRepository(database).deleteNode(rootId) }
         compose.activityRule.scenario.recreate()
-        awaitText("Volver a proyectos")
+        awaitText("Capas de cebolla")
         compose.waitForIdle()
         compose.onNodeWithContentDescription("Volver a la capa anterior").assertDoesNotExist()
     }
@@ -107,27 +107,31 @@ class NavigationTest {
         runBlocking { ProjectRepository(database.projectDao()).deleteProject(projectId) }
         compose.activityRule.scenario.recreate()
         awaitText("Proyectos")
-        compose.onNodeWithText("Volver a proyectos").assertDoesNotExist()
+        compose.onNodeWithText("Capas de cebolla").assertDoesNotExist()
     }
 
-    @Test fun mapExpansionSurvivesClosingAndActivityRecreation() {
+    @Test fun navigatorExpansionSurvivesClosingAndActivityRecreation() {
         openProject()
-        compose.onNodeWithText("Mapa de capas").performClick()
+        compose.onNodeWithText("Capas de cebolla").performClick()
         compose.onNodeWithText("Nivel dos").assertDoesNotExist()
+        compose.onNodeWithTag("layer-navigator").performScrollToNode(hasTestTag("expand:$rootId"))
         compose.onNodeWithTag("expand:$rootId").performClick()
+        compose.onNodeWithTag("layer-navigator").performScrollToNode(hasText("Nivel dos"))
         compose.onNodeWithText("Nivel dos").assertExists()
         compose.onNodeWithText("Cerrar").performClick()
         compose.activityRule.scenario.recreate()
         awaitText("Nivel uno")
-        compose.onNodeWithText("Mapa de capas").performClick()
+        compose.onNodeWithText("Capas de cebolla").performClick()
+        compose.onNodeWithTag("layer-navigator").performScrollToNode(hasText("Nivel dos"))
         compose.onNodeWithText("Nivel dos").assertExists()
+        compose.onNodeWithTag("layer-navigator").performScrollToNode(hasTestTag("expand:$rootId"))
         compose.onNodeWithTag("expand:$rootId").performClick()
         compose.onNodeWithText("Nivel dos").assertDoesNotExist()
     }
 
     @Test fun cancelledPredictiveBackKeepsRestoredLayerAndCommittedBackPopsOnce() {
         openProject()
-        compose.onNodeWithText("Nivel uno").performClick()
+        compose.onNodeWithText("Nivel uno").performTouchInput { click() }
         awaitText("Nivel dos")
         compose.activityRule.scenario.recreate()
         awaitText("Nivel dos")
@@ -148,23 +152,32 @@ class NavigationTest {
         compose.onNodeWithText("Nivel dos").assertDoesNotExist()
     }
 
-    @Test fun vanishedPathClosesRestoredTrailAndDoesNotReopenItOnAnotherLayer() {
+    @Test fun vanishedLayerRestoresNavigatorAtProjectRoot() {
         openProject()
-        compose.onNodeWithText("Nivel uno").performClick()
+        compose.onNodeWithText("Nivel uno").performTouchInput { click() }
         awaitText("Nivel dos")
-        compose.onNodeWithTag("nodes-list").performScrollToIndex(0)
         compose.onNodeWithText("Capas de cebolla").performClick()
         runBlocking { NodeRepository(database).deleteNode(rootId) }
         compose.activityRule.scenario.recreate()
-        awaitText("Volver a proyectos")
-        compose.onNodeWithText("Cerrar").assertDoesNotExist()
-        runBlocking {
-            (compose.activity.application as Arachn0deApplication).nodeRepository.createNode(projectId, null, "Otra capa")
-        }
-        awaitText("Otra capa")
-        compose.onNodeWithText("Otra capa").performClick()
-        awaitText("CAPA 1")
-        compose.onNodeWithText("Cerrar").assertDoesNotExist()
+        awaitText("Cerrar")
+        compose.onNodeWithTag("navigator-project").assertIsSelected()
+        compose.onNodeWithText("ACTUAL").assertExists()
+        compose.onNodeWithTag("navigator-home").performClick()
+        awaitText("Proyectos")
+    }
+
+    @Test fun navigatorMarksOnlyCurrentLayerAndJumpsToRootAndHome() {
+        openProject()
+        compose.onNodeWithText("Nivel uno").performTouchInput { click() }
+        awaitText("Nivel dos")
+        compose.onNodeWithText("Capas de cebolla").performClick()
+        compose.onNodeWithTag("navigator-node:$rootId").assertIsSelected()
+        compose.onAllNodesWithText("ACTUAL").assertCountEquals(1)
+        compose.onNodeWithTag("navigator-project").assertIsNotSelected().performClick()
+        compose.onNodeWithContentDescription("Volver a la capa anterior").assertDoesNotExist()
+        compose.onNodeWithText("Capas de cebolla").performClick()
+        compose.onNodeWithTag("navigator-home").performClick()
+        awaitText("Proyectos")
     }
 
 }

@@ -1,6 +1,9 @@
 package com.r0ybt.arachn0de.ui
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.Image
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -68,8 +71,7 @@ internal fun ProjectNodeScreen(
 ) {
     val scope = rememberCoroutineScope()
     val layerScrollStates = rememberSaveableStateHolder()
-    val mapListState = rememberLazyListState()
-    val trailListState = rememberLazyListState()
+    val navigatorListState = rememberLazyListState()
     val currentPath = rememberSaveable(project.id, saver = listSaver<SnapshotStateList<String>, String>(
         save = { it.toList() },
         restore = { it.toMutableStateList() },
@@ -80,8 +82,7 @@ internal fun ProjectNodeScreen(
     var deletingNodeId by rememberSaveable(project.id) { mutableStateOf<String?>(null) }
     var deletingNodeName by rememberSaveable(project.id) { mutableStateOf("") }
     var showDrawer by remember { mutableStateOf(false) }
-    var showPathDialog by rememberSaveable(project.id) { mutableStateOf(false) }
-    var showLayerMapDialog by rememberSaveable(project.id) { mutableStateOf(false) }
+    var showNavigator by rememberSaveable(project.id) { mutableStateOf(false) }
     var expandedLayerIds by rememberSaveable(
         project.id,
         stateSaver = listSaver<List<String>, String>(save = { it }, restore = { it.toList() }),
@@ -94,7 +95,6 @@ internal fun ProjectNodeScreen(
     val currentProgress = projectState.progressById[currentNodeId]
     val pathNodes = currentPath.mapNotNull { projectState.nodesById[it] }
     val currentLayer = pathNodes.size
-    val projectLayerMap = projectState.nodes
     val progressMap = projectState.progressById
 
     val load = remember(project.id, nodeRepository) { LoadState() }
@@ -109,7 +109,6 @@ internal fun ProjectNodeScreen(
                 }
             }
             while (currentPath.size > validPath.size) currentPath.removeAt(currentPath.lastIndex)
-            if (validPath.isEmpty()) showPathDialog = false
             expandedLayerIds = expandedLayerIds.filter { it in snapshot.nodesById }
             projectState = snapshot
             hasLoaded = true
@@ -154,9 +153,11 @@ internal fun ProjectNodeScreen(
                 HeaderBar(onMenuClick = { showDrawer = true })
 
                 layerScrollStates.SaveableStateProvider(currentNodeId?.let { "node:$it" } ?: "project-root") {
+                    val nodeListState = rememberLazyListState()
                     LazyColumn(
+                        state = nodeListState,
                         modifier = Modifier.fillMaxWidth().weight(1f).testTag("nodes-list"),
-                        verticalArrangement = Arrangement.spacedBy(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
                         item(key = "layer-context", contentType = "context") {
                             Column {
@@ -178,7 +179,9 @@ internal fun ProjectNodeScreen(
                                         Spacer(modifier = Modifier.width(8.dp))
                                     }
                                     Text(
-                                        text = project.name,
+                                        text = currentNode?.title ?: project.name,
+                                        maxLines = 2,
+                                        overflow = TextOverflow.Ellipsis,
                                         color = Arachn0deColors.TextPrimary,
                                         fontSize = 24.sp,
                                         fontWeight = FontWeight.SemiBold,
@@ -205,54 +208,16 @@ internal fun ProjectNodeScreen(
                                             fontSize = 12.sp,
                                             fontWeight = FontWeight.Bold,
                                         )
-                                        Spacer(modifier = Modifier.width(8.dp))
-                                        Text(
-                                            text = currentNode!!.title,
-                                            modifier = Modifier.weight(1f),
-                                            color = Arachn0deColors.Accent,
-                                            fontSize = 12.sp,
 
-                                        )
                                     }
                                 }
 
                                 Spacer(modifier = Modifier.height(10.dp))
 
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                ) {
-                                    if (pathNodes.isNotEmpty()) {
-                                        TextButton(
-                                            onClick = { showPathDialog = true },
-                                            modifier = Modifier.weight(1f),
-                                        ) {
-                                            Text(
-                                                text = "Capas de cebolla",
-                                                color = Arachn0deColors.Accent,
-                                                fontSize = 12.sp,
-
-                                            )
-                                        }
-                                    }
-
-                                    TextButton(
-                                        onClick = {
-                                            expandedLayerIds = (expandedLayerIds.toSet() + currentPath).toList()
-                                            showLayerMapDialog = true
-                                        },
-                                        modifier = Modifier.weight(1f),
-                                    ) {
-                                        Text(
-                                            text = "Mapa de capas",
-                                            color = Arachn0deColors.Accent,
-                                            fontSize = 12.sp,
-
-                                        )
-                                    }
+                                if (!currentNode?.description.isNullOrBlank()) {
+                                    Text(currentNode!!.description, color = Arachn0deColors.TextSecondary,
+                                        modifier = Modifier.padding(vertical = 8.dp))
                                 }
-
-                                Spacer(modifier = Modifier.height(12.dp))
 
                                 if (currentProgress != null) {
                                     NodeProgressCard(progress = currentProgress!!)
@@ -264,22 +229,50 @@ internal fun ProjectNodeScreen(
                         if (currentNodes.isEmpty()) {
                             item(key = "empty-layer", contentType = "empty") { EmptyLayerState() }
                         }
-                        items(currentNodes, key = { "node:${it.id}" }, contentType = { "node" }) { node ->
+                        for (completedGroup in listOf(false, true)) {
+                            val groupNodes = currentNodes.filter { it.isCompleted == completedGroup }
+                            if (groupNodes.isNotEmpty()) {
+                                item(key = "section:$completedGroup", contentType = "section") {
+                                    Column {
+                                        if (completedGroup) androidx.compose.material3.HorizontalDivider(color = Arachn0deColors.Outline)
+                                        Text(
+                                            if (completedGroup) "Completadas" else "Disponibles",
+                                            color = Arachn0deColors.TextSecondary,
+                                            fontSize = 12.sp,
+                                            modifier = Modifier.padding(vertical = 8.dp),
+                                        )
+                                    }
+                                }
+                            }
+                        items(groupNodes, key = { "node:${it.id}" }, contentType = { "node" }) { node ->
                             NodeCard(
                                 node = node,
                                 progress = progressMap[node.id],
                                 hasChildren = node.hasChildren,
                                 canToggleComplete = node.isCompletable,
                                 onOpen = {
-                                    currentPath.add(node.id)
+                                    if (node.hasChildren) currentPath.add(node.id)
                                 },
                                 onEdit = {
                                     draft = EditorDraft(node.id, node.parentId, node.title, node.description)
                                 },
-                                canMoveUp = node.id != currentNodes.firstOrNull()?.id && !isSubmittingNode,
-                                canMoveDown = node.id != currentNodes.lastOrNull()?.id && !isSubmittingNode,
+                                canMoveUp = node.id != groupNodes.firstOrNull()?.id && !isSubmittingNode,
+                                canMoveDown = node.id != groupNodes.lastOrNull()?.id && !isSubmittingNode,
                                 onReorder = { moveUp, onSuccess ->
                                     actions.reorder(node.id, node.parentId, moveUp, onSuccess)
+                                },
+                                onDrop = { offset ->
+                                    val visible = nodeListState.layoutInfo.visibleItemsInfo
+                                    val source = visible.firstOrNull { it.key == "node:${node.id}" }
+                                    if (source != null) {
+                                        val center = source.offset + source.size / 2f + offset
+                                        val siblings = currentNodes.filter { it.isCompleted == node.isCompleted }.associateBy { "node:${it.id}" }
+                                        val target = visible.filter { it.key in siblings }
+                                            .minByOrNull { kotlin.math.abs(it.offset + it.size / 2f - center) }
+                                        target?.let { siblings[it.key] }?.let {
+                                            actions.reorderTo(node.id, node.parentId, it.id)
+                                        }
+                                    }
                                 },
                                 onDelete = {
                                     deletingNodeId = node.id
@@ -290,7 +283,7 @@ internal fun ProjectNodeScreen(
                                 },
                             )
                         }
-
+                        }
                     }
                 }
                 Button(
@@ -304,15 +297,26 @@ internal fun ProjectNodeScreen(
                     Spacer(Modifier.width(8.dp))
                     Text("Nuevo elemento")
                 }
+                Spacer(modifier = Modifier.height(8.dp))
                 Button(
-                    onClick = onBackToProjects,
+                    onClick = {
+                        expandedLayerIds = (expandedLayerIds.toSet() + currentPath).toList()
+                        showNavigator = true
+                    },
                     modifier = Modifier
                         .fillMaxWidth()
                         .heightIn(min = 48.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = Arachn0deColors.Surface),
+                    colors = ButtonDefaults.buttonColors(containerColor = Arachn0deColors.Primary.copy(alpha = 0.14f)),
                     shape = RoundedCornerShape(12.dp),
                 ) {
-                    Text("Volver a proyectos")
+                    Image(
+                        painter = painterResource(com.r0ybt.arachn0de.R.drawable.iconovercapas),
+                        contentDescription = null,
+                        contentScale = ContentScale.Fit,
+                        modifier = Modifier.size(36.dp),
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Text("Capas de cebolla")
                 }
             }
 
@@ -346,99 +350,35 @@ internal fun ProjectNodeScreen(
         )
     }
 
-    if (showPathDialog && pathNodes.isNotEmpty()) {
-        AlertDialog(
-            containerColor = Arachn0deColors.BackgroundMiddle,
-            titleContentColor = Arachn0deColors.PathHighlight,
-            textContentColor = Arachn0deColors.TextCompleted,
-            onDismissRequest = { showPathDialog = false },
-            title = { Text("Capas de cebolla") },
-            text = {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .heightIn(max = 430.dp),
-                    verticalArrangement = Arrangement.spacedBy(14.dp),
-                ) {
-                    LayerTrailRoute(
-                        projectName = project.name,
-                        listState = trailListState,
-                        pathNodes = pathNodes,
-                        onProjectClick = {
-                            currentPath.clear()
-                            showPathDialog = false
-                        },
-                        onLayerClick = { id ->
-                            val index = currentPath.indexOf(id)
-                            if (index < 0) return@LayerTrailRoute
-                            while (currentPath.size > index + 1) {
-                                currentPath.removeAt(currentPath.lastIndex)
-                            }
-                            showPathDialog = false
-                        },
-                    )
-                }
-            },
-            confirmButton = {
-                TextButton(onClick = { showPathDialog = false }) {
-                    Text("Cerrar")
-                }
-            },
-        )
-    }
-
-    if (showLayerMapDialog) {
+    if (showNavigator) {
         AlertDialog(
             containerColor = Arachn0deColors.Surface,
             titleContentColor = Arachn0deColors.TextPrimary,
-            textContentColor = Arachn0deColors.TextSecondary,
-            onDismissRequest = { showLayerMapDialog = false },
-            title = { Text("Mapa de capas") },
+            onDismissRequest = { showNavigator = false },
+            title = { Text("Capas de cebolla") },
             text = {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .heightIn(max = 420.dp),
-                    verticalArrangement = Arrangement.spacedBy(4.dp),
-                ) {
-                    Text(
-                        text = "Proyecto · ${project.name}",
-                        color = Arachn0deColors.TextSecondary,
-                        fontSize = 12.sp,
-                    )
-
-                    if (projectLayerMap.isEmpty()) {
-                        Text(
-                            text = "Todavía no hay capas en este proyecto.",
-                            color = Arachn0deColors.Accent,
-                            fontSize = 14.sp,
-                        )
-                    } else {
-                        LayerMapTree(
-                            nodes = projectLayerMap,
-                            listState = mapListState,
-                            expandedIds = expandedLayerIds,
-                            onToggle = { id ->
-                                val ids = expandedLayerIds.toSet()
-                                expandedLayerIds = (if (id in ids) ids - id else ids + id).toList()
-                            },
-                            currentPath = currentPath,
-                            onNavigateTo = { targetId ->
-                                actions.navigate(targetId) { path ->
-                                    currentPath.clear()
-                                    currentPath.addAll(path)
-                                    showLayerMapDialog = false
-                                }
-                            },
-                        )
-                    }
-                }
+                LayerNavigator(
+                    projectName = project.name,
+                    nodes = projectState.nodes,
+                    expandedIds = expandedLayerIds,
+                    onToggle = { id ->
+                        val ids = expandedLayerIds.toSet()
+                        expandedLayerIds = (if (id in ids) ids - id else ids + id).toList()
+                    },
+                    currentNodeId = currentNodeId,
+                    onHome = { showNavigator = false; onBackToProjects() },
+                    onProject = { currentPath.clear(); showNavigator = false },
+                    onNavigateTo = { targetId ->
+                        actions.navigate(targetId) { path ->
+                            currentPath.clear()
+                            currentPath.addAll(path)
+                            showNavigator = false
+                        }
+                    },
+                    listState = navigatorListState,
+                )
             },
-            confirmButton = {
-                TextButton(onClick = { showLayerMapDialog = false }) {
-                    Text("Cerrar")
-                }
-            },
+            confirmButton = { TextButton(onClick = { showNavigator = false }) { Text("Cerrar") } },
         )
     }
 

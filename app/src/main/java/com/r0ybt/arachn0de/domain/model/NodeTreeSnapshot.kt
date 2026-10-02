@@ -6,7 +6,14 @@ class NodeTreeSnapshot(val nodes: List<Node>) {
     private val childrenByParent = nodes.groupBy { it.parentId }
     val progressById: Map<String, NodeProgress> = calculateProgress()
 
-    fun childrenOf(parentId: String?): List<Node> = childrenByParent[parentId].orEmpty()
+    fun childrenOf(parentId: String?): List<Node> =
+        childrenByParent[parentId].orEmpty()
+            .sortedWith(
+                compareBy<Node> { if (it.isCompleted) 1 else 0 }
+                    .thenBy { it.position }
+                    .thenBy { it.createdAt }
+                    .thenBy { it.id },
+            )
 
     private fun calculateProgress(): Map<String, NodeProgress> {
         check(nodesById.size == nodes.size) { "Duplicate node identity" }

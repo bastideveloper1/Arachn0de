@@ -5,6 +5,7 @@ import com.r0ybt.arachn0de.data.local.ProjectEntity
 import com.r0ybt.arachn0de.data.local.toProject
 import com.r0ybt.arachn0de.domain.model.Project
 import java.util.UUID
+import com.r0ybt.arachn0de.domain.model.TitleLimits
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 
@@ -50,6 +51,7 @@ class ProjectRepository(
     private fun validateName(name: String): String {
         val normalizedName = name.trim()
         require(normalizedName.isNotEmpty()) { "Project name must not be blank" }
+        require(TitleLimits.count(normalizedName) <= TitleLimits.PROJECT) { "Project name exceeds 60 characters" }
         return normalizedName
     }
 }

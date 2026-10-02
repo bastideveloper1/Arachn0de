@@ -118,9 +118,9 @@ internal fun HeaderBar(onMenuClick: () -> Unit) {
         ) {
             Text(
                 text = "Arachn0de",
-                color = Arachn0deColors.TextPrimary,
-                fontSize = 24.sp,
-                fontWeight = FontWeight.Bold,
+                color = Arachn0deColors.TextSecondary,
+                fontSize = 16.sp,
+                fontWeight = FontWeight.Normal,
                 letterSpacing = 0.2.sp,
             )
         }

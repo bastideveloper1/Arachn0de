@@ -28,28 +28,31 @@ class LargeListsTest {
     private fun node(id: String, parent: String? = null, order: Int = 0) =
         Node(id, "project", parent, id, "", false, order, 0, 0, false)
 
-    @Test fun mapOnlyComposesViewportAndNavigatesToDistantNode() {
-        val nodes = (0 until 5_000).map { node("node$it", order = it) }
+    @Test fun navigatorOnlyComposesViewportAndNavigatesToDistantNode() {
+        val nodes = (0 until 5_000).flatMap { listOf(node("node$it", order = it), node("task$it", "node$it")) }
         var selected: String? = null
-        compose.setContent { Arachn0deTheme { LayerMapTree(nodes, emptyList(), {}, emptyList(), { selected = it }) } }
+        compose.setContent { Arachn0deTheme { LayerNavigator(nodes, emptyList(), {}, null, { selected = it }, "Project", {}, {}) } }
         compose.onNodeWithText("node4999").assertDoesNotExist()
-        compose.onNodeWithTag("layer-map").performScrollToIndex(4_999)
+        compose.onNodeWithTag("layer-navigator").performScrollToKey("node:node4999")
         compose.onNodeWithText("node4999").performClick()
         compose.runOnIdle { assertEquals("node4999", selected) }
     }
 
     @Test fun expansionButtonDoesNotNavigateAndCollapseHidesChildren() {
-        val nodes = listOf(node("parent"), node("child", "parent"))
+        val nodes = listOf(node("parent"), node("child", "parent"), node("task", "child"), node("rootTask"))
         var selected: String? = null
         compose.setContent {
             var expanded by remember { mutableStateOf(emptyList<String>()) }
             Arachn0deTheme {
-                LayerMapTree(nodes, expanded, { id -> expanded = if (id in expanded) expanded - id else expanded + id }, emptyList(), { selected = it })
+                LayerNavigator(nodes, expanded, { id -> expanded = if (id in expanded) expanded - id else expanded + id }, null, { selected = it }, "Project", {}, {})
             }
         }
         compose.onNodeWithText("child").assertDoesNotExist()
         compose.onNodeWithTag("expand:parent").performClick()
         compose.onNodeWithText("child").assertExists()
+        compose.onNodeWithText("rootTask").assertDoesNotExist()
+        compose.onNodeWithTag("expand:child").performClick()
+        compose.onNodeWithText("task").assertDoesNotExist()
         compose.runOnIdle { assertNull(selected) }
         compose.onNodeWithTag("expand:parent").performClick()
         compose.onNodeWithText("child").assertDoesNotExist()
@@ -64,17 +67,17 @@ class LargeListsTest {
         compose.onNodeWithText("Project 2999").performClick()
         compose.runOnIdle { assertEquals("p2999", selected) }
     }
-    @Test fun deepTrailComposesOnlyVisibleAncestorsAndNavigatesById() {
-        val nodes = (0 until 5_000).map { node("ancestor$it", if (it == 0) null else "ancestor${it - 1}") }
+    @Test fun deepNavigatorComposesOnlyVisibleAncestorsAndNavigatesById() {
+        val nodes = (0 until 5_000).map { node("ancestor$it", if (it == 0) null else "ancestor${it - 1}") } + node("lastTask", "ancestor4999")
         var selected: String? = null
-        compose.setContent { Arachn0deTheme { LayerTrailRoute("Project", nodes, {}, { selected = it }) } }
+        compose.setContent { Arachn0deTheme { LayerNavigator(nodes, nodes.map { it.id }, {}, null, { selected = it }, "Project", {}, {}) } }
         compose.onNodeWithText("ancestor4999").assertDoesNotExist()
-        compose.onNode(hasScrollToIndexAction()).performScrollToIndex(5_000)
+        compose.onNode(hasScrollToIndexAction()).performScrollToKey("node:ancestor4999")
         compose.onNodeWithText("ancestor4999").performClick()
         compose.runOnIdle { assertEquals("ancestor4999", selected) }
     }
 
-    @Test fun largeTaskLayerScrollsAndOpensDistantNode() {
+    @Test fun largeTaskLayerScrollsWithoutNavigatingIntoLeaf() {
         val database = Room.inMemoryDatabaseBuilder(ApplicationProvider.getApplicationContext(), Arachn0deDatabase::class.java).build()
         val project = runBlocking {
             val project = ProjectRepository(database.projectDao()).createProject("Large project")
@@ -92,8 +95,8 @@ class LargeListsTest {
             compose.waitUntil(10_000) { compose.onAllNodesWithText("Task 0").fetchSemanticsNodes().isNotEmpty() }
             compose.onNodeWithText("Task 1999").assertDoesNotExist()
             compose.onNode(hasScrollToIndexAction()).performScrollToKey("node:task1999")
-            compose.onNodeWithText("Task 1999").performClick()
-            compose.onNodeWithContentDescription("Volver a la capa anterior").assertExists()
+            compose.onNodeWithText("Task 1999").performTouchInput { click() }
+            compose.onNodeWithContentDescription("Volver a la capa anterior").assertDoesNotExist()
         } finally {
             compose.runOnIdle { visible.value = false }
             compose.waitForIdle()

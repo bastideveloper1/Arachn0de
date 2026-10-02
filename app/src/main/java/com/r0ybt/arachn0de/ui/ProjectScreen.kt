@@ -68,6 +68,7 @@ internal fun ProjectNodeScreen(
         save = { it.toList() },
         restore = { it.toMutableStateList() },
     )) { mutableStateListOf<String>() }
+    var hasLoaded by remember(project.id) { mutableStateOf(false) }
     var projectState by remember(project.id) { mutableStateOf(NodeTreeSnapshot(emptyList())) }
     var showNodeDialog by remember { mutableStateOf(false) }
     var editingNode by remember { mutableStateOf<Node?>(null) }
@@ -92,7 +93,7 @@ internal fun ProjectNodeScreen(
 
     val load = remember(project.id, nodeRepository) { LoadState() }
     LaunchedEffect(project.id, nodeRepository, load.attempt) {
-        load.collect(nodeRepository.observeProjectState(project.id)) { snapshot ->
+        load.collect(nodeRepository.observePreparedProjectState(project.id)) { snapshot ->
             // Validate only against a persisted emission, never the initial empty snapshot.
             var parentId: String? = null
             val validPath = currentPath.takeWhile { id ->
@@ -104,6 +105,7 @@ internal fun ProjectNodeScreen(
             while (currentPath.size > validPath.size) currentPath.removeAt(currentPath.lastIndex)
             expandedLayerIds = expandedLayerIds.filter { it in snapshot.nodesById }
             projectState = snapshot
+            hasLoaded = true
         }
     }
 
@@ -116,6 +118,12 @@ internal fun ProjectNodeScreen(
     }
 
     BackHandler(enabled = showDrawer) { showDrawer = false }
+
+    if (!hasLoaded) {
+        Surface(Modifier.fillMaxSize(), color = Arachn0deColors.Background) {}
+        LoadErrorDialog(load)
+        return
+    }
 
     val background = Brush.linearGradient(
         listOf(
@@ -261,6 +269,11 @@ internal fun ProjectNodeScreen(
                                 onEdit = {
                                     editingNode = node
                                     showNodeDialog = true
+                                },
+                                canMoveUp = node.id != currentNodes.firstOrNull()?.id && !isSubmittingNode,
+                                canMoveDown = node.id != currentNodes.lastOrNull()?.id && !isSubmittingNode,
+                                onReorder = { moveUp, onSuccess ->
+                                    actions.reorder(node.id, node.parentId, moveUp, onSuccess)
                                 },
                                 onDelete = {
                                     deletingNode = node

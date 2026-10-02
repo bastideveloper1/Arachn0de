@@ -10,6 +10,8 @@ import com.r0ybt.arachn0de.domain.model.NodeTreeSnapshot
 import java.util.UUID
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.emitAll
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 
@@ -21,6 +23,45 @@ class NodeRepository(
 
     fun observeProjectState(projectId: String): Flow<NodeTreeSnapshot> =
         nodeDao.observeProjectNodes(projectId).map(::snapshot).flowOn(Dispatchers.Default)
+
+    /** Repair legacy order before the screen starts observing; normal observers remain read-only. */
+    fun observePreparedProjectState(projectId: String): Flow<NodeTreeSnapshot> = flow {
+        normalizeProjectOrder(projectId)
+        emitAll(observeProjectState(projectId))
+    }.flowOn(Dispatchers.Default)
+
+    suspend fun normalizeProjectOrder(projectId: String) = database.withTransaction {
+        nodeDao.getProjectNodes(projectId).groupBy { it.parentId }.values.forEach { siblings ->
+            writeOrder(siblings)
+        }
+    }
+
+    /** A stale parent is rejected. At a boundary this is a successful no-op (plus normalization). */
+    suspend fun reorderNode(id: String, expectedParentId: String?, moveUp: Boolean): Boolean = database.withTransaction {
+        val current = nodeDao.getById(id) ?: return@withTransaction false
+        if (current.parentId != expectedParentId) return@withTransaction false
+        val siblings = nodeDao.getSiblings(current.projectId, current.parentId).toMutableList()
+        val from = siblings.indexOfFirst { it.id == id }
+        check(from >= 0)
+        val to = from + if (moveUp) -1 else 1
+        val changedIds = if (to in siblings.indices) {
+            val other = siblings[to]
+            siblings[to] = siblings[from]
+            siblings[from] = other
+            setOf(id, other.id)
+        } else emptySet()
+        writeOrder(siblings, changedIds)
+        true
+    }
+
+    private suspend fun writeOrder(siblings: List<NodeEntity>, changedIds: Set<String> = emptySet()) {
+        val now = if (changedIds.isEmpty()) null else currentTimeMillis()
+        siblings.forEachIndexed { position, node ->
+            if (node.position != position || node.id in changedIds) {
+                check(nodeDao.updateOrder(node.id, position, if (node.id in changedIds) checkNotNull(now) else node.updatedAt) == 1)
+            }
+        }
+    }
 
     fun observeRootNodes(projectId: String): Flow<List<Node>> =
         observeProjectState(projectId).map { it.childrenOf(null) }
@@ -120,7 +161,11 @@ class NodeRepository(
     }
 
     private suspend fun nextPosition(projectId: String, parentId: String?): Int {
-        val maximum = nodeDao.maxPosition(projectId, parentId) ?: -1
+        var maximum = nodeDao.maxPosition(projectId, parentId) ?: -1
+        if (maximum == Int.MAX_VALUE) {
+            writeOrder(nodeDao.getSiblings(projectId, parentId))
+            maximum = nodeDao.maxPosition(projectId, parentId) ?: -1
+        }
         check(maximum < Int.MAX_VALUE) { "Sibling position exhausted" }
         return maximum + 1
     }

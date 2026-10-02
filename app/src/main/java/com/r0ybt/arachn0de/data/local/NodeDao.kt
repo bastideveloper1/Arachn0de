@@ -24,6 +24,12 @@ interface NodeDao {
     @Query("SELECT MAX(position) FROM nodes WHERE projectId = :projectId AND parentId IS :parentId")
     suspend fun maxPosition(projectId: String, parentId: String?): Int?
 
+    @Query("SELECT * FROM nodes WHERE projectId = :projectId AND parentId IS :parentId ORDER BY position, createdAt, id")
+    suspend fun getSiblings(projectId: String, parentId: String?): List<NodeEntity>
+
+    @Query("UPDATE nodes SET position = :position, updatedAt = :updatedAt WHERE id = :id")
+    suspend fun updateOrder(id: String, position: Int, updatedAt: Long): Int
+
     @Insert(onConflict = OnConflictStrategy.ABORT)
     suspend fun insert(node: NodeEntity)
 

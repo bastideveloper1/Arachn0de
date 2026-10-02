@@ -151,6 +151,9 @@ internal fun NodeCard(
     onOpen: () -> Unit,
     onEdit: () -> Unit,
     onDelete: () -> Unit,
+    canMoveUp: Boolean,
+    canMoveDown: Boolean,
+    onReorder: (Boolean, () -> Unit) -> Unit,
     onToggleComplete: () -> Unit,
 ) {
     var showContextMenu by remember { mutableStateOf(false) }
@@ -275,6 +278,16 @@ internal fun NodeCard(
             title = { Text(node.title) },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    TextButton(
+                        enabled = canMoveUp,
+                        onClick = { onReorder(true) { showContextMenu = false } },
+                        modifier = Modifier.fillMaxWidth(),
+                    ) { Text("Mover arriba", modifier = Modifier.fillMaxWidth()) }
+                    TextButton(
+                        enabled = canMoveDown,
+                        onClick = { onReorder(false) { showContextMenu = false } },
+                        modifier = Modifier.fillMaxWidth(),
+                    ) { Text("Mover abajo", modifier = Modifier.fillMaxWidth()) }
                     TextButton(
                         onClick = {
                             showContextMenu = false

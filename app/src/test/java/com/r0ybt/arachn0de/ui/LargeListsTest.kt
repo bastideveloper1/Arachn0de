@@ -91,7 +91,7 @@ class LargeListsTest {
             compose.setContent { if (visible.value) Arachn0deTheme { ProjectNodeScreen(project, repository, {}) } }
             compose.waitUntil(10_000) { compose.onAllNodesWithText("Task 0").fetchSemanticsNodes().isNotEmpty() }
             compose.onNodeWithText("Task 1999").assertDoesNotExist()
-            compose.onNode(hasScrollToIndexAction()).performScrollToIndex(1_999)
+            compose.onNode(hasScrollToIndexAction()).performScrollToKey("node:task1999")
             compose.onNodeWithText("Task 1999").performClick()
             compose.onNodeWithContentDescription("Volver a la capa anterior").assertExists()
         } finally {

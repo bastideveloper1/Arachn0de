@@ -41,6 +41,10 @@ class NavigationTest {
     }
 
     private fun awaitText(text: String) {
+        if (text == "Nivel dos" || text == "Tarea final") {
+            compose.waitUntil(10_000) { compose.onAllNodesWithTag("nodes-list").fetchSemanticsNodes().isNotEmpty() }
+            compose.onNodeWithTag("nodes-list").performScrollToNode(hasText(text))
+        }
         compose.waitUntil(10_000) { compose.onAllNodesWithText(text).fetchSemanticsNodes().isNotEmpty() }
     }
     private fun openProject() {
@@ -148,6 +152,7 @@ class NavigationTest {
         openProject()
         compose.onNodeWithText("Nivel uno").performClick()
         awaitText("Nivel dos")
+        compose.onNodeWithTag("nodes-list").performScrollToIndex(0)
         compose.onNodeWithText("Capas de cebolla").performClick()
         runBlocking { NodeRepository(database).deleteNode(rootId) }
         compose.activityRule.scenario.recreate()

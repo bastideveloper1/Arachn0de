@@ -82,6 +82,7 @@ class SaveFailureTest {
 
     @Test fun failedProjectDeletionRetainsConfirmationAndData() {
         awaitText("Proyecto de prueba")
+        compose.onNodeWithContentDescription("Opciones del proyecto").performClick()
         compose.onNodeWithContentDescription("Eliminar proyecto").performClick()
         failWrites("projects", "DELETE")
         compose.onNodeWithText("Eliminar").performClick()
@@ -96,6 +97,7 @@ class SaveFailureTest {
 
     @Test fun failedProjectEditKeepsChangedName() {
         awaitText("Proyecto de prueba")
+        compose.onNodeWithContentDescription("Opciones del proyecto").performClick()
         compose.onNodeWithContentDescription("Editar proyecto").performClick()
         compose.onNodeWithText("Nombre").performTextReplacement("Nombre editado")
         failWrites("projects", "UPDATE")
@@ -111,6 +113,7 @@ class SaveFailureTest {
 
     @Test fun missingProjectUpdateKeepsEditorAndReportsRejection() {
         awaitText("Proyecto de prueba")
+        compose.onNodeWithContentDescription("Opciones del proyecto").performClick()
         compose.onNodeWithContentDescription("Editar proyecto").performClick()
         runBlocking { app.projectRepository.deleteProject(projectId) }
         compose.onNodeWithText("Guardar").performClick()

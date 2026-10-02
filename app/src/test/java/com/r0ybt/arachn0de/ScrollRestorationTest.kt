@@ -45,9 +45,9 @@ class ScrollRestorationTest {
 
     @Test fun eachLayerKeepsItsScrollAfterRecreationAndBack() {
         openProject()
-        compose.onNodeWithTag("nodes-list").performScrollToIndex(20)
+        compose.onNodeWithTag("nodes-list").performScrollToIndex(21)
         compose.onNodeWithText("Raíz 20").performClick()
-        compose.onNodeWithTag("nodes-list").performScrollToIndex(20)
+        compose.onNodeWithTag("nodes-list").performScrollToIndex(21)
         compose.onNodeWithText("Hijo 20").assertIsDisplayed()
         compose.activityRule.scenario.recreate()
         awaitTag("nodes-list")

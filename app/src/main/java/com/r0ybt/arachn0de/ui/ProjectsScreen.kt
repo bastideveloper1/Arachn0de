@@ -22,6 +22,8 @@ import com.r0ybt.arachn0de.ui.state.EditorDraft
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -93,42 +95,10 @@ internal fun ProjectDashboardScreen(
 
                 Spacer(modifier = Modifier.height(12.dp))
 
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    SummaryCard(
-                        modifier = Modifier
-                            .weight(1f)
-                            .widthIn(min = 90.dp),
-                        title = "Proyectos",
-                        value = projects.size.toString(),
-                        icon = "□",
-                    )
-                    SummaryCard(
-                        modifier = Modifier
-                            .weight(1f)
-                            .widthIn(min = 90.dp),
-                        title = "Activos",
-                        value = "0",
-                        icon = "✓",
-                    )
-                    SummaryCard(
-                        modifier = Modifier
-                            .weight(1f)
-                            .widthIn(min = 90.dp),
-                        title = "Hoy",
-                        value = "0",
-                        icon = "◔",
-                    )
-                }
-
-                Spacer(modifier = Modifier.height(16.dp))
-
                 if (projects.isEmpty()) {
-                    EmptyProjectsState(
-                        onCreateProject = { draft = EditorDraft(null, null, "", "") },
-                    )
+                    Column(Modifier.weight(1f).verticalScroll(rememberScrollState())) {
+                        EmptyProjectsState(onCreateProject = { draft = EditorDraft(null, null, "", "") })
+                    }
                 } else {
                     ProjectList(
                         projects = projects,
@@ -153,7 +123,7 @@ internal fun ProjectDashboardScreen(
                         .background(Arachn0deColors.Scrim.copy(alpha = 0.45f))
                         .clickable { showDrawer = false },
                 ) {
-                    FutureNavigationDrawer(
+                    AppIdentityDrawer(
                         onDismiss = { showDrawer = false },
                     )
                 }

@@ -269,7 +269,7 @@ internal fun LayerTrailRoute(
                 Card(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .heightIn(min = 52.dp, max = 72.dp),
+                        .heightIn(min = 52.dp),
                     colors = CardDefaults.cardColors(containerColor = Arachn0deColors.Surface),
                     shape = RoundedCornerShape(16.dp),
                     border = CardDefaults.outlinedCardBorder(),
@@ -316,7 +316,7 @@ internal fun LayerTrailRoute(
                                 fontSize = 14.sp,
                                 maxLines = 2,
                                 overflow = TextOverflow.Ellipsis,
-                                lineHeight = 17.sp,
+
                             )
                         }
 

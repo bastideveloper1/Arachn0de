@@ -17,16 +17,15 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Menu
-import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
@@ -36,26 +35,13 @@ import com.r0ybt.arachn0de.ui.theme.Arachn0deColors
 import com.r0ybt.arachn0de.R
 
 @Composable
-internal fun FutureNavigationDrawer(onDismiss: () -> Unit) {
-    val items = listOf(
-        "Inicio",
-        "Inbox",
-        "Hoy",
-        "Próximas",
-        "Proyectos",
-        "Etiquetas",
-        "Personas",
-        "Calendario",
-        "Panel",
-        "Notas",
-        "Archivos",
-        "Configuración",
-    )
-
+internal fun AppIdentityDrawer(onDismiss: () -> Unit) {
     Column(
         modifier = Modifier
             .fillMaxHeight()
-            .width(280.dp)
+            .widthIn(max = 320.dp)
+            .fillMaxWidth()
+            .verticalScroll(rememberScrollState())
             .background(Arachn0deColors.SurfaceRaised.copy(alpha = 0.98f))
             .padding(start = 18.dp, end = 12.dp, top = 18.dp, bottom = 14.dp),
     ) {
@@ -64,7 +50,7 @@ internal fun FutureNavigationDrawer(onDismiss: () -> Unit) {
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween,
         ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
+            Row(modifier = Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
                 Box(
                     modifier = Modifier.size(36.dp),
                     contentAlignment = Alignment.Center,
@@ -82,6 +68,7 @@ internal fun FutureNavigationDrawer(onDismiss: () -> Unit) {
                     color = Arachn0deColors.Accent,
                     fontSize = 22.sp,
                     fontWeight = FontWeight.Bold,
+                    modifier = Modifier.weight(1f),
                 )
             }
             IconButton(onClick = onDismiss) {
@@ -94,35 +81,6 @@ internal fun FutureNavigationDrawer(onDismiss: () -> Unit) {
         }
 
         Spacer(modifier = Modifier.height(18.dp))
-
-        items.forEachIndexed { index, item ->
-            val selected = index == 0
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(42.dp)
-                    .padding(vertical = 4.dp)
-                    .clip(RoundedCornerShape(12.dp))
-                    .background(if (selected) Arachn0deColors.Selection.copy(alpha = 0.75f) else Color.Transparent)
-                    .padding(horizontal = 12.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Box(
-                    modifier = Modifier
-                        .size(18.dp)
-                        .clip(RoundedCornerShape(6.dp))
-                        .background(if (selected) Arachn0deColors.Accent else Arachn0deColors.ControlSurface),
-                )
-                Spacer(modifier = Modifier.width(10.dp))
-                Text(
-                    text = item,
-                    color = if (selected) Arachn0deColors.TextPrimary else Arachn0deColors.TextSecondary.copy(alpha = 0.8f),
-                    fontSize = 16.sp,
-                )
-            }
-        }
-
-        Spacer(modifier = Modifier.weight(1f))
 
         Text(
             text = "v0.1.0",
@@ -142,7 +100,7 @@ internal fun HeaderBar(onMenuClick: () -> Unit) {
         IconButton(
             onClick = onMenuClick,
             modifier = Modifier
-                .size(42.dp)
+                .size(48.dp)
                 .background(Arachn0deColors.SurfaceRaised, RoundedCornerShape(12.dp)),
         ) {
             Icon(
@@ -167,16 +125,5 @@ internal fun HeaderBar(onMenuClick: () -> Unit) {
             )
         }
 
-        IconButton(
-            onClick = {},
-            modifier = Modifier.size(42.dp),
-        ) {
-            Icon(
-                imageVector = Icons.Default.Search,
-                contentDescription = null,
-                tint = Arachn0deColors.Accent,
-            )
-        }
     }
 }
-

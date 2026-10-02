@@ -19,8 +19,6 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -31,6 +29,18 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.TextButton
+import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.Alignment
@@ -138,7 +148,7 @@ internal fun EmptyProjectsState(onCreateProject: () -> Unit) {
                 shape = RoundedCornerShape(14.dp),
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(48.dp),
+                    .heightIn(min = 48.dp),
             ) {
                 Icon(imageVector = Icons.Default.Add, contentDescription = null)
                 Spacer(modifier = Modifier.width(8.dp))
@@ -176,7 +186,7 @@ internal fun ProjectList(
                 onClick = onCreateProject,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(52.dp),
+                    .heightIn(min = 52.dp),
                 colors = ButtonDefaults.buttonColors(containerColor = Arachn0deColors.Primary),
                 shape = RoundedCornerShape(14.dp),
             ) {
@@ -195,6 +205,7 @@ internal fun ProjectCard(
     onEdit: () -> Unit,
     onDelete: () -> Unit,
 ) {
+    var showActions by remember { mutableStateOf(false) }
     Card(
         shape = RoundedCornerShape(18.dp),
         colors = CardDefaults.cardColors(containerColor = Arachn0deColors.Surface),
@@ -250,22 +261,33 @@ internal fun ProjectCard(
                 }
             }
 
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                IconButton(
-                    onClick = onEdit,
-                    modifier = Modifier.size(36.dp),
-                ) {
-                    Icon(Icons.Default.Edit, contentDescription = "Editar proyecto", tint = Arachn0deColors.Accent)
-                }
-                IconButton(
-                    onClick = onDelete,
-                    modifier = Modifier.size(36.dp),
-                ) {
-                    Icon(Icons.Default.Delete, contentDescription = "Eliminar proyecto", tint = Arachn0deColors.Destructive)
-                }
+            IconButton(onClick = { showActions = true }, modifier = Modifier.size(48.dp)) {
+                Icon(Icons.Default.MoreVert, contentDescription = "Opciones del proyecto", tint = Arachn0deColors.TextSecondary)
             }
         }
     }
+    if (showActions) {
+        AlertDialog(
+            onDismissRequest = { showActions = false },
+            containerColor = Arachn0deColors.Surface,
+            titleContentColor = Arachn0deColors.TextPrimary,
+            title = { Text(project.name, maxLines = 2, overflow = TextOverflow.Ellipsis) },
+            text = {
+                Column(Modifier.verticalScroll(rememberScrollState())) {
+                    TextButton(
+                        onClick = { showActions = false; onEdit() },
+                        modifier = Modifier.fillMaxWidth().semantics { contentDescription = "Editar proyecto" },
+                    ) { Text("Editar", modifier = Modifier.fillMaxWidth()) }
+                    TextButton(
+                        onClick = { showActions = false; onDelete() },
+                        modifier = Modifier.fillMaxWidth().semantics { contentDescription = "Eliminar proyecto" },
+                    ) { Text("Eliminar", color = Arachn0deColors.Destructive, modifier = Modifier.fillMaxWidth()) }
+                }
+            },
+            confirmButton = { TextButton(onClick = { showActions = false }) { Text("Cancelar") } },
+        )
+    }
+
 }
 
 internal fun formatProjectDate(timestamp: Long): String {

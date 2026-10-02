@@ -153,174 +153,162 @@ internal fun ProjectNodeScreen(
             ) {
                 HeaderBar(onMenuClick = { showDrawer = true })
 
-                Spacer(modifier = Modifier.height(14.dp))
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    if (currentPath.isNotEmpty()) {
-                        IconButton(
-                            onClick = {
-                                if (currentPath.isNotEmpty()) currentPath.removeAt(currentPath.lastIndex)
-                            },
-                            modifier = Modifier.size(42.dp),
-                        ) {
-                            Icon(imageVector = Icons.Default.ArrowBack, contentDescription = "Volver a la capa anterior", tint = Arachn0deColors.Accent)
-                        }
-                        Spacer(modifier = Modifier.width(8.dp))
-                    }
-                    Text(
-                        text = project.name,
-                        color = Arachn0deColors.TextPrimary,
-                        fontSize = 24.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                }
-
-                Spacer(modifier = Modifier.height(8.dp))
-
-                if (currentNode == null) {
-                    Text(
-                        text = "Proyecto raíz",
-                        color = Arachn0deColors.TextSecondary,
-                        fontSize = 12.sp,
-                    )
-                } else {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically,
+                layerScrollStates.SaveableStateProvider(currentNodeId?.let { "node:$it" } ?: "project-root") {
+                    LazyColumn(
+                        modifier = Modifier.fillMaxWidth().weight(1f).testTag("nodes-list"),
+                        verticalArrangement = Arrangement.spacedBy(12.dp),
                     ) {
-                        Text(
-                            text = "CAPA $currentLayer",
-                            color = Arachn0deColors.TextSecondary,
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.Bold,
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(
-                            text = currentNode!!.title,
-                            color = Arachn0deColors.Accent,
-                            fontSize = 12.sp,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                    }
-                }
+                        item(key = "layer-context", contentType = "context") {
+                            Column {
+                                Spacer(modifier = Modifier.height(14.dp))
 
-                Spacer(modifier = Modifier.height(10.dp))
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    if (currentPath.isNotEmpty()) {
+                                        IconButton(
+                                            onClick = {
+                                                if (currentPath.isNotEmpty()) currentPath.removeAt(currentPath.lastIndex)
+                                            },
+                                            modifier = Modifier.size(48.dp),
+                                        ) {
+                                            Icon(imageVector = Icons.Default.ArrowBack, contentDescription = "Volver a la capa anterior", tint = Arachn0deColors.Accent)
+                                        }
+                                        Spacer(modifier = Modifier.width(8.dp))
+                                    }
+                                    Text(
+                                        text = project.name,
+                                        color = Arachn0deColors.TextPrimary,
+                                        fontSize = 24.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                        modifier = Modifier.weight(1f),
+                                    )
+                                }
 
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    if (pathNodes.isNotEmpty()) {
-                        TextButton(
-                            onClick = { showPathDialog = true },
-                            modifier = Modifier.weight(1f),
-                        ) {
-                            Text(
-                                text = "Capas de cebolla",
-                                color = Arachn0deColors.Accent,
-                                fontSize = 12.sp,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
+                                Spacer(modifier = Modifier.height(8.dp))
+
+                                if (currentNode == null) {
+                                    Text(
+                                        text = "Proyecto raíz",
+                                        color = Arachn0deColors.TextSecondary,
+                                        fontSize = 12.sp,
+                                    )
+                                } else {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                    ) {
+                                        Text(
+                                            text = "CAPA $currentLayer",
+                                            color = Arachn0deColors.TextSecondary,
+                                            fontSize = 12.sp,
+                                            fontWeight = FontWeight.Bold,
+                                        )
+                                        Spacer(modifier = Modifier.width(8.dp))
+                                        Text(
+                                            text = currentNode!!.title,
+                                            modifier = Modifier.weight(1f),
+                                            color = Arachn0deColors.Accent,
+                                            fontSize = 12.sp,
+
+                                        )
+                                    }
+                                }
+
+                                Spacer(modifier = Modifier.height(10.dp))
+
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                ) {
+                                    if (pathNodes.isNotEmpty()) {
+                                        TextButton(
+                                            onClick = { showPathDialog = true },
+                                            modifier = Modifier.weight(1f),
+                                        ) {
+                                            Text(
+                                                text = "Capas de cebolla",
+                                                color = Arachn0deColors.Accent,
+                                                fontSize = 12.sp,
+
+                                            )
+                                        }
+                                    }
+
+                                    TextButton(
+                                        onClick = {
+                                            expandedLayerIds = (expandedLayerIds.toSet() + currentPath).toList()
+                                            showLayerMapDialog = true
+                                        },
+                                        modifier = Modifier.weight(1f),
+                                    ) {
+                                        Text(
+                                            text = "Mapa de capas",
+                                            color = Arachn0deColors.Accent,
+                                            fontSize = 12.sp,
+
+                                        )
+                                    }
+                                }
+
+                                Spacer(modifier = Modifier.height(12.dp))
+
+                                if (currentProgress != null) {
+                                    NodeProgressCard(progress = currentProgress!!)
+                                    Spacer(modifier = Modifier.height(12.dp))
+                                }
+
+                            }
+                        }
+                        if (currentNodes.isEmpty()) {
+                            item(key = "empty-layer", contentType = "empty") { EmptyLayerState() }
+                        }
+                        items(currentNodes, key = { "node:${it.id}" }, contentType = { "node" }) { node ->
+                            NodeCard(
+                                node = node,
+                                progress = progressMap[node.id],
+                                hasChildren = node.hasChildren,
+                                canToggleComplete = node.isCompletable,
+                                onOpen = {
+                                    currentPath.add(node.id)
+                                },
+                                onEdit = {
+                                    draft = EditorDraft(node.id, node.parentId, node.title, node.description)
+                                },
+                                canMoveUp = node.id != currentNodes.firstOrNull()?.id && !isSubmittingNode,
+                                canMoveDown = node.id != currentNodes.lastOrNull()?.id && !isSubmittingNode,
+                                onReorder = { moveUp, onSuccess ->
+                                    actions.reorder(node.id, node.parentId, moveUp, onSuccess)
+                                },
+                                onDelete = {
+                                    deletingNodeId = node.id
+                                    deletingNodeName = node.title
+                                },
+                                onToggleComplete = {
+                                    if (node.isCompletable) actions.toggle(node.id)
+                                },
                             )
                         }
-                    }
 
-                    TextButton(
-                        onClick = {
-                            expandedLayerIds = (expandedLayerIds.toSet() + currentPath).toList()
-                            showLayerMapDialog = true
-                        },
-                        modifier = Modifier.weight(1f),
-                    ) {
-                        Text(
-                            text = "Mapa de capas",
-                            color = Arachn0deColors.Accent,
-                            fontSize = 12.sp,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
                     }
                 }
-
-                Spacer(modifier = Modifier.height(12.dp))
-
-                if (currentProgress != null) {
-                    NodeProgressCard(progress = currentProgress!!)
-                    Spacer(modifier = Modifier.height(12.dp))
+                Button(
+                    onClick = { if (!isSubmittingNode) draft = EditorDraft(null, currentNodeId, "", "") },
+                    modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = Arachn0deColors.Primary),
+                    shape = RoundedCornerShape(14.dp),
+                    enabled = !isSubmittingNode,
+                ) {
+                    Icon(imageVector = Icons.Default.Add, contentDescription = null)
+                    Spacer(Modifier.width(8.dp))
+                    Text("Nuevo elemento")
                 }
-
-                if (currentNodes.isEmpty()) {
-                    EmptyLayerState(onCreateNode = { draft = EditorDraft(null, currentNodeId, "", "") })
-                } else {
-                    layerScrollStates.SaveableStateProvider(currentNodeId?.let { "node:$it" } ?: "project-root") {
-                        LazyColumn(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .weight(1f)
-                                .testTag("nodes-list"),
-                            verticalArrangement = Arrangement.spacedBy(12.dp),
-                        ) {
-                            items(currentNodes, key = { "node:${it.id}" }, contentType = { "node" }) { node ->
-                                NodeCard(
-                                    node = node,
-                                    progress = progressMap[node.id],
-                                    hasChildren = node.hasChildren,
-                                    canToggleComplete = node.isCompletable,
-                                    onOpen = {
-                                        currentPath.add(node.id)
-                                    },
-                                    onEdit = {
-                                        draft = EditorDraft(node.id, node.parentId, node.title, node.description)
-                                    },
-                                    canMoveUp = node.id != currentNodes.firstOrNull()?.id && !isSubmittingNode,
-                                    canMoveDown = node.id != currentNodes.lastOrNull()?.id && !isSubmittingNode,
-                                    onReorder = { moveUp, onSuccess ->
-                                        actions.reorder(node.id, node.parentId, moveUp, onSuccess)
-                                    },
-                                    onDelete = {
-                                        deletingNodeId = node.id
-                                        deletingNodeName = node.title
-                                    },
-                                    onToggleComplete = {
-                                        if (node.isCompletable) actions.toggle(node.id)
-                                    },
-                                )
-                            }
-
-                            item(key = "create-node", contentType = "action") {
-                                Button(
-                                    onClick = {
-                                        if (draft == null && !isSubmittingNode) draft = EditorDraft(null, currentNodeId, "", "")
-                                    },
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .height(52.dp),
-                                    colors = ButtonDefaults.buttonColors(containerColor = Arachn0deColors.Primary),
-                                    shape = RoundedCornerShape(14.dp),
-                                    enabled = !isSubmittingNode,
-                                ) {
-                                    Icon(imageVector = Icons.Default.Add, contentDescription = null)
-                                    Spacer(modifier = Modifier.width(8.dp))
-                                    Text("Nuevo elemento")
-                                }
-                            }
-                        }
-                    }
-                }
-
-                if (currentNodes.isEmpty()) Spacer(modifier = Modifier.weight(1f))
-
                 Button(
                     onClick = onBackToProjects,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(48.dp),
+                        .heightIn(min = 48.dp),
                     colors = ButtonDefaults.buttonColors(containerColor = Arachn0deColors.Surface),
                     shape = RoundedCornerShape(12.dp),
                 ) {
@@ -335,7 +323,7 @@ internal fun ProjectNodeScreen(
                         .background(Arachn0deColors.Scrim.copy(alpha = 0.45f))
                         .clickable { showDrawer = false },
                 ) {
-                    FutureNavigationDrawer(onDismiss = { showDrawer = false })
+                    AppIdentityDrawer(onDismiss = { showDrawer = false })
                 }
             }
         }

@@ -1,7 +1,6 @@
 package com.r0ybt.arachn0de
 
 import androidx.compose.ui.test.*
-import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.test.core.app.ApplicationProvider
 import kotlinx.coroutines.runBlocking
@@ -65,6 +64,7 @@ class DraftRestorationTest {
 
     @Test fun editProjectRestoresDraftAndUpdatesSameIdentity() {
         awaitText("Proyecto borradores")
+        compose.onNodeWithContentDescription("Opciones del proyecto").performClick()
         compose.onNodeWithContentDescription("Editar proyecto").performClick()
         compose.onNodeWithText("Nombre").performTextReplacement("Editado pendiente")
         recreate()
@@ -76,8 +76,8 @@ class DraftRestorationTest {
     @Test fun childDraftRestoresOriginalParentAndSavesOnce() {
         openProject()
         compose.onNodeWithText("Padre").performClick()
-        awaitText("Esta capa está vacía")
-        compose.onNodeWithText("Nuevo elemento").performSemanticsAction(SemanticsActions.OnClick) { it() }
+        awaitText("CAPA 1")
+        compose.onNodeWithText("Nuevo elemento").performClick()
         awaitText("Guardar")
         compose.onNodeWithText("Título").performTextInput("Hijo pendiente")
         compose.onNodeWithText("Descripción").performTextInput("Detalle")
@@ -94,8 +94,8 @@ class DraftRestorationTest {
     @Test fun missingParentDoesNotRedirectDraftToRoot() {
         openProject()
         compose.onNodeWithText("Padre").performClick()
-        awaitText("Esta capa está vacía")
-        compose.onNodeWithText("Nuevo elemento").performSemanticsAction(SemanticsActions.OnClick) { it() }
+        awaitText("CAPA 1")
+        compose.onNodeWithText("Nuevo elemento").performClick()
         awaitText("Guardar")
         compose.onNodeWithText("Título").performTextInput("No redirigir")
         runBlocking { app.nodeRepository.deleteNode(parentId) }
@@ -110,6 +110,7 @@ class DraftRestorationTest {
 
     @Test fun deleteConfirmationRestoresWithoutExecutingIt() {
         awaitText("Proyecto borradores")
+        compose.onNodeWithContentDescription("Opciones del proyecto").performClick()
         compose.onNodeWithContentDescription("Eliminar proyecto").performClick()
         compose.activityRule.scenario.recreate()
         awaitText("Eliminar")

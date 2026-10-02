@@ -30,6 +30,11 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -54,7 +59,7 @@ import com.r0ybt.arachn0de.ui.theme.Arachn0deColors
 import com.r0ybt.arachn0de.R
 
 @Composable
-internal fun EmptyLayerState(onCreateNode: () -> Unit) {
+internal fun EmptyLayerState() {
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(containerColor = Arachn0deColors.Surface.copy(alpha = 0.96f)),
@@ -83,19 +88,7 @@ internal fun EmptyLayerState(onCreateNode: () -> Unit) {
                 modifier = Modifier.fillMaxWidth(),
                 textAlign = TextAlign.Center,
             )
-            Spacer(modifier = Modifier.height(18.dp))
-            Button(
-                onClick = onCreateNode,
-                colors = ButtonDefaults.buttonColors(containerColor = Arachn0deColors.Primary),
-                shape = RoundedCornerShape(14.dp),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(48.dp),
-            ) {
-                Icon(imageVector = Icons.Default.Add, contentDescription = null)
-                Spacer(modifier = Modifier.width(8.dp))
-                Text("Nuevo elemento")
-            }
+
         }
     }
 }
@@ -181,7 +174,11 @@ internal fun NodeCard(
                 IconButton(
                     onClick = onToggleComplete,
                     modifier = Modifier
-                        .size(36.dp)
+                        .size(48.dp)
+                        .semantics {
+                            contentDescription = if (node.isCompleted) "Marcar pendiente: ${node.title}" else "Completar: ${node.title}"
+                            stateDescription = if (node.isCompleted) "Completada" else "Pendiente"
+                        }
                         .clip(RoundedCornerShape(10.dp))
                         .background(if (node.isCompleted) completedTint else Arachn0deColors.ControlSurface),
                 ) {
@@ -257,7 +254,7 @@ internal fun NodeCard(
 
                 IconButton(
                     onClick = { showContextMenu = true },
-                    modifier = Modifier.size(32.dp),
+                    modifier = Modifier.size(48.dp),
                 ) {
                     Icon(
                         imageVector = Icons.Default.MoreVert,
@@ -277,7 +274,7 @@ internal fun NodeCard(
             onDismissRequest = { showContextMenu = false },
             title = { Text(node.title) },
             text = {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Column(modifier = Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     TextButton(
                         enabled = canMoveUp,
                         onClick = { onReorder(true) { showContextMenu = false } },

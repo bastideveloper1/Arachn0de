@@ -105,6 +105,8 @@ internal fun ProjectDashboardScreen(
                     ProjectList(
                         projects = projects,
                         projectProgressById = projectProgressById,
+                        reorderBusy = actions.operation.busy,
+                        reorderError = actions.operation.error,
                         listState = listState,
                         onCreateProject = { draft = EditorDraft(null, null, "", "") },
                         onEdit = { project ->

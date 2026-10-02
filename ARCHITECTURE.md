@@ -954,3 +954,13 @@ Si este núcleo es sólido, las capacidades posteriores podrán construirse prog
 - **Sin cambio de esquema ni migración:** Room permanece en versión 3, sin modificar datos confirmados ni introducir guardado automático de borradores.
 
 - La lista de hermanos muestra secciones **Disponibles** y **Completadas**, omitiendo grupos vacíos. El arrastre conserva posiciones dentro del mismo grupo y padre, con validación transaccional; los encabezados tienen claves propias y no son destinos. El detector conserva coordenadas estables mientras la tarjeta se desplaza visualmente y no se reinicia por cambios de callback. Home usa el PNG original suministrado, sin recoloreado.
+
+## Drag y reorder visual de proyectos y nodos
+
+El motor único `DragReorderState` y el detector de long press pertenecen a la lista. Las tarjetas reciben solo el modificador visual y el indicador de arrastre. El dedo se mide en píxeles del viewport; el punto agarrado se conserva y la capa gráfica deriva `translationY = fingerY - grabOffsetY - item.offset` del layout actual, también durante scroll. La identidad del gesto no depende del índice transitorio ni de callbacks de cada tarjeta.
+
+El orden transitorio contiene únicamente proyectos o hermanos del mismo proyecto, padre y grupo de completado. Se intercambia el elemento con un vecino inmediato cuando su centro cruza el centro de ese vecino; se espera que el nuevo orden sea medido antes de otro cruce. Los vecinos utilizan `animateItem` con animación de placement; el elemento agarrado sigue al dedo sin esa animación.
+
+Un loop con `withFrameNanos` calcula tiempo real (limitado a 50 ms tras pausas), usa una zona de 96 dp y una curva cuadrática de hasta 700 dp/s, y ejecuta `scrollBy`. Reevalúa cruces en cada frame y al mover el dedo. En los extremos del grupo se detiene el scroll en esa dirección para no arrastrar la lista hacia otro grupo o controles auxiliares.
+
+Al soltar, el ID ubicado en el índice final dentro del orden original es el target compatible con `reorderTo`. Solo se envía una operación si cambió el índice. El orden visual final permanece hasta la emisión correspondiente de Room; el error existente o un cambio en los miembros del grupo lo descarta. Cancelar, cambiar capa o destruir la composición no persiste y termina el motor. No se modifican repositorios, Room ni dependencias. La fluidez y el agarre durante auto-scroll deben validarse también en teléfono físico.

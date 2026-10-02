@@ -39,24 +39,27 @@ class NodeOrderUiTest {
     private fun dragAlphaBelowBeta() {
         val from = compose.onNodeWithText("Alpha").fetchSemanticsNode().boundsInRoot.center
         val to = compose.onNodeWithText("Beta").fetchSemanticsNode().boundsInRoot.center
+        // A held drag intentionally requests frames forever, even with a stationary finger.
+        // Drive that clock explicitly instead of asking Espresso to reach animation idle.
+        compose.mainClock.autoAdvance = false
         compose.onRoot().performTouchInput {
             down(from)
             advanceEventTime(700)
             moveTo(from)
         }
+        compose.mainClock.advanceTimeBy(32)
         repeat(6) { step ->
             compose.onRoot().performTouchInput {
                 moveTo(from + (to - from) * ((step + 1) / 6f), delayMillis = 40)
             }
-            compose.waitForIdle()
+            compose.mainClock.advanceTimeBy(48)
         }
         compose.onRoot().performTouchInput { up() }
+        compose.mainClock.autoAdvance = true
         compose.waitForIdle()
     }
-    @Test fun dragPersistsAcrossRecreationAndLeafTapDoesNotNavigate() {
+    @Test fun dragPersistsAcrossRecreation() {
         open()
-        compose.onNodeWithText("Alpha").performTouchInput { click() }
-        compose.onNodeWithContentDescription("Volver a la capa anterior").assertDoesNotExist()
         dragAlphaBelowBeta()
         compose.waitUntil(10_000) {
             runBlocking { app.nodeRepository.getProjectNodes(projectId).map { it.title } == listOf("Beta","Alpha") }

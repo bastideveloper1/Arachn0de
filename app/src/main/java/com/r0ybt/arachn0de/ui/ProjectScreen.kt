@@ -155,9 +155,15 @@ internal fun ProjectNodeScreen(
 
                 layerScrollStates.SaveableStateProvider(currentNodeId?.let { "node:$it" } ?: "project-root") {
                     val nodeListState = rememberLazyListState()
+                    val groups = listOf(false, true).associateWith { completed ->
+                        currentNodes.filter { it.projectId == project.id && it.parentId == currentNodeId && it.isCompleted == completed }.map { it.id }
+                    }
+                    val drag = rememberDragReorderState(nodeListState, "node:", groups, isSubmittingNode, actions.operation.error, currentNodeId) { source, target, _ ->
+                        actions.reorderTo(source, currentNodeId, target)
+                    }
                     LazyColumn(
                         state = nodeListState,
-                        modifier = Modifier.fillMaxWidth().weight(1f).testTag("nodes-list"),
+                        modifier = Modifier.fillMaxWidth().weight(1f).testTag("nodes-list").then(drag.gestureModifier),
                         verticalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
                         item(key = "layer-context", contentType = "context") {
@@ -232,6 +238,8 @@ internal fun ProjectNodeScreen(
                         }
                         for (completedGroup in listOf(false, true)) {
                             val groupNodes = currentNodes.filter { it.isCompleted == completedGroup }
+                            val renderNodes = drag.orderFor(completedGroup, groupNodes.map { it.id })
+                                .mapNotNull { id -> groupNodes.firstOrNull { it.id == id } }
                             if (groupNodes.isNotEmpty()) {
                                 item(key = "section:$completedGroup", contentType = "section") {
                                     Column {
@@ -245,46 +253,38 @@ internal fun ProjectNodeScreen(
                                     }
                                 }
                             }
-                        items(groupNodes, key = { "node:${it.id}" }, contentType = { "node" }) { node ->
-                            NodeCard(
-                                node = node,
-                                progress = progressMap[node.id],
-                                hasChildren = node.hasChildren,
-                                canToggleComplete = node.isCompletable,
-                                onOpen = {
-                                    currentPath.add(node.id)
-                                },
-                                onEdit = {
-                                    draft = EditorDraft(node.id, node.parentId, node.title, node.description)
-                                },
-                                canMoveUp = node.id != groupNodes.firstOrNull()?.id && !isSubmittingNode,
-                                canMoveDown = node.id != groupNodes.lastOrNull()?.id && !isSubmittingNode,
-                                onReorder = { moveUp, onSuccess ->
-                                    actions.reorder(node.id, node.parentId, moveUp, onSuccess)
-                                },
-                                onDrop = { offset ->
-                                    val visible = nodeListState.layoutInfo.visibleItemsInfo
-                                    val source = visible.firstOrNull { it.key == "node:${node.id}" }
-                                    if (source != null) {
-                                        val center = source.offset + source.size / 2f + offset
-                                        val siblings = currentNodes.filter { it.isCompleted == node.isCompleted }.associateBy { "node:${it.id}" }
-                                        val target = visible.filter { it.key in siblings }
-                                            .minByOrNull { kotlin.math.abs(it.offset + it.size / 2f - center) }
-                                        target?.let { siblings[it.key] }?.let {
-                                            actions.reorderTo(node.id, node.parentId, it.id)
-                                        }
-                                    }
-                                },
-                                onDelete = {
-                                    deletingNodeId = node.id
-                                    deletingNodeName = node.title
-                                },
-                                onToggleComplete = {
-                                    if (node.isCompletable) actions.toggle(node.id)
-                                },
-                                listState = nodeListState,
-                            )
-                        }
+                            items(renderNodes, key = { "node:${it.id}" }, contentType = { "node" }) { node ->
+                                val dragging = drag.isDragging(node.id)
+                                NodeCard(
+                                    node = node,
+                                    progress = progressMap[node.id],
+                                    hasChildren = node.hasChildren,
+                                    canToggleComplete = node.isCompletable,
+                                    onOpen = {
+                                        currentPath.add(node.id)
+                                    },
+                                    onEdit = {
+                                        draft = EditorDraft(node.id, node.parentId, node.title, node.description)
+                                    },
+                                    canMoveUp = node.id != renderNodes.firstOrNull()?.id && !isSubmittingNode,
+                                    canMoveDown = node.id != renderNodes.lastOrNull()?.id && !isSubmittingNode,
+                                    onReorder = { moveUp, onSuccess ->
+                                        actions.reorder(node.id, node.parentId, moveUp, onSuccess)
+                                    },
+                                    onDelete = {
+                                        deletingNodeId = node.id
+                                        deletingNodeName = node.title
+                                    },
+                                    onToggleComplete = {
+                                        if (node.isCompletable) actions.toggle(node.id)
+                                    },
+                                    dragging = dragging,
+                                    modifier = Modifier.animateItem(
+                                        fadeInSpec = null, fadeOutSpec = null,
+                                        placementSpec = if (dragging) null else androidx.compose.animation.core.spring(),
+                                    ).then(drag.cardModifier(node.id)),
+                                )
+                            }
                         }
                     }
                 }

@@ -10,7 +10,12 @@ import androidx.compose.material3.TextButton
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.r0ybt.arachn0de.domain.model.TitleLimits
@@ -26,6 +31,16 @@ internal fun NodeDialog(
 ) {
     var title by draft::title
     var description by draft::description
+    val titleFocusRequester = remember { FocusRequester() }
+    val keyboardController = LocalSoftwareKeyboardController.current
+    val shouldAutoFocusForNewNode = draft.id == null && title.isEmpty() && description.isEmpty()
+
+    LaunchedEffect(draft.id, title, description) {
+        if (shouldAutoFocusForNewNode) {
+            titleFocusRequester.requestFocus()
+            keyboardController?.show()
+        }
+    }
 
     AlertDialog(
         containerColor = Arachn0deColors.Surface,
@@ -42,7 +57,9 @@ internal fun NodeDialog(
                     supportingText = { Text("${TitleLimits.count(title)} / ${TitleLimits.NODE}") },
                     isError = TitleLimits.count(title) > TitleLimits.NODE,
                     singleLine = true,
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .focusRequester(titleFocusRequester),
                     enabled = !isSubmitting,
                 )
                 OutlinedTextField(

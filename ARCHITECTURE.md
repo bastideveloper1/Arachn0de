@@ -301,6 +301,8 @@ El porcentaje entero se trunca: `completed * 100 / total`. Los estados son `NOT_
 
 Los porcentajes y contadores no se guardan en SQLite. `NodeTreeSnapshot` calcula todos los progresos de una instantánea con un recorrido iterativo de hojas a raíz, sin profundidad fija. Un ciclo o relación inválida produce un error de integridad controlado, no recursión infinita.
 
+Además, el progreso del proyecto es derivado de todas las tareas hoja del árbol del proyecto según el mismo criterio: las capas no cuentan como unidades de trabajo, y el proyecto queda en `NO_WORK` si no hay hojas relevantes. La compensación del proyecto no se persiste ni se almacena en Room; se recalcula desde los nodos existentes y se usa solo para la representación visual.
+
 La UI de capas consume `NodeRepository.observeProjectState`: una emisión contiene nodos, relaciones y progreso coherentes. Al cambiar un descendiente, el porcentaje de la capa abierta se recalcula sin salir, volver a entrar ni refrescar manualmente.
 
 ---

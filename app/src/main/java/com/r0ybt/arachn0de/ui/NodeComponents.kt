@@ -170,7 +170,7 @@ internal fun NodeCard(
             .alpha(rowAlpha)
             .border(1.dp, Arachn0deColors.Outline.copy(alpha = 0.9f), RoundedCornerShape(8.dp))
             .zIndex(if (dragging) 1f else 0f)
-            .clickable(enabled = hasChildren, onClick = onOpen)
+            .clickable(onClick = onOpen)
             .pointerInput(node.id, node.isCompleted, canMoveUp || canMoveDown) {
                 detectDragGesturesAfterLongPress(
                     onDragStart = {
@@ -260,7 +260,7 @@ internal fun NodeCard(
                         maxLines = 2, overflow = TextOverflow.Ellipsis)
                 }
 
-                if (progress != null) {
+                if (hasChildren && progress != null) {
                     Spacer(modifier = Modifier.height(6.dp))
                     Text(
                         text = when (progress.state) {

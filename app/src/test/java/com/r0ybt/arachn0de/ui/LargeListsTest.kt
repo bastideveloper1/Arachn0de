@@ -61,7 +61,7 @@ class LargeListsTest {
     @Test fun projectListOnlyComposesViewportAndRetainsPersistentKeys() {
         val projects = (0 until 3_000).map { Project("p$it", "Project $it", "", 0, 0) }
         var selected: String? = null
-        compose.setContent { Arachn0deTheme { ProjectList(projects, {}, {}, {}, { selected = it.id }) } }
+        compose.setContent { Arachn0deTheme { ProjectList(projects, emptyMap(), {}, {}, {}, { selected = it.id }) } }
         compose.onNodeWithText("Project 2999").assertDoesNotExist()
         compose.onNode(hasScrollToIndexAction()).performScrollToIndex(2_999)
         compose.onNodeWithText("Project 2999").performClick()

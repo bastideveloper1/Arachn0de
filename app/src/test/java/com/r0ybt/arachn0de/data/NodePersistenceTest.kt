@@ -134,6 +134,38 @@ class NodePersistenceTest {
     }
 
     @Test
+    fun projectProgressIsDerivedOnlyFromLeafTasksAcrossAllDepths() = runBlocking {
+        val root = nodeRepository.createNode(project.id, null, "Proyecto")
+        val layerA = nodeRepository.createNode(project.id, root.id, "Capa A")
+        val layerB = nodeRepository.createNode(project.id, layerA.id, "Capa B")
+        val taskOne = nodeRepository.createNode(project.id, layerB.id, "Tarea 1")
+        val taskTwo = nodeRepository.createNode(project.id, layerA.id, "Tarea 2")
+        val topTask = nodeRepository.createNode(project.id, root.id, "Tarea raíz")
+
+        nodeRepository.setCompleted(taskOne.id, true)
+        nodeRepository.setCompleted(topTask.id, true)
+
+        val projectProgress = nodeRepository.calculateProjectProgress(project.id)
+
+        assertEquals(2, projectProgress?.completed)
+        assertEquals(3, projectProgress?.total)
+        assertEquals(66, projectProgress?.percentage)
+        assertEquals(NodeProgressState.PARTIAL, projectProgress?.state)
+        assertEquals(false, projectProgress?.isComplete)
+    }
+
+    @Test
+    fun projectProgressIsNoWorkWhenProjectHasNoNodes() = runBlocking {
+        val emptyProject = projectRepository.createProject("Proyecto vacío")
+
+        val projectProgress = nodeRepository.calculateProjectProgress(emptyProject.id)
+
+        assertEquals(NodeProgressState.NO_WORK, projectProgress?.state)
+        assertEquals(0, projectProgress?.total)
+        assertEquals(0, projectProgress?.percentage)
+    }
+
+    @Test
     fun depthAndAncestorsAreDerivedFromParentRelations() = runBlocking {
         val root = nodeRepository.createNode(project.id, null, "Root")
         val child = nodeRepository.createNode(project.id, root.id, "Child")

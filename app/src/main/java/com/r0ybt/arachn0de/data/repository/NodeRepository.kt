@@ -159,6 +159,20 @@ class NodeRepository(
         snapshot(nodeDao.getProjectNodes(current.projectId)).progressById[nodeId]
     }
 
+    suspend fun calculateProjectProgress(projectId: String): NodeProgress? = database.withTransaction {
+        val projectNodes = nodeDao.getProjectNodes(projectId)
+        if (projectNodes.isEmpty()) {
+            return@withTransaction NodeProgress(
+                nodeId = projectId,
+                completed = 0,
+                total = 0,
+                percentage = 0,
+                state = com.r0ybt.arachn0de.domain.model.NodeProgressState.NO_WORK,
+            )
+        }
+        snapshot(projectNodes).projectProgressById[projectId]
+    }
+
     suspend fun getProjectNodes(projectId: String): List<Node> =
         snapshot(nodeDao.getProjectNodes(projectId)).nodes
 

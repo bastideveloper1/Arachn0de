@@ -84,7 +84,7 @@ class MvpReadinessTest {
                     Arachn0deTheme {
                         Box(Modifier.requiredSize(320.dp, 480.dp)) {
                             AppSafeArea(WindowInsets(top = 52.dp, bottom = 24.dp)) {
-                                if (mounted.value) ProjectDashboardScreen(repository, emptyList())
+                                if (mounted.value) ProjectDashboardScreen(repository, emptyList(), emptyMap())
                             }
                         }
                     }

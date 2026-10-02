@@ -5,6 +5,7 @@ class NodeTreeSnapshot(val nodes: List<Node>) {
     val nodesById = nodes.associateBy { it.id }
     private val childrenByParent = nodes.groupBy { it.parentId }
     val progressById: Map<String, NodeProgress> = calculateProgress()
+    val projectProgressById: Map<String, NodeProgress> = calculateProjectProgress()
 
     fun childrenOf(parentId: String?): List<Node> =
         childrenByParent[parentId].orEmpty()
@@ -53,5 +54,37 @@ class NodeTreeSnapshot(val nodes: List<Node>) {
         }
         check(result.size == nodes.size) { "Cycle in node hierarchy" }
         return result
+    }
+
+    private fun calculateProjectProgress(): Map<String, NodeProgress> {
+        val byProject = nodes.groupBy { it.projectId }
+        return byProject.mapValues { (projectId, projectNodes) ->
+            val projectChildren = projectNodes.groupBy { it.parentId }
+            val leafNodes = projectNodes.filter { node -> !projectChildren.containsKey(node.id) }
+            if (leafNodes.isEmpty()) {
+                NodeProgress(
+                    nodeId = projectId,
+                    completed = 0,
+                    total = 0,
+                    percentage = 0,
+                    state = NodeProgressState.NO_WORK,
+                )
+            } else {
+                val completed = leafNodes.count { it.isCompleted }
+                val total = leafNodes.size
+                val percentage = ((completed.toLong() * 100) / total).toInt()
+                NodeProgress(
+                    nodeId = projectId,
+                    completed = completed,
+                    total = total,
+                    percentage = percentage,
+                    state = when {
+                        completed == 0 -> NodeProgressState.NOT_STARTED
+                        completed == total -> NodeProgressState.COMPLETE
+                        else -> NodeProgressState.PARTIAL
+                    },
+                )
+            }
+        }
     }
 }

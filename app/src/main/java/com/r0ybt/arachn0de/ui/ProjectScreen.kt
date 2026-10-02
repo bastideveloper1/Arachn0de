@@ -9,6 +9,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -251,7 +252,7 @@ internal fun ProjectNodeScreen(
                                 hasChildren = node.hasChildren,
                                 canToggleComplete = node.isCompletable,
                                 onOpen = {
-                                    if (node.hasChildren) currentPath.add(node.id)
+                                    currentPath.add(node.id)
                                 },
                                 onEdit = {
                                     draft = EditorDraft(node.id, node.parentId, node.title, node.description)
@@ -286,37 +287,39 @@ internal fun ProjectNodeScreen(
                         }
                     }
                 }
-                Button(
-                    onClick = { if (!isSubmittingNode) draft = EditorDraft(null, currentNodeId, "", "") },
-                    modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = Arachn0deColors.Primary),
-                    shape = RoundedCornerShape(14.dp),
-                    enabled = !isSubmittingNode,
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Icon(imageVector = Icons.Default.Add, contentDescription = null)
-                    Spacer(Modifier.width(8.dp))
-                    Text("Nuevo elemento")
-                }
-                Spacer(modifier = Modifier.height(8.dp))
-                Button(
-                    onClick = {
-                        expandedLayerIds = (expandedLayerIds.toSet() + currentPath).toList()
-                        showNavigator = true
-                    },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .heightIn(min = 48.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = Arachn0deColors.Primary.copy(alpha = 0.14f)),
-                    shape = RoundedCornerShape(12.dp),
-                ) {
-                    Image(
-                        painter = painterResource(com.r0ybt.arachn0de.R.drawable.iconovercapas),
-                        contentDescription = null,
-                        contentScale = ContentScale.Fit,
-                        modifier = Modifier.size(36.dp),
-                    )
-                    Spacer(Modifier.width(8.dp))
-                    Text("Capas de cebolla")
+                    Button(
+                        onClick = { if (!isSubmittingNode) draft = EditorDraft(null, currentNodeId, "", "") },
+                        modifier = Modifier.weight(1f).heightIn(min = 52.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = Arachn0deColors.Primary),
+                        shape = RoundedCornerShape(14.dp),
+                        enabled = !isSubmittingNode,
+                    ) {
+                        Icon(imageVector = Icons.Default.Add, contentDescription = null)
+                        Spacer(Modifier.width(8.dp))
+                        Text("Nuevo elemento")
+                    }
+                    Button(
+                        onClick = {
+                            expandedLayerIds = (expandedLayerIds.toSet() + currentPath).toList()
+                            showNavigator = true
+                        },
+                        modifier = Modifier.size(52.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = Arachn0deColors.ControlSurface),
+                        shape = RoundedCornerShape(12.dp),
+                        contentPadding = PaddingValues(0.dp),
+                    ) {
+                        Image(
+                            painter = painterResource(com.r0ybt.arachn0de.R.drawable.iconovercapas),
+                            contentDescription = "Capas de cebolla",
+                            contentScale = ContentScale.Fit,
+                            modifier = Modifier.size(28.dp),
+                        )
+                    }
                 }
             }
 

@@ -30,6 +30,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import com.r0ybt.arachn0de.domain.model.NodeProgress
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Brush
@@ -45,6 +46,7 @@ import com.r0ybt.arachn0de.ui.state.ProjectActions
 internal fun ProjectDashboardScreen(
     repository: ProjectRepository,
     projects: List<Project>,
+    projectProgressById: Map<String, NodeProgress>,
     onOpenProject: (Project) -> Unit = {},
     listState: LazyListState = rememberLazyListState(),
 ) {
@@ -102,6 +104,7 @@ internal fun ProjectDashboardScreen(
                 } else {
                     ProjectList(
                         projects = projects,
+                        projectProgressById = projectProgressById,
                         listState = listState,
                         onCreateProject = { draft = EditorDraft(null, null, "", "") },
                         onEdit = { project ->

@@ -52,6 +52,8 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.r0ybt.arachn0de.domain.model.NodeProgress
+import com.r0ybt.arachn0de.domain.model.NodeProgressState
 import com.r0ybt.arachn0de.domain.model.Project
 import com.r0ybt.arachn0de.ui.theme.Arachn0deColors
 import java.text.SimpleDateFormat
@@ -161,6 +163,7 @@ internal fun EmptyProjectsState(onCreateProject: () -> Unit) {
 @Composable
 internal fun ProjectList(
     projects: List<Project>,
+    projectProgressById: Map<String, NodeProgress>,
     onCreateProject: () -> Unit,
     onEdit: (Project) -> Unit,
     onDelete: (Project) -> Unit,
@@ -175,6 +178,7 @@ internal fun ProjectList(
         items(projects, key = { "project:${it.id}" }, contentType = { "project" }) { project ->
             ProjectCard(
                 project = project,
+                progress = projectProgressById[project.id],
                 onOpen = { onOpenProject(project) },
                 onEdit = { onEdit(project) },
                 onDelete = { onDelete(project) },
@@ -201,6 +205,7 @@ internal fun ProjectList(
 @Composable
 internal fun ProjectCard(
     project: Project,
+    progress: NodeProgress?,
     onOpen: () -> Unit,
     onEdit: () -> Unit,
     onDelete: () -> Unit,
@@ -257,6 +262,21 @@ internal fun ProjectCard(
                         overflow = TextOverflow.Ellipsis,
                         softWrap = true,
                         fontSize = 12.sp,
+                    )
+                }
+                if (progress != null) {
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = when (progress.state) {
+                            NodeProgressState.NO_WORK -> "Contenedor vacío"
+                            else -> "${progress.percentage}%"
+                        },
+                        color = when (progress.state) {
+                            NodeProgressState.NO_WORK -> Arachn0deColors.TextSecondary
+                            else -> Arachn0deColors.Accent
+                        },
+                        fontSize = 11.sp,
+                        fontWeight = if (progress.state == NodeProgressState.NO_WORK) FontWeight.Normal else FontWeight.SemiBold,
                     )
                 }
             }

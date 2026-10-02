@@ -135,6 +135,35 @@ class NodeInvariantTest {
     }
 
     @Test
+    fun movingRootTaskAndWholeLayerPreservesIdentitySubtreeAndDestinationOrder() = runBlocking {
+        val destination = create("Destination")
+        val existing = create("Existing", destination.id)
+        val task = nodes.createNode(projectId, null, "Task", "Keep description")
+        nodes.setCompleted(task.id, true)
+        val before = nodes.getNode(task.id)!!
+        assertTrue(nodes.moveNode(task.id, destination.id))
+        val moved = nodes.getNode(task.id)!!
+        assertEquals(before.copy(parentId = destination.id, position = existing.position + 1), moved)
+        assertEquals(listOf(existing.id, task.id), nodes.getProjectNodes(projectId).filter { it.parentId == destination.id }.map { it.id })
+
+        val layer = create("Layer")
+        val sublayer = create("Sublayer", layer.id)
+        val leaf = create("Leaf", sublayer.id)
+        val preserved = listOf(nodes.getNode(sublayer.id), nodes.getNode(leaf.id))
+        assertTrue(nodes.moveNode(layer.id, destination.id))
+        assertEquals(preserved, listOf(nodes.getNode(sublayer.id), nodes.getNode(leaf.id)))
+        assertEquals(listOf(destination.id, layer.id, sublayer.id, leaf.id), nodes.getNodePath(leaf.id).map { it.id })
+        // Moving does not interfere with the existing reorder semantics in the destination.
+        assertTrue(nodes.reorderNodeTo(layer.id, destination.id, existing.id))
+        assertEquals(listOf(layer.id, existing.id, task.id), nodes.getProjectNodes(projectId).filter { it.parentId == destination.id }.map { it.id })
+        db.close()
+        db = Arachn0deDatabase.create(context)
+        nodes = NodeRepository(db) { 100L }
+        assertEquals(destination.id, nodes.getNode(layer.id)!!.parentId)
+        assertEquals(preserved, listOf(nodes.getNode(sublayer.id), nodes.getNode(leaf.id)))
+    }
+
+    @Test
     fun databaseRejectsCyclesCrossProjectLinksAndContainerCompletionWithoutRepository() = runBlocking {
         val root = create("Root")
         val child = create("Child", root.id)

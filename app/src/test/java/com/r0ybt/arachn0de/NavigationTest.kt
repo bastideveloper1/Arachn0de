@@ -41,6 +41,10 @@ class NavigationTest {
     }
 
     private fun awaitText(text: String) {
+        if (text == "Capas de cebolla") {
+            compose.waitUntil(10_000) { compose.onAllNodesWithContentDescription(text).fetchSemanticsNodes().isNotEmpty() }
+            return
+        }
         if (text == "Nivel dos" || text == "Tarea final") {
             compose.waitUntil(10_000) { compose.onAllNodesWithTag("nodes-list").fetchSemanticsNodes().isNotEmpty() }
             compose.onNodeWithTag("nodes-list").performScrollToNode(hasText(text))
@@ -107,12 +111,12 @@ class NavigationTest {
         runBlocking { ProjectRepository(database.projectDao()).deleteProject(projectId) }
         compose.activityRule.scenario.recreate()
         awaitText("Proyectos")
-        compose.onNodeWithText("Capas de cebolla").assertDoesNotExist()
+        compose.onNodeWithContentDescription("Capas de cebolla").assertDoesNotExist()
     }
 
     @Test fun navigatorExpansionSurvivesClosingAndActivityRecreation() {
         openProject()
-        compose.onNodeWithText("Capas de cebolla").performClick()
+        compose.onNodeWithContentDescription("Capas de cebolla").performClick()
         compose.onNodeWithText("Nivel dos").assertDoesNotExist()
         compose.onNodeWithTag("layer-navigator").performScrollToNode(hasTestTag("expand:$rootId"))
         compose.onNodeWithTag("expand:$rootId").performClick()
@@ -121,7 +125,7 @@ class NavigationTest {
         compose.onNodeWithText("Cerrar").performClick()
         compose.activityRule.scenario.recreate()
         awaitText("Nivel uno")
-        compose.onNodeWithText("Capas de cebolla").performClick()
+        compose.onNodeWithContentDescription("Capas de cebolla").performClick()
         compose.onNodeWithTag("layer-navigator").performScrollToNode(hasText("Nivel dos"))
         compose.onNodeWithText("Nivel dos").assertExists()
         compose.onNodeWithTag("layer-navigator").performScrollToNode(hasTestTag("expand:$rootId"))
@@ -156,7 +160,7 @@ class NavigationTest {
         openProject()
         compose.onNodeWithText("Nivel uno").performTouchInput { click() }
         awaitText("Nivel dos")
-        compose.onNodeWithText("Capas de cebolla").performClick()
+        compose.onNodeWithContentDescription("Capas de cebolla").performClick()
         runBlocking { NodeRepository(database).deleteNode(rootId) }
         compose.activityRule.scenario.recreate()
         awaitText("Cerrar")
@@ -170,12 +174,12 @@ class NavigationTest {
         openProject()
         compose.onNodeWithText("Nivel uno").performTouchInput { click() }
         awaitText("Nivel dos")
-        compose.onNodeWithText("Capas de cebolla").performClick()
+        compose.onNodeWithContentDescription("Capas de cebolla").performClick()
         compose.onNodeWithTag("navigator-node:$rootId").assertIsSelected()
         compose.onAllNodesWithText("ACTUAL").assertCountEquals(1)
         compose.onNodeWithTag("navigator-project").assertIsNotSelected().performClick()
         compose.onNodeWithContentDescription("Volver a la capa anterior").assertDoesNotExist()
-        compose.onNodeWithText("Capas de cebolla").performClick()
+        compose.onNodeWithContentDescription("Capas de cebolla").performClick()
         compose.onNodeWithTag("navigator-home").performClick()
         awaitText("Proyectos")
     }

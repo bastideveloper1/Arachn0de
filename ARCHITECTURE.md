@@ -284,7 +284,7 @@ Se descarta mantener `isStructural` e `isCompletable` almacenados como fuentes i
 - Crear, trasladar o eliminar hijos aplica estas reglas en la misma operación atómica.
 - Editar título/descripción no modifica estructura, posición ni completado.
 - Completar/descompletar una capa se rechaza; nunca hay completado automático en cascada, ni hacia hijos ni hacia padres.
-- Completar una hoja no la elimina ni la oculta.
+- Completar una hoja no la elimina ni la oculta. Tampoco elimina su relación de parentesco: completar un hijo no convierte a su padre en hoja; perder el último hijo por eliminación o traslado sí lo hace.
 
 ## Cálculo exacto de progreso
 
@@ -388,7 +388,7 @@ Utilizar:
 
 Room debe proporcionar la capa de persistencia.
 
-El esquema actual es la versión 3. Se conservan los esquemas históricos 1 y 2 y sus rutas de migración; no se usa `fallbackToDestructiveMigration`.
+El esquema actual es la versión 4, que incorpora el orden persistente de proyectos. Se conservan los esquemas históricos 1, 2 y 3 y sus rutas de migración; no se usa `fallbackToDestructiveMigration`.
 
 ### Invariantes de nodos
 
@@ -399,7 +399,7 @@ El esquema actual es la versión 3. Se conservan los esquemas históricos 1 y 2 
 - Triggers SQLite impiden completar manualmente contenedores y normalizan el completado de los padres afectados al insertar, mover o eliminar hijos. Se instalan en bases nuevas y durante la migración 2→3; no aparecen en el JSON de esquema de Room, por lo que tienen pruebas explícitas.
 - Crear, editar, trasladar, completar/descompletar, alternar completado y borrar nodos pasan por transacciones de Room. Las escrituras de contenido, estructura y completado actualizan únicamente sus campos respectivos.
 - La eliminación de un nodo elimina su subárbol; la eliminación de un proyecto elimina sus nodos. El borrado por DAO/Repository desconecta los vínculos internos antes de eliminar, dentro de una única transacción, para evitar cascadas recursivas dependientes de la profundidad. Las claves foráneas CASCADE se conservan como defensa del esquema; SQL directo que omita este procedimiento sigue sujeto al límite de SQLite.
-- `moveNode(id, parentId)` separa traslado de edición. `parentId = null` significa mover a raíz; no significa conservar el padre. No se añade una interfaz de traslado en este bloque.
+- `moveNode(id, parentId)` separa traslado de edición. `parentId = null` significa mover a raíz; no significa conservar el padre. La interfaz «Mover a…» se añadió posteriormente reutilizando esta operación; véase la sección 21.
 - Al crear o trasladar a otro padre, la posición se asigna como máximo entre hermanos + 1 dentro de la transacción. El orden de lectura usa posición, fecha de creación e ID. Las posiciones históricas duplicadas no se renumeran en esta migración; existe desempate determinista. El reordenamiento manual y la normalización posterior se implementan en el bloque de orden de Sprint 5.5.
 - Las fechas de los nodos reflejan sus escrituras directas. No se actualizan fechas de ancestros por progreso derivado; la normalización automática del completado de padres conserva sus fechas.
 
@@ -692,11 +692,11 @@ Validación del bloque de escalabilidad: `./gradlew testDebugUnitTest --rerun-ta
 
 ## Reordenamiento manual y posiciones históricas — Sprint 5.5
 
-El menú de nodo permite mover arriba/abajo un lugar entre hermanos, tanto en raíz como dentro de una capa. Las opciones se deshabilitan en los extremos y durante una operación. La tarjeta conserva su ID, padre, descendientes, contenido y completado. El mapa y la lista reciben el orden nuevo a través del flujo de Room. Para los proyectos, el orden manual persistente utiliza `Project.position` y la base queda en Room v4; el drag-and-drop de proyectos sigue pendiente y no se implementa en esta iteración.
+El menú de nodo permite mover arriba/abajo un lugar entre hermanos, tanto en raíz como dentro de una capa. Las opciones se deshabilitan en los extremos y durante una operación. La tarjeta conserva su ID, padre, descendientes, contenido y completado. El mapa y la lista reciben el orden nuevo a través del flujo de Room. Para los proyectos, el orden manual persistente utiliza `Project.position` y la base queda en Room v4; el drag-and-drop de proyectos no se implementó en aquella iteración y se añadió después, como se documenta en «Drag y reorder visual de proyectos y nodos».
 
 `reorderNode` lee el nodo y sus hermanos dentro de una transacción, valida el padre esperado para rechazar acciones sobre una ubicación obsoleta, intercambia vecinos y asigna posiciones contiguas 0..n−1. No se utiliza el índice visual como identidad. Un nodo ausente o con padre distinto devuelve false; mover más allá de un extremo es una operación idempotente que también puede normalizar el grupo. Se actualizan únicamente posición y fecha de modificación, nunca una entidad completa. La fecha cambia para los dos nodos intercambiados; la reparación de numeración conserva fechas históricas.
 
-La política para datos antiguos es conservar el orden visible por posición, fecha de creación e ID y compactar cada grupo de hermanos por separado. `observePreparedProjectState`, utilizado por la pantalla, normaliza todos los grupos del proyecto en una única transacción antes de emitir el contenido inicial. `observeProjectState` y los demás observadores generales siguen siendo de solo lectura. La pantalla espera la primera instantánea validada antes de mostrar una ruta restaurada. Las normalizaciones posteriores sin cambios no escriben filas. No se modifica otro proyecto ni se requiere migración de esquema (Room permanece en versión 3).
+La política para datos antiguos es conservar el orden visible por posición, fecha de creación e ID y compactar cada grupo de hermanos por separado. `observePreparedProjectState`, utilizado por la pantalla, normaliza todos los grupos del proyecto en una única transacción antes de emitir el contenido inicial. `observeProjectState` y los demás observadores generales siguen siendo de solo lectura. La pantalla espera la primera instantánea validada antes de mostrar una ruta restaurada. Las normalizaciones posteriores sin cambios no escriben filas. No se modifica otro proyecto ni se requiere una migración adicional para normalizar nodos. El esquema actual es Room v4 por la incorporación de posiciones de proyectos.
 
 Reordenar vuelve a normalizar el grupo dentro de la misma transacción, incluso si había posiciones duplicadas o huecos. Crear/trasladar continúa añadiendo al final mediante máximo+1; si se alcanzó `Int.MAX_VALUE`, primero compacta los hermanos dentro de esa transacción. Borrar puede dejar huecos válidos hasta la próxima preparación o reordenamiento. No se introduce un índice UNIQUE sobre posiciones: las garantías se aplican mediante Repository, y SQL externo podría volver a introducir duplicados.
 
@@ -809,68 +809,176 @@ Estas funciones pertenecen al roadmap futuro.
 
 ---
 
-# 21. Roadmap conceptual
+# 21. Evolución posterior al MVP: arquitectura y roadmap
 
-La evolución prevista de Arachn0de incluye aproximadamente:
-
-## Etapa 1
-Núcleo, proyectos, nodos y Capas de cebolla.
-
-## Etapa 2
-Tareas enriquecidas, prioridades, estados, etiquetas, filtros y plantillas.
-
-## Etapa 3
-Objetivos, backlog, sprints, hitos, Kanban y Gantt.
-
-## Etapa 4
-Versiones, releases, Change Sets, changelog e integración con Git.
-
-## Etapa 5
-Project Path, archivos, código e issues asociados a archivos.
-
-## Etapa 6
-Personas, equipos, roles, disponibilidad y Scrum Poker.
-
-## Etapa 7
-Riesgos, reuniones, agenda, decisiones e historial del proyecto.
-
-## Etapa 8
-Motor de Atención.
-
-El sistema podrá identificar información que merece atención:
+Esta sección formaliza la evolución posterior al MVP y distingue los pasos implementados de los pendientes; documentar una capacidad futura no autoriza su implementación automática. Sustituye el orden aproximado del roadmap anterior; la secuencia es tentativa y puede revisarse antes de cada bloque. Las capacidades futuras se construirán sobre el mismo núcleo:
 
 ```text
-Proyecto con tareas vencidas
-Hito próximo
-Trabajo bloqueado
-Proyecto estancado
+Proyecto → Nodo → jerarquía arbitraria de Nodos → Capas de cebolla
+         → tareas hoja → progreso derivado → persistencia local
 ```
 
-Debe presentar señales al usuario sin sustituir sus decisiones.
+## IMPLEMENTADO — base que se conserva
 
-## Etapa 9
-Métricas, progreso histórico, tendencias, velocidad y estimado vs. real.
+`Node` es la unidad estructural universal. Actualmente una hoja sin hijos es una tarea completable; un nodo con hijos es una Capa/contenedor. La profundidad práctica no tiene un límite artificial. Una tarea que recibe hijos pasa a Capa; una Capa que pierde todos sus hijos por eliminación o traslado vuelve a hoja pendiente. Completar un hijo mantiene la relación estructural y la condición de Capa de su padre, aunque todos los hijos estén completados.
 
-## Etapa 10
-Uso personal del motor de Arachn0de.
+Las capas no se completan manualmente. El progreso existente se deriva de todas las tareas hoja descendientes, incluidas subcapas, sin contar los contenedores ni promediar sus porcentajes. `NodeTreeSnapshot` y los flujos del repositorio mantienen esta información reactiva. Actualmente no existe un tipo Nota ni una exclusión de hojas informativas del progreso.
 
-Ejemplos:
+La base actual es local-first y offline-first, sin cuenta ni backend obligatorio: proyectos, nodos, navegación por Capas de cebolla, orden manual, drag/reorder y progreso derivado se apoyan en Room/SQLite v4. Las secciones anteriores y los ajustes finales describen su implementación y las verificaciones físicas pendientes. Esta documentación no convierte esos pendientes en comprobaciones realizadas.
 
-- seguimiento de series y episodios;
-- colecciones;
-- compras en cuotas;
-- personas asociadas a pagos;
-- cuotas restantes;
-- saldo mensual y total.
+El repositorio ofrece `moveNode(id, parentId)` transaccional, valida el proyecto del padre y rechaza ciclos. La acción visible «Mover a…» está implementada y reutiliza esta operación. Reordenar entre hermanos y trasladar a otro padre son operaciones distintas.
 
-## Etapa 11
-Privacidad avanzada, cifrado local y protección de acceso.
+### Mover Node a otra Capa — IMPLEMENTADO
 
-## Etapa 12
-Sincronización local entre dispositivos mediante LAN.
+«Mover a…» está disponible en el menú contextual de tareas y Capas y en el contexto del nodo abierto. Abre un diálogo que reutiliza `LayerNavigator` y `LayerHierarchyIndex`, con expansión por rama, profundidad visible y lista lazy. Permite elegir la raíz del mismo proyecto, una Capa o una tarea hoja que pasará naturalmente a Capa. El origen y todos sus descendientes quedan excluidos; el destino se vuelve a validar transaccionalmente en `moveNode`. Seleccionar el padre actual es una operación sin cambios.
 
-## Etapa 13
-Arachn0de Desktop.
+Se conservan ID, título, descripción, completado del nodo trasladado, fecha de creación y subárbol. Solo se actualizan padre, posición y fecha de modificación del nodo movido, con la semántica existente de añadir al final mediante máximo+1 y compactar si hay saturación. Los triggers conservan las transiciones del antiguo/nuevo padre y `NodeTreeSnapshot` recalcula progreso. Los grupos disponibles/completados y el reorder siguen sus reglas actuales. No se modificaron repositorio, fórmula, Room ni schema para añadir esta interfaz.
+
+`NodeActions.move` usa `OperationState`; el selector solo se cierra después del éxito. Durante la escritura bloquea selección/cancelación; un fallo muestra el error existente y permite reintentar conservando el diálogo. El ID del origen y la expansión del selector se restauran como estado de UI, sin repetir automáticamente la escritura. Si el origen desaparece, el selector informa que ya no existe y permite cancelar.
+
+Cada emisión confirmada reconstruye iterativamente los ancestros del nodo abierto si sigue existiendo, preservando la ubicación dentro de él incluso si se movió un ancestro. Si desaparece, se conserva el retroceso seguro al prefijo válido existente. El traslado funciona solo dentro del mismo proyecto; no se implementa movimiento entre proyectos. La comprobación física del selector en pantallas pequeñas y jerarquías profundas sigue siendo parte del dogfooding.
+
+## PRÓXIMA ETAPA — capacidades previstas, no implementadas
+
+### 2. Persona y responsables
+
+**Persona** es el concepto principal de dominio; no se denomina User/Usuario. Representa a alguien relacionado con el trabajo o la información almacenada, sin implicar cuenta, login, autenticación ni instalación de Arachn0de.
+
+La primera versión prevista contempla `id`, nombre y avatar local. Rol, disponibilidad y otras propiedades quedan para ampliaciones posteriores. Los Nodes podrán asociarse con **0..N Personas** como responsables. Estas relaciones no deben reemplazar la identidad o ubicación del Node. No se define todavía su esquema persistente.
+
+### 3. Fechas opcionales
+
+Una tarea podrá tener fecha/hora de inicio y fecha/hora de vencimiento opcionales. Una fecha futura no ocultará la tarea ni la retirará de su estructura.
+
+Fechas y estado actual permitirán derivar condiciones como programada, activa, próxima, vencida o completada. Se evitará persistir estados temporales calculables. Las reglas exactas de clasificación y tratamiento temporal se diseñarán antes de implementar, sin crear ahora una segunda fuente de estado.
+
+### 4. Atención básica y futuro Motor de Atención
+
+El **Attention Engine / Motor de Atención** busca evitar que trabajo temporalmente importante quede perdido en jerarquías profundas. Por ejemplo, `Personal → Salud → Tratamiento → Tomar remedio — hoy 21:00` deberá poder generar señales en sus Capas ancestras cuando requiera atención.
+
+El principio es paralelo al progreso: **progreso de Capa = derivado de descendientes; atención de Capa = derivada de descendientes**. Las reglas de urgencia se diseñarán sobre fechas y estado existente, sin duplicar innecesariamente datos calculados.
+
+El motor no cambiará automáticamente el orden manual dentro de las Capas. Una futura vista transversal **Atención** podrá ordenar referencias a elementos por urgencia manteniendo su ubicación y orden estructurales originales.
+
+### 5. Nota y conversión Tarea ↔ Nota
+
+Una **Nota** se plantea inicialmente como un Node hoja de propósito informativo: observación, pregunta, decisión, informe, objetivo, links o información del proyecto. Tendrá título y descripción/contenido opcional; no se completará y no participará del progreso.
+
+Se prevé conversión **Tarea → Nota** y **Nota → Tarea**, preservando la identidad del Node, inicialmente solo para hojas. No se definen Notas como contenedores. Esta capacidad requiere diseñar una extensión futura del dominio: la regla actual de que toda hoja es completable sigue vigente hasta su implementación. La representación del propósito informativo y el tratamiento del completado al convertir quedan por diseñar; no se modifica ahora la fórmula ni el esquema.
+
+### 6. Creación múltiple combinable
+
+Se prevé un único generador de múltiples tareas/Nodes, sin sistemas independientes para series, cuotas o mediciones. Debe combinar cantidad **N**, numeración y reglas temporales.
+
+La numeración permitirá no numerar, colocar el número al principio o al final y configurar el número inicial. Ejemplos: `Episodio 1` hasta `Episodio 20`, o `1 Medición de peso`, `2 Medición de peso` y siguientes.
+
+Las reglas temporales previstas son sin fecha, diaria, semanal, mensual, anual y personalizada. Por ejemplo, generar seis elementos `Cuenta celular cuota 1` a `Cuenta celular cuota 6`, con vencimiento el día 15 de cada mes sucesivo. El generador no decide por ese ejemplo cómo se modelará Obligación.
+
+La futura vista Calendario se construirá sobre las fechas generadas; disponer de Calendario no será requisito para generarlas. El alcance de recurrencia, las reglas de calendario y la política de generación se diseñarán antes de implementarse.
+
+### 7. Obligación — comportamiento previsto, modelo abierto
+
+**DECISIÓN ABIERTA: no se fija el modelo de Obligación.** Las alternativas a evaluar son:
+
+- A) una cualidad, tipo o propiedad de una tarea;
+- B) una Capa con propósito financiero cuyas tareas representan Obligaciones;
+- C) otra composición que represente mejor el dominio.
+
+Ninguna alternativa se selecciona en esta etapa documental. No se diseñan tablas, columnas, relaciones persistidas ni schema financiero.
+
+El comportamiento deseado incluye representar importes monetarios, asociarlos a Personas/responsables, utilizar fechas y vencimientos, conocer cuánto corresponde pagar, sumar importes, calcular total pendiente, consultar totales por mes/período, filtrar por Persona y generar informes. Incluir elementos de Subcapas dependerá del modelo final aprobado.
+
+Ejemplo conceptual para Octubre: Internet $30.000 y Luz $45.000 a cargo de Persona A; Notebook $50.000 a cargo de Persona B. Se desea obtener total del período, total pendiente y total por Persona. El ejemplo expresa necesidades funcionales, no entidades ni una decisión de representación. Diseñar formalmente Obligación será un paso separado y previo a implementarla.
+
+### 8. Informe PNG de Obligaciones
+
+Tras definir e implementar Obligaciones y sus agregaciones, se prevé generar una imagen PNG compartible. Podrá filtrarse por período/mes, Capa y Persona, e incluir Persona, avatar, concepto, importe, vencimiento y total.
+
+Permitirá preparar un resumen de cuentas para compartirlo con una Persona. La información histórica de pago podrá incorporarse más adelante. Esta capacidad no implica enviar informes automáticamente ni exigir una cuenta o backend.
+
+### 9. Tags / Etiquetas
+
+Un Node podrá tener múltiples etiquetas. **Capa = dónde está el Node; Tag = qué es o con qué se relaciona.** Las etiquetas complementan la jerarquía y no la reemplazan.
+
+### 10. Favoritos
+
+Una tarea o Capa podrá marcarse como Favorita para referencia y acceso rápido desde una futura vista **Favoritos**. Inicialmente no mueve ni duplica el Node, no cambia prioridad y no afecta progreso.
+
+### 11. Menú lateral con destinos reales
+
+El menú lateral recuperará progresivamente destinos cuando existan funcionalidades utilizables: **Proyectos, Atención, Favoritos, Personas, Etiquetas, Configuración y Acerca de**. El panel actual conserva identidad, versión y cierre; no se añadirán destinos vacíos para llenar el menú.
+
+### 12. Acerca de e identidad
+
+Se prevé una pantalla **Acerca de Arachn0de** con nombre, versión instalada, descripción, autor, licencia/información pertinente y enlaces a GitHub, Mastodon e Instagram. Los datos y enlaces concretos se establecerán al implementarla.
+
+### 13. Releases y actualizaciones DE Arachn0de
+
+Debe formalizarse la transición del flujo actual de APK debug compartido manualmente hacia:
+
+```text
+build de release → versión formal → APK firmado → publicación de release
+→ comprobación de una versión posterior → descarga elegida por el usuario
+→ instalación gestionada y autorizada por Android
+```
+
+La estrategia concreta de distribución, firma y actualización se diseñará antes de implementarse, preservando los datos existentes. La comprobación de versiones será una capacidad de distribución compatible con el núcleo offline-first; no hará obligatorio un backend o una cuenta para usar la aplicación. La app no intentará eludir las protecciones de instalación de Android.
+
+Se distinguen dos conceptos: **Release DE Arachn0de** actualiza/distribuye la aplicación; **Release DENTRO de un Proyecto** será una futura función para gestionar versiones de proyectos administrados por Arachn0de. Una no implementa ni presupone la otra.
+
+### Secuencia tentativa de implementación
+
+Este orden es una propuesta revisable, no una obligación irreversible. El primer paso ya está implementado; los restantes siguen pendientes:
+
+1. Mover Node a otra Capa — IMPLEMENTADO.
+2. Personas.
+3. Responsables.
+4. Fechas.
+5. Atención básica.
+6. Notas y conversión Tarea ↔ Nota.
+7. Creación múltiple y numeración.
+8. Reglas temporales/recurrencia para creación múltiple.
+9. Diseñar formalmente Obligación.
+10. Implementar Obligaciones según el diseño aprobado.
+11. Agregaciones, totales y filtros financieros.
+12. Informe PNG.
+13. Tags.
+14. Favoritos.
+15. Menú lateral cuando sus destinos sean reales.
+16. Acerca de y redes.
+17. Sistema formal de releases/actualizaciones de Arachn0de.
+
+## ROADMAP FUTURO — evolución posterior
+
+Se conservan como posibilidades posteriores, sin implementación ni calendario comprometido:
+
+- Prioridad; historial de completado y pagos; fechas planificadas frente a reales.
+- Sprint, backlog, objetivos, hitos, puntos/dificultad, Kanban, Gantt derivada y exportación Gantt PNG.
+- Releases de proyectos, Change Sets, changelog e integración con Git.
+- Plantillas, métricas, progreso histórico, tendencias, velocidad y estimado frente a real.
+- Project Path, archivos, código, snippets e issues asociados a archivos.
+- Equipos, roles, disponibilidad, Scrum Poker, riesgos, reuniones, agenda, decisiones e historial especializado.
+- Usos personales como series, colecciones, cuotas y mediciones sobre el núcleo universal, sin universos de datos separados por cada caso.
+- Privacidad avanzada: cifrado local, contraseña maestra, bloqueo y contraseña señuelo.
+- Aplicación de escritorio, emparejamiento local Android ↔ Desktop y sincronización local sin nube, incluida LAN.
+
+Desktop y sincronización local constituyen una etapa avanzada/final de esta línea de evolución, no una prioridad inmediata.
+
+## DECISIONES ABIERTAS — resolver antes de implementar
+
+- **Obligación:** elegir entre A, B u otra composición mediante diseño específico; definir allí el alcance de agregación por Subcapas. No hay modelo ni schema aprobado.
+- **Capas explícitamente vacías:** decidir si deben existir en el futuro. Actualmente perder el último hijo convierte el nodo en tarea; esta documentación no cambia esa regla ni elige una alternativa futura.
+- **Notas:** representación del propósito informativo y reglas de conversión para hojas, incluyendo tratamiento del completado y exclusión del progreso. No se definen Notas contenedoras.
+- **Fechas, Atención y generación temporal:** precisar semántica temporal, urgencia y recurrencia antes de desarrollar cada bloque.
+- **Distribución de la app:** definir firma, publicación y comprobación/descarga de actualizaciones antes de implementarlas.
+
+## Principios de evolución
+
+Se preservan local-first, offline-first, privacidad y ausencia de cuenta/backend obligatorio. `Node` sigue siendo la primitiva estructural con jerarquía de profundidad práctica arbitraria. La información será derivada cuando sea posible, evitando persistir datos calculables innecesariamente.
+
+La UI seguirá separada del dominio, repositorios y persistencia. Room/SQLite es el almacenamiento local actual; cualquier extensión que necesite cambios persistentes se implementará en su propio bloque mediante migraciones seguras, sin romper datos existentes. No se crean migraciones en esta etapa documental.
+
+Las nuevas vistas reutilizarán el mismo dominio. La UI no debe sobrecargarse con conceptos que puedan permanecer implícitos. El siguiente desarrollo ampliará el núcleo del MVP; no lo reemplazará ni implementará anticipadamente todo este roadmap.
 
 ---
 
@@ -951,7 +1059,7 @@ Si este núcleo es sólido, las capacidades posteriores podrán construirse prog
 - Se reutiliza el índice iterativo de la jerarquía (ahora `LayerHierarchyIndex`) y una lista lazy con claves persistentes. Expansión, diálogo y desplazamiento siguen siendo estado restaurable; al abrir se expanden los ancestros de la ubicación actual. No se establece profundidad máxima.
 - Los títulos se validan tanto en formularios como en repositorios: proyectos hasta **60** caracteres y elementos hasta **100**. Se cuentan puntos de código Unicode tras quitar espacios de los extremos. Los formularios muestran contador y bloquean guardado fuera del límite; las vistas acotan títulos a dos líneas con ellipsis. Los datos históricos largos no se recortan automáticamente; para editarlos deben ajustarse al límite.
 - La descripción opcional del elemento ya existía en modelo, Room, borradores y formularios. Se conserva su creación/edición y persistencia; ahora también se muestra una vista previa en tarjetas y el texto completo al entrar al elemento. Puede quedar vacía.
-- **Sin cambio de esquema ni migración:** Room permanece en versión 3, sin modificar datos confirmados ni introducir guardado automático de borradores.
+- **Sin cambio de esquema ni migración en estos ajustes:** Room permanece en versión 4, sin modificar datos confirmados ni introducir guardado automático de borradores.
 
 - La lista de hermanos muestra secciones **Disponibles** y **Completadas**, omitiendo grupos vacíos. El arrastre conserva posiciones dentro del mismo grupo y padre, con validación transaccional; los encabezados tienen claves propias y no son destinos. El detector conserva coordenadas estables mientras la tarjeta se desplaza visualmente y no se reinicia por cambios de callback. Home usa el PNG original suministrado, sin recoloreado.
 

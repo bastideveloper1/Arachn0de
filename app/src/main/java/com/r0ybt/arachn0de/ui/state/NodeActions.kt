@@ -17,6 +17,11 @@ internal class NodeActions(private val repository: NodeRepository, scope: Corout
             repository.deleteNode(id)
         }, onSuccess)
 
+    fun move(id: String, parentId: String?, onSuccess: () -> Unit) =
+        operation.submit("No se pudo mover el elemento. Puedes reintentar.", {
+            repository.moveNode(id, parentId)
+        }, onSuccess)
+
     fun reorder(id: String, parentId: String?, moveUp: Boolean, onSuccess: () -> Unit) =
         operation.submit("No se pudo cambiar el orden. Puedes reintentar.", {
             repository.reorderNode(id, parentId, moveUp)

@@ -82,6 +82,7 @@ internal fun ProjectNodeScreen(
     var draft by rememberSaveable(project.id, stateSaver = EditorDraft.Saver) { mutableStateOf<EditorDraft?>(null) }
     var deletingNodeId by rememberSaveable(project.id) { mutableStateOf<String?>(null) }
     var deletingNodeName by rememberSaveable(project.id) { mutableStateOf("") }
+    var movingNodeId by rememberSaveable(project.id) { mutableStateOf<String?>(null) }
     var showDrawer by remember { mutableStateOf(false) }
     var showNavigator by rememberSaveable(project.id) { mutableStateOf(false) }
     var expandedLayerIds by rememberSaveable(
@@ -101,6 +102,18 @@ internal fun ProjectNodeScreen(
     val load = remember(project.id, nodeRepository) { LoadState() }
     LaunchedEffect(project.id, nodeRepository, load.attempt) {
         load.collect(nodeRepository.observePreparedProjectState(project.id)) { snapshot ->
+            // Preserve the open node when its ancestry changes, using only confirmed data.
+            val openId = currentPath.lastOrNull()
+            if (openId != null && openId in snapshot.nodesById) {
+                val updatedPath = mutableListOf<String>()
+                var cursor: String? = openId
+                while (cursor != null) {
+                    updatedPath.add(cursor)
+                    cursor = snapshot.nodesById.getValue(cursor).parentId
+                }
+                currentPath.clear()
+                currentPath.addAll(updatedPath.asReversed())
+            }
             // Validate only against a persisted emission, never the initial empty snapshot.
             var parentId: String? = null
             val validPath = currentPath.takeWhile { id ->
@@ -311,6 +324,10 @@ internal fun ProjectNodeScreen(
                                             }
                                         }
                                     }
+                                    TextButton(
+                                        onClick = { movingNodeId = currentNode.id },
+                                        enabled = !isSubmittingNode,
+                                    ) { Text("Mover a…") }
                                     Spacer(modifier = Modifier.height(12.dp))
                                 }
 
@@ -346,6 +363,7 @@ internal fun ProjectNodeScreen(
                                     onOpen = {
                                         currentPath.add(node.id)
                                     },
+                                    onMove = { if (!isSubmittingNode) movingNodeId = node.id },
                                     onEdit = {
                                         draft = EditorDraft(node.id, node.parentId, node.title, node.description)
                                     },
@@ -433,6 +451,43 @@ internal fun ProjectNodeScreen(
                 actions.save(project.id, editor.parentId, editor.id, title, description, editor.creationId) {
                     draft = null
                 }
+            },
+        )
+    }
+
+    movingNodeId?.let { sourceId ->
+        val source = projectState.nodesById[sourceId]
+        var moveExpanded by rememberSaveable(
+            sourceId,
+            stateSaver = listSaver<List<String>, String>(save = { it }, restore = { it.toList() }),
+        ) { mutableStateOf(currentPath.toList()) }
+        AlertDialog(
+            containerColor = Arachn0deColors.Surface,
+            titleContentColor = Arachn0deColors.TextPrimary,
+            textContentColor = Arachn0deColors.TextSecondary,
+            onDismissRequest = { if (!isSubmittingNode) movingNodeId = null },
+            title = { Text("Mover a…") },
+            text = {
+                Column {
+                    Text(source?.title ?: "El elemento ya no existe", maxLines = 2)
+                    Text("Selecciona un destino. Una tarea que reciba hijos pasará a ser Capa.")
+                    LayerNavigator(
+                        nodes = projectState.nodes,
+                        expandedIds = moveExpanded,
+                        onToggle = { id -> moveExpanded = if (id in moveExpanded) moveExpanded - id else moveExpanded + id },
+                        currentNodeId = source?.parentId,
+                        projectName = project.name,
+                        movingId = sourceId,
+                        enabled = !isSubmittingNode && source != null,
+                        onHome = {},
+                        onProject = { actions.move(sourceId, null) { movingNodeId = null } },
+                        onNavigateTo = { target -> actions.move(sourceId, target) { movingNodeId = null } },
+                    )
+                }
+            },
+            confirmButton = {},
+            dismissButton = {
+                TextButton(enabled = !isSubmittingNode, onClick = { movingNodeId = null }) { Text("Cancelar") }
             },
         )
     }

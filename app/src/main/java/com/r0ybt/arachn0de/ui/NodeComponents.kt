@@ -159,6 +159,7 @@ internal fun NodeCard(
     onToggleComplete: () -> Unit,
     modifier: Modifier = Modifier,
     dragging: Boolean = false,
+    onMove: () -> Unit = {},
 ) {
     var showContextMenu by remember { mutableStateOf(false) }
     val completedTint = if (node.isCompleted) Arachn0deColors.Completed else Arachn0deColors.Primary
@@ -309,6 +310,12 @@ internal fun NodeCard(
                         modifier = Modifier.fillMaxWidth(),
                     ) {
                         Text("Editar", textAlign = TextAlign.Start, modifier = Modifier.fillMaxWidth())
+                    }
+                    TextButton(
+                        onClick = { showContextMenu = false; onMove() },
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Text("Mover a…", textAlign = TextAlign.Start, modifier = Modifier.fillMaxWidth())
                     }
                     TextButton(
                         onClick = {

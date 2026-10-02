@@ -12,6 +12,8 @@ class LayerHierarchyIndexTest {
     @Test fun tenThousandDeepNodesNeedNoCallStack() {
         val nodes = (0 until 10_000).map { node("n$it", if (it == 0) null else "n${it - 1}") }
         val index = LayerHierarchyIndex(nodes)
+        assertEquals(10_000, index.subtreeIds("n0").size)
+        assertEquals(setOf("n9999"), index.subtreeIds("n9999"))
         assertEquals(1, index.visibleRows(emptySet()).size)
         val rows = index.visibleRows(nodes.map { it.id }.toSet())
         assertEquals(10_000, rows.size)

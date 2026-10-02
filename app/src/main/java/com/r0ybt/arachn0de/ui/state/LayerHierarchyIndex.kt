@@ -26,6 +26,15 @@ internal class LayerHierarchyIndex(nodes: List<Node>) {
         require(count == nodes.size) { "Cyclic tree" }
     }
 
+    fun subtreeIds(id: String): Set<String> = buildSet {
+        val pending = ArrayDeque<String>()
+        pending.add(id)
+        while (pending.isNotEmpty()) {
+            val next = pending.removeFirst()
+            if (add(next)) pending.addAll(children[next].orEmpty().map { it.id })
+        }
+    }
+
     fun visibleRows(expanded: Set<String>): List<LayerHierarchyRow> = buildList {
         val pending = ArrayDeque<Pair<Node, Int>>()
         children[null].orEmpty().asReversed().forEach { pending.addLast(it to 0) }

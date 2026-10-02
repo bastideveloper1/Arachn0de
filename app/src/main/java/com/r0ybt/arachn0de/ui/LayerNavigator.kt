@@ -59,33 +59,39 @@ internal fun LayerNavigator(
     onHome: () -> Unit,
     onProject: () -> Unit,
     listState: LazyListState = rememberLazyListState(),
+    movingId: String? = null,
+    enabled: Boolean = true,
 ) {
     val index = remember(nodes) { LayerHierarchyIndex(nodes) }
     val expanded = remember(expandedIds) { expandedIds.toSet() }
-    val rows = remember(index, expanded) { index.visibleRows(expanded).filter { it.hasChildren } }
+    val excluded = remember(index, movingId) { movingId?.let(index::subtreeIds).orEmpty() }
+    val rows = remember(index, expanded, excluded, movingId) {
+        index.visibleRows(expanded).filter { it.node.id !in excluded && (movingId != null || it.hasChildren) }
+    }
     LazyColumn(
         state = listState,
         modifier = Modifier.fillMaxWidth().height(360.dp).testTag("layer-navigator"),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        item(key = "home", contentType = "destination") {
+        if (movingId == null) item(key = "home", contentType = "destination") {
             NavigatorRoot("Proyectos", "Home", false, "navigator-home", onHome)
         }
         item(key = "project", contentType = "destination") {
-            NavigatorRoot(projectName, "Proyecto raíz", currentNodeId == null, "navigator-project", onProject)
+            NavigatorRoot(projectName, "Proyecto raíz", currentNodeId == null, "navigator-project", onProject, enabled)
         }
         items(rows, key = { "node:${it.node.id}" }, contentType = { "layer" }) { row ->
-            LayerDestination(row, row.node.id in expanded, row.node.id == currentNodeId, onToggle, onNavigateTo)
+            LayerDestination(row, row.node.id in expanded, row.node.id == currentNodeId, { if (enabled) onToggle(it) }, { if (enabled) onNavigateTo(it) }, enabled)
         }
     }
 }
 
 @Composable
-private fun NavigatorRoot(title: String, subtitle: String, isCurrent: Boolean, tag: String, onClick: () -> Unit) {
+private fun NavigatorRoot(title: String, subtitle: String, isCurrent: Boolean, tag: String, onClick: () -> Unit, enabled: Boolean = true) {
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         Spacer(Modifier.width(6.dp))
         Card(
             onClick = onClick,
+            enabled = enabled,
             modifier = Modifier.weight(1f).testTag(tag).semantics { selected = isCurrent }
                 .border(if (isCurrent) 2.dp else 1.dp, if (isCurrent) Arachn0deColors.PathHighlight else Arachn0deColors.Outline, RoundedCornerShape(8.dp)),
             shape = RoundedCornerShape(8.dp),
@@ -122,6 +128,7 @@ internal fun LayerDestination(
     isCurrent: Boolean,
     onToggle: (String) -> Unit,
     onNavigateTo: (String) -> Unit,
+    enabled: Boolean = true,
 ) {
     val depth = row.depth
     Column(modifier = Modifier.fillMaxWidth()) {
@@ -151,7 +158,7 @@ internal fun LayerDestination(
                     .testTag("navigator-node:${row.node.id}")
                     .semantics { selected = isCurrent }
                     .border(if (isCurrent) 2.dp else 1.dp, if (isCurrent) Arachn0deColors.PathHighlight else Arachn0deColors.Outline, RoundedCornerShape(8.dp))
-                    .clickable { onNavigateTo(row.node.id) },
+                    .clickable(enabled = enabled) { onNavigateTo(row.node.id) },
                 colors = CardDefaults.cardColors(containerColor = if (isCurrent) Arachn0deColors.AccentSurface else Arachn0deColors.Surface),
                 shape = RoundedCornerShape(8.dp),
             ) {
@@ -206,7 +213,7 @@ internal fun LayerDestination(
                     }
 
                     if (row.hasChildren) {
-                        IconButton(onClick = { onToggle(row.node.id) }, modifier = Modifier.testTag("expand:${row.node.id}")) {
+                        IconButton(enabled = enabled, onClick = { onToggle(row.node.id) }, modifier = Modifier.testTag("expand:${row.node.id}")) {
                             Icon(
                                 imageVector = if (isExpanded) Icons.Default.ExpandMore else Icons.Default.ChevronRight,
                                 contentDescription = if (isExpanded) "Contraer rama" else "Expandir rama",

@@ -200,9 +200,12 @@ Propiedades iniciales aproximadas:
 id
 name
 description
+position
 createdAt
 updatedAt
 ```
+
+La lista global de proyectos se ordena por `position`, con `createdAt` e `id` como desempates deterministas. El esquema Room se actualizó a versión 4 para persistir ese orden sin perder datos antiguos ni introducir una segunda regla de orden distinta a la ya validada para nodos.
 
 ## Node
 
@@ -689,7 +692,7 @@ Validación del bloque de escalabilidad: `./gradlew testDebugUnitTest --rerun-ta
 
 ## Reordenamiento manual y posiciones históricas — Sprint 5.5
 
-El menú de nodo permite mover arriba/abajo un lugar entre hermanos, tanto en raíz como dentro de una capa. Las opciones se deshabilitan en los extremos y durante una operación. La tarjeta conserva su ID, padre, descendientes, contenido y completado. El mapa y la lista reciben el orden nuevo a través del flujo de Room. No se implementa arrastrar ni traslado entre padres desde la UI en este bloque.
+El menú de nodo permite mover arriba/abajo un lugar entre hermanos, tanto en raíz como dentro de una capa. Las opciones se deshabilitan en los extremos y durante una operación. La tarjeta conserva su ID, padre, descendientes, contenido y completado. El mapa y la lista reciben el orden nuevo a través del flujo de Room. Para los proyectos, el orden manual persistente utiliza `Project.position` y la base queda en Room v4; el drag-and-drop de proyectos sigue pendiente y no se implementa en esta iteración.
 
 `reorderNode` lee el nodo y sus hermanos dentro de una transacción, valida el padre esperado para rechazar acciones sobre una ubicación obsoleta, intercambia vecinos y asigna posiciones contiguas 0..n−1. No se utiliza el índice visual como identidad. Un nodo ausente o con padre distinto devuelve false; mover más allá de un extremo es una operación idempotente que también puede normalizar el grupo. Se actualizan únicamente posición y fecha de modificación, nunca una entidad completa. La fecha cambia para los dos nodos intercambiados; la reparación de numeración conserva fechas históricas.
 

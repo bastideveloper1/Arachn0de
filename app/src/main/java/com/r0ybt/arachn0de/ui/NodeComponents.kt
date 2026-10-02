@@ -5,6 +5,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
+import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.zIndex
 import androidx.compose.foundation.layout.Arrangement
@@ -43,6 +45,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -58,6 +61,10 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.r0ybt.arachn0de.domain.model.Node
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
 import com.r0ybt.arachn0de.domain.model.NodeProgress
 import com.r0ybt.arachn0de.domain.model.NodeProgressState
 import com.r0ybt.arachn0de.ui.theme.Arachn0deColors
@@ -154,11 +161,19 @@ internal fun NodeCard(
     onReorder: (Boolean, () -> Unit) -> Unit,
     onToggleComplete: () -> Unit,
     onDrop: (Float) -> Unit = {},
+    listState: LazyListState = rememberLazyListState(),
 ) {
     var showContextMenu by remember { mutableStateOf(false) }
     var dragging by remember(node.id) { mutableStateOf(false) }
     var dragOffset by remember(node.id) { mutableStateOf(0f) }
     val latestOnDrop by rememberUpdatedState(onDrop)
+    val scope = rememberCoroutineScope()
+    var autoScrollJob by remember(node.id) { mutableStateOf<Job?>(null) }
+
+    fun cancelAutoScroll() {
+        autoScrollJob?.cancel()
+        autoScrollJob = null
+    }
 
     val completedTint = if (node.isCompleted) Arachn0deColors.Completed else Arachn0deColors.Primary
     val displayTextColor = if (node.isCompleted) Arachn0deColors.TextCompleted else Arachn0deColors.TextPrimary
@@ -171,24 +186,56 @@ internal fun NodeCard(
             .border(1.dp, Arachn0deColors.Outline.copy(alpha = 0.9f), RoundedCornerShape(8.dp))
             .zIndex(if (dragging) 1f else 0f)
             .clickable(onClick = onOpen)
-            .pointerInput(node.id, node.isCompleted, canMoveUp || canMoveDown) {
+            .pointerInput(node.id, node.isCompleted, canMoveUp || canMoveDown, listState) {
                 detectDragGesturesAfterLongPress(
                     onDragStart = {
                         dragging = canMoveUp || canMoveDown
                         dragOffset = 0f
+                        cancelAutoScroll()
                     },
                     onDrag = { change, amount ->
                         if (dragging) {
                             change.consume()
                             dragOffset += amount.y
+                            val direction = DragAutoScroll.edgeDirection(listState, "node:${node.id}", dragOffset)
+                            if (direction != 0) {
+                                cancelAutoScroll()
+                                autoScrollJob = scope.launch {
+                                    while (isActive) {
+                                        val nextDirection = DragAutoScroll.edgeDirection(listState, "node:${node.id}", dragOffset)
+                                        if (nextDirection == 0) break
+                                        val canScroll = when {
+                                            nextDirection < 0 -> listState.firstVisibleItemIndex > 0
+                                            nextDirection > 0 -> listState.firstVisibleItemIndex < listState.layoutInfo.totalItemsCount - 1
+                                            else -> false
+                                        }
+                                        if (!canScroll) break
+                                        val nextIndex = when {
+                                            nextDirection < 0 -> (listState.firstVisibleItemIndex - 1).coerceAtLeast(0)
+                                            nextDirection > 0 -> (listState.firstVisibleItemIndex + 1).coerceAtMost(listState.layoutInfo.totalItemsCount - 1)
+                                            else -> listState.firstVisibleItemIndex
+                                        }
+                                        if (nextIndex == listState.firstVisibleItemIndex) break
+                                        listState.scrollToItem(nextIndex)
+                                        delay(16)
+                                    }
+                                }
+                            } else {
+                                cancelAutoScroll()
+                            }
                         }
                     },
                     onDragEnd = {
+                        cancelAutoScroll()
                         if (dragging && dragOffset != 0f) latestOnDrop(dragOffset)
                         dragging = false
                         dragOffset = 0f
                     },
-                    onDragCancel = { dragging = false; dragOffset = 0f },
+                    onDragCancel = {
+                        cancelAutoScroll()
+                        dragging = false
+                        dragOffset = 0f
+                    },
                 )
             }
             .graphicsLayer {

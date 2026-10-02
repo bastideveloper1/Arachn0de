@@ -1,6 +1,7 @@
 package com.r0ybt.arachn0de.ui
 
 import androidx.compose.runtime.*
+import androidx.compose.ui.geometry.Offset
 import androidx.room.Room
 import androidx.room.withTransaction
 import androidx.test.core.app.ApplicationProvider
@@ -61,11 +62,46 @@ class LargeListsTest {
     @Test fun projectListOnlyComposesViewportAndRetainsPersistentKeys() {
         val projects = (0 until 3_000).map { Project("p$it", "Project $it", "", 0, 0) }
         var selected: String? = null
-        compose.setContent { Arachn0deTheme { ProjectList(projects, emptyMap(), {}, {}, {}, { selected = it.id }) } }
+        compose.setContent { Arachn0deTheme { ProjectList(projects, emptyMap(), {}, {}, {}, { selected = it.id }, { _, _ -> }) } }
         compose.onNodeWithText("Project 2999").assertDoesNotExist()
         compose.onNode(hasScrollToIndexAction()).performScrollToIndex(2_999)
         compose.onNodeWithText("Project 2999").performClick()
         compose.runOnIdle { assertEquals("p2999", selected) }
+    }
+
+    @Test fun projectListLongPressDragReordersByStableId() {
+        val projects = listOf(
+            Project("p1", "Project 1", "", 0, 0),
+            Project("p2", "Project 2", "", 0, 0),
+            Project("p3", "Project 3", "", 0, 0),
+        )
+        var reorder: Pair<String, String>? = null
+        compose.setContent {
+            Arachn0deTheme {
+                ProjectList(
+                    projects = projects,
+                    projectProgressById = emptyMap(),
+                    onCreateProject = {},
+                    onEdit = {},
+                    onDelete = {},
+                    onOpenProject = {},
+                    onReorderTo = { fromId, toId -> reorder = fromId to toId },
+                )
+            }
+        }
+
+        compose.onNodeWithText("Project 2").performTouchInput {
+            down(center)
+            advanceEventTime(600)
+            moveBy(Offset(0f, 200f))
+            up()
+        }
+
+        compose.runOnIdle {
+            assertNotNull(reorder)
+            assertEquals("p2", reorder!!.first)
+            assertEquals("p3", reorder!!.second)
+        }
     }
     @Test fun deepNavigatorComposesOnlyVisibleAncestorsAndNavigatesById() {
         val nodes = (0 until 5_000).map { node("ancestor$it", if (it == 0) null else "ancestor${it - 1}") } + node("lastTask", "ancestor4999")

@@ -16,4 +16,9 @@ internal class ProjectActions(private val repository: ProjectRepository, scope: 
         operation.submit("No se pudo eliminar el proyecto. Puedes reintentar.", {
             repository.deleteProject(id)
         }, onSuccess)
+
+    fun reorderTo(id: String, targetId: String) =
+        operation.submit("No se pudo cambiar el orden. Puedes reintentar.", {
+            repository.reorderProjectTo(id, targetId)
+        })
 }

@@ -282,6 +282,7 @@ internal fun ProjectNodeScreen(
                                 onToggleComplete = {
                                     if (node.isCompletable) actions.toggle(node.id)
                                 },
+                                listState = nodeListState,
                             )
                         }
                         }

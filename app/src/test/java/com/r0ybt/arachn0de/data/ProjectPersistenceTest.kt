@@ -89,7 +89,7 @@ class ProjectPersistenceTest {
         assertNull(repository.getProject(project.id))
         assertFalse(repository.deleteProject(project.id))
         assertFalse(repository.updateProject(project.id, "Missing", ""))
-        assertEquals(listOf(other), repository.observeProjects().first())
+        assertEquals(listOf(other.copy(position = 0)), repository.observeProjects().first())
     }
 
     @Test
@@ -105,13 +105,68 @@ class ProjectPersistenceTest {
     @Test
     fun orderingUsesCreationTimeAndIdToBreakTies() = runBlocking {
         val dao = database.projectDao()
-        dao.insert(ProjectEntity("z", "First alphabetically", "", 100, 100))
-        dao.insert(ProjectEntity("a", "Last alphabetically", "", 100, 100))
-        dao.insert(ProjectEntity("older", "Older", "", 50, 50))
+        dao.insert(ProjectEntity("z", "First alphabetically", "", 100, 100, 0))
+        dao.insert(ProjectEntity("a", "Last alphabetically", "", 100, 100, 1))
+        dao.insert(ProjectEntity("older", "Older", "", 50, 50, 2))
 
         assertEquals(listOf("older", "a", "z"), repository.observeProjects().first().map { it.id })
         repository.updateProject("z", "Renamed", "")
         assertEquals(listOf("older", "a", "z"), repository.observeProjects().first().map { it.id })
+    }
+
+    @Test
+    fun projectOrderUsesPositionAndPersistsAcrossReopen() = runBlocking {
+        val first = repository.createProject("First")
+        val second = repository.createProject("Second")
+        val third = repository.createProject("Third")
+
+        assertEquals(listOf(first.id, second.id, third.id), repository.observeProjects().first().map { it.id })
+        assertEquals(listOf(0, 1, 2), repository.observeProjects().first().map { it.position })
+
+        assertTrue(repository.reorderProject(second.id, true))
+        assertEquals(listOf(second.id, first.id, third.id), repository.observeProjects().first().map { it.id })
+        assertEquals(listOf(0, 1, 2), repository.observeProjects().first().map { it.position })
+
+        assertTrue(repository.reorderProject(second.id, false))
+        assertEquals(listOf(first.id, second.id, third.id), repository.observeProjects().first().map { it.id })
+
+        assertTrue(repository.reorderProjectTo(third.id, first.id))
+        assertEquals(listOf(third.id, first.id, second.id), repository.observeProjects().first().map { it.id })
+
+        assertTrue(repository.deleteProject(second.id))
+        assertEquals(listOf(0, 1), repository.observeProjects().first().map { it.position })
+
+        database.close()
+        openDatabase()
+        assertEquals(listOf(third.id, first.id), repository.observeProjects().first().map { it.id })
+    }
+
+    @Test
+    fun migration3To4PreservesLegacyOrderAndAssignsSequentialPositions() = runBlocking {
+        val legacy = context.openOrCreateDatabase("arachn0de.db", Context.MODE_PRIVATE, null)
+        legacy.setVersion(3)
+        legacy.execSQL("DROP TABLE IF EXISTS nodes")
+        legacy.execSQL("DROP TABLE IF EXISTS projects")
+        legacy.execSQL(
+            "CREATE TABLE projects (id TEXT NOT NULL PRIMARY KEY, name TEXT NOT NULL, description TEXT NOT NULL, createdAt INTEGER NOT NULL, updatedAt INTEGER NOT NULL)",
+        )
+        legacy.execSQL(
+            "CREATE TABLE nodes (id TEXT NOT NULL PRIMARY KEY, projectId TEXT NOT NULL, parentId TEXT, title TEXT NOT NULL, description TEXT NOT NULL, isCompleted INTEGER NOT NULL, position INTEGER NOT NULL, createdAt INTEGER NOT NULL, updatedAt INTEGER NOT NULL, FOREIGN KEY(projectId) REFERENCES projects(id) ON DELETE CASCADE ON UPDATE NO ACTION, FOREIGN KEY(projectId, parentId) REFERENCES nodes(projectId, id) ON DELETE CASCADE ON UPDATE NO ACTION)",
+        )
+        legacy.execSQL("CREATE UNIQUE INDEX index_nodes_projectId_id ON nodes(projectId, id)")
+        legacy.execSQL("CREATE INDEX index_nodes_projectId_parentId ON nodes(projectId, parentId)")
+        legacy.execSQL("INSERT INTO projects VALUES ('c', 'C', '', 300, 300)")
+        legacy.execSQL("INSERT INTO projects VALUES ('a', 'A', '', 100, 100)")
+        legacy.execSQL("INSERT INTO projects VALUES ('b', 'B', '', 200, 200)")
+        legacy.close()
+
+        database.close()
+        database = Arachn0deDatabase.create(context)
+        repository = ProjectRepository(database.projectDao()) { now }
+
+        val ordered = repository.observeProjects().first().map { it.id }
+        assertEquals(listOf("a", "b", "c"), ordered)
+        assertEquals(listOf(0, 1, 2), repository.observeProjects().first().map { it.position })
     }
 
     @Test

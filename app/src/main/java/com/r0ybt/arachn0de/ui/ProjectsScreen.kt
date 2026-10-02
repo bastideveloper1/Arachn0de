@@ -115,6 +115,9 @@ internal fun ProjectDashboardScreen(
                             deletingProjectName = project.name
                         },
                         onOpenProject = onOpenProject,
+                        onReorderTo = { fromId, toId ->
+                            actions.reorderTo(fromId, toId)
+                        },
                     )
                 }
             }

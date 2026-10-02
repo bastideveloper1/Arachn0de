@@ -9,11 +9,20 @@ import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface ProjectDao {
-    @Query("SELECT * FROM projects ORDER BY createdAt ASC, id ASC")
+    @Query("SELECT * FROM projects ORDER BY position ASC, createdAt ASC, id ASC")
     fun observeAll(): Flow<List<ProjectEntity>>
+
+    @Query("SELECT * FROM projects ORDER BY position ASC, createdAt ASC, id ASC")
+    suspend fun getAll(): List<ProjectEntity>
 
     @Query("SELECT * FROM projects WHERE id = :id")
     suspend fun getById(id: String): ProjectEntity?
+
+    @Query("SELECT MAX(position) FROM projects")
+    suspend fun maxPosition(): Int?
+
+    @Query("UPDATE projects SET position = :position, updatedAt = :updatedAt WHERE id = :id")
+    suspend fun updateOrder(id: String, position: Int, updatedAt: Long): Int
 
     @Insert(onConflict = OnConflictStrategy.ABORT)
     suspend fun insert(project: ProjectEntity)

@@ -3,6 +3,7 @@ package com.r0ybt.arachn0de.ui
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -36,6 +37,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.heightIn
@@ -47,11 +50,18 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.zIndex
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
 import com.r0ybt.arachn0de.domain.model.NodeProgress
 import com.r0ybt.arachn0de.domain.model.NodeProgressState
 import com.r0ybt.arachn0de.domain.model.Project
@@ -168,6 +178,7 @@ internal fun ProjectList(
     onEdit: (Project) -> Unit,
     onDelete: (Project) -> Unit,
     onOpenProject: (Project) -> Unit,
+    onReorderTo: (String, String) -> Unit = { _, _ -> },
     listState: LazyListState = rememberLazyListState(),
 ) {
     LazyColumn(
@@ -182,6 +193,17 @@ internal fun ProjectList(
                 onOpen = { onOpenProject(project) },
                 onEdit = { onEdit(project) },
                 onDelete = { onDelete(project) },
+                listState = listState,
+                onDrop = { offset ->
+                    val visible = listState.layoutInfo.visibleItemsInfo
+                    val sourceKey = "project:${project.id}"
+                    val source = visible.firstOrNull { it.key.toString() == sourceKey } ?: return@ProjectCard
+                    val center = source.offset + source.size / 2f + offset
+                    val target = visible
+                        .filter { it.key.toString() != sourceKey && it.key.toString().startsWith("project:") }
+                        .minByOrNull { kotlin.math.abs(it.offset + it.size / 2f - center) }
+                    target?.let { onReorderTo(project.id, it.key.toString().removePrefix("project:")) }
+                },
             )
         }
 
@@ -209,15 +231,86 @@ internal fun ProjectCard(
     onOpen: () -> Unit,
     onEdit: () -> Unit,
     onDelete: () -> Unit,
+    onDrop: (Float) -> Unit = {},
+    listState: LazyListState = rememberLazyListState(),
 ) {
     var showActions by remember { mutableStateOf(false) }
+    var dragging by remember(project.id) { mutableStateOf(false) }
+    var dragOffset by remember(project.id) { mutableStateOf(0f) }
+    val latestOnDrop by rememberUpdatedState(onDrop)
+    val scope = rememberCoroutineScope()
+    var autoScrollJob by remember(project.id) { mutableStateOf<Job?>(null) }
+
+    fun cancelAutoScroll() {
+        autoScrollJob?.cancel()
+        autoScrollJob = null
+    }
+
     Card(
         shape = RoundedCornerShape(8.dp),
         colors = CardDefaults.cardColors(containerColor = Arachn0deColors.Surface),
         modifier = Modifier
             .fillMaxWidth()
+            .alpha(if (dragging) 1f else 1f)
             .border(1.dp, Arachn0deColors.Outline.copy(alpha = 0.85f), RoundedCornerShape(8.dp))
-            .clickable(onClick = onOpen),
+            .zIndex(if (dragging) 1f else 0f)
+            .clickable(onClick = onOpen)
+            .pointerInput(project.id, listState) {
+                detectDragGesturesAfterLongPress(
+                    onDragStart = {
+                        dragging = true
+                        dragOffset = 0f
+                        cancelAutoScroll()
+                    },
+                    onDrag = { change, amount ->
+                        if (dragging) {
+                            change.consume()
+                            dragOffset += amount.y
+                            val direction = DragAutoScroll.edgeDirection(listState, "project:${project.id}", dragOffset)
+                            if (direction != 0) {
+                                cancelAutoScroll()
+                                autoScrollJob = scope.launch {
+                                    while (isActive) {
+                                        val nextDirection = DragAutoScroll.edgeDirection(listState, "project:${project.id}", dragOffset)
+                                        if (nextDirection == 0) break
+                                        val canScroll = when {
+                                            nextDirection < 0 -> listState.firstVisibleItemIndex > 0
+                                            nextDirection > 0 -> listState.firstVisibleItemIndex < listState.layoutInfo.totalItemsCount - 1
+                                            else -> false
+                                        }
+                                        if (!canScroll) break
+                                        val nextIndex = when {
+                                            nextDirection < 0 -> (listState.firstVisibleItemIndex - 1).coerceAtLeast(0)
+                                            nextDirection > 0 -> (listState.firstVisibleItemIndex + 1).coerceAtMost(listState.layoutInfo.totalItemsCount - 1)
+                                            else -> listState.firstVisibleItemIndex
+                                        }
+                                        if (nextIndex == listState.firstVisibleItemIndex) break
+                                        listState.scrollToItem(nextIndex)
+                                        delay(16)
+                                    }
+                                }
+                            } else {
+                                cancelAutoScroll()
+                            }
+                        }
+                    },
+                    onDragEnd = {
+                        cancelAutoScroll()
+                        if (dragging && dragOffset != 0f) latestOnDrop(dragOffset)
+                        dragging = false
+                        dragOffset = 0f
+                    },
+                    onDragCancel = {
+                        cancelAutoScroll()
+                        dragging = false
+                        dragOffset = 0f
+                    },
+                )
+            }
+            .graphicsLayer {
+                translationY = dragOffset
+                shadowElevation = if (dragging) 8.dp.toPx() else 0f
+            },
     ) {
         Row(
             modifier = Modifier

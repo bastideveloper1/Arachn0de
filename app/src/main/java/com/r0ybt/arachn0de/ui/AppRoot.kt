@@ -4,6 +4,7 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -19,6 +20,7 @@ import com.r0ybt.arachn0de.ui.state.LoadState
 
 @Composable
 internal fun AppRoot(projectRepository: ProjectRepository, nodeRepository: NodeRepository) {
+    val projectsListState = rememberLazyListState()
     var selectedProjectId by rememberSaveable { mutableStateOf<String?>(null) }
     var projects by remember(projectRepository) { mutableStateOf<List<Project>?>(null) }
     val load = remember(projectRepository) { LoadState() }
@@ -34,6 +36,7 @@ internal fun AppRoot(projectRepository: ProjectRepository, nodeRepository: NodeR
     if (selectedProjectId == null) {
         ProjectDashboardScreen(
             repository = projectRepository,
+            listState = projectsListState,
             projects = projects.orEmpty(),
             onOpenProject = { selectedProjectId = it.id },
         )

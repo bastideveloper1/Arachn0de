@@ -5,39 +5,31 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.r0ybt.arachn0de.domain.model.Node
-import com.r0ybt.arachn0de.domain.model.Project
+import com.r0ybt.arachn0de.ui.state.EditorDraft
 import com.r0ybt.arachn0de.ui.theme.Arachn0deColors
 
 @Composable
 internal fun NodeDialog(
-    projectId: String,
-    currentNodeId: String?,
-    node: Node?,
+    draft: EditorDraft,
     isSubmitting: Boolean,
     onDismiss: () -> Unit,
     onSave: (String, String) -> Unit,
 ) {
-    var title by remember(node?.id) { mutableStateOf(node?.title ?: "") }
-    var description by remember(node?.id) { mutableStateOf(node?.description ?: "") }
+    var title by draft::title
+    var description by draft::description
 
     AlertDialog(
         containerColor = Arachn0deColors.Surface,
         titleContentColor = Arachn0deColors.TextPrimary,
         textContentColor = Arachn0deColors.TextSecondary,
         onDismissRequest = if (isSubmitting) ({}) else onDismiss,
-        title = { Text(if (node == null) "Nuevo elemento" else "Editar elemento") },
+        title = { Text(if (draft.id == null) "Nuevo elemento" else "Editar elemento") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 OutlinedTextField(
@@ -85,20 +77,20 @@ internal fun NodeDialog(
 
 @Composable
 internal fun ProjectDialog(
-    project: Project?,
+    draft: EditorDraft,
     isSubmitting: Boolean,
     onDismiss: () -> Unit,
     onSave: (String, String) -> Unit,
 ) {
-    var name by remember(project?.id) { mutableStateOf(project?.name ?: "") }
-    var description by remember(project?.id) { mutableStateOf(project?.description ?: "") }
+    var name by draft::title
+    var description by draft::description
 
     AlertDialog(
         containerColor = Arachn0deColors.Surface,
         titleContentColor = Arachn0deColors.TextPrimary,
         textContentColor = Arachn0deColors.TextSecondary,
         onDismissRequest = if (isSubmitting) ({}) else onDismiss,
-        title = { Text(if (project == null) "Nuevo proyecto" else "Editar proyecto") },
+        title = { Text(if (draft.id == null) "Nuevo proyecto" else "Editar proyecto") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 OutlinedTextField(

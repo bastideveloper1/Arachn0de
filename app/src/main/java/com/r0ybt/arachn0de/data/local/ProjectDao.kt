@@ -18,6 +18,15 @@ interface ProjectDao {
     @Insert(onConflict = OnConflictStrategy.ABORT)
     suspend fun insert(project: ProjectEntity)
 
+    /** A retried creation can acknowledge a committed row, but never replace it. */
+    @Transaction
+    suspend fun insertOrGet(project: ProjectEntity): ProjectEntity {
+        val existing = getById(project.id)
+        if (existing != null) return existing
+        insert(project)
+        return project
+    }
+
     // Only editable fields change; callers cannot overwrite identity or creation time.
     @Query("UPDATE projects SET name = :name, description = :description, updatedAt = :updatedAt WHERE id = :id")
     suspend fun update(id: String, name: String, description: String, updatedAt: Long): Int

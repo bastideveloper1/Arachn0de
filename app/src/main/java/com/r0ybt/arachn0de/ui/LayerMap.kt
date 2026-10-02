@@ -33,6 +33,8 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
@@ -55,6 +57,7 @@ internal fun LayerMapTree(
     onToggle: (String) -> Unit,
     currentPath: List<String>,
     onNavigateTo: (String) -> Unit,
+    listState: LazyListState = rememberLazyListState(),
 ) {
     val index = remember(nodes) { LayerMapIndex(nodes) }
     val expanded = remember(expandedIds) { expandedIds.toSet() }
@@ -62,6 +65,7 @@ internal fun LayerMapTree(
     val pathIds = currentPath.toList()
     val activePath = remember(pathIds) { pathIds.toSet() }
     LazyColumn(
+        state = listState,
         modifier = Modifier.fillMaxWidth().height(360.dp).testTag("layer-map"),
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
@@ -195,6 +199,7 @@ internal fun LayerTrailRoute(
     pathNodes: List<Node>,
     onProjectClick: () -> Unit,
     onLayerClick: (String) -> Unit,
+    listState: LazyListState = rememberLazyListState(),
 ) {
     val items = buildList {
         add(ProjectRouteItem(label = projectName, isRoot = true, nodeId = null))
@@ -204,9 +209,11 @@ internal fun LayerTrailRoute(
     }
 
     LazyColumn(
+        state = listState,
         modifier = Modifier
             .fillMaxWidth()
             .height(400.dp)
+            .testTag("layer-trail")
             .padding(vertical = 8.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {

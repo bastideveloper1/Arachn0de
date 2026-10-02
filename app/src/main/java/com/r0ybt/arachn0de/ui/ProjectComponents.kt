@@ -29,7 +29,10 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -152,9 +155,11 @@ internal fun ProjectList(
     onEdit: (Project) -> Unit,
     onDelete: (Project) -> Unit,
     onOpenProject: (Project) -> Unit,
+    listState: LazyListState = rememberLazyListState(),
 ) {
     LazyColumn(
-        modifier = Modifier.fillMaxWidth(),
+        state = listState,
+        modifier = Modifier.fillMaxWidth().testTag("projects-list"),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         items(projects, key = { "project:${it.id}" }, contentType = { "project" }) { project ->

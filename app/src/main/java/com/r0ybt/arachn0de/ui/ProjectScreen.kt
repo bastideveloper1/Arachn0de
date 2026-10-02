@@ -33,6 +33,10 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.saveable.listSaver
 import androidx.compose.runtime.toMutableStateList
 import androidx.compose.runtime.snapshots.SnapshotStateList
+import com.r0ybt.arachn0de.ui.state.EditorDraft
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.runtime.saveable.rememberSaveableStateHolder
+import androidx.compose.ui.platform.testTag
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -50,7 +54,6 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.r0ybt.arachn0de.data.repository.NodeRepository
-import com.r0ybt.arachn0de.domain.model.Node
 import com.r0ybt.arachn0de.domain.model.NodeTreeSnapshot
 import com.r0ybt.arachn0de.domain.model.Project
 import com.r0ybt.arachn0de.ui.theme.Arachn0deColors
@@ -64,18 +67,21 @@ internal fun ProjectNodeScreen(
     onBackToProjects: () -> Unit,
 ) {
     val scope = rememberCoroutineScope()
+    val layerScrollStates = rememberSaveableStateHolder()
+    val mapListState = rememberLazyListState()
+    val trailListState = rememberLazyListState()
     val currentPath = rememberSaveable(project.id, saver = listSaver<SnapshotStateList<String>, String>(
         save = { it.toList() },
         restore = { it.toMutableStateList() },
     )) { mutableStateListOf<String>() }
     var hasLoaded by remember(project.id) { mutableStateOf(false) }
     var projectState by remember(project.id) { mutableStateOf(NodeTreeSnapshot(emptyList())) }
-    var showNodeDialog by remember { mutableStateOf(false) }
-    var editingNode by remember { mutableStateOf<Node?>(null) }
-    var deletingNode by remember { mutableStateOf<Node?>(null) }
+    var draft by rememberSaveable(project.id, stateSaver = EditorDraft.Saver) { mutableStateOf<EditorDraft?>(null) }
+    var deletingNodeId by rememberSaveable(project.id) { mutableStateOf<String?>(null) }
+    var deletingNodeName by rememberSaveable(project.id) { mutableStateOf("") }
     var showDrawer by remember { mutableStateOf(false) }
-    var showPathDialog by remember { mutableStateOf(false) }
-    var showLayerMapDialog by remember { mutableStateOf(false) }
+    var showPathDialog by rememberSaveable(project.id) { mutableStateOf(false) }
+    var showLayerMapDialog by rememberSaveable(project.id) { mutableStateOf(false) }
     var expandedLayerIds by rememberSaveable(
         project.id,
         stateSaver = listSaver<List<String>, String>(save = { it }, restore = { it.toList() }),
@@ -103,6 +109,7 @@ internal fun ProjectNodeScreen(
                 }
             }
             while (currentPath.size > validPath.size) currentPath.removeAt(currentPath.lastIndex)
+            if (validPath.isEmpty()) showPathDialog = false
             expandedLayerIds = expandedLayerIds.filter { it in snapshot.nodesById }
             projectState = snapshot
             hasLoaded = true
@@ -249,56 +256,59 @@ internal fun ProjectNodeScreen(
                 }
 
                 if (currentNodes.isEmpty()) {
-                    EmptyLayerState(onCreateNode = { showNodeDialog = true })
+                    EmptyLayerState(onCreateNode = { draft = EditorDraft(null, currentNodeId, "", "") })
                 } else {
-                    LazyColumn(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .weight(1f),
-                        verticalArrangement = Arrangement.spacedBy(12.dp),
-                    ) {
-                        items(currentNodes, key = { "node:${it.id}" }, contentType = { "node" }) { node ->
-                            NodeCard(
-                                node = node,
-                                progress = progressMap[node.id],
-                                hasChildren = node.hasChildren,
-                                canToggleComplete = node.isCompletable,
-                                onOpen = {
-                                    currentPath.add(node.id)
-                                },
-                                onEdit = {
-                                    editingNode = node
-                                    showNodeDialog = true
-                                },
-                                canMoveUp = node.id != currentNodes.firstOrNull()?.id && !isSubmittingNode,
-                                canMoveDown = node.id != currentNodes.lastOrNull()?.id && !isSubmittingNode,
-                                onReorder = { moveUp, onSuccess ->
-                                    actions.reorder(node.id, node.parentId, moveUp, onSuccess)
-                                },
-                                onDelete = {
-                                    deletingNode = node
-                                },
-                                onToggleComplete = {
-                                    if (node.isCompletable) actions.toggle(node.id)
-                                },
-                            )
-                        }
+                    layerScrollStates.SaveableStateProvider(currentNodeId?.let { "node:$it" } ?: "project-root") {
+                        LazyColumn(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .weight(1f)
+                                .testTag("nodes-list"),
+                            verticalArrangement = Arrangement.spacedBy(12.dp),
+                        ) {
+                            items(currentNodes, key = { "node:${it.id}" }, contentType = { "node" }) { node ->
+                                NodeCard(
+                                    node = node,
+                                    progress = progressMap[node.id],
+                                    hasChildren = node.hasChildren,
+                                    canToggleComplete = node.isCompletable,
+                                    onOpen = {
+                                        currentPath.add(node.id)
+                                    },
+                                    onEdit = {
+                                        draft = EditorDraft(node.id, node.parentId, node.title, node.description)
+                                    },
+                                    canMoveUp = node.id != currentNodes.firstOrNull()?.id && !isSubmittingNode,
+                                    canMoveDown = node.id != currentNodes.lastOrNull()?.id && !isSubmittingNode,
+                                    onReorder = { moveUp, onSuccess ->
+                                        actions.reorder(node.id, node.parentId, moveUp, onSuccess)
+                                    },
+                                    onDelete = {
+                                        deletingNodeId = node.id
+                                        deletingNodeName = node.title
+                                    },
+                                    onToggleComplete = {
+                                        if (node.isCompletable) actions.toggle(node.id)
+                                    },
+                                )
+                            }
 
-                        item(key = "create-node", contentType = "action") {
-                            Button(
-                                onClick = {
-                                    if (!showNodeDialog && !isSubmittingNode) showNodeDialog = true
-                                },
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .height(52.dp),
-                                colors = ButtonDefaults.buttonColors(containerColor = Arachn0deColors.Primary),
-                                shape = RoundedCornerShape(14.dp),
-                                enabled = !isSubmittingNode,
-                            ) {
-                                Icon(imageVector = Icons.Default.Add, contentDescription = null)
-                                Spacer(modifier = Modifier.width(8.dp))
-                                Text("Nuevo elemento")
+                            item(key = "create-node", contentType = "action") {
+                                Button(
+                                    onClick = {
+                                        if (draft == null && !isSubmittingNode) draft = EditorDraft(null, currentNodeId, "", "")
+                                    },
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(52.dp),
+                                    colors = ButtonDefaults.buttonColors(containerColor = Arachn0deColors.Primary),
+                                    shape = RoundedCornerShape(14.dp),
+                                    enabled = !isSubmittingNode,
+                                ) {
+                                    Icon(imageVector = Icons.Default.Add, contentDescription = null)
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text("Nuevo elemento")
+                                }
                             }
                         }
                     }
@@ -331,22 +341,18 @@ internal fun ProjectNodeScreen(
         }
     }
 
-    if (showNodeDialog) {
+    draft?.let { editor ->
         NodeDialog(
-            projectId = project.id,
-            currentNodeId = currentPath.lastOrNull(),
-            node = editingNode,
+            draft = editor,
             isSubmitting = isSubmittingNode,
             onDismiss = {
                 if (!isSubmittingNode) {
-                    showNodeDialog = false
-                    editingNode = null
+                    draft = null
                 }
             },
             onSave = { title, description ->
-                actions.save(project.id, currentPath.lastOrNull(), editingNode?.id, title, description) {
-                    showNodeDialog = false
-                    editingNode = null
+                actions.save(project.id, editor.parentId, editor.id, title, description, editor.creationId) {
+                    draft = null
                 }
             },
         )
@@ -368,6 +374,7 @@ internal fun ProjectNodeScreen(
                 ) {
                     LayerTrailRoute(
                         projectName = project.name,
+                        listState = trailListState,
                         pathNodes = pathNodes,
                         onProjectClick = {
                             currentPath.clear()
@@ -421,6 +428,7 @@ internal fun ProjectNodeScreen(
                     } else {
                         LayerMapTree(
                             nodes = projectLayerMap,
+                            listState = mapListState,
                             expandedIds = expandedLayerIds,
                             onToggle = { id ->
                                 val ids = expandedLayerIds.toSet()
@@ -446,26 +454,26 @@ internal fun ProjectNodeScreen(
         )
     }
 
-    deletingNode?.let { node ->
+    deletingNodeId?.let { deletingId ->
         AlertDialog(
             containerColor = Arachn0deColors.Surface,
             titleContentColor = Arachn0deColors.TextPrimary,
             textContentColor = Arachn0deColors.TextSecondary,
-            onDismissRequest = { if (!actions.operation.busy) deletingNode = null },
+            onDismissRequest = { if (!actions.operation.busy) deletingNodeId = null },
             title = { Text("Eliminar nodo") },
-            text = { Text("¿Seguro que quieres eliminar “${node.title}”? Esta acción también eliminará cualquier hijo.") },
+            text = { Text("¿Seguro que quieres eliminar “${deletingNodeName}”? Esta acción también eliminará cualquier hijo.") },
             confirmButton = {
                 TextButton(
                     enabled = !actions.operation.busy,
                     onClick = {
-                        actions.delete(node.id) { deletingNode = null }
+                        actions.delete(deletingId) { deletingNodeId = null }
                     },
                 ) {
                     Text("Eliminar")
                 }
             },
             dismissButton = {
-                TextButton(enabled = !actions.operation.busy, onClick = { deletingNode = null }) {
+                TextButton(enabled = !actions.operation.busy, onClick = { deletingNodeId = null }) {
                     Text("Cancelar")
                 }
             },

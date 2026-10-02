@@ -121,4 +121,45 @@ class NavigationTest {
         compose.onNodeWithText("Nivel dos").assertDoesNotExist()
     }
 
+    @Test fun cancelledPredictiveBackKeepsRestoredLayerAndCommittedBackPopsOnce() {
+        openProject()
+        compose.onNodeWithText("Nivel uno").performClick()
+        awaitText("Nivel dos")
+        compose.activityRule.scenario.recreate()
+        awaitText("Nivel dos")
+        compose.runOnUiThread {
+            val dispatcher = compose.activity.onBackPressedDispatcher
+            dispatcher.dispatchOnBackStarted(androidx.activity.BackEventCompat(0f, 0f, 0f, 0))
+            dispatcher.dispatchOnBackProgressed(androidx.activity.BackEventCompat(30f, 0f, 0.5f, 0))
+            dispatcher.dispatchOnBackCancelled()
+        }
+        compose.onNodeWithText("Nivel dos").assertExists()
+        compose.runOnUiThread {
+            val dispatcher = compose.activity.onBackPressedDispatcher
+            dispatcher.dispatchOnBackStarted(androidx.activity.BackEventCompat(0f, 0f, 0f, 0))
+            dispatcher.dispatchOnBackProgressed(androidx.activity.BackEventCompat(80f, 0f, 1f, 0))
+            dispatcher.onBackPressed()
+        }
+        awaitText("Nivel uno")
+        compose.onNodeWithText("Nivel dos").assertDoesNotExist()
+    }
+
+    @Test fun vanishedPathClosesRestoredTrailAndDoesNotReopenItOnAnotherLayer() {
+        openProject()
+        compose.onNodeWithText("Nivel uno").performClick()
+        awaitText("Nivel dos")
+        compose.onNodeWithText("Capas de cebolla").performClick()
+        runBlocking { NodeRepository(database).deleteNode(rootId) }
+        compose.activityRule.scenario.recreate()
+        awaitText("Volver a proyectos")
+        compose.onNodeWithText("Cerrar").assertDoesNotExist()
+        runBlocking {
+            (compose.activity.application as Arachn0deApplication).nodeRepository.createNode(projectId, null, "Otra capa")
+        }
+        awaitText("Otra capa")
+        compose.onNodeWithText("Otra capa").performClick()
+        awaitText("CAPA 1")
+        compose.onNodeWithText("Cerrar").assertDoesNotExist()
+    }
+
 }

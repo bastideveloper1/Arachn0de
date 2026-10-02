@@ -78,13 +78,22 @@ class NodeRepository(
         parentId: String?,
         title: String,
         description: String = "",
+        creationId: String = UUID.randomUUID().toString(),
     ): Node = database.withTransaction {
         val normalizedTitle = validateTitle(title)
+        require(creationId.isNotBlank())
+        nodeDao.getById(creationId)?.let { existing ->
+            check(existing.projectId == projectId && existing.parentId == parentId &&
+                existing.title == normalizedTitle && existing.description == description) {
+                "Creation already committed with different content or destination"
+            }
+            return@withTransaction existing.toNode(nodeDao.hasChildren(projectId, creationId))
+        }
         require(database.projectDao().getById(projectId) != null) { "Project not found" }
         validateParent(projectId, parentId)
         val now = currentTimeMillis()
         val entity = NodeEntity(
-            id = UUID.randomUUID().toString(), projectId = projectId, parentId = parentId,
+            id = creationId, projectId = projectId, parentId = parentId,
             title = normalizedTitle, description = description, isCompleted = false,
             position = nextPosition(projectId, parentId), createdAt = now, updatedAt = now,
         )

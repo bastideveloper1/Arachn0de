@@ -18,18 +18,26 @@ class ProjectRepository(
 
     suspend fun getProject(id: String): Project? = projectDao.getById(id)?.toProject()
 
-    suspend fun createProject(name: String, description: String = ""): Project {
+    suspend fun createProject(
+        name: String,
+        description: String = "",
+        creationId: String = UUID.randomUUID().toString(),
+    ): Project {
         val normalizedName = validateName(name)
         val now = currentTimeMillis()
         val entity = ProjectEntity(
-            id = UUID.randomUUID().toString(),
+            id = creationId,
             name = normalizedName,
             description = description,
             createdAt = now,
             updatedAt = now,
         )
-        projectDao.insert(entity)
-        return entity.toProject()
+        require(creationId.isNotBlank())
+        val persisted = projectDao.insertOrGet(entity)
+        check(persisted.name == normalizedName && persisted.description == description) {
+            "Creation already committed with different content"
+        }
+        return persisted.toProject()
     }
 
     /** Returns false if the project no longer exists; never inserts a missing project. */

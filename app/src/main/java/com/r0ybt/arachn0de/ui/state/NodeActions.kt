@@ -2,12 +2,13 @@ package com.r0ybt.arachn0de.ui.state
 
 import com.r0ybt.arachn0de.data.repository.NodeRepository
 import kotlinx.coroutines.CoroutineScope
+import java.util.UUID
 
 internal class NodeActions(private val repository: NodeRepository, scope: CoroutineScope) {
     val operation = OperationState(scope)
-    fun save(projectId: String, parentId: String?, id: String?, title: String, description: String, onSuccess: () -> Unit) =
+    fun save(projectId: String, parentId: String?, id: String?, title: String, description: String, creationId: String = UUID.randomUUID().toString(), onSuccess: () -> Unit) =
         operation.submit("No se pudo guardar el elemento. Tus cambios siguen en el formulario.", {
-            if (id == null) { repository.createNode(projectId, parentId, title, description); true }
+            if (id == null) { repository.createNode(projectId, parentId, title, description, creationId); true }
             else repository.updateNode(id, title, description)
         }, onSuccess)
 

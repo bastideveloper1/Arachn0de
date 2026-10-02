@@ -18,6 +18,10 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import com.r0ybt.arachn0de.ui.state.EditorDraft
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -36,12 +40,17 @@ import com.r0ybt.arachn0de.ui.theme.Arachn0deColors
 import com.r0ybt.arachn0de.ui.state.ProjectActions
 
 @Composable
-internal fun ProjectDashboardScreen(repository: ProjectRepository, projects: List<Project>, onOpenProject: (Project) -> Unit = {}) {
+internal fun ProjectDashboardScreen(
+    repository: ProjectRepository,
+    projects: List<Project>,
+    onOpenProject: (Project) -> Unit = {},
+    listState: LazyListState = rememberLazyListState(),
+) {
     val scope = rememberCoroutineScope()
     val actions = remember(repository, scope) { ProjectActions(repository, scope) }
-    var showProjectDialog by remember { mutableStateOf(false) }
-    var editingProject by remember { mutableStateOf<Project?>(null) }
-    var deletingProject by remember { mutableStateOf<Project?>(null) }
+    var draft by rememberSaveable(stateSaver = EditorDraft.Saver) { mutableStateOf<EditorDraft?>(null) }
+    var deletingProjectId by rememberSaveable { mutableStateOf<String?>(null) }
+    var deletingProjectName by rememberSaveable { mutableStateOf("") }
     var showDrawer by remember { mutableStateOf(false) }
 
     BackHandler(enabled = showDrawer) { showDrawer = false }
@@ -118,17 +127,20 @@ internal fun ProjectDashboardScreen(repository: ProjectRepository, projects: Lis
 
                 if (projects.isEmpty()) {
                     EmptyProjectsState(
-                        onCreateProject = { showProjectDialog = true },
+                        onCreateProject = { draft = EditorDraft(null, null, "", "") },
                     )
                 } else {
                     ProjectList(
                         projects = projects,
-                        onCreateProject = { showProjectDialog = true },
+                        listState = listState,
+                        onCreateProject = { draft = EditorDraft(null, null, "", "") },
                         onEdit = { project ->
-                            editingProject = project
-                            showProjectDialog = true
+                            draft = EditorDraft(project.id, null, project.name, project.description)
                         },
-                        onDelete = { project -> deletingProject = project },
+                        onDelete = { project ->
+                            deletingProjectId = project.id
+                            deletingProjectName = project.name
+                        },
                         onOpenProject = onOpenProject,
                     )
                 }
@@ -149,43 +161,41 @@ internal fun ProjectDashboardScreen(repository: ProjectRepository, projects: Lis
         }
     }
 
-    if (showProjectDialog) {
+    draft?.let { editor ->
         ProjectDialog(
-            project = editingProject,
+            draft = editor,
             isSubmitting = actions.operation.busy,
             onDismiss = {
-                showProjectDialog = false
-                editingProject = null
+                draft = null
             },
             onSave = { name, description ->
-                actions.save(editingProject?.id, name, description) {
-                    showProjectDialog = false
-                    editingProject = null
+                actions.save(editor.id, name, description, editor.creationId) {
+                    draft = null
                 }
             },
         )
     }
 
-    deletingProject?.let { project ->
+    deletingProjectId?.let { deletingId ->
         AlertDialog(
             containerColor = Arachn0deColors.Surface,
             titleContentColor = Arachn0deColors.TextPrimary,
             textContentColor = Arachn0deColors.TextSecondary,
-            onDismissRequest = { if (!actions.operation.busy) deletingProject = null },
+            onDismissRequest = { if (!actions.operation.busy) deletingProjectId = null },
             title = { Text("Eliminar proyecto") },
-            text = { Text("¿Seguro que quieres eliminar “${project.name}”? Esta acción no se puede deshacer.") },
+            text = { Text("¿Seguro que quieres eliminar “${deletingProjectName}”? Esta acción no se puede deshacer.") },
             confirmButton = {
                 TextButton(
                     enabled = !actions.operation.busy,
                     onClick = {
-                        actions.delete(project.id) { deletingProject = null }
+                        actions.delete(deletingId) { deletingProjectId = null }
                     },
                 ) {
                     Text("Eliminar")
                 }
             },
             dismissButton = {
-                TextButton(enabled = !actions.operation.busy, onClick = { deletingProject = null }) {
+                TextButton(enabled = !actions.operation.busy, onClick = { deletingProjectId = null }) {
                     Text("Cancelar")
                 }
             },

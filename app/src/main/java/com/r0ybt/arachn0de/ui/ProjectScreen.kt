@@ -15,9 +15,9 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowBack
@@ -75,6 +75,10 @@ internal fun ProjectNodeScreen(
     var showDrawer by remember { mutableStateOf(false) }
     var showPathDialog by remember { mutableStateOf(false) }
     var showLayerMapDialog by remember { mutableStateOf(false) }
+    var expandedLayerIds by rememberSaveable(
+        project.id,
+        stateSaver = listSaver<List<String>, String>(save = { it }, restore = { it.toList() }),
+    ) { mutableStateOf(emptyList<String>()) }
     val actions = remember(nodeRepository, scope) { NodeActions(nodeRepository, scope) }
     val isSubmittingNode = actions.operation.busy
     val currentNodeId = currentPath.lastOrNull()
@@ -98,6 +102,7 @@ internal fun ProjectNodeScreen(
                 }
             }
             while (currentPath.size > validPath.size) currentPath.removeAt(currentPath.lastIndex)
+            expandedLayerIds = expandedLayerIds.filter { it in snapshot.nodesById }
             projectState = snapshot
         }
     }
@@ -212,7 +217,10 @@ internal fun ProjectNodeScreen(
                     }
 
                     TextButton(
-                        onClick = { showLayerMapDialog = true },
+                        onClick = {
+                            expandedLayerIds = (expandedLayerIds.toSet() + currentPath).toList()
+                            showLayerMapDialog = true
+                        },
                         modifier = Modifier.weight(1f),
                     ) {
                         Text(
@@ -235,13 +243,13 @@ internal fun ProjectNodeScreen(
                 if (currentNodes.isEmpty()) {
                     EmptyLayerState(onCreateNode = { showNodeDialog = true })
                 } else {
-                    Column(
+                    LazyColumn(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .verticalScroll(rememberScrollState()),
+                            .weight(1f),
                         verticalArrangement = Arrangement.spacedBy(12.dp),
                     ) {
-                        currentNodes.forEach { node ->
+                        items(currentNodes, key = { "node:${it.id}" }, contentType = { "node" }) { node ->
                             NodeCard(
                                 node = node,
                                 progress = progressMap[node.id],
@@ -263,25 +271,27 @@ internal fun ProjectNodeScreen(
                             )
                         }
 
-                        Button(
-                            onClick = {
-                                if (!showNodeDialog && !isSubmittingNode) showNodeDialog = true
-                            },
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(52.dp),
-                            colors = ButtonDefaults.buttonColors(containerColor = Arachn0deColors.Primary),
-                            shape = RoundedCornerShape(14.dp),
-                            enabled = !isSubmittingNode,
-                        ) {
-                            Icon(imageVector = Icons.Default.Add, contentDescription = null)
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text("Nuevo elemento")
+                        item(key = "create-node", contentType = "action") {
+                            Button(
+                                onClick = {
+                                    if (!showNodeDialog && !isSubmittingNode) showNodeDialog = true
+                                },
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(52.dp),
+                                colors = ButtonDefaults.buttonColors(containerColor = Arachn0deColors.Primary),
+                                shape = RoundedCornerShape(14.dp),
+                                enabled = !isSubmittingNode,
+                            ) {
+                                Icon(imageVector = Icons.Default.Add, contentDescription = null)
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text("Nuevo elemento")
+                            }
                         }
                     }
                 }
 
-                Spacer(modifier = Modifier.weight(1f))
+                if (currentNodes.isEmpty()) Spacer(modifier = Modifier.weight(1f))
 
                 Button(
                     onClick = onBackToProjects,
@@ -340,19 +350,19 @@ internal fun ProjectNodeScreen(
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .heightIn(max = 430.dp)
-                        .verticalScroll(rememberScrollState()),
+                        .heightIn(max = 430.dp),
                     verticalArrangement = Arrangement.spacedBy(14.dp),
                 ) {
                     LayerTrailRoute(
                         projectName = project.name,
                         pathNodes = pathNodes,
-                        currentPath = currentPath,
                         onProjectClick = {
                             currentPath.clear()
                             showPathDialog = false
                         },
-                        onLayerClick = { index ->
+                        onLayerClick = { id ->
+                            val index = currentPath.indexOf(id)
+                            if (index < 0) return@LayerTrailRoute
                             while (currentPath.size > index + 1) {
                                 currentPath.removeAt(currentPath.lastIndex)
                             }
@@ -380,8 +390,7 @@ internal fun ProjectNodeScreen(
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .heightIn(max = 420.dp)
-                        .verticalScroll(rememberScrollState()),
+                        .heightIn(max = 420.dp),
                     verticalArrangement = Arrangement.spacedBy(4.dp),
                 ) {
                     Text(
@@ -398,7 +407,12 @@ internal fun ProjectNodeScreen(
                         )
                     } else {
                         LayerMapTree(
-                            roots = buildLayerTree(projectLayerMap),
+                            nodes = projectLayerMap,
+                            expandedIds = expandedLayerIds,
+                            onToggle = { id ->
+                                val ids = expandedLayerIds.toSet()
+                                expandedLayerIds = (if (id in ids) ids - id else ids + id).toList()
+                            },
                             currentPath = currentPath,
                             onNavigateTo = { targetId ->
                                 actions.navigate(targetId) { path ->

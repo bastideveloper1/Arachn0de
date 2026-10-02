@@ -106,4 +106,19 @@ class NavigationTest {
         compose.onNodeWithText("Volver a proyectos").assertDoesNotExist()
     }
 
+    @Test fun mapExpansionSurvivesClosingAndActivityRecreation() {
+        openProject()
+        compose.onNodeWithText("Mapa de capas").performClick()
+        compose.onNodeWithText("Nivel dos").assertDoesNotExist()
+        compose.onNodeWithTag("expand:$rootId").performClick()
+        compose.onNodeWithText("Nivel dos").assertExists()
+        compose.onNodeWithText("Cerrar").performClick()
+        compose.activityRule.scenario.recreate()
+        awaitText("Nivel uno")
+        compose.onNodeWithText("Mapa de capas").performClick()
+        compose.onNodeWithText("Nivel dos").assertExists()
+        compose.onNodeWithTag("expand:$rootId").performClick()
+        compose.onNodeWithText("Nivel dos").assertDoesNotExist()
+    }
+
 }

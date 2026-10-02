@@ -1,5 +1,8 @@
 package com.r0ybt.arachn0de.ui
 
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -22,11 +25,15 @@ import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.IconButton
+import androidx.compose.material.icons.filled.ExpandMore
+import com.r0ybt.arachn0de.ui.state.LayerMapIndex
+import com.r0ybt.arachn0de.ui.state.LayerMapRow
+import androidx.compose.ui.platform.testTag
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -41,62 +48,38 @@ import com.r0ybt.arachn0de.domain.model.Node
 import com.r0ybt.arachn0de.ui.theme.Arachn0deColors
 import com.r0ybt.arachn0de.R
 
-internal data class LayerTreeNode(
-    val node: Node,
-    val children: List<LayerTreeNode> = emptyList(),
-)
-
-internal fun buildLayerTree(nodes: List<Node>): List<LayerTreeNode> {
-    val byParent = nodes.groupBy { it.parentId }
-
-    fun build(parentId: String?): List<LayerTreeNode> {
-        return byParent[parentId].orEmpty()
-            .sortedBy { it.position }
-            .map { node ->
-                LayerTreeNode(
-                    node = node,
-                    children = build(node.id),
-                )
-            }
-    }
-
-    return build(null)
-}
-
 @Composable
 internal fun LayerMapTree(
-    roots: List<LayerTreeNode>,
+    nodes: List<Node>,
+    expandedIds: List<String>,
+    onToggle: (String) -> Unit,
     currentPath: List<String>,
     onNavigateTo: (String) -> Unit,
 ) {
-    val expandedById = remember { mutableStateMapOf<String, Boolean>() }
-
-    Column(
-        modifier = Modifier.fillMaxWidth(),
+    val index = remember(nodes) { LayerMapIndex(nodes) }
+    val expanded = remember(expandedIds) { expandedIds.toSet() }
+    val rows = remember(index, expanded) { index.visibleRows(expanded) }
+    val pathIds = currentPath.toList()
+    val activePath = remember(pathIds) { pathIds.toSet() }
+    LazyColumn(
+        modifier = Modifier.fillMaxWidth().height(360.dp).testTag("layer-map"),
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
-        roots.forEach { root ->
-            LayerMapBranch(
-                branch = root,
-                depth = 0,
-                currentPath = currentPath,
-                expandedById = expandedById,
-                onNavigateTo = onNavigateTo,
-            )
+        items(rows, key = { it.node.id }, contentType = { "map-row" }) { row ->
+            LayerMapBranch(row, row.node.id in expanded, row.node.id in activePath, onToggle, onNavigateTo)
         }
     }
 }
 
 @Composable
 internal fun LayerMapBranch(
-    branch: LayerTreeNode,
-    depth: Int,
-    currentPath: List<String>,
-    expandedById: MutableMap<String, Boolean>,
+    row: LayerMapRow,
+    isExpanded: Boolean,
+    isOnPath: Boolean,
+    onToggle: (String) -> Unit,
     onNavigateTo: (String) -> Unit,
 ) {
-    val isExpanded = expandedById[branch.node.id] ?: true
-
+    val depth = row.depth
     Column(modifier = Modifier.fillMaxWidth()) {
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -119,10 +102,10 @@ internal fun LayerMapBranch(
                         .size(10.dp)
                         .clip(RoundedCornerShape(50))
                         .background(
-                            if (currentPath.contains(branch.node.id)) Arachn0deColors.PathHighlight else Arachn0deColors.Primary,
+                            if (isOnPath) Arachn0deColors.PathHighlight else Arachn0deColors.Primary,
                         ),
                 )
-                if (branch.children.isNotEmpty() && depth < 4) {
+                if (row.hasChildren) {
                     Box(
                         modifier = Modifier
                             .width(2.dp)
@@ -137,7 +120,7 @@ internal fun LayerMapBranch(
             Card(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clickable { onNavigateTo(branch.node.id) },
+                    .clickable { onNavigateTo(row.node.id) },
                 colors = CardDefaults.cardColors(containerColor = Arachn0deColors.Surface),
                 shape = RoundedCornerShape(14.dp),
             ) {
@@ -147,7 +130,7 @@ internal fun LayerMapBranch(
                         .padding(horizontal = 12.dp, vertical = 12.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    if (branch.children.isNotEmpty()) {
+                    if (row.hasChildren) {
                         Box(
                             modifier = Modifier
                                 .size(28.dp)
@@ -176,42 +159,33 @@ internal fun LayerMapBranch(
 
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
-                            text = branch.node.title,
-                            color = if (currentPath.contains(branch.node.id)) Arachn0deColors.PathHighlight else Arachn0deColors.TextPrimary,
+                            text = row.node.title,
+                            color = if (isOnPath) Arachn0deColors.PathHighlight else Arachn0deColors.TextPrimary,
                             fontSize = 16.sp,
                             fontWeight = FontWeight.SemiBold,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
                         )
                         Text(
-                            text = if (branch.children.isNotEmpty()) "Capa ${depth + 1}" else "Tarea",
+                            text = if (row.hasChildren) "Capa ${depth + 1}" else "Tarea",
                             color = Arachn0deColors.TextSecondary,
                             fontSize = 11.sp,
                         )
                     }
 
-                    if (branch.children.isNotEmpty()) {
-                        Icon(
-                            imageVector = Icons.Default.ChevronRight,
-                            contentDescription = null,
-                            tint = Arachn0deColors.PathHighlight,
-                        )
+                    if (row.hasChildren) {
+                        IconButton(onClick = { onToggle(row.node.id) }, modifier = Modifier.testTag("expand:${row.node.id}")) {
+                            Icon(
+                                imageVector = if (isExpanded) Icons.Default.ExpandMore else Icons.Default.ChevronRight,
+                                contentDescription = if (isExpanded) "Contraer rama" else "Expandir rama",
+                                tint = Arachn0deColors.PathHighlight,
+                            )
+                        }
                     }
                 }
             }
         }
 
-        if (branch.children.isNotEmpty() && isExpanded) {
-            branch.children.forEach { child ->
-                LayerMapBranch(
-                    branch = child,
-                    depth = depth + 1,
-                    currentPath = currentPath,
-                    expandedById = expandedById,
-                    onNavigateTo = onNavigateTo,
-                )
-            }
-        }
     }
 }
 
@@ -219,9 +193,8 @@ internal fun LayerMapBranch(
 internal fun LayerTrailRoute(
     projectName: String,
     pathNodes: List<Node>,
-    currentPath: List<String>,
     onProjectClick: () -> Unit,
-    onLayerClick: (Int) -> Unit,
+    onLayerClick: (String) -> Unit,
 ) {
     val items = buildList {
         add(ProjectRouteItem(label = projectName, isRoot = true, nodeId = null))
@@ -230,18 +203,19 @@ internal fun LayerTrailRoute(
         }
     }
 
-    Column(
+    LazyColumn(
         modifier = Modifier
             .fillMaxWidth()
+            .height(400.dp)
             .padding(vertical = 8.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        items.forEachIndexed { index, item ->
+        itemsIndexed(items, key = { _, item -> item.nodeId?.let { "node:$it" } ?: "project-root" }) { index, item ->
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
                     .clickable {
-                        if (item.isRoot) onProjectClick() else onLayerClick(index - 1)
+                        if (item.isRoot) onProjectClick() else onLayerClick(requireNotNull(item.nodeId))
                     },
                 verticalAlignment = Alignment.CenterVertically,
             ) {

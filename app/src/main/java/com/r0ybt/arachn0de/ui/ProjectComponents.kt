@@ -14,9 +14,9 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.wrapContentHeight
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
@@ -153,13 +153,11 @@ internal fun ProjectList(
     onDelete: (Project) -> Unit,
     onOpenProject: (Project) -> Unit,
 ) {
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .verticalScroll(rememberScrollState()),
+    LazyColumn(
+        modifier = Modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        projects.forEach { project ->
+        items(projects, key = { "project:${it.id}" }, contentType = { "project" }) { project ->
             ProjectCard(
                 project = project,
                 onOpen = { onOpenProject(project) },
@@ -168,17 +166,19 @@ internal fun ProjectList(
             )
         }
 
-        Button(
-            onClick = onCreateProject,
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(52.dp),
-            colors = ButtonDefaults.buttonColors(containerColor = Arachn0deColors.Primary),
-            shape = RoundedCornerShape(14.dp),
-        ) {
-            Icon(imageVector = Icons.Default.Add, contentDescription = null)
-            Spacer(modifier = Modifier.width(8.dp))
-            Text("Nuevo proyecto")
+        item(key = "create-project", contentType = "action") {
+            Button(
+                onClick = onCreateProject,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(52.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = Arachn0deColors.Primary),
+                shape = RoundedCornerShape(14.dp),
+            ) {
+                Icon(imageVector = Icons.Default.Add, contentDescription = null)
+                Spacer(modifier = Modifier.width(8.dp))
+                Text("Nuevo proyecto")
+            }
         }
     }
 }

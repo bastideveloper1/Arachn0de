@@ -284,19 +284,37 @@ internal fun ProjectCard(
                     )
                 }
                 if (progress != null) {
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Text(
-                        text = when (progress.state) {
-                            NodeProgressState.NO_WORK -> "Contenedor vacío"
-                            else -> "${progress.percentage}%"
-                        },
-                        color = when (progress.state) {
-                            NodeProgressState.NO_WORK -> Arachn0deColors.TextSecondary
-                            else -> Arachn0deColors.Accent
-                        },
-                        fontSize = 11.sp,
-                        fontWeight = if (progress.state == NodeProgressState.NO_WORK) FontWeight.Normal else FontWeight.SemiBold,
-                    )
+                    val pending = progress.total - progress.completed
+                    Spacer(modifier = Modifier.height(6.dp))
+                    when (progress.state) {
+                        NodeProgressState.NO_WORK -> {
+                            Text(
+                                text = "Contenedor vacío",
+                                color = Arachn0deColors.TextSecondary,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Normal,
+                            )
+                        }
+                        else -> {
+                            Column {
+                                Text(
+                                    text = "${progress.percentage}% · $pending de ${progress.total} pendientes",
+                                    color = Arachn0deColors.Accent,
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                )
+                                Spacer(modifier = Modifier.height(6.dp))
+                                androidx.compose.material3.LinearProgressIndicator(
+                                    progress = { if (progress.total == 0) 0f else progress.percentage / 100f },
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(4.dp),
+                                    color = Arachn0deColors.PathHighlight,
+                                    trackColor = Arachn0deColors.ControlSurface,
+                                )
+                            }
+                        }
+                    }
                 }
             }
 

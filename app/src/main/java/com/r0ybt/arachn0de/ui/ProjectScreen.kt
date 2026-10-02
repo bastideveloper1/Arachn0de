@@ -222,12 +222,95 @@ internal fun ProjectNodeScreen(
                                 Spacer(modifier = Modifier.height(10.dp))
 
                                 if (!currentNode?.description.isNullOrBlank()) {
-                                    Text(currentNode!!.description, color = Arachn0deColors.TextSecondary,
-                                        modifier = Modifier.padding(vertical = 8.dp))
+                                    androidx.compose.material3.Card(
+                                        modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
+                                        shape = RoundedCornerShape(10.dp),
+                                        colors = androidx.compose.material3.CardDefaults.cardColors(
+                                            containerColor = Arachn0deColors.ControlSurface,
+                                        ),
+                                    ) {
+                                        Column(
+                                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                                        ) {
+                                            Text(
+                                                text = "DESCRIPCIÓN",
+                                                color = Arachn0deColors.TextSecondary,
+                                                fontSize = 10.sp,
+                                                fontWeight = FontWeight.SemiBold,
+                                                letterSpacing = 0.08.sp,
+                                            )
+                                            Spacer(modifier = Modifier.height(4.dp))
+                                            Text(
+                                                text = currentNode!!.description,
+                                                color = Arachn0deColors.TextPrimary,
+                                                fontSize = 14.sp,
+                                                lineHeight = 20.sp,
+                                            )
+                                        }
+                                    }
                                 }
 
-                                if (currentProgress != null) {
+                                if (currentNode != null && currentNode.hasChildren && currentProgress != null) {
                                     NodeProgressCard(progress = currentProgress!!)
+                                    Spacer(modifier = Modifier.height(12.dp))
+                                }
+
+                                if (currentNode != null) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                    ) {
+                                        Button(
+                                            onClick = {
+                                                if (!isSubmittingNode) {
+                                                    draft = EditorDraft(currentNode.id, currentNode.parentId, currentNode.title, currentNode.description)
+                                                }
+                                            },
+                                            enabled = !isSubmittingNode,
+                                            modifier = Modifier.weight(1f).heightIn(min = 36.dp),
+                                            colors = ButtonDefaults.buttonColors(
+                                                containerColor = Arachn0deColors.ControlSurface,
+                                                contentColor = Arachn0deColors.TextPrimary,
+                                            ),
+                                            shape = RoundedCornerShape(10.dp),
+                                        ) {
+                                            Text("Editar")
+                                        }
+
+                                        Button(
+                                            onClick = {
+                                                if (!isSubmittingNode) {
+                                                    deletingNodeId = currentNode.id
+                                                    deletingNodeName = currentNode.title
+                                                }
+                                            },
+                                            enabled = !isSubmittingNode,
+                                            modifier = Modifier.weight(1f).heightIn(min = 36.dp),
+                                            colors = ButtonDefaults.buttonColors(
+                                                containerColor = Arachn0deColors.ControlSurface,
+                                                contentColor = Arachn0deColors.Destructive,
+                                            ),
+                                            shape = RoundedCornerShape(10.dp),
+                                        ) {
+                                            Text("Eliminar")
+                                        }
+
+                                        if (currentNode.isCompletable) {
+                                            Button(
+                                                onClick = {
+                                                    if (!isSubmittingNode) {
+                                                        actions.toggle(currentNode.id)
+                                                    }
+                                                },
+                                                enabled = !isSubmittingNode,
+                                                modifier = Modifier.weight(1f).heightIn(min = 36.dp),
+                                                colors = ButtonDefaults.buttonColors(containerColor = Arachn0deColors.Primary),
+                                                shape = RoundedCornerShape(10.dp),
+                                            ) {
+                                                Text(if (currentNode.isCompleted) "Reabrir" else "Completar")
+                                            }
+                                        }
+                                    }
                                     Spacer(modifier = Modifier.height(12.dp))
                                 }
 
@@ -398,7 +481,16 @@ internal fun ProjectNodeScreen(
                 TextButton(
                     enabled = !actions.operation.busy,
                     onClick = {
-                        actions.delete(deletingId) { deletingNodeId = null }
+                        actions.delete(deletingId) {
+                            deletingNodeId = null
+                            if (deletingId == currentNodeId) {
+                                if (currentPath.isNotEmpty()) {
+                                    currentPath.removeAt(currentPath.lastIndex)
+                                } else {
+                                    onBackToProjects()
+                                }
+                            }
+                        }
                     },
                 ) {
                     Text("Eliminar")

@@ -96,41 +96,49 @@ internal fun EmptyLayerState() {
 
 @Composable
 internal fun NodeProgressCard(progress: NodeProgress) {
+    if (progress.state == NodeProgressState.NO_WORK) {
+        Text("Contenedor vacío", color = Arachn0deColors.TextSecondary, fontSize = 12.sp)
+        return
+    }
+
+    val pending = progress.total - progress.completed
+    val progressFraction = if (progress.total == 0) 0f else progress.percentage / 100f
+
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(8.dp),
         colors = CardDefaults.cardColors(containerColor = Arachn0deColors.Surface),
     ) {
-        Row(
+        Column(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 14.dp, vertical = 12.dp),
-            verticalAlignment = Alignment.CenterVertically,
         ) {
-            Column(modifier = Modifier.weight(1f)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
                 Text(
                     text = "Progreso",
                     color = Arachn0deColors.TextSecondary,
                     fontSize = 12.sp,
                 )
-                Spacer(modifier = Modifier.height(4.dp))
+                Spacer(modifier = Modifier.width(8.dp))
                 Text(
-                    text = when (progress.state) {
-                        NodeProgressState.NO_WORK -> "Sin trabajo"
-                        NodeProgressState.NOT_STARTED -> "No empezado"
-                        NodeProgressState.PARTIAL -> "En progreso"
-                        NodeProgressState.COMPLETE -> "Completado"
-                    },
+                    text = "${progress.percentage}% · $pending de ${progress.total} pendientes",
                     color = Arachn0deColors.TextPrimary,
-                    fontSize = 18.sp,
+                    fontSize = 12.sp,
                     fontWeight = FontWeight.SemiBold,
                 )
             }
-            Text(
-                text = if (progress.total == 0) "0%" else "${progress.percentage}%",
-                color = Arachn0deColors.Accent,
-                fontSize = 24.sp,
-                fontWeight = FontWeight.Bold,
+            Spacer(modifier = Modifier.height(8.dp))
+            androidx.compose.material3.LinearProgressIndicator(
+                progress = { progressFraction },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(4.dp),
+                color = Arachn0deColors.PathHighlight,
+                trackColor = Arachn0deColors.ControlSurface,
             )
         }
     }
@@ -230,17 +238,27 @@ internal fun NodeCard(
 
                 if (hasChildren && progress != null) {
                     Spacer(modifier = Modifier.height(6.dp))
-                    Text(
-                        text = when (progress.state) {
-                            NodeProgressState.NO_WORK -> "Sin trabajo"
-                            NodeProgressState.NOT_STARTED -> "0%"
-                            NodeProgressState.PARTIAL -> "${progress.percentage}%"
-                            NodeProgressState.COMPLETE -> "100%"
-                        },
-                        color = Arachn0deColors.Accent,
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.SemiBold,
-                    )
+                    if (progress.state == NodeProgressState.NO_WORK) {
+                        Text(
+                            text = "Contenedor vacío",
+                            color = Arachn0deColors.TextSecondary,
+                            fontSize = 11.sp,
+                        )
+                    } else {
+                        Text(
+                            text = "${progress.percentage}% · ${progress.total - progress.completed} de ${progress.total} pendientes",
+                            color = Arachn0deColors.TextSecondary,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.SemiBold,
+                        )
+                        Spacer(modifier = Modifier.height(6.dp))
+                        androidx.compose.material3.LinearProgressIndicator(
+                            progress = { progress.percentage / 100f },
+                            modifier = Modifier.fillMaxWidth().height(4.dp),
+                            color = Arachn0deColors.PathHighlight,
+                            trackColor = Arachn0deColors.ControlSurface,
+                        )
+                    }
                 } else if (hasChildren) {
                     Spacer(modifier = Modifier.height(6.dp))
                     Text(

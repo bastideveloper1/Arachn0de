@@ -76,8 +76,8 @@ private fun AppRootContent(projectRepository: ProjectRepository, nodeRepository:
             peopleLoad.collect(personRepository.observeAllAssignments()) { responsibleByNode = it; assignmentsLoaded = true }
         }
     }
-    LaunchedEffect(showObligations, selectedProjectId, personRepository, financialPeopleLoad.attempt) {
-        if (showObligations || selectedProjectId == null) {
+    LaunchedEffect(showObligations, showCalendar, selectedProjectId, personRepository, financialPeopleLoad.attempt) {
+        if (showObligations || showCalendar || selectedProjectId == null) {
             financialPeopleLoaded = false
             financialPeopleLoad.collect(personRepository.observePeople()) { people = it; financialPeopleLoaded = true }
         }
@@ -129,6 +129,7 @@ private fun AppRootContent(projectRepository: ProjectRepository, nodeRepository:
                         showCalendar = false
                     }
                 },
+                people = people, peopleLoaded = financialPeopleLoaded,
                 onBack = { showCalendar = false },
             )
         }
@@ -205,6 +206,6 @@ private fun AppRootContent(projectRepository: ProjectRepository, nodeRepository:
     }
     LoadErrorDialog(load)
     LoadErrorDialog(nodesLoad)
-    if (showObligations || selectedProjectId == null) LoadErrorDialog(financialPeopleLoad)
+    if (showObligations || showCalendar || selectedProjectId == null) LoadErrorDialog(financialPeopleLoad)
     if (showAttention || showCalendar || showObligations) LoadErrorDialog(peopleLoad)
 }

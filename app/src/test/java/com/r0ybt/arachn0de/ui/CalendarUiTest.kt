@@ -117,14 +117,14 @@ class CalendarUiTest {
         }
         compose.onNodeWithTag("calendar-list").performScrollToIndex(2)
         awaitText("Sin tareas para este día")
-        compose.onNodeWithTag("calendar-list").performScrollToNode(hasText("Hoy"))
-        compose.onNodeWithText("Hoy").performClick(); row()
+        compose.onNodeWithTag("calendar-list").performScrollToNode(hasTestTag("calendar-current-period"))
+        compose.onNodeWithTag("calendar-current-period").performClick(); row()
         compose.onNodeWithTag("calendar-list").performScrollToNode(hasTestTag("calendar-month"))
         compose.onNodeWithTag("calendar-day:2026-10-15").assertIsSelected()
         assertEquals(before, runBlocking { app.nodeRepository.getProjectNodes(project) })
         compose.runOnIdle { clock.set(instant + 24 * 60 * 60 * 1000); app.sendBroadcast(Intent(Intent.ACTION_TIME_CHANGED)) }
-        compose.onNodeWithTag("calendar-list").performScrollToNode(hasText("Hoy"))
-        compose.onNodeWithText("Hoy").performClick()
+        compose.onNodeWithTag("calendar-list").performScrollToNode(hasTestTag("calendar-current-period"))
+        compose.onNodeWithTag("calendar-current-period").performClick()
         compose.onNodeWithTag("calendar-list").performScrollToIndex(2)
         awaitText("Sin tareas para este día")
         assertEquals(before, runBlocking { app.nodeRepository.getProjectNodes(project) })

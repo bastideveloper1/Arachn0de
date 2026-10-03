@@ -921,17 +921,27 @@ Las Notes permanecen en Disponibles (`isCompleted = false`) y se reordenan entre
 
 Pruebas dirigidas incluyen migración real v6 en API 24/28 con todos los datos existentes, creación/reintentos por propósito, conversión y normalización, fechas latentes, progreso mixto/NO_WORK, Atención, defensas de hijos/completado, traslado/reorder y borrado con responsables. Compose cubre creación con borrador restaurado, conversión/edición, iconografía, restricción de hijos y actualizaciones de Proyecto/vista Atención. Se mantienen regresiones afectadas de migraciones históricas, Personas, fechas, Atención, borradores, traslado y orden. No se afirma instalación física sobre una APK previa ni validación de drag en dispositivo para esta etapa. Texto plano únicamente: sin Markdown, formato enriquecido, imágenes ni adjuntos. Movimiento entre proyectos sigue fuera del alcance.
 
+### Creación múltiple + numeración + generación temporal finita — IMPLEMENTADO
+
+Un único `NodeBatchGenerator` puro genera una lista finita de `GeneratedNodeSpec` desde `NodeBatchParameters`; UI y persistencia no contienen generadores alternativos. Parámetros: nombre base, cantidad, numeración, número inicial, propósito, descripción, regla temporal y primer vencimiento. `MAX_BATCH_SIZE = 500` está centralizado: cantidad 1..500, nombre no vacío y títulos finales de hasta 100 puntos de código Unicode según `TitleLimits`. Se valida toda la lista antes de escribir, sin truncar títulos. Hermanos con títulos repetidos siguen permitidos. Numeración NONE/PREFIX/SUFFIX («Sin numeración», «Al inicio», «Al final»); número inicial default 1, admite 0..Int.MAX_VALUE y rechaza overflow del último número.
+
+«Crear varios» es una acción secundaria junto a la creación existente del nivel abierto. «Nuevo elemento» conserva su formulario individual. El lote crea hermanos dentro del destino original, o raíces del Proyecto si no hay padre. Se permite ACTION por defecto y NOTE; Notes no ofrecen generación temporal y se crean sin fechas. Comparten descripción opcional y 0..N responsables seleccionados con el `ResponsibleDialog` existente; no se crean Personas desde el generador. Una Nota abierta mantiene bloqueadas ambas entradas de creación.
+
+Reglas NONE/DAILY/WEEKLY/MONTHLY/YEARLY generan solo `dueAt`; `startAt` queda null. Son desplazamientos de calendario sobre la fecha ORIGINAL, no sumas de millis ni incrementos sucesivos sobre una fecha ya ajustada. Diaria conserva hora local y Semanal día de semana/hora. Mensual ajusta al último día válido cuando falta el día objetivo y recupera el día original en meses posteriores (31 ene → 28/29 feb → 31 mar). Anual conserva mes/día/hora y ajusta 29 feb a fin de febrero en años no bisiestos, recuperando 29 en el siguiente bisiesto.
+
+La generación recibe explícitamente la zona local del dispositivo. Calcula componentes de fecha de calendario sin DST y reconstruye cada fecha/hora estrictamente en esa zona, convirtiendo el resultado a epoch millis. Una hora o día local inexistente bloquea TODO el lote con error; se pide elegir otra hora inicial. Ante hora repetida se conserva la política actual de Calendar: offset estándar, sin selector de ocurrencia. El primer instante elegido se conserva exactamente. Fechas calculadas limitadas a años 1–9999; el selector Material mantiene su rango actual 1900–2100. No se persiste una zona ni una regla recurrente.
+
+La preview muestra hasta cuatro líneas: primeros tres, «…» y último si hay más, junto a cantidad total; no compone cientos de tarjetas. Consume la misma lista de especificaciones que recibe `NodeRepository.createBatch`. Generación inválida muestra el error y bloquea Crear lote. `NodeActions` reutiliza `OperationState` para impedir doble envío y mantener formulario/parámetros ante errores. `NodeBatchDraft.Saver` guarda destino, UUID de reintento, nombre, cantidad, numeración, número inicial, propósito, descripción, responsables, regla y primer vencimiento; el selector temporal existente también conserva su etapa y selección. Restaurar no ejecuta escrituras automáticas ni redirige un padre desaparecido a raíz.
+
+`createBatch` valida especificaciones, Proyecto, padre ACTION y Personas dentro de una única transacción para TODOS los Nodes y asociaciones `node_person`. Cualquier fallo revierte también posiciones y normalización de completado del padre. Los nuevos Nodes nacen incompletos, se añaden mediante máximo+1 en orden generado, sin tocar otros hermanos normalmente; solo se compacta el destino si faltan posiciones antes de Int.MAX_VALUE, con la política de orden existente y sin alterar sus fechas históricas. Disponibles/Completadas y drag/reorder conservan sus reglas: el lote se añade al final de Disponibles, aunque Completadas se muestre después.
+
+IDs deterministas derivados del UUID guardable del borrador y del índice permiten reconocer un lote confirmado y reintentar sin duplicarlo, incluso tras reabrir Room o ante llamadas concurrentes. Se exige coincidencia de cantidad, destino, contenido, propósito, fechas y responsables y se rechaza una identidad existente parcialmente. No hay tabla/registro de lotes: la protección reconoce las filas mientras existan; no garantiza exactamente una vez después de borrarlas. Tras crear, cada Node es independiente: no existen edición/borrado del lote como unidad ni creación futura automática.
+
+Los Flows existentes incorporan la lista, responsables, progreso y Atención sin refresh manual: ACTION aporta trabajo y su `dueAt` alimenta `TaskTemporal`/`AttentionSnapshot`; NOTE queda excluida. No cambian sus fórmulas. Room permanece **v7**, con schema, entidades, migraciones y triggers intactos; `PersonDao` solo añade lectura de IDs de asociaciones para comprobar reintentos. Sin WorkManager, alarmas, notificaciones, Calendario ni recurrencia persistente. No se implementa intervalo personalizado en esta versión.
+
+Validación dirigida: cinco pruebas puras de cantidad/numeración/títulos, propósito, fechas mensuales/anuales sin deriva, calendario local/DST y días inexistentes; tres pruebas de repositorio en API 24/28 (seis ejecuciones) para especificaciones exactas, asociaciones, progreso/Atención, orden, rollback de Nodes/asociaciones, saturación de posiciones y reintentos concurrentes/reapertura; dos pruebas Compose para creación en la Capa actual, Notes, responsables, borrador/selector restaurados, preview y fallo/reintento. Pasaron también 17 regresiones dirigidas de Notes, fechas, Atención, traslado, orden y acceso a creación en 320×480 con texto ampliado. Una prueba de Notes se adapta para desplazarse a la fila lazy antes de comprobarla. Estos resultados no acreditan instalación/prueba física, muerte real de proceso ni rendimiento con 500 elementos y muchos responsables; el borrador mantiene los límites del Bundle existentes.
+
 ## PRÓXIMA ETAPA — capacidades previstas, no implementadas
-
-### 6. Creación múltiple combinable
-
-Se prevé un único generador de múltiples tareas/Nodes, sin sistemas independientes para series, cuotas o mediciones. Debe combinar cantidad **N**, numeración y reglas temporales.
-
-La numeración permitirá no numerar, colocar el número al principio o al final y configurar el número inicial. Ejemplos: `Episodio 1` hasta `Episodio 20`, o `1 Medición de peso`, `2 Medición de peso` y siguientes.
-
-Las reglas temporales previstas son sin fecha, diaria, semanal, mensual, anual y personalizada. Por ejemplo, generar seis elementos `Cuenta celular cuota 1` a `Cuenta celular cuota 6`, con vencimiento el día 15 de cada mes sucesivo. El generador no decide por ese ejemplo cómo se modelará Obligación.
-
-La futura vista Calendario se construirá sobre las fechas generadas; disponer de Calendario no será requisito para generarlas. El alcance de recurrencia, las reglas de calendario y la política de generación se diseñarán antes de implementarse.
 
 ### 7. Obligación — comportamiento previsto, modelo abierto
 
@@ -985,7 +995,7 @@ Se distinguen dos conceptos: **Release DE Arachn0de** actualiza/distribuye la ap
 
 ### Secuencia tentativa de implementación
 
-Este orden es una propuesta revisable, no una obligación irreversible. Los primeros seis pasos ya están implementados; los restantes siguen pendientes:
+Este orden es una propuesta revisable, no una obligación irreversible. Los primeros ocho pasos ya están implementados; los restantes siguen pendientes:
 
 1. Mover Node a otra Capa — IMPLEMENTADO.
 2. Personas — IMPLEMENTADO.
@@ -993,8 +1003,8 @@ Este orden es una propuesta revisable, no una obligación irreversible. Los prim
 4. Fechas — IMPLEMENTADO.
 5. Atención básica — IMPLEMENTADO.
 6. Notas y conversión Tarea ↔ Nota — IMPLEMENTADO.
-7. Creación múltiple y numeración.
-8. Reglas temporales/recurrencia para creación múltiple.
+7. Creación múltiple y numeración — IMPLEMENTADO.
+8. Reglas temporales finitas para creación múltiple — IMPLEMENTADO; recurrencia persistente no implementada.
 9. Diseñar formalmente Obligación.
 10. Implementar Obligaciones según el diseño aprobado.
 11. Agregaciones, totales y filtros financieros.
@@ -1026,7 +1036,7 @@ Desktop y sincronización local constituyen una etapa avanzada/final de esta lí
 - **Obligación:** elegir entre A, B u otra composición mediante diseño específico; definir allí el alcance de agregación por Subcapas. No hay modelo ni schema aprobado.
 - **Capas explícitamente vacías:** decidir si deben existir en el futuro. Actualmente perder el último hijo convierte el nodo en tarea; esta documentación no cambia esa regla ni elige una alternativa futura.
 - **Notas avanzadas:** formato y adjuntos se diseñarán en otra etapa; el propósito NOTE y la conversión de hojas ya están implementados. No se definen Notas contenedoras.
-- **Atención avanzada y generación temporal:** la propagación básica ya está implementada; diseñar futuras reglas adicionales y recurrencia antes de desarrollar esos bloques.
+- **Atención avanzada y generación temporal:** la propagación básica y generación temporal finita ya están implementadas; diseñar futuras reglas adicionales y recurrencia persistente antes de desarrollar esos bloques.
 - **Distribución de la app:** definir firma, publicación y comprobación/descarga de actualizaciones antes de implementarlas.
 
 ## Principios de evolución

@@ -1,5 +1,6 @@
 package com.r0ybt.arachn0de.ui.state
 
+import com.r0ybt.arachn0de.domain.model.GeneratedNodeSpec
 import com.r0ybt.arachn0de.data.repository.NodeRepository
 import kotlinx.coroutines.CoroutineScope
 import java.util.UUID
@@ -11,6 +12,12 @@ internal class NodeActions(private val repository: NodeRepository, scope: Corout
             if (id == null) { repository.createNode(projectId, parentId, title, description, creationId, startAt, dueAt, purpose); true }
             else if (editDates) repository.updateNodeWithDates(id, title, description, startAt, dueAt)
             else repository.updateNode(id, title, description)
+        }, onSuccess)
+
+    fun createBatch(projectId: String, draft: NodeBatchDraft, specs: List<GeneratedNodeSpec>, responsibleIds: Set<String>, onSuccess: () -> Unit) =
+        operation.submit("No se pudo crear el lote. Se conservan tus parámetros; revisa el destino y los responsables y reintenta.", {
+            repository.createBatch(projectId, draft.parentId, draft.batchId, specs, responsibleIds)
+            true
         }, onSuccess)
 
     fun convert(id: String, purpose: com.r0ybt.arachn0de.domain.model.NodePurpose, onSuccess: () -> Unit = {}) =

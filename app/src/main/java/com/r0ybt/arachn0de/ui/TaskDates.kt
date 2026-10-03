@@ -76,7 +76,7 @@ internal class TaskDatePickerDraft {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-internal fun TaskDatesEditor(draft: EditorDraft, enabled: Boolean, picker: TaskDatePickerDraft) {
+internal fun TaskDatesEditor(draft: EditorDraft, enabled: Boolean, picker: TaskDatePickerDraft, includeStart: Boolean = true) {
     var field by picker::field
     var timeStage by picker::timeStage
     var selectedDay by picker::selectedDay
@@ -84,7 +84,7 @@ internal fun TaskDatesEditor(draft: EditorDraft, enabled: Boolean, picker: TaskD
     var invalidLocalTime by picker::invalidLocalTime
     val context = LocalContext.current
     Column {
-        listOf("Inicio" to draft.startAt, "Vencimiento" to draft.dueAt).forEach { (label, value) ->
+        (if (includeStart) listOf("Inicio" to draft.startAt, "Vencimiento" to draft.dueAt) else listOf("Vencimiento" to draft.dueAt)).forEach { (label, value) ->
             Row(Modifier.fillMaxWidth()) {
                 TextButton(enabled = enabled, modifier = Modifier.weight(1f), onClick = {
                     initialInstant = value ?: System.currentTimeMillis()

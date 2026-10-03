@@ -15,6 +15,8 @@ interface PersonDao {
     @Query("DELETE FROM persons WHERE id = :id") suspend fun delete(id: String): Int
     @Query("SELECT COUNT(*) FROM persons WHERE avatarFile = :file") suspend fun avatarReferences(file: String): Int
     @Query("SELECT COUNT(*) FROM nodes WHERE id = :id") suspend fun nodeExists(id: String): Int
+    @Query("SELECT personId FROM node_person WHERE nodeId = :nodeId ORDER BY personId")
+    suspend fun assignmentIds(nodeId: String): List<String>
     @Query("DELETE FROM node_person WHERE nodeId = :id") suspend fun clearAssignments(id: String)
     @Insert suspend fun assign(assignments: List<NodePersonEntity>)
     @Query("SELECT np.nodeId, p.id, p.name, p.avatarFile FROM node_person np JOIN persons p ON p.id = np.personId ORDER BY p.name COLLATE NOCASE, p.id")

@@ -2,9 +2,12 @@ package com.r0ybt.arachn0de.data.repository
 
 import androidx.room.withTransaction
 import com.r0ybt.arachn0de.data.local.Arachn0deDatabase
+import com.r0ybt.arachn0de.data.local.NodePersonEntity
 import com.r0ybt.arachn0de.data.local.NodeEntity
 import com.r0ybt.arachn0de.data.local.toNode
 import com.r0ybt.arachn0de.domain.model.Node
+import com.r0ybt.arachn0de.domain.model.GeneratedNodeSpec
+import com.r0ybt.arachn0de.domain.model.NodeBatchGenerator
 import com.r0ybt.arachn0de.domain.model.NodePurpose
 import com.r0ybt.arachn0de.domain.model.NodeProgress
 import com.r0ybt.arachn0de.domain.model.NodeTreeSnapshot
@@ -137,6 +140,60 @@ class NodeRepository(
         )
         nodeDao.insert(entity)
         entity.toNode(hasChildren = false)
+    }
+
+    /** The preview's exact specs are committed with assignments in one transaction. Stable IDs make retries safe. */
+    suspend fun createBatch(
+        projectId: String,
+        parentId: String?,
+        batchId: String,
+        specifications: List<GeneratedNodeSpec>,
+        responsibleIds: Set<String> = emptySet(),
+    ): List<Node> {
+        // Snapshot caller-owned collections before suspending.
+        val specs = specifications.toList()
+        val people = responsibleIds.toSet()
+        NodeBatchGenerator.validateSpecs(specs)
+        require(batchId.isNotBlank())
+        val ids = specs.indices.map { UUID.nameUUIDFromBytes("$batchId:$it".toByteArray(Charsets.UTF_8)).toString() }
+        return database.withTransaction {
+            val existing = ids.map { nodeDao.getById(it) }
+            if (existing.any { it != null }) {
+                check(nodeDao.getById(UUID.nameUUIDFromBytes("$batchId:${specs.size}".toByteArray(Charsets.UTF_8)).toString()) == null) { "El lote ya fue creado con otra cantidad." }
+                check(existing.all { it != null }) { "El lote ya existe parcialmente; no se puede repetir." }
+                existing.mapIndexed { index, row ->
+                    val node = checkNotNull(row)
+                    val spec = specs[index]
+                    check(node.projectId == projectId && node.parentId == parentId && node.title == spec.title &&
+                        node.description == spec.description && node.purpose == spec.purpose.name &&
+                        node.startAt == null && node.dueAt == spec.dueAt &&
+                        database.personDao().assignmentIds(node.id).toSet() == people) {
+                        "El lote ya fue creado con otros datos."
+                    }
+                    node.toNode(nodeDao.hasChildren(projectId, node.id))
+                }
+            } else {
+                require(database.projectDao().getById(projectId) != null) { "Project not found" }
+                validateParent(projectId, parentId)
+                people.forEach { requireNotNull(database.personDao().get(it)) { "Person not found" } }
+                var maximum = nodeDao.maxPosition(projectId, parentId) ?: -1
+                if (maximum.toLong() + specs.size > Int.MAX_VALUE) {
+                    writeOrder(sortSiblingsForDisplay(nodeDao.getSiblings(projectId, parentId)))
+                    maximum = nodeDao.maxPosition(projectId, parentId) ?: -1
+                }
+                check(maximum.toLong() + specs.size <= Int.MAX_VALUE) { "Sibling position exhausted" }
+                val now = currentTimeMillis()
+                specs.mapIndexed { index, spec ->
+                    val entity = NodeEntity(ids[index], projectId, parentId, spec.title, spec.description,
+                        false, maximum + 1 + index, now, now, startAt = null, dueAt = spec.dueAt, purpose = spec.purpose.name)
+                    nodeDao.insert(entity)
+                    if (people.isNotEmpty()) database.personDao().assign(people.map {
+                        NodePersonEntity(entity.id, it)
+                    })
+                    entity.toNode(hasChildren = false)
+                }
+            }
+        }
     }
 
     /** Content edits never change structure, completion, identity or sibling order. */

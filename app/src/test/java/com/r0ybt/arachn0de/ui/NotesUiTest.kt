@@ -77,7 +77,8 @@ class NotesUiTest {
         compose.onNodeWithText("Nota").assertIsSelected()
         compose.onNodeWithText("Guardar").performClick()
         compose.waitUntil(10_000) { runBlocking { app.nodeRepository.getProjectNodes(project).any { it.title == "New note" } } }
-        await("New note")
+        compose.onNodeWithTag("nodes-list").performScrollToNode(hasText("New note"))
+        compose.onNodeWithText("New note").assertExists()
         val note = runBlocking { app.nodeRepository.getProjectNodes(project).single { it.title == "New note" } }
         assertEquals(NodePurpose.NOTE, note.purpose); assertEquals("Note content", note.description)
         assertEquals(1, runBlocking { app.nodeRepository.calculateProjectProgress(project)!!.total })

@@ -38,6 +38,7 @@ import androidx.compose.runtime.saveable.listSaver
 import androidx.compose.runtime.toMutableStateList
 import androidx.compose.runtime.snapshots.SnapshotStateList
 import com.r0ybt.arachn0de.domain.model.NodePurpose
+import com.r0ybt.arachn0de.ui.state.NodeBatchDraft
 import com.r0ybt.arachn0de.ui.state.EditorDraft
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.saveable.rememberSaveableStateHolder
@@ -104,6 +105,7 @@ internal fun ProjectNodeScreen(
     var hasLoaded by remember(project.id) { mutableStateOf(false) }
     var projectState by remember(project.id) { mutableStateOf(NodeTreeSnapshot(emptyList())) }
     var draft by rememberSaveable(project.id, stateSaver = EditorDraft.Saver) { mutableStateOf<EditorDraft?>(null) }
+    var batchDraft by rememberSaveable(project.id, stateSaver = NodeBatchDraft.Saver) { mutableStateOf<NodeBatchDraft?>(null) }
     var deletingNodeId by rememberSaveable(project.id) { mutableStateOf<String?>(null) }
     var deletingNodeName by rememberSaveable(project.id) { mutableStateOf("") }
     var movingNodeId by rememberSaveable(project.id) { mutableStateOf<String?>(null) }
@@ -438,6 +440,7 @@ internal fun ProjectNodeScreen(
                         }
                     }
                 }
+                TextButton(enabled = !isSubmittingNode && currentNode?.purpose != NodePurpose.NOTE, onClick = { batchDraft = NodeBatchDraft(currentNodeId) }) { Text("Crear varios") }
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -485,6 +488,12 @@ internal fun ProjectNodeScreen(
                 }
             }
         }
+    }
+
+    batchDraft?.let { batch ->
+        NodeBatchDialog(batch, people, peopleLoaded, isSubmittingNode,
+            onDismiss = { if (!isSubmittingNode) batchDraft = null },
+            onCreate = { specs, ids -> actions.createBatch(project.id, batch, specs, ids) { batchDraft = null } })
     }
 
     draft?.let { editor ->

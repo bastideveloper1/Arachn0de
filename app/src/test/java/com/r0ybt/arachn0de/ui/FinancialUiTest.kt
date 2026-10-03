@@ -56,7 +56,7 @@ class FinancialUiTest {
         else restorer.setContent { Arachn0deTheme { AppSafeArea { AppRoot(app.projectRepository,app.nodeRepository){clock.get()} } } }
     }
     private fun open() {
-        awaitText("Personal");compose.onNodeWithContentDescription("Abrir menú").performClick();compose.onNodeWithText("Obligaciones").performClick()
+        awaitText("Personal");compose.onNodeWithContentDescription("Abrir menú").performClick();compose.onNodeWithText("Obligaciones").performScrollTo().performClick()
         awaitTag("financial-summary")
     }
     private fun row(id:String) { compose.onNodeWithTag("obligations-list").performScrollToNode(hasTestTag("obligation-task:$id"));awaitTag("obligation-task:$id") }
@@ -111,7 +111,7 @@ class FinancialUiTest {
         compose.onNodeWithTag("nodes-list").performScrollToNode(hasText("Salud"));compose.onNodeWithText("Salud").performClick();awaitText("CAPA 1")
         compose.onNodeWithTag("nodes-list").performScrollToNode(hasText("Total",substring=true))
         compose.onNodeWithTag("financial-currency:CLP").assertExists();compose.onNodeWithTag("financial-currency:USD").assertDoesNotExist()
-        compose.onNodeWithContentDescription("Abrir menú").performClick();compose.onNodeWithText("Obligaciones").performClick();awaitTag("financial-summary")
+        compose.onNodeWithContentDescription("Abrir menú").performClick();compose.onNodeWithText("Obligaciones").performScrollTo().performClick();awaitTag("financial-summary")
         compose.onNodeWithText("Volver").performClick();awaitText("CAPA 1")
         compose.onNodeWithTag("nodes-list").performScrollToNode(hasText("Tratamiento"));compose.onNodeWithText("Tratamiento").assertExists()
     }

@@ -20,6 +20,9 @@ internal data class BackupData(
     val nodeTags: List<NodeTagEntity> = emptyList(),
     val recurrenceTags: List<RecurrenceTagEntity> = emptyList(),
     val nodeEvents: List<NodeEventEntity> = emptyList(),
+    val creationDefaults: List<CreationDefaultsEntity> = emptyList(),
+    val defaultsTags: List<CreationDefaultsTagEntity> = emptyList(),
+    val defaultsPeople: List<CreationDefaultsPersonEntity> = emptyList(),
 )
 
 internal object BackupLimits {
@@ -33,7 +36,7 @@ internal object BackupLimits {
 /** Validate before staging or deleting anything; return parent-first order without recursion. */
 internal fun BackupData.validate(): List<NodeEntity> {
     require(appVersion.isNotBlank() && appVersion.length <= 128 && createdAt >= 0) { "Metadatos de backup inválidos." }
-    require(projects.size.toLong() + nodes.size + persons.size + assignments.size + recurrenceRules.size + recurrenceOccurrences.size + recurrenceAssignments.size + tags.size + nodeTags.size + recurrenceTags.size + nodeEvents.size <= BackupLimits.RECORDS) { "Demasiados registros en el backup." }
+    require(projects.size.toLong() + nodes.size + persons.size + assignments.size + recurrenceRules.size + recurrenceOccurrences.size + recurrenceAssignments.size + tags.size + nodeTags.size + recurrenceTags.size + nodeEvents.size + creationDefaults.size + defaultsTags.size + defaultsPeople.size <= BackupLimits.RECORDS) { "Demasiados registros en el backup." }
     fun unique(ids: List<String>): Set<String> {
         require(ids.all { it.isNotBlank() && it.length <= 256 }) { "Identidad inválida." }
         return ids.toSet().also { require(it.size == ids.size) { "Identidades duplicadas." } }
@@ -101,6 +104,17 @@ internal fun BackupData.validate(): List<NodeEntity> {
     nodeEvents.forEach {
         require(it.nodeId in nodeIds) { "Evento de un nodo ausente." }
         com.r0ybt.arachn0de.domain.model.NodeEventType.valueOf(it.type)
+    }
+    val defaultsIds=creationDefaults.map { it.id }.toSet()
+    require(defaultsIds.size==creationDefaults.size) { "Defaults duplicados." }
+    val defaultTagsById=defaultsTags.groupBy { it.defaultsId };val defaultPeopleById=defaultsPeople.groupBy { it.defaultsId }
+    require(defaultsTags.toSet().size==defaultsTags.size && defaultsTags.all { it.defaultsId in defaultsIds && it.tagId in tagIds }) { "Tags de defaults inválidos." }
+    require(defaultsPeople.toSet().size==defaultsPeople.size && defaultsPeople.all { it.defaultsId in defaultsIds && it.personId in personIds }) { "Responsables de defaults inválidos." }
+    creationDefaults.forEach { row ->
+        row.projectId?.let { require(it in projectIds) { "Proyecto de defaults ausente." } }
+        row.nodeId?.let { require(byId[it]?.projectId==row.projectId && row.projectId!=null) { "Capa de defaults inválida." } }
+        com.r0ybt.arachn0de.data.repository.CreationDefaultsCodec.decode(row,
+            defaultTagsById[row.id].orEmpty().mapTo(hashSetOf()) { it.tagId },defaultPeopleById[row.id].orEmpty().mapTo(hashSetOf()) { it.personId })
     }
     val names = persons.mapNotNull { it.avatarFile }.toSet()
     require(names == avatars.keys && names.all { BackupLimits.avatarName.matches(it) }) { "Referencias de avatar inválidas." }

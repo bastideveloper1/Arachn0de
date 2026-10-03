@@ -30,6 +30,7 @@ class NodeRepository(
     private val database: Arachn0deDatabase,
     private val currentTimeMillis: () -> Long = System::currentTimeMillis,
 ) {
+    val creationDefaults = CreationDefaultsRepository(database)
     val tags = TagRepository(database)
     val recurrence = RecurrenceRepository(database, currentTimeMillis)
     private val nodeDao = database.nodeDao()

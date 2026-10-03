@@ -70,7 +70,7 @@ class BackupUiTest {
         compose.onNodeWithText("Antes").performClick()
         compose.waitUntil(10_000) { compose.onAllNodesWithText("Nuevo elemento").fetchSemanticsNodes().isNotEmpty() }
         compose.onNodeWithContentDescription("Abrir menú").performClick()
-        compose.onNodeWithText("Acerca de").performClick()
+        compose.onNodeWithText("Acerca de").performScrollTo().performClick()
         val incoming = BackupFixture.empty().copy(projects = listOf(com.r0ybt.arachn0de.data.local.ProjectEntity("restored", "Recuperado", "", 3, 1, 2)))
         val uri = Uri.parse("content://backup-ui/root")
         shadowOf(compose.activity.contentResolver).registerInputStream(uri, ByteArrayInputStream(BackupFixture.archive(incoming)))

@@ -38,7 +38,7 @@ internal object DrawerWidthPolicy {
 internal fun AppIdentityDrawer(onDismiss: () -> Unit, onPeople: (() -> Unit)? = null,
     onAttention: (() -> Unit)? = null, onCalendar: (() -> Unit)? = null,
     onObligations: (() -> Unit)? = null, onAbout: (() -> Unit)? = null,
-    onProjects: (() -> Unit)? = null, projectsSelected: Boolean = false) {
+    onSettings: (() -> Unit)? = null, onProjects: (() -> Unit)? = null, projectsSelected: Boolean = false) {
     BackHandler(onBack = onDismiss)
     BoxWithConstraints(Modifier.fillMaxSize()) {
         val compact = DrawerWidthPolicy.fullWidth(maxWidth)
@@ -77,6 +77,8 @@ internal fun AppIdentityDrawer(onDismiss: () -> Unit, onPeople: (() -> Unit)? = 
                 icon = { Icon(Icons.Default.People, null) }, onClick = { navigate(it) }, modifier = Modifier.heightIn(min = 48.dp)) }
             HorizontalDivider(Modifier.padding(vertical = 8.dp))
             Text("Aplicación", style = MaterialTheme.typography.labelLarge, color = Arachn0deColors.TextSecondary)
+            onSettings?.let { NavigationDrawerItem(label = { Text("Configuración") }, selected = false,
+                icon = { Icon(Icons.Default.Settings, null) }, onClick = { navigate(it) }, modifier = Modifier.heightIn(min = 48.dp)) }
             onAbout?.let { NavigationDrawerItem(label = { Text("Acerca de") }, selected = false,
                 icon = { Icon(Icons.Default.Info, null) }, onClick = { navigate(it) }, modifier = Modifier.heightIn(min = 48.dp)) }
             Text("v${BuildConfig.VERSION_NAME}", style = MaterialTheme.typography.bodySmall, color = Arachn0deColors.TextSecondary)
@@ -85,7 +87,7 @@ internal fun AppIdentityDrawer(onDismiss: () -> Unit, onPeople: (() -> Unit)? = 
 }
 
 @Composable
-internal fun HeaderBar(onMenuClick: () -> Unit) {
+internal fun HeaderBar(onMenuClick: () -> Unit, trailingAction: (@Composable () -> Unit)? = null) {
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         IconButton(onClick = onMenuClick, modifier = Modifier.size(48.dp)
             .background(Arachn0deColors.SurfaceRaised, androidx.compose.foundation.shape.RoundedCornerShape(12.dp))) {
@@ -94,5 +96,6 @@ internal fun HeaderBar(onMenuClick: () -> Unit) {
         Spacer(Modifier.width(10.dp))
         Text("Arachn0de", color = Arachn0deColors.TextSecondary, fontSize = 16.sp,
             modifier = Modifier.weight(1f))
+        trailingAction?.invoke()
     }
 }

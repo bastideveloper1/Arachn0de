@@ -9,6 +9,7 @@ internal class EditorDraftStore {
     var activeKey by mutableStateOf<String?>(null)
         private set
     val active: EditorDraft? get() = activeKey?.let(entries::get)
+    fun hasNew(parentId: String?): Boolean = "new:${parentId.orEmpty()}" in entries
     fun open(parentId: String?, nodeId: String? = null, seed: () -> EditorDraft) {
         val key = if (nodeId == null) "new:${parentId.orEmpty()}" else "edit:$nodeId"
         entries.getOrPut(key, seed)

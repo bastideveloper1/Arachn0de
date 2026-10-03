@@ -34,7 +34,7 @@ class PriorityBackupTest {
         populate(); val before=backup.snapshot()
         for (version in 1..4) {
             val json=JSONObject(BackupJson.encode(before).toString(Charsets.UTF_8)).apply {
-                put("dataVersion",version)
+                put("dataVersion",version); remove("creationDefaults"); remove("defaultsTags"); remove("defaultsPeople")
                 for (key in listOf("nodes","recurrenceRules")) for (i in 0 until getJSONArray(key).length()) getJSONArray(key).getJSONObject(i).apply { remove("priority"); remove("creationGroupId") }
                 if (version<4) remove("nodeEvents")
                 if (version<3) { remove("tags"); remove("nodeTags"); remove("recurrenceTags") }

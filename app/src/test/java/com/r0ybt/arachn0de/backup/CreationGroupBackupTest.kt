@@ -31,7 +31,7 @@ class CreationGroupBackupTest {
         nodes.createBatch("p",null,"second",listOf(spec))
         val before=backup.snapshot()
         val encoded=BackupJson.encode(before)
-        assertEquals(6,JSONObject(encoded.toString(Charsets.UTF_8)).getInt("dataVersion"))
+        assertEquals(7,JSONObject(encoded.toString(Charsets.UTF_8)).getInt("dataVersion"))
         backup.restore(BackupJson.decode(encoded))
         val after=backup.snapshot()
         assertEquals(before.copy(createdAt=after.createdAt),after)
@@ -46,7 +46,7 @@ class CreationGroupBackupTest {
         val before=backup.snapshot()
         for(version in 1..5) {
             val json=JSONObject(BackupJson.encode(before).toString(Charsets.UTF_8)).apply {
-                put("dataVersion",version)
+                put("dataVersion",version); remove("creationDefaults"); remove("defaultsTags"); remove("defaultsPeople")
                 for(i in 0 until getJSONArray("nodes").length()) getJSONArray("nodes").getJSONObject(i).remove("creationGroupId")
                 if(version<5) for(key in listOf("nodes","recurrenceRules")) for(i in 0 until getJSONArray(key).length()) getJSONArray(key).getJSONObject(i).remove("priority")
                 if(version<4) remove("nodeEvents")

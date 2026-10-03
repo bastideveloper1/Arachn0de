@@ -33,7 +33,7 @@ internal class BackupRepository(private val database: Arachn0deDatabase, context
                     }
                 }
                 BackupData(BuildConfig.VERSION_NAME, System.currentTimeMillis(), projects,
-                    nodes, people, assignments, images, database.recurrenceDao().rules(), database.recurrenceDao().occurrences(), database.recurrenceDao().assignments(), database.tagDao().tags(), database.tagDao().nodeTags(), database.tagDao().ruleTags(), database.nodeEventDao().all()).also { it.validate() }
+                    nodes, people, assignments, images, database.recurrenceDao().rules(), database.recurrenceDao().occurrences(), database.recurrenceDao().assignments(), database.tagDao().tags(), database.tagDao().nodeTags(), database.tagDao().ruleTags(), database.nodeEventDao().all(), database.creationDefaultsDao().all(), database.creationDefaultsDao().tags(), database.creationDefaultsDao().people()).also { it.validate() }
             }
         }
     }
@@ -80,6 +80,7 @@ internal class BackupRepository(private val database: Arachn0deDatabase, context
                     // Persist both sets before DB changes: recovery queries committed references after a crash.
                     avatars.record(previous + names.values)
                     val recurrence = database.recurrenceDao()
+                    database.creationDefaultsDao().clear()
                     database.tagDao().clear()
                     recurrence.deleteOccurrences(); recurrence.deleteAssignments(); recurrence.deleteRules()
                     dao.deleteAssignments()
@@ -96,6 +97,9 @@ internal class BackupRepository(private val database: Arachn0deDatabase, context
                     database.tagDao().assignNodes(data.nodeTags)
                     database.tagDao().assignRules(data.recurrenceTags)
                     database.nodeEventDao().insertAll(data.nodeEvents)
+                    data.creationDefaults.forEach { database.creationDefaultsDao().save(it) }
+                    database.creationDefaultsDao().insertTags(data.defaultsTags)
+                    database.creationDefaultsDao().insertPeople(data.defaultsPeople)
                     currentCoroutineContext().ensureActive()
                 }
             } finally {

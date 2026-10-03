@@ -55,6 +55,7 @@ internal fun ProjectDashboardScreen(
     onOpenCalendar: () -> Unit = {},
     onOpenObligations: () -> Unit = {},
     onOpenAbout: () -> Unit = {},
+    onOpenSettings: () -> Unit = {},
     recurrenceContent: @Composable () -> Unit = {},
     projectAttentionById: Map<String, com.r0ybt.arachn0de.domain.model.AttentionSummary> = emptyMap(),
     exportTree: com.r0ybt.arachn0de.domain.model.NodeTreeSnapshot = com.r0ybt.arachn0de.domain.model.NodeTreeSnapshot(emptyList()),
@@ -156,7 +157,7 @@ internal fun ProjectDashboardScreen(
                         onAttention = { showDrawer = false; onOpenAttention() },
                         onCalendar = { showDrawer = false; onOpenCalendar() },
                         onObligations = { showDrawer = false; onOpenObligations() },
-                        onAbout = { showDrawer = false; onOpenAbout() },
+                        onSettings = { showDrawer = false; onOpenSettings() }, onAbout = { showDrawer = false; onOpenAbout() },
                     )
                 }
             }

@@ -1,5 +1,6 @@
 package com.r0ybt.arachn0de.ui
 
+import androidx.compose.material.icons.filled.Settings
 import androidx.activity.compose.BackHandler
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.selected
@@ -26,6 +27,10 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
+import com.r0ybt.arachn0de.ui.state.NodeSortMode
+import com.r0ybt.arachn0de.ui.state.NodeSortPreferences
+import com.r0ybt.arachn0de.ui.state.NodePresentationSort
+import androidx.compose.material.icons.automirrored.filled.Sort
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.FilterList
 import androidx.compose.material.icons.filled.MoreVert
@@ -88,12 +93,14 @@ internal fun ProjectNodeScreen(
     onOpenCalendar: () -> Unit = {},
     onOpenObligations: () -> Unit = {},
     onOpenAbout: () -> Unit = {},
+    onOpenSettings: () -> Unit = {},
     onBackToObligations: (() -> Unit)? = null,
     onBackToCalendar: (() -> Unit)? = null,
     openNodeId: String? = null,
     onOpenNodeHandled: () -> Unit = {},
     clock: () -> Long = System::currentTimeMillis,
     onOpenProjects: () -> Unit = onBackToProjects,
+    sortPreferences: NodeSortPreferences = rememberSaveable(project.id, saver = NodeSortPreferences.Saver) { NodeSortPreferences() },
 ) {
     val pendingOpenNode by rememberUpdatedState(openNodeId)
     val handleOpenNode by rememberUpdatedState(onOpenNodeHandled)
@@ -140,8 +147,10 @@ internal fun ProjectNodeScreen(
     val actions = remember(nodeRepository, scope) { NodeActions(nodeRepository, scope) }
     val copyContext = androidx.compose.ui.platform.LocalContext.current
     val copyActions = remember(copyContext, scope) { com.r0ybt.arachn0de.ui.state.NodeCopyActions(copyContext, scope) }
-    val isSubmittingNode = actions.operation.busy
+    val defaultsOperation = remember(scope) { com.r0ybt.arachn0de.ui.state.OperationState(scope) }
+    val isSubmittingNode = actions.operation.busy || defaultsOperation.busy
     val currentNodeId = currentPath.lastOrNull()
+    var showDefaults by rememberSaveable(currentNodeId) { mutableStateOf(false) }
     var showContextActions by remember(currentNodeId) { mutableStateOf(false) }
     val currentNode = projectState.nodesById[currentNodeId]
     var historyNodeId by rememberSaveable { mutableStateOf<String?>(null) }
@@ -153,19 +162,35 @@ internal fun ProjectNodeScreen(
     val scopedFilter = com.r0ybt.arachn0de.domain.model.NodeFilter(
         com.r0ybt.arachn0de.domain.model.TemporalRanges.resolve(scopeFilters.time, now, java.util.TimeZone.getDefault(), java.util.Locale.getDefault()),
         scopeFilters.person, scopeFilters.completion, scopeFilters.tag, scopeFilters.priority)
-    val filteredRows by androidx.compose.runtime.produceState<List<com.r0ybt.arachn0de.domain.model.FilteredNodeRow>?>(null, projectState, currentNodeId, scopedFilter, tagState, responsibleByNode) {
+    val sortContext = "${project.id}:${currentNodeId ?: "project-root"}"
+    val sortMode = sortPreferences.mode(sortContext)
+    var showSortMenu by remember(currentNodeId) { mutableStateOf(false) }
+    val filterActive = scopeFilters.active
+    val automaticNodes by androidx.compose.runtime.produceState<List<com.r0ybt.arachn0de.domain.model.Node>?>(null, projectState, currentNodeId, sortMode) {
         value = null
-        if (!scopeFilters.active) { value = emptyList(); return@produceState }
+        if (sortMode == NodeSortMode.MANUAL) return@produceState
         value = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
-            com.r0ybt.arachn0de.domain.model.ScopedNodeFilter.apply(projectState, project.id, currentNodeId, scopedFilter,
+            NodePresentationSort.children(projectState.nodes.filter { it.projectId == project.id && it.parentId == currentNodeId }, sortMode)
+        }
+    }
+    // Manual keeps the existing coherent projection, without a new asynchronous loading phase.
+    val currentNodes = if (sortMode == NodeSortMode.MANUAL) remember(projectState, currentNodeId) {
+        projectState.childrenOf(currentNodeId)
+    } else automaticNodes
+    val filteredRows by androidx.compose.runtime.produceState<List<com.r0ybt.arachn0de.domain.model.FilteredNodeRow>?>(null, projectState, currentNodeId, scopedFilter, sortMode, tagState, responsibleByNode) {
+        value = null
+        if (!filterActive) { value = emptyList(); return@produceState }
+        value = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
+            val rows = com.r0ybt.arachn0de.domain.model.ScopedNodeFilter.apply(projectState, project.id, currentNodeId, scopedFilter,
                 responsibleByNode.mapValues { (_, people) -> people.map { it.id }.toSet() }, tagState.nodeIds)
+            NodePresentationSort.filtered(rows, sortMode)
         }
     }
     if (scopeFilters.open) ScopeFiltersDialog(scopeFilters, people, tagState.tags)
-    val currentNodes = projectState.childrenOf(currentNodeId)
+    if (showSortMenu) NodeSortMenu(sortMode, { sortPreferences.set(sortContext, it) }, { showSortMenu = false })
     val selection = remember(project.id, currentNodeId, scopedFilter) { com.r0ybt.arachn0de.ui.state.NodeSelection() }
-    val visibleSelectionIds = if(scopeFilters.active) filteredRows.orEmpty().map { it.node.id }.toSet() else currentNodes.map { it.id }.toSet()
-    LaunchedEffect(visibleSelectionIds, filteredRows != null) { if(!scopeFilters.active || filteredRows != null) selection.retain(visibleSelectionIds) }
+    val visibleSelectionIds = if(scopeFilters.active) filteredRows.orEmpty().map { it.node.id }.toSet() else currentNodes.orEmpty().map { it.id }.toSet()
+    LaunchedEffect(visibleSelectionIds, filteredRows != null, currentNodes != null) { if((scopeFilters.active && filteredRows != null) || (!scopeFilters.active && currentNodes != null)) selection.retain(visibleSelectionIds) }
     var bulkDelete by remember(selection) { mutableStateOf(false) }
     var bulkMove by remember(selection) { mutableStateOf(false) }
     var groupReview by remember { mutableStateOf<List<com.r0ybt.arachn0de.domain.model.Node>?>(null) }
@@ -235,6 +260,7 @@ internal fun ProjectNodeScreen(
         return
     }
 
+    OperationErrorDialog(defaultsOperation)
     val background = Brush.linearGradient(
         listOf(
             Arachn0deColors.Background,
@@ -255,7 +281,13 @@ internal fun ProjectNodeScreen(
                     .then(if(showDrawer) Modifier.clearAndSetSemantics {} else Modifier)
                     .padding(horizontal = 12.dp, vertical = 10.dp),
             ) {
-                HeaderBar(onMenuClick = { showDrawer = true })
+                HeaderBar(onMenuClick = { showDrawer = true }, trailingAction = {
+                    IconButton(onClick = { showSortMenu = true }, modifier = Modifier.size(48.dp).semantics {
+                        stateDescription = "Orden: ${sortMode.label}" + if (sortMode != NodeSortMode.MANUAL) "; arrastre deshabilitado" else ""
+                    }) { Icon(Icons.AutoMirrored.Filled.Sort, "Ordenar", tint = Arachn0deColors.Accent) }
+                })
+                if (sortMode != NodeSortMode.MANUAL) Text("${sortMode.label} · Arrastre deshabilitado",
+                    style = androidx.compose.material3.MaterialTheme.typography.bodySmall)
                 if(selection.ids.isNotEmpty()) Column(Modifier.fillMaxWidth()) {
                     Text("${selection.ids.size} seleccionados", style = androidx.compose.material3.MaterialTheme.typography.titleMedium)
                     androidx.compose.foundation.layout.FlowRow(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -268,10 +300,10 @@ internal fun ProjectNodeScreen(
                 layerScrollStates.SaveableStateProvider(currentNodeId?.let { "node:$it" } ?: "project-root") {
                     val nodeListState = rememberLazyListState()
                     val groups = listOf(false, true).associateWith { completed ->
-                        currentNodes.filter { it.projectId == project.id && it.parentId == currentNodeId && it.isCompleted == completed }.map { it.id }
+                        currentNodes.orEmpty().filter { it.projectId == project.id && it.parentId == currentNodeId && it.isCompleted == completed }.map { it.id }
                     }
-                    val drag = rememberDragReorderState(nodeListState, "node:", groups, isSubmittingNode || selection.ids.isNotEmpty(), actions.operation.error, currentNodeId) { source, target, _ ->
-                        actions.reorderTo(source, currentNodeId, target)
+                    val drag = rememberDragReorderState(nodeListState, "node:", groups, isSubmittingNode || selection.ids.isNotEmpty() || filterActive || sortMode != NodeSortMode.MANUAL || currentNodes == null, actions.operation.error, "$currentNodeId:${sortMode.name}:$filterActive") { source, target, _ ->
+                        if (sortMode == NodeSortMode.MANUAL && !filterActive) actions.reorderTo(source, currentNodeId, target)
                     }
                     LazyColumn(
                         state = nodeListState,
@@ -433,13 +465,14 @@ internal fun ProjectNodeScreen(
                                 }
                             }
                         } else {
-                        if (currentNodes.isEmpty()) {
+                        if (currentNodes == null) item { Text("Cargando orden…") }
+                        else if (currentNodes.orEmpty().isEmpty()) {
                             item(key = "empty-layer", contentType = "empty") { if (currentNode?.purpose != NodePurpose.NOTE && currentNode?.obligation == null) EmptyLayerState() }
                         }
                         for (completedGroup in listOf(false, true)) {
-                            val groupNodes = currentNodes.filter { it.isCompleted == completedGroup }
+                            val groupNodes = currentNodes.orEmpty().filter { it.isCompleted == completedGroup }
                             val renderNodes = drag.orderFor(completedGroup, groupNodes.map { it.id })
-                                .mapNotNull { id -> groupNodes.firstOrNull { it.id == id } }
+                                .mapNotNull { id -> projectState.nodesById[id] }
                             if (groupNodes.isNotEmpty()) {
                                 item(key = "section:$completedGroup", contentType = "section") {
                                     Column {
@@ -480,10 +513,10 @@ internal fun ProjectNodeScreen(
                                     onEdit = {
                                         if (assignmentsLoaded && peopleLoaded) drafts.open(node.parentId, node.id) { EditorDraft(node.id, node.parentId, node.title, node.description, startAt = node.startAt, dueAt = node.dueAt, purpose = node.purpose, obligation = node.obligation, priority = node.priority).apply { tagIds = tagState.nodeIds[node.id].orEmpty().toList(); responsibleIds = responsibleByNode[node.id].orEmpty().map { it.id }; creationGroupId = node.creationGroupId; captureSharedBaseline() } }
                                     },
-                                    canMoveUp = node.id != renderNodes.firstOrNull()?.id && !isSubmittingNode,
-                                    canMoveDown = node.id != renderNodes.lastOrNull()?.id && !isSubmittingNode,
+                                    canMoveUp = node.id != renderNodes.firstOrNull()?.id && !isSubmittingNode && sortMode == NodeSortMode.MANUAL,
+                                    canMoveDown = node.id != renderNodes.lastOrNull()?.id && !isSubmittingNode && sortMode == NodeSortMode.MANUAL,
                                     onReorder = { moveUp, onSuccess ->
-                                        actions.reorder(node.id, node.parentId, moveUp, onSuccess)
+                                        if (sortMode == NodeSortMode.MANUAL) actions.reorder(node.id, node.parentId, moveUp, onSuccess)
                                     },
                                     onDelete = {
                                         deletingNodeId = node.id
@@ -511,7 +544,18 @@ internal fun ProjectNodeScreen(
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Button(
-                        onClick = { if (!isSubmittingNode && (currentNode?.purpose != NodePurpose.NOTE && currentNode?.obligation == null)) drafts.open(currentNodeId) { EditorDraft(null, currentNodeId, "", "") } },
+                        onClick = { if (!isSubmittingNode && (currentNode?.purpose != NodePurpose.NOTE && currentNode?.obligation == null)) {
+                            val parent = currentNodeId
+                            if(drafts.hasNew(parent)) drafts.open(parent) { error("Borrador existente") }
+                            else {
+                                var seed: EditorDraft? = null
+                                defaultsOperation.submit("No se pudieron cargar los valores predeterminados. Puedes reintentar.", {
+                                    val defaults = nodeRepository.creationDefaults.resolve(project.id,parent)
+                                    seed = com.r0ybt.arachn0de.ui.state.CreationDefaultsDraftFactory.create(parent,defaults,clock(),java.util.TimeZone.getDefault())
+                                    true
+                                }, { drafts.open(parent) { checkNotNull(seed) } })
+                            }
+                        } },
                         modifier = Modifier.weight(1f).heightIn(min = 52.dp),
                         colors = ButtonDefaults.buttonColors(containerColor = Arachn0deColors.Primary),
                         shape = RoundedCornerShape(14.dp),
@@ -547,7 +591,7 @@ internal fun ProjectNodeScreen(
                         .fillMaxSize(),
                 ) {
                     Box(Modifier.fillMaxSize().background(Arachn0deColors.Scrim.copy(alpha = 0.45f)).clickable { showDrawer = false }.clearAndSetSemantics {})
-                    AppIdentityDrawer(onDismiss = { showDrawer = false }, onProjects = onOpenProjects, projectsSelected = true, onPeople = { showDrawer = false; onOpenPeople() }, onAttention = { showDrawer = false; onOpenAttention() }, onCalendar = { showDrawer = false; onOpenCalendar() }, onObligations = { showDrawer = false; onOpenObligations() }, onAbout = { showDrawer = false; onOpenAbout() })
+                    AppIdentityDrawer(onDismiss = { showDrawer = false }, onProjects = onOpenProjects, projectsSelected = true, onPeople = { showDrawer = false; onOpenPeople() }, onAttention = { showDrawer = false; onOpenAttention() }, onCalendar = { showDrawer = false; onOpenCalendar() }, onObligations = { showDrawer = false; onOpenObligations() }, onSettings = { showDrawer = false; onOpenSettings() }, onAbout = { showDrawer = false; onOpenAbout() })
                 }
             }
         }
@@ -581,7 +625,16 @@ internal fun ProjectNodeScreen(
         )
     }
 
+    if(showDefaults) androidx.compose.ui.window.Dialog(onDismissRequest = {}, properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false, dismissOnClickOutside = false, dismissOnBackPress = false)) {
+        AppSafeArea { CreationDefaultsScreen(nodeRepository.creationDefaults,
+            currentNodeId?.let { com.r0ybt.arachn0de.domain.defaults.DefaultsScope.Layer(project.id,it) } ?: com.r0ybt.arachn0de.domain.defaults.DefaultsScope.Project(project.id),
+            currentNode?.title ?: project.name, tagState.tags, people) { showDefaults = false } }
+    }
+
     if(showContextActions) ActionMenu(currentNode?.title ?: project.name,{ showContextActions = false }) {
+        if(currentNode == null || (currentNode.purpose == NodePurpose.ACTION && currentNode.obligation == null)) ActionMenuItem("Valores predeterminados", androidx.compose.material.icons.Icons.Default.Settings, {
+            showContextActions = false; showDefaults = true
+        }, enabled = !isSubmittingNode)
         if(currentNode != null && !currentNode.hasChildren) ActionMenuItem(
             if(currentNode.purpose == NodePurpose.NOTE) "Convertir en tarea" else "Convertir en nota",
             androidx.compose.material.icons.Icons.Default.SwapHoriz, {

@@ -14,17 +14,17 @@ import org.robolectric.annotation.Config
 
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [24,28])
-class CreationGroupMigrationTest {
-    @Test fun exportedV12PreservesEveryFieldAndDefaultsCreationGroupNull() = runBlocking {
+class CreationDefaultsMigrationTest {
+    @Test fun exportedV13PreservesDataGroupsAndStartsWithNoDefaults() = runBlocking {
         val context = RuntimeEnvironment.getApplication(); context.deleteDatabase("arachn0de.db")
         val helper = androidx.sqlite.db.framework.FrameworkSQLiteOpenHelperFactory().create(
             androidx.sqlite.db.SupportSQLiteOpenHelper.Configuration.builder(context).name("arachn0de.db")
-                .callback(object : androidx.sqlite.db.SupportSQLiteOpenHelper.Callback(12) {
+                .callback(object : androidx.sqlite.db.SupportSQLiteOpenHelper.Callback(13) {
                     override fun onCreate(db: androidx.sqlite.db.SupportSQLiteDatabase) {}
                     override fun onUpgrade(db: androidx.sqlite.db.SupportSQLiteDatabase, oldVersion: Int, newVersion: Int) = error("Unexpected")
                 }).build())
         val sql = helper.writableDatabase
-        val schema = JSONObject(javaClass.classLoader!!.getResourceAsStream("com.r0ybt.arachn0de.data.local.Arachn0deDatabase/12.json")!!.bufferedReader().use { it.readText() }).getJSONObject("database")
+        val schema = JSONObject(javaClass.classLoader!!.getResourceAsStream("com.r0ybt.arachn0de.data.local.Arachn0deDatabase/13.json")!!.bufferedReader().use { it.readText() }).getJSONObject("database")
         val entities = schema.getJSONArray("entities")
         for (i in 0 until entities.length()) {
             val entity = entities.getJSONObject(i); val table = entity.getString("tableName")
@@ -33,9 +33,9 @@ class CreationGroupMigrationTest {
             for (j in 0 until indices.length()) sql.execSQL(indices.getJSONObject(j).getString("createSql").replace("\${TABLE_NAME}",table))
         }
         sql.execSQL("INSERT INTO projects VALUES ('old','Project','Description',8,100,150)")
-        sql.execSQL("INSERT INTO nodes VALUES ('root','old',NULL,'Layer','Content',0,7,100,150,10,20,'ACTION',NULL,NULL,'NONE')")
-        sql.execSQL("INSERT INTO nodes VALUES ('leaf','old','root','Task','Details',1,9,110,160,11,21,'ACTION',15000,'CLP','HIGH')")
-        sql.execSQL("INSERT INTO nodes VALUES ('note','old','root','Note','Text',0,10,111,161,12,22,'NOTE',NULL,NULL,'NONE')")
+        sql.execSQL("INSERT INTO nodes VALUES ('root','old',NULL,'Layer','Content',0,7,100,150,10,20,'ACTION',NULL,NULL,'NONE','group')")
+        sql.execSQL("INSERT INTO nodes VALUES ('leaf','old','root','Task','Details',1,9,110,160,11,21,'ACTION',15000,'CLP','HIGH','group')")
+        sql.execSQL("INSERT INTO nodes VALUES ('note','old','root','Note','Text',0,10,111,161,12,22,'NOTE',NULL,NULL,'NONE','group')")
         sql.execSQL("INSERT INTO persons VALUES ('p','Person','avatar.png')")
         sql.execSQL("INSERT INTO node_person VALUES ('leaf','p')")
         NodeInvariants.install(sql); NodePurposeInvariants.install(sql); ObligationInvariants.install(sql)
@@ -51,9 +51,9 @@ class CreationGroupMigrationTest {
         val db = Arachn0deDatabase.create(context)
         try {
             assertEquals(14, db.openHelper.readableDatabase.version)
-            assertEquals(NodeEntity("leaf","old","root","Task","Details",true,9,110,160,11,21, amountMinor = 15000, currencyCode = "CLP", priority = "HIGH"),db.nodeDao().getById("leaf"))
-            assertEquals(NodeEntity("root","old",null,"Layer","Content",false,7,100,150,10,20),db.nodeDao().getById("root"))
-            assertEquals(NodeEntity("note","old","root","Note","Text",false,10,111,161,12,22,"NOTE"),db.nodeDao().getById("note"))
+            assertEquals(NodeEntity("leaf","old","root","Task","Details",true,9,110,160,11,21, amountMinor = 15000, currencyCode = "CLP", priority = "HIGH", creationGroupId = "group"),db.nodeDao().getById("leaf"))
+            assertEquals(NodeEntity("root","old",null,"Layer","Content",false,7,100,150,10,20,creationGroupId="group"),db.nodeDao().getById("root"))
+            assertEquals(NodeEntity("note","old","root","Note","Text",false,10,111,161,12,22,"NOTE",creationGroupId="group"),db.nodeDao().getById("note"))
             assertEquals(8,db.projectDao().getById("old")!!.position)
             assertEquals("avatar.png",db.personDao().get("p")!!.avatarFile)
             assertEquals("p",PersonRepository(db,AvatarStore(context)).observeAssignments("old").first().getValue("leaf").single().id)
@@ -66,10 +66,12 @@ class CreationGroupMigrationTest {
             assertEquals(listOf(NodeTagEntity("leaf","t")),db.tagDao().nodeTags())
             assertEquals(listOf(RecurrenceTagEntity("rule","t")),db.tagDao().ruleTags())
             assertEquals(NodeEventEntity("event","leaf","COMPLETED",160),db.nodeEventDao().all().single())
-            assertTrue(db.nodeDao().getProjectNodes("old").all { it.creationGroupId == null }); assertEquals("MEDIUM",db.recurrenceDao().rules().single().priority)
+            assertTrue(db.nodeDao().getProjectNodes("old").all { it.creationGroupId == "group" }); assertEquals("MEDIUM",db.recurrenceDao().rules().single().priority)
             db.openHelper.readableDatabase.query("EXPLAIN QUERY PLAN SELECT * FROM node_events WHERE nodeId='leaf' ORDER BY occurredAt DESC,rowid DESC").use { cursor ->
                 assertTrue(cursor.moveToFirst()); assertTrue(cursor.getString(3).contains("index_node_events_nodeId_occurredAt"))
             }
+            assertTrue(db.creationDefaultsDao().all().isEmpty())
+            assertEquals(com.r0ybt.arachn0de.domain.defaults.EffectiveCreationDefaults(),CreationDefaultsRepository(db).resolve("old","root"))
             val nodes = NodeRepository(db)
             val bill = nodes.createNode("old",null,"Bill",obligation=com.r0ybt.arachn0de.domain.model.Obligation(50000,"CLP"))
             assertEquals(50000L,db.nodeDao().getById(bill.id)!!.amountMinor)

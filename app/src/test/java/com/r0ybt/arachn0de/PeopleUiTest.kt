@@ -36,7 +36,7 @@ class PeopleUiTest {
     @Test fun peopleCrudAssignmentAndRecreationWorkThroughUi() {
         waitText("People project")
         compose.onNodeWithContentDescription("Abrir menú").performClick()
-        compose.onNodeWithText("Personas").performClick()
+        compose.onNodeWithText("Personas").performScrollTo().performClick()
         compose.onNodeWithText("Nueva Persona").performClick()
         compose.onNode(hasText("Guardar") or hasText("Crear")).assertIsNotEnabled()
         compose.onNode(hasSetTextAction()).performTextInput("Roy")
@@ -63,7 +63,7 @@ class PeopleUiTest {
         compose.onNodeWithTag("nodes-list").performScrollToNode(hasContentDescription("María"))
         compose.onNodeWithContentDescription("María").assertExists()
         compose.onNodeWithContentDescription("Abrir menú").performClick()
-        compose.onNodeWithText("Personas").performClick()
+        compose.onNodeWithText("Personas").performScrollTo().performClick()
         waitText("María")
         compose.onNodeWithText("Editar").performClick()
         compose.onNode(hasSetTextAction()).performTextReplacement("Mary")
@@ -74,7 +74,7 @@ class PeopleUiTest {
         compose.onNodeWithTag("nodes-list").performScrollToNode(hasText("Responsables"))
         compose.waitUntil(10_000) { compose.onAllNodesWithContentDescription("Mary").fetchSemanticsNodes().isNotEmpty() }
         compose.onNodeWithContentDescription("Abrir menú").performClick()
-        compose.onNodeWithText("Personas").performClick()
+        compose.onNodeWithText("Personas").performScrollTo().performClick()
         waitText("Mary")
         compose.onNodeWithText("Eliminar").performClick()
         compose.onNode(hasText("Eliminar") and hasAnyAncestor(isDialog())).performClick()

@@ -43,8 +43,9 @@ class NodeCopyUiTest {
     private fun await(text:String)=compose.waitUntil(10000){compose.onAllNodesWithText(text).fetchSemanticsNodes().isNotEmpty()}
     private fun mount(){
         compose.setContent{Arachn0deTheme{AppSafeArea{AppRoot(app.projectRepository,app.nodeRepository)}}}
-        await("Proyecto");compose.onNodeWithText("Proyecto").performClick();await("Bugs")
+        await("Proyecto");compose.onNodeWithText("Proyecto").performClick();await("Nuevo elemento")
         compose.onNodeWithTag("nodes-list").performScrollToNode(hasText("Bugs"))
+        await("Bugs")
     }
     private fun copied(expected:String){
         compose.waitUntil(10000){
@@ -73,7 +74,7 @@ class NodeCopyUiTest {
         compose.onNode(hasText("Copiar este elemento") and hasAnyAncestor(isDialog())).performScrollTo().performClick()
         copied(expected(note,false))
         assertEquals(before,runBlocking{app.nodeRepository.getProjectNodes(project)})
-        assertEquals(13, app.database.openHelper.writableDatabase.version)
+        assertEquals(14, app.database.openHelper.writableDatabase.version)
     }
     @Test fun openNodeContextCopiesFromItsOwnRoot(){
         mount();compose.onNodeWithText("Bugs").performClick();await("CAPA 1")

@@ -390,7 +390,7 @@ Utilizar:
 
 Room debe proporcionar la capa de persistencia.
 
-El esquema actual es la versión 11 (historial de eventos; véase la sección final). La versión 8: v4 incorporó el orden persistente de proyectos, v5 Personas/Responsables, v6 las fechas opcionales de Nodes, v7 el propósito ACTION/NOTE y v8 la capacidad financiera opcional de hojas ACTION. Se conservan los esquemas históricos 1–11 y sus rutas de migración; no se usa `fallbackToDestructiveMigration`.
+El esquema actual es la **versión 14** (valores predeterminados de creación; véase la sección final). v4 incorporó el orden persistente de proyectos, v5 Personas/Responsables, v6 fechas opcionales, v7 ACTION/NOTE, v8 obligaciones, v9 recurrencia, v10 etiquetas, v11 eventos, v12 Priority, v13 creation groups y v14 CreationDefaults. Se conservan los esquemas históricos **1–14** y todas sus rutas de migración; no se usa `fallbackToDestructiveMigration`.
 
 ### Invariantes de nodos
 
@@ -2212,3 +2212,249 @@ El panel completo se desplaza cuando no cabe (incluida fuente grande); sus contr
 La copia vive en las opciones de la tarjeta del Proyecto y del contexto raíz, nunca como botones permanentes. En dashboard la copia completa espera la carga del árbol coherente existente; las acciones se deshabilitan durante la copia. El snapshot es inmutable, el trabajo corre en Default con cancelación y el portapapeles se escribe en Main. Se conservan el límite de 200 000 unidades UTF-16 tanto del contenido agregado como del resultado escapado, el indentado/encabezados acotados, las exclusiones de IDs, fechas, dinero y asociaciones privadas, los mensajes de error y el feedback Toast previo a Android 13 / confirmación nativa desde Android 13. Si se supera el límite no se sustituye el portapapeles anterior.
 
 Fuera del bloque: Room v13, Backup v6, Repository, dominio, paleta/tipografía global, logo original, reglas de selección/Undo, orden automático, defaults, Templates, Sprints, Kanban, Gantt, Undo de eliminación y refactor general de navegación. Se mantiene versión 0.2.2 / versionCode 4.
+
+## Orden de presentación — UX bloque 4
+
+`NodeSortMode` y `NodePresentationSort` pertenecen a `ui/state`: son una proyección de presentación de los Nodes existentes, sin operaciones de Repository ni cambios de dominio. **Orden visual no equivale a `position` persistido.** El modo inicial es Manual. El selector compacto «Ordenar» está en la cabecera del Proyecto/Capa abierto, reutiliza `ActionMenu`/`ActionMenuItem` y muestra check y estado seleccionado. Un texto discreto indica el modo automático y «Arrastre deshabilitado»; el botón lo anuncia también semánticamente. No se añade selector al dashboard de Proyectos ni a vistas transversales.
+
+| Modo / label | Criterio y desempates, dentro del grupo de completado existente |
+| --- | --- |
+| MANUAL / Manual | `position ASC → createdAt ASC → id ASC`, exactamente como `NodeTreeSnapshot.childrenOf`. |
+| DUE_ASC / Vencimiento próximo | Con fecha primero; `dueAt ASC → position ASC → createdAt ASC → id ASC`. |
+| DUE_DESC / Vencimiento lejano | Con fecha primero; `dueAt DESC → position ASC → createdAt ASC → id ASC`. |
+| PRIORITY / Prioridad | Ranking explícito de `effectivePriority`: HIGH=3, MEDIUM=2, LOW=1, NONE=0, descendente; luego con fecha primero, `dueAt ASC → position ASC → createdAt ASC → id ASC`. |
+| CREATED_NEWEST / Más recientes | `createdAt DESC → position ASC → id ASC`. |
+| CREATED_OLDEST / Más antiguos | `createdAt ASC → position ASC → id ASC`. |
+
+Todas las fechas se comparan como instantes UTC ms (Long), sin resta susceptible de overflow, conversión a texto ni reconstrucción desde History. Null queda al final tanto en vencimiento próximo como lejano. Todos los modos conservan los elementos sin atributo. Notes y Capas usan `effectivePriority` NONE según el dominio; no se inventa prioridad operacional. La ordenación por fecha utiliza únicamente el `dueAt` propio existente; no deriva vencimiento o prioridad desde hijos. Una obligación y una ocurrencia materializada son Nodes ACTION normales para esta proyección.
+
+La vista ya separaba **Disponibles / Completadas**: se conserva esa regla en todos los modos, sin cambiar visibilidad. Dentro de cada grupo los elementos se ordenan normalmente por sus atributos. No se introduce una nueva política de completado.
+
+### Scope, Filter y Sort
+
+Para listas normales se seleccionan los hijos reales del Proyecto/contexto y se ordenan. Con filtros, `ScopedNodeFilter` conserva la responsabilidad de decidir pertenencia y ancestros mínimos; después `NodePresentationSort.filtered` ordena **solo hermanos dentro de cada nivel** y reconstruye preorder iterativo. Conserva identidad, profundidad, `isMatch`, padres y conjunto de filas; no aplana ramas ni mueve un descendiente fuera de su padre. Manual conserva la proyección filtrada anterior. Sort no forma parte de `NodeFilter` ni altera sus presets, AND, Tags, Personas, Estado o Tiempo.
+
+La proyección automática y el árbol filtrado se calculan en `Dispatchers.Default` mediante estado Compose cancelable cuando cambian snapshot/contexto/filtro/modo. Manual reutiliza `NodeTreeSnapshot.childrenOf` con `remember(snapshot, contexto)`, conservando la proyección coherente existente sin añadirle una fase de carga asíncrona. Mientras se prepara se muestra estado de carga; la selección no se depura contra ese vacío transitorio. Elegir modo no elimina selección: las operaciones siguen usando IDs y normalización padre/hijo existentes. Las emisiones de creación, edición, batch, materialización, Move y Undo recalculan la vista sin escribir positions de otros elementos.
+
+### Orden manual y operaciones
+
+Drag y reordenamiento se habilitan exclusivamente en Manual sobre hijos reales, sin filtro ni selección activa y sin operación pendiente. Cambiar modo/contexto cancela el estado de drag anterior; en automático también se deshabilitan acciones de reorder y se protege el callback de escritura. Volver a Manual recupera exactamente las posiciones persistidas y habilita drag. Move To individual/múltiple sigue permitido: usa la transacción existente para parent, posición manual en destino, relaciones y creationGroup; el destino aplica su propio modo de presentación. No se modifica creación, batch, recurrencia, History ni el contrato Snackbar/Deshacer.
+
+### Preferencias y restauración
+
+`AppRoot` conserva `NodeSortPreferences` mediante `rememberSaveable`, separado de los proveedores de pantalla que la navegación elimina al volver al dashboard. Las claves combinan ID de Proyecto y ID de Capa (o raíz): cada contexto tiene un modo independiente, incluso después de salir/reabrir un Proyecto durante la sesión. No es una preferencia global que cambie todas las listas.
+
+Se guardan **como máximo 64 contextos con modo no Manual en toda la sesión**, los modificados más recientemente. Volver a Manual elimina la entrada; al superar el límite se expulsa la entrada modificada hace más tiempo y ese contexto vuelve a Manual. El Bundle guarda únicamente identidad y nombre del modo, nunca Nodes/árboles. Valores desconocidos o incompletos se restauran como Manual. No hay preferencias permanentes en disco ni mapa nuevo ilimitado.
+
+Sobrevive recomposición, navegación y recreación de Activity. Puede restaurarse tras muerte de proceso **si Android devuelve SavedState de la tarea**; no se garantiza force-stop, retirar la tarea, arranque nuevo o reinicio del dispositivo. Un lanzamiento nuevo sin Bundle empieza en Manual. Restaurar un backup reinicia AppRoot mediante su infraestructura existente y devuelve estos modos a Manual. Robolectric comprueba Activity recreation y el Saver; no acredita muerte física del proceso.
+
+### Rendimiento, export y límites
+
+Ordenar N filas cuesta O(N log N), con O(N) memoria adicional y sin consultas por tarjeta. En un árbol filtrado se indexan filas/padres una vez, se ordena cada conjunto de hermanos y se recorre iterativamente; no depende de la profundidad de la pila. El render con drag resuelve IDs mediante `nodesById` en O(1), sustituyendo búsquedas repetidas en cada grupo. Pruebas dirigidas cubren 20 000 elementos y 12 000 niveles filtrados, sin benchmark ni promesa de FPS.
+
+Copy Node/Project sigue recibiendo el **snapshot estructural original** y su política manual de orden; elegir un sort temporal no modifica el Markdown exportado. Attention 2.0, Calendar, Obligaciones agregadas y dashboard de Proyectos conservan sus órdenes propios. Room permanece v13 y Backup v6; Sort no añade columnas, migraciones, tablas ni preferencias al backup. VersionName/versionCode permanecen 0.2.2/4.
+
+Fuera de V1: agrupaciones mensuales, derivar fechas de Capas/Proyectos, ordenar reglas abstractas de recurrencia, otros criterios, presets, defaults, Templates, Sprints, Gantt y Kanban; tampoco se cambia la navegación general, el dominio de Move/Undo ni los fallos históricos de listas/PNG.
+
+## Valores predeterminados de creación — UX bloque 5
+
+El estado actual es **Room v14 / backup lógico v7**, conservando app **0.2.2 / code 4**.
+`CreationDefaults` inicializa un formulario nuevo; después se guardan valores concretos
+como cualquier Node. Cambiar la configuración nunca actualiza Nodes existentes.
+La cadena es UI → configuración/resolución/fábrica de Draft → Repository → Room.
+No se introduce configuración adicional en cada Node.
+
+### Modelo, scopes y precedencia
+
+`DefaultValue<T>` distingue `Inherit` de `Own(value)`. Las diez propiedades se
+resuelven independientemente: tipo ACTION/NOTE, obligación ON/OFF, moneda
+CLP/USD/EUR, Priority, conjunto de Tags, conjunto de Personas, regla de inicio,
+hora de inicio, regla de vencimiento y hora de vencimiento. NONE, OFF, conjunto
+vacío, fecha NONE y hora Unspecified son overrides reales, diferentes de heredar.
+No hay default de título, descripción, monto, completion, recurrencia, creación
+grupal, posición ni History. La moneda puede quedar preparada aunque Pago esté OFF.
+
+Scopes explícitos: Global (`G`), Proyecto raíz (`P:<projectId>`) y Capa/destino
+(`N:<nodeId>`, junto a su projectId). El Node con propósito ACTION y sin obligación
+puede recibir hijos y configurar sus defaults incluso mientras todavía sea hoja.
+Un contexto temporalmente convertido en NOTE/obligación conserva su configuración
+latente, sin permitir creación; recupera su utilidad al volver a admitir hijos.
+
+Precedencia exacta: comportamiento base → Global → Proyecto raíz → capas ancestro
+desde la más distante → contexto actual. Solo se reemplazan propiedades Own.
+Tags y Personas reemplazan **todo el conjunto** en el nivel que los configura;
+no existe unión implícita. Renombrar una etiqueta/persona no cambia su identidad.
+La resolución recibe colecciones indexadas, recorre ancestros iterativamente y
+rechaza ciclos, padres ausentes y pertenencia a otro proyecto. Se prueban 12000
+niveles; no usa recursión ni consultas por ancestro.
+
+### Reglas temporales
+
+Ambas fechas permiten NONE, TODAY, TOMORROW, IN_DAYS (1–3650), FIRST_DAY,
+FIRST_DAY_NEXT, DAY_OF_MONTH (1–31), DAY_NEXT_MONTH, FIRST_MONDAY y
+FIRST_MONDAY_NEXT. Se guardan regla y parámetro, nunca el instante calculado al
+configurar. `DefaultDateResolver` recibe reloj y TimeZone explícitos. La creación
+los obtiene al finalizar la lectura de configuración, usando la zona local actual.
+
+- Hoy/mañana/en N días utilizan fechas civiles y aritmética de Calendar, sin +24h.
+- Día N se ajusta al último día válido del mes; febrero admite 28/29.
+- Inicio usa el ancla del mes actual, aunque ya haya pasado.
+- Vencimiento DAY_OF_MONTH/FIRST_MONDAY busca el mes siguiente únicamente si el
+  día civil elegido ya pasó. Si es hoy conserva hoy, aunque la hora ya haya pasado.
+- Primer día del mes es un ancla fija; las reglas explícitas «mes siguiente»
+  siempre calculan ese mes. Cruces de mes/año mantienen calendario gregoriano.
+- Las horas se heredan por separado: Unspecified o minuto 0–1439. Sin fecha la hora
+  permanece latente. Sin hora se utiliza 00:00 local, porque el dominio actual
+  guarda instantes epoch millis y no distingue un evento de día completo.
+- Se reutiliza `RecurrenceSchedule.localDay/timestamp`: un hueco DST se normaliza
+  hacia adelante; una hora repetida usa la ocurrencia estándar posterior elegida
+  por GregorianCalendar. Esto coincide con materialización recurrente; el selector
+  manual existente continúa rechazando horas inexistentes. No hay selector de offset.
+- Se acotan los años calculados a 1–9999. Inicio y vencimiento independientes pueden
+  producir un orden incompatible: el editor ACTION lo muestra y exige corregirlo,
+  sin cambiar silenciosamente ninguna regla ni guardar fechas inválidas.
+
+### UI y borradores
+
+Drawer → **Configuración** → **Valores predeterminados de creación** abre el editor
+global. Overflow del Proyecto/Capa abierto → **Valores predeterminados** edita ese
+contexto. No se añade una sección permanente a las listas. Cada selector anuncia
+Heredar con su valor heredado, o Propio con el valor elegido. Cambiar una propiedad
+conserva todas las otras. Tags/Personas propios permiten ninguno y selección buscable
+con lista lazy. Número y HH:mm inválidos bloquean Guardar. Fallos de carga ofrecen
+reintento; fallos de escritura conservan el editor y usan OperationErrorDialog.
+
+El editor de configuración tiene estado guardable explícito de valores/IDs;
+recrear Activity conserva cambios sin escribirlos automáticamente. Guardar persiste
+solo tras acción explícita; salir con cambios requiere descarte confirmado. Reset
+siempre confirma: Global borra únicamente G y vuelve al comportamiento base; un
+contexto borra únicamente sus overrides y vuelve a heredar. No modifica otras
+configuraciones, Nodes ni borradores abiertos. SavedState no es persistencia permanente.
+El diálogo contextual consume sus propios insets y evita cierre externo accidental.
+
+`CreationDefaultsDraftFactory` transforma valores efectivos en `EditorDraft`, fuera
+de Compose. `EditorDraftStore.hasNew` permite recuperar el borrador del destino
+antes de resolver defaults. Cerrar/reabrir, recrear o cambiar defaults conserva las
+ediciones y los instantes del borrador previo. Descartar elimina solo ese borrador;
+la siguiente apertura resuelve configuración/reloj actuales. La lectura asíncrona
+usa OperationState, evita doble envío y conserva el padre capturado.
+
+NOTE oculta Pago/Priority/fechas como valores latentes del Draft; cambiar a ACTION
+los recupera. Una NOTE nueva se guarda sin fechas, obligación ni Priority operativa,
+evitar incompatibilidad entre fechas ACTION latentes. Editar Notes existentes no
+borra sus fechas históricas latentes. Editar Node existente y Move nunca usan la
+fábrica de defaults ni rellenan campos vacíos. La configuración no toca History.
+
+Batch adapta los campos comunes del mismo Draft (Pago/moneda/Priority/Tags/Personas).
+Sus fechas siguen `BatchTemporalRule`, finitas y derivadas de su primer vencimiento;
+Inicio permanece latente según la política existente. Defaults no activan Batch,
+Recurrence ni creationGroup. Recurrence sigue requiriendo una acción explícita y
+materializa por su motor/recibos propios. Sort, filtros, Copy, Attention y Calendar
+no leen defaults: sus Nodes concretos mantienen las proyecciones anteriores.
+
+### Persistencia, eliminación y backup
+
+`creation_defaults` utiliza columnas explícitas nullable para INHERIT; enums conocidos
+para reglas/propósito/prioridad y boolean nullable para obligación. Hora NULL hereda,
+−1 significa explícitamente sin hora y 0–1439 hora propia. `tagsOverride` y
+`peopleOverride` distinguen herencia de un conjunto propio vacío; las asociaciones
+se guardan en `creation_defaults_tag` y `creation_defaults_person` con PK compuesta.
+Codec/repositorio validan identidades, enums, parámetros, horas y monedas;
+foreign keys validan IDs existentes y proyecto de la Capa.
+
+Migración explícita 13→14 añade solo tres tablas e índices, vacías. Conserva todas
+las tablas/filas/triggers anteriores, incluidas finanzas, recurrence, eventos,
+jerarquía, posiciones y creationGroup. Se exporta 14.json; todas las migraciones
+históricas permanecen y no existe fallback destructivo.
+
+FK CASCADE elimina configuración del Proyecto/Node y asociaciones correspondientes.
+Borrado de subárbol conserva el detach/borrado iterativo anterior. Global sobrevive
+al borrado de proyectos. Borrar Tag/Persona elimina solo su asociación de defaults;
+un conjunto propio que queda vacío sigue siendo propio, sin resucitar herencia.
+
+Backup lógico v7 añade arrays explícitos `creationDefaults`, `defaultsTags` y
+`defaultsPeople` a snapshot/JSON/restore. Comparte transacción, presupuestos,
+contenedor v1 y journal de avatares existentes. Valida duplicados, identidades,
+referencias, flags, monedas, reglas/horas/parámetros antes de reemplazar datos.
+Restore limpia todos los defaults, incluido Global, y los inserta después de
+Proyectos/Nodes/Tags/Personas, dentro de la misma transacción. Un fallo incluso al
+insertar defaults revierte TODO el restore. Backups v1–v6 adaptan colecciones vacías,
+restauran comportamiento base y sustituyen defaults anteriores. Apps antiguas no
+pueden leer v7; no se promete downgrade. No cambia cifrado ni permisos.
+
+Configuración efectiva usa consultas agrupadas acotadas al proyecto y Global,
+y una lectura de Nodes del proyecto para ancestros. No consulta por tarjeta ni
+observa defaults para resolverlos en cada recomposición. Coste O(N + D + A) en lectura
+indexada/recorrido para N Nodes, D profundidad y A asociaciones relevantes, más
+copias de los conjuntos efectivos de los overrides aplicados; memoria proporcional
+al proyecto/configuración. No hay benchmark ni paginación nuevos.
+
+`CreationDefaults` y la fábrica dejan una frontera reutilizable para futuros presets,
+sin parser, interpolación, macros, perfiles nombrados ni Templates. V1 sigue local,
+sin red/telemetría, automatización condicional o cambios retroactivos. Pendientes:
+dogfooding físico de IME/TalkBack/fuente grande, DST real, muerte de proceso y límites
+de Bundle; las pruebas Robolectric no acreditan esos escenarios físicos.
+
+Archivos nuevos: `domain/defaults/CreationDefaults.kt`,
+`data/local/CreationDefaultsEntity.kt`, `CreationDefaultsMigration13To14.kt`,
+`data/repository/CreationDefaultsRepository.kt`, `ui/CreationDefaultsScreen.kt`,
+`ui/state/CreationDefaultsDraftFactory.kt` y schema `14.json`.
+Integraciones: `Arachn0deDatabase`, `NodeRepository`, `BackupData`, `BackupJson`,
+`BackupRepository`, `AppRoot`, `NavigationChrome`, `ProjectsScreen`, `ProjectScreen`,
+`EditorDraftStore` y `NodeActions`. Se conservan los cambios locales de Sort del bloque 4.
+Pruebas nuevas: `CreationDefaultsTest`, `CreationDefaultsDraftTest`,
+`CreationDefaultsRepositoryTest`, `CreationDefaultsMigrationTest`,
+`CreationDefaultsBackupTest` y `CreationDefaultsUiTest`. Pruebas existentes actualizan
+solo expectativas de Room actual, fixtures/version futura de backup y desplazamiento
+a destinos reales del drawer en `PeopleUiTest`/`BackupUiTest`/`FinancialUiTest`.
+`NodeCopyUiTest` y `ObligationReportUiTest` actualizan también su expectativa de Room a v14.
+
+### Validación del bloque de defaults
+
+Se añadieron **31 métodos / 41 ejecuciones**: CreationDefaultsTest (12 JVM),
+CreationDefaultsDraftTest (4 JVM), CreationDefaultsRepositoryTest (4 × API 24/28),
+CreationDefaultsMigrationTest (1 × API 24/28), CreationDefaultsBackupTest
+(5 × API 24/28) y CreationDefaultsUiTest (5 Compose API 28). Cubren precedencia
+por propiedad, NONE/OFF/conjuntos vacíos, 12000 niveles/ciclos, clamp/bisiesto,
+fecha actual/mes/año, Monday, zonas/Locale, DST de 23 h, hueco y hora repetida,
+latencia NOTE, Batch independiente, borrador existente/descarte, edición/Move,
+persistencia/reapertura, referencias/cascades/reset, migración del schema v13,
+backup v7/v1–v6, validación y rollback después de borrar/reinsertar datos,
+configuración global/contextual, estado tras recreación y campos inválidos.
+La prueba contextual también comprueba Atrás en el dispatcher de la ventana
+modal: pide descarte con cambios y permite continuar editando.
+
+La tanda dirigida final pasó **442/442** en 59 clases, sin errores/omitidos,
+junto a `assembleDebug`; `git diff --check` pasó antes de la suite general.
+Los dos fallos de interacción iniciales (PeopleUiTest y BackupUiTest) se
+corrigieron desplazando el drawer hasta el destino antes del toque, conservando
+sus verificaciones de persistencia/restore.
+
+Se ejecutó **UNA sola vez** `:app:testDebugUnitTest --offline`: **681 casos,
+671 correctos, 10 fallidos, 0 errores y 0 omitidos**. Las **41 nuevas pasan**.
+Frente al baseline **595/601**, hay 80 casos añadidos y ninguno eliminado,
+incluidos los bloques UX 3/4 posteriores al baseline. Cinco fallos coinciden con
+los históricos: ScrollRestorationTest.dashboardRetainsScrollAcrossProjectVisitAndRecreation,
+ScrollRestorationTest.mapRetainsScrollWhileClosedAndAcrossRecreation,
+LargeListsTest.largeTaskLayerScrollsWithoutNavigatingIntoLeaf,
+LargeListsTest.projectListLongPressDragReordersByStableId y
+MvpReadinessTest.narrowDashboardAndDrawerExposeNoNonfunctionalFeatures.
+No se modificaron esos tests ni se arreglaron sus bloques.
+
+Los otros cinco fallos fueron comprobaciones de pruebas que necesitaban adaptación:
+NodeCopyUiTest y ObligationReportUiTest todavía esperaban Room v13; los tres
+FinancialUiTest tocaban Obligaciones fuera del viewport del drawer. Se actualizaron
+solo esas expectativas a v14 y el scroll antes del toque. La verificación posterior
+**NodeCopyUiTest + ObligationReportUiTest + FinancialUiTest + CreationDefaultsUiTest
+pasó 13/13**, junto a `assembleDebug`. La comprobación modal de Atrás también pasó
+por separado. No se repitió la suite completa: su resultado registrado sigue
+siendo 671/681, sin extrapolar una suite general verde. No hubo fallos de PNG/memoria;
+el renderer pasó sus cuatro casos en la suite. Hubo el aviso de decoder de
+Robolectric ya conocido, sin fallo asociado.
+
+Reportes conservados: `/tmp/arachnode-defaults-directed-report/index.html`,
+`/tmp/arachnode-defaults-full-report/index.html` y
+`/tmp/arachnode-defaults-post-full-report/index.html`; XML en las carpetas paralelas
+`*-results`. `assembleDebug` final y `git diff --check` correctos. No se ejecutó
+lint completo ni Release. No cambia app 0.2.2 / code 4; sin commit, push, tag ni
+publicación. La validación física y benchmark permanecen pendientes.

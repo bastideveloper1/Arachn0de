@@ -34,6 +34,7 @@ private fun AppRootContent(projectRepository: ProjectRepository, nodeRepository:
     val tagState by remember(nodeRepository) { nodeRepository.tags.observe() }.collectAsState(initial = com.r0ybt.arachn0de.domain.model.TagState())
     val personRepository = (androidx.compose.ui.platform.LocalContext.current.applicationContext as com.r0ybt.arachn0de.Arachn0deApplication).personRepository
     val screenStates = androidx.compose.runtime.saveable.rememberSaveableStateHolder()
+    var showSettings by rememberSaveable { mutableStateOf(false) }
     var showAbout by rememberSaveable { mutableStateOf(false) }
     var showPeople by rememberSaveable { mutableStateOf(false) }
     var showObligations by rememberSaveable { mutableStateOf(false) }
@@ -46,6 +47,9 @@ private fun AppRootContent(projectRepository: ProjectRepository, nodeRepository:
     var showAttention by rememberSaveable { mutableStateOf(false) }
     var returnToAttention by rememberSaveable { mutableStateOf(false) }
     var openNodeId by rememberSaveable { mutableStateOf<String?>(null) }
+    val sortPreferences = rememberSaveable(saver = com.r0ybt.arachn0de.ui.state.NodeSortPreferences.Saver) {
+        com.r0ybt.arachn0de.ui.state.NodeSortPreferences()
+    }
     val projectsListState = rememberLazyListState()
     var selectedProjectId by rememberSaveable { mutableStateOf<String?>(null) }
     var projects by remember(projectRepository) { mutableStateOf<List<Project>?>(null) }
@@ -87,7 +91,7 @@ private fun AppRootContent(projectRepository: ProjectRepository, nodeRepository:
     val projectProgressById = projects.orEmpty().associate { project ->
         project.id to (allState.projectProgressById[project.id] ?: NodeProgress(project.id, 0, 0, 0, NodeProgressState.NO_WORK))
     }
-    val globalView = !showAbout && !showPeople && (showObligations || showCalendar || showAttention || selectedProjectId == null)
+    val globalView = !showSettings && !showAbout && !showPeople && (showObligations || showCalendar || showAttention || selectedProjectId == null)
     val now = if (globalView) rememberTaskScreenNow(allState.nodes, clock, onRefresh = { zoneId = java.util.TimeZone.getDefault().id }) else 0L
     val calendar = if (showCalendar) {
         val snapshot by com.r0ybt.arachn0de.ui.state.rememberCalendar(allState, zoneId)
@@ -99,7 +103,14 @@ private fun AppRootContent(projectRepository: ProjectRepository, nodeRepository:
     } else null
 
     val selectedProject = projects?.firstOrNull { it.id == selectedProjectId }
-    if (showAbout) {
+    if (showSettings) {
+        screenStates.SaveableStateProvider("settings") {
+            val settingsPeople by remember(personRepository) { personRepository.observePeople() }.collectAsState(initial = emptyList())
+            CreationDefaultsScreen(nodeRepository.creationDefaults, com.r0ybt.arachn0de.domain.defaults.DefaultsScope.Global, "Global", tagState.tags, settingsPeople) {
+                showSettings = false; screenStates.removeState("settings")
+            }
+        }
+    } else if (showAbout) {
         screenStates.SaveableStateProvider("about") { AboutScreen(onBack = { showAbout = false }, onRestored = onRestored) }
     } else if (showPeople) {
         screenStates.SaveableStateProvider("people") { PeopleScreen(personRepository) { showPeople = false } }
@@ -167,12 +178,14 @@ private fun AppRootContent(projectRepository: ProjectRepository, nodeRepository:
             onOpenAttention = { showAttention = true },
             onOpenCalendar = { showCalendar = true },
             onOpenObligations = { showObligations = true },
+            onOpenSettings = { showSettings = true },
             onOpenAbout = { showAbout = true },
         )
     } else if (selectedProject != null) {
         screenStates.SaveableStateProvider("project:${selectedProject.id}") {
             ProjectNodeScreen(
                 project = selectedProject,
+                sortPreferences = sortPreferences,
                 onOpenProjects = { selectedProjectId = null; openNodeId = null; returnToCalendar = false; returnToAttention = false; returnToObligations = false },
                 nodeRepository = nodeRepository,
                 personRepository = personRepository,
@@ -183,6 +196,7 @@ private fun AppRootContent(projectRepository: ProjectRepository, nodeRepository:
                 onOpenAttention = { showAttention = true },
                 onOpenCalendar = { showCalendar = true },
                 onOpenObligations = { showObligations = true },
+                onOpenSettings = { showSettings = true },
                 onOpenAbout = { showAbout = true },
                 onBackToObligations = if (returnToObligations) ({
                     screenStates.removeState("project:${selectedProject.id}")

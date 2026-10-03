@@ -69,8 +69,24 @@ internal fun ProjectNodeScreen(
     project: Project,
     nodeRepository: NodeRepository,
     onBackToProjects: () -> Unit,
+    personRepository: com.r0ybt.arachn0de.data.repository.PersonRepository = (androidx.compose.ui.platform.LocalContext.current.applicationContext as com.r0ybt.arachn0de.Arachn0deApplication).personRepository,
+    onOpenPeople: () -> Unit = {},
 ) {
     val scope = rememberCoroutineScope()
+    val personActions = remember(personRepository, scope) { com.r0ybt.arachn0de.ui.state.PersonActions(personRepository, scope) }
+    var people by remember { mutableStateOf(emptyList<com.r0ybt.arachn0de.domain.model.Person>()) }
+    var responsibleByNode by remember(project.id) { mutableStateOf(emptyMap<String, List<com.r0ybt.arachn0de.domain.model.Person>>()) }
+    var peopleLoaded by remember { mutableStateOf(false) }
+    var assignmentsLoaded by remember(project.id) { mutableStateOf(false) }
+    var responsibleNodeId by rememberSaveable(project.id) { mutableStateOf<String?>(null) }
+    val peopleLoad = remember(personRepository) { LoadState() }
+    val assignmentsLoad = remember(personRepository, project.id) { LoadState() }
+    LaunchedEffect(personRepository, peopleLoad.attempt) {
+        peopleLoad.collect(personRepository.observePeople()) { people = it; peopleLoaded = true }
+    }
+    LaunchedEffect(personRepository, project.id, assignmentsLoad.attempt) {
+        assignmentsLoad.collect(personRepository.observeAssignments(project.id)) { responsibleByNode = it; assignmentsLoaded = true }
+    }
     val layerScrollStates = rememberSaveableStateHolder()
     val navigatorListState = rememberLazyListState()
     val currentPath = rememberSaveable(project.id, saver = listSaver<SnapshotStateList<String>, String>(
@@ -324,6 +340,11 @@ internal fun ProjectNodeScreen(
                                             }
                                         }
                                     }
+                                    ResponsibleAvatars(responsibleByNode[currentNode.id].orEmpty())
+                                    TextButton(
+                                        enabled = !isSubmittingNode && !personActions.operation.busy && peopleLoaded && assignmentsLoaded,
+                                        onClick = { responsibleNodeId = currentNode.id },
+                                    ) { Text("Responsables") }
                                     TextButton(
                                         onClick = { movingNodeId = currentNode.id },
                                         enabled = !isSubmittingNode,
@@ -363,6 +384,8 @@ internal fun ProjectNodeScreen(
                                     onOpen = {
                                         currentPath.add(node.id)
                                     },
+                                    responsiblePeople = responsibleByNode[node.id].orEmpty(),
+                                    onResponsible = { if (!isSubmittingNode && !personActions.operation.busy && peopleLoaded && assignmentsLoaded) responsibleNodeId = node.id },
                                     onMove = { if (!isSubmittingNode) movingNodeId = node.id },
                                     onEdit = {
                                         draft = EditorDraft(node.id, node.parentId, node.title, node.description)
@@ -432,7 +455,7 @@ internal fun ProjectNodeScreen(
                         .background(Arachn0deColors.Scrim.copy(alpha = 0.45f))
                         .clickable { showDrawer = false },
                 ) {
-                    AppIdentityDrawer(onDismiss = { showDrawer = false })
+                    AppIdentityDrawer(onDismiss = { showDrawer = false }, onPeople = { showDrawer = false; onOpenPeople() })
                 }
             }
         }
@@ -454,6 +477,18 @@ internal fun ProjectNodeScreen(
             },
         )
     }
+
+    responsibleNodeId?.let { id ->
+        if (peopleLoaded && assignmentsLoaded) ResponsibleDialog(
+            nodeId = id, people = people, assigned = responsibleByNode[id].orEmpty(),
+            busy = personActions.operation.busy,
+            onDismiss = { responsibleNodeId = null },
+            onSave = { ids -> personActions.assign(id, ids) { responsibleNodeId = null } },
+        )
+    }
+    OperationErrorDialog(personActions.operation)
+    LoadErrorDialog(peopleLoad)
+    LoadErrorDialog(assignmentsLoad)
 
     movingNodeId?.let { sourceId ->
         val source = projectState.nodesById[sourceId]

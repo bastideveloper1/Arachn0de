@@ -49,6 +49,7 @@ internal fun ProjectDashboardScreen(
     projectProgressById: Map<String, NodeProgress>,
     onOpenProject: (Project) -> Unit = {},
     listState: LazyListState = rememberLazyListState(),
+    onOpenPeople: () -> Unit = {},
 ) {
     val scope = rememberCoroutineScope()
     val actions = remember(repository, scope) { ProjectActions(repository, scope) }
@@ -133,6 +134,7 @@ internal fun ProjectDashboardScreen(
                 ) {
                     AppIdentityDrawer(
                         onDismiss = { showDrawer = false },
+                        onPeople = { showDrawer = false; onOpenPeople() },
                     )
                 }
             }

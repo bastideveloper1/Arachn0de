@@ -48,7 +48,7 @@ class NodeMigrationTest {
         val root = repo.createNode("project", null, "Root")
         repo.createNode("project", root.id, "Child")
         assertFalse(repo.setCompleted(root.id, true))
-        assertEquals(3, db.openHelper.readableDatabase.version)
+        assertEquals(5, db.openHelper.readableDatabase.version)
     }
 
     @Test
@@ -166,7 +166,7 @@ class NodeMigrationTest {
             fail("Expected cycle rejection after migration")
         } catch (_: SQLiteConstraintException) { }
         db.projectDao().getById("other") ?: sql.execSQL(
-            "INSERT INTO projects VALUES ('other', 'Other', '', 0, 0)",
+            "INSERT INTO projects (id, name, description, position, createdAt, updatedAt) VALUES ('other', 'Other', '', 0, 0, 0)",
         )
         try {
             db.nodeDao().insert(NodeEntity("invalid", "other", root.id, "Invalid", "", false, 0, 0, 0))

@@ -160,6 +160,8 @@ internal fun NodeCard(
     modifier: Modifier = Modifier,
     dragging: Boolean = false,
     onMove: () -> Unit = {},
+    onResponsible: () -> Unit = {},
+    responsiblePeople: List<com.r0ybt.arachn0de.domain.model.Person> = emptyList(),
 ) {
     var showContextMenu by remember { mutableStateOf(false) }
     val completedTint = if (node.isCompleted) Arachn0deColors.Completed else Arachn0deColors.Primary
@@ -237,6 +239,10 @@ internal fun NodeCard(
                         maxLines = 2, overflow = TextOverflow.Ellipsis)
                 }
 
+                if (responsiblePeople.isNotEmpty()) {
+                    Spacer(modifier = Modifier.height(4.dp))
+                    ResponsibleAvatars(responsiblePeople)
+                }
                 if (hasChildren && progress != null) {
                     Spacer(modifier = Modifier.height(6.dp))
                     if (progress.state == NodeProgressState.NO_WORK) {
@@ -311,6 +317,10 @@ internal fun NodeCard(
                     ) {
                         Text("Editar", textAlign = TextAlign.Start, modifier = Modifier.fillMaxWidth())
                     }
+                    TextButton(
+                        onClick = { showContextMenu = false; onResponsible() },
+                        modifier = Modifier.fillMaxWidth(),
+                    ) { Text("Responsables", modifier = Modifier.fillMaxWidth()) }
                     TextButton(
                         onClick = { showContextMenu = false; onMove() },
                         modifier = Modifier.fillMaxWidth(),

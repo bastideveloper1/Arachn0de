@@ -9,5 +9,6 @@ import com.r0ybt.arachn0de.data.repository.ProjectRepository
 class Arachn0deApplication : Application() {
     val database by lazy { Arachn0deDatabase.create(this) }
     val projectRepository by lazy { ProjectRepository(database.projectDao()) }
+    val personRepository by lazy { com.r0ybt.arachn0de.data.repository.PersonRepository(database, com.r0ybt.arachn0de.data.local.AvatarStore(this)) }
     val nodeRepository by lazy { NodeRepository(database) }
 }

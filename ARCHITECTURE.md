@@ -696,7 +696,7 @@ El menú de nodo permite mover arriba/abajo un lugar entre hermanos, tanto en ra
 
 `reorderNode` lee el nodo y sus hermanos dentro de una transacción, valida el padre esperado para rechazar acciones sobre una ubicación obsoleta, intercambia vecinos y asigna posiciones contiguas 0..n−1. No se utiliza el índice visual como identidad. Un nodo ausente o con padre distinto devuelve false; mover más allá de un extremo es una operación idempotente que también puede normalizar el grupo. Se actualizan únicamente posición y fecha de modificación, nunca una entidad completa. La fecha cambia para los dos nodos intercambiados; la reparación de numeración conserva fechas históricas.
 
-La política para datos antiguos es conservar el orden visible por posición, fecha de creación e ID y compactar cada grupo de hermanos por separado. `observePreparedProjectState`, utilizado por la pantalla, normaliza todos los grupos del proyecto en una única transacción antes de emitir el contenido inicial. `observeProjectState` y los demás observadores generales siguen siendo de solo lectura. La pantalla espera la primera instantánea validada antes de mostrar una ruta restaurada. Las normalizaciones posteriores sin cambios no escriben filas. No se modifica otro proyecto ni se requiere una migración adicional para normalizar nodos. El esquema actual es Room v4 por la incorporación de posiciones de proyectos.
+La política para datos antiguos es conservar el orden visible por posición, fecha de creación e ID y compactar cada grupo de hermanos por separado. `observePreparedProjectState`, utilizado por la pantalla, normaliza todos los grupos del proyecto en una única transacción antes de emitir el contenido inicial. `observeProjectState` y los demás observadores generales siguen siendo de solo lectura. La pantalla espera la primera instantánea validada antes de mostrar una ruta restaurada. Las normalizaciones posteriores sin cambios no escriben filas. No se modifica otro proyecto ni se requiere una migración adicional para normalizar nodos. El esquema fue Room v4 por la incorporación de posiciones de proyectos; la etapa Personas + Responsables lo amplía a v5 sin cambiar ese orden.
 
 Reordenar vuelve a normalizar el grupo dentro de la misma transacción, incluso si había posiciones duplicadas o huecos. Crear/trasladar continúa añadiendo al final mediante máximo+1; si se alcanzó `Int.MAX_VALUE`, primero compacta los hermanos dentro de esa transacción. Borrar puede dejar huecos válidos hasta la próxima preparación o reordenamiento. No se introduce un índice UNIQUE sobre posiciones: las garantías se aplican mediante Repository, y SQL externo podría volver a introducir duplicados.
 
@@ -824,7 +824,7 @@ Proyecto → Nodo → jerarquía arbitraria de Nodos → Capas de cebolla
 
 Las capas no se completan manualmente. El progreso existente se deriva de todas las tareas hoja descendientes, incluidas subcapas, sin contar los contenedores ni promediar sus porcentajes. `NodeTreeSnapshot` y los flujos del repositorio mantienen esta información reactiva. Actualmente no existe un tipo Nota ni una exclusión de hojas informativas del progreso.
 
-La base actual es local-first y offline-first, sin cuenta ni backend obligatorio: proyectos, nodos, navegación por Capas de cebolla, orden manual, drag/reorder y progreso derivado se apoyan en Room/SQLite v4. Las secciones anteriores y los ajustes finales describen su implementación y las verificaciones físicas pendientes. Esta documentación no convierte esos pendientes en comprobaciones realizadas.
+La base actual es local-first y offline-first, sin cuenta ni backend obligatorio: proyectos, nodos, navegación por Capas de cebolla, orden manual, drag/reorder y progreso derivado se apoyan en Room/SQLite v5, con Personas y responsables locales. Las secciones anteriores y los ajustes finales describen su implementación y las verificaciones físicas pendientes. Esta documentación no convierte esos pendientes en comprobaciones realizadas.
 
 El repositorio ofrece `moveNode(id, parentId)` transaccional, valida el proyecto del padre y rechaza ciclos. La acción visible «Mover a…» está implementada y reutiliza esta operación. Reordenar entre hermanos y trasladar a otro padre son operaciones distintas.
 
@@ -838,13 +838,23 @@ Se conservan ID, título, descripción, completado del nodo trasladado, fecha de
 
 Cada emisión confirmada reconstruye iterativamente los ancestros del nodo abierto si sigue existiendo, preservando la ubicación dentro de él incluso si se movió un ancestro. Si desaparece, se conserva el retroceso seguro al prefijo válido existente. El traslado funciona solo dentro del mismo proyecto; no se implementa movimiento entre proyectos. La comprobación física del selector en pantallas pequeñas y jerarquías profundas sigue siendo parte del dogfooding.
 
+### Personas + Responsables — IMPLEMENTADO
+
+`Person` es una entidad independiente con UUID estable, nombre obligatorio (sin aceptar solo espacios) y avatar local opcional; no representa cuenta, login ni usuario autenticado. `PersonRepository` y `PersonActions` conservan la cadena UI → acciones → repositorio → Room. No se añaden dependencias ni servicios remotos.
+
+Room pasa de **v4 a v5** mediante `PersonMigration4To5`: añade `persons` y `node_person`, con clave compuesta `(nodeId, personId)`, índice por Persona y foreign keys con borrado en cascada. Una Persona puede participar en varios Nodes y un Node tener 0..N Personas. La relación guarda IDs, no nombres. La migración conserva tablas, contenido, posiciones y triggers anteriores; no utiliza migración destructiva.
+
+«Personas» es el único destino nuevo del panel existente, tanto desde proyectos como desde una capa. Permite listar, crear, editar y eliminar con confirmación, seleccionar/cambiar/quitar avatar. Al volver conserva la ruta del proyecto y el estado guardable mediante `SaveableStateHolder`. «Responsables» aparece en el menú de cada tarea/Capa y en el contexto de la capa abierta: un selector permite guardar ninguna, una o varias Personas. Su estado vacío indica dónde crearlas. Las tarjetas y la capa abierta muestran hasta tres avatares y `+N`, sin sección vacía. Los flujos de Room actualizan nombres, avatares y asignaciones sin reabrir pantallas.
+
+El selector Android `PickVisualMedia` entrega la imagen que `AvatarStore` copia inmediatamente al almacenamiento privado de la app. Room guarda únicamente el nombre del archivo PNG; no guarda blobs ni depende de mantener acceso a la URI original. Se acepta una entrada de hasta 20 MiB y se genera una miniatura de hasta 512 px por lado, respetando orientación EXIF. Sin imagen disponible se muestra la inicial. Cambiar/quitar/eliminar y cancelar un borrador limpia archivos sin referencias, con limpieza de archivos como mejor esfuerzo. No existe crop avanzado.
+
+Eliminar una Persona elimina sus asociaciones y conserva los Nodes. Eliminar un Node/subárbol elimina sus asociaciones y conserva las Personas. No existe herencia hacia descendientes: cada capa/tarea tiene responsables propios. El progreso, completado, orden y drag conservan su lógica; «Mover a…» conserva responsables porque mantiene el ID del Node.
+
+Pruebas dirigidas: CRUD y persistencia, múltiples relaciones en ambos sentidos, renombrado, eliminación y rollback de selección inválida, traslado con responsables, copia persistente de avatar y retirada, migración del schema real v4 conservando proyectos/Nodes/triggers y cadenas anteriores. La prueba Compose verifica creación/edición/asignación/borrado, recreación de Activity y vuelta a la misma capa con el nombre actualizado. Se mantienen las regresiones de navegación y traslado.
+
+Limitaciones reales: faltan comprobación física del selector Android y revisión visual en dispositivos pequeños. Un cierre abrupto del proceso durante un borrador de avatar puede dejar un archivo privado sin referencia; no hay recolector periódico de huérfanos. La restauración de borradores usa el Bundle de Android y conserva sus límites existentes. No se implementan roles, disponibilidad, contacto, autenticación, herencia ni sincronización.
+
 ## PRÓXIMA ETAPA — capacidades previstas, no implementadas
-
-### 2. Persona y responsables
-
-**Persona** es el concepto principal de dominio; no se denomina User/Usuario. Representa a alguien relacionado con el trabajo o la información almacenada, sin implicar cuenta, login, autenticación ni instalación de Arachn0de.
-
-La primera versión prevista contempla `id`, nombre y avatar local. Rol, disponibilidad y otras propiedades quedan para ampliaciones posteriores. Los Nodes podrán asociarse con **0..N Personas** como responsables. Estas relaciones no deben reemplazar la identidad o ubicación del Node. No se define todavía su esquema persistente.
 
 ### 3. Fechas opcionales
 
@@ -906,7 +916,7 @@ Una tarea o Capa podrá marcarse como Favorita para referencia y acceso rápido 
 
 ### 11. Menú lateral con destinos reales
 
-El menú lateral recuperará progresivamente destinos cuando existan funcionalidades utilizables: **Proyectos, Atención, Favoritos, Personas, Etiquetas, Configuración y Acerca de**. El panel actual conserva identidad, versión y cierre; no se añadirán destinos vacíos para llenar el menú.
+El menú lateral recuperará progresivamente destinos cuando existan funcionalidades utilizables: **Proyectos, Atención, Favoritos, Personas, Etiquetas, Configuración y Acerca de**. El panel actual conserva identidad, versión y cierre, y añade el destino funcional Personas; no se añadirán destinos vacíos para llenar el menú.
 
 ### 12. Acerca de e identidad
 
@@ -928,11 +938,11 @@ Se distinguen dos conceptos: **Release DE Arachn0de** actualiza/distribuye la ap
 
 ### Secuencia tentativa de implementación
 
-Este orden es una propuesta revisable, no una obligación irreversible. El primer paso ya está implementado; los restantes siguen pendientes:
+Este orden es una propuesta revisable, no una obligación irreversible. Los primeros tres pasos ya están implementados; los restantes siguen pendientes:
 
 1. Mover Node a otra Capa — IMPLEMENTADO.
-2. Personas.
-3. Responsables.
+2. Personas — IMPLEMENTADO.
+3. Responsables — IMPLEMENTADO.
 4. Fechas.
 5. Atención básica.
 6. Notas y conversión Tarea ↔ Nota.

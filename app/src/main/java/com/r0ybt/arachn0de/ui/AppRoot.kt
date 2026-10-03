@@ -23,6 +23,9 @@ import kotlinx.coroutines.launch
 
 @Composable
 internal fun AppRoot(projectRepository: ProjectRepository, nodeRepository: NodeRepository) {
+    val personRepository = (androidx.compose.ui.platform.LocalContext.current.applicationContext as com.r0ybt.arachn0de.Arachn0deApplication).personRepository
+    val screenStates = androidx.compose.runtime.saveable.rememberSaveableStateHolder()
+    var showPeople by rememberSaveable { mutableStateOf(false) }
     val projectsListState = rememberLazyListState()
     var selectedProjectId by rememberSaveable { mutableStateOf<String?>(null) }
     var projects by remember(projectRepository) { mutableStateOf<List<Project>?>(null) }
@@ -60,20 +63,27 @@ internal fun AppRoot(projectRepository: ProjectRepository, nodeRepository: NodeR
     }
 
     val selectedProject = projects?.firstOrNull { it.id == selectedProjectId }
-    if (selectedProjectId == null) {
+    if (showPeople) {
+        screenStates.SaveableStateProvider("people") { PeopleScreen(personRepository) { showPeople = false } }
+    } else if (selectedProjectId == null) {
         ProjectDashboardScreen(
             repository = projectRepository,
             listState = projectsListState,
             projects = projects.orEmpty(),
             projectProgressById = projectProgressById,
             onOpenProject = { selectedProjectId = it.id },
+            onOpenPeople = { showPeople = true },
         )
     } else if (selectedProject != null) {
-        ProjectNodeScreen(
-            project = selectedProject,
-            nodeRepository = nodeRepository,
-            onBackToProjects = { selectedProjectId = null },
-        )
+        screenStates.SaveableStateProvider("project:${selectedProject.id}") {
+            ProjectNodeScreen(
+                project = selectedProject,
+                nodeRepository = nodeRepository,
+                personRepository = personRepository,
+                onOpenPeople = { showPeople = true },
+                onBackToProjects = { screenStates.removeState("project:${selectedProject.id}"); selectedProjectId = null },
+            )
+        }
     } else {
         BackHandler { selectedProjectId = null }
         Surface(Modifier.fillMaxSize(), color = Arachn0deColors.Background) {}

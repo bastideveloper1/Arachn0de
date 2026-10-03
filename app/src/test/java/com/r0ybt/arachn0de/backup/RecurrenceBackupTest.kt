@@ -50,7 +50,7 @@ class RecurrenceBackupTest {
     @Test fun genuineV1PayloadAndEnvelopeRestoreReplacingRecurrencesWithEmptyRules() = runBlocking {
         val legacy = BackupFixture.empty().copy(projects = listOf(ProjectEntity("old", "Antiguo", "", 8, 1, 2)))
         val json = JSONObject(BackupJson.encode(legacy).toString(Charsets.UTF_8)).apply {
-            put("dataVersion", 1); remove("recurrenceRules"); remove("recurrenceOccurrences"); remove("recurrenceAssignments")
+            put("dataVersion", 1); remove("tags"); remove("nodeTags"); remove("recurrenceTags"); remove("recurrenceRules"); remove("recurrenceOccurrences"); remove("recurrenceAssignments")
         }.toString().toByteArray()
         val bytes = java.io.ByteArrayOutputStream().also { BackupContainer.write(json, it) }.toByteArray()
         nodes.recurrence.create(rule("current")); nodes.recurrence.materializeDue()

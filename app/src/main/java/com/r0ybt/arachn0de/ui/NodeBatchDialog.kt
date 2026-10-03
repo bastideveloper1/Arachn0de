@@ -22,6 +22,7 @@ internal fun NodeBatchDialog(
     busy: Boolean,
     onDismiss: () -> Unit,
     onCreate: (List<GeneratedNodeSpec>, Set<String>) -> Unit,
+    tagRepository: com.r0ybt.arachn0de.data.repository.TagRepository? = null,
 ) {
     val zone = TimeZone.getDefault()
     val generated = remember(draft.baseName, draft.quantity, draft.numberingMode, draft.startNumber,
@@ -35,6 +36,8 @@ internal fun NodeBatchDialog(
         title = { Text("Crear varios") },
         text = {
             Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                tagRepository?.let { repo -> val state by remember(repo) { repo.observe() }.collectAsState(initial = com.r0ybt.arachn0de.domain.model.TagState())
+                    TagSelector(state.tags, draft.dates.tagIds.toSet(), { draft.dates.tagIds = it.toList() }, repository = repo) }
                 OutlinedTextField(draft.baseName, { draft.baseName = it }, label = { Text("Nombre base") }, singleLine = true, enabled = !busy)
                 OutlinedTextField(draft.quantity, { draft.quantity = it }, label = { Text("Cantidad") },
                     supportingText = { Text("De 1 a ${NodeBatchGenerator.MAX_BATCH_SIZE}") }, singleLine = true, enabled = !busy)

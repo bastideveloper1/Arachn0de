@@ -25,6 +25,7 @@ class NodeRepository(
     private val database: Arachn0deDatabase,
     private val currentTimeMillis: () -> Long = System::currentTimeMillis,
 ) {
+    val tags = TagRepository(database)
     val recurrence = RecurrenceRepository(database, currentTimeMillis)
     private val nodeDao = database.nodeDao()
 
@@ -121,6 +122,7 @@ class NodeRepository(
         purpose: NodePurpose = NodePurpose.ACTION,
         obligation: Obligation? = null,
         responsibleIds: Set<String> = emptySet(),
+        tagIds: Set<String> = emptySet(),
     ): Node = database.withTransaction {
         com.r0ybt.arachn0de.domain.model.TaskTemporal.validateDates(startAt, dueAt)
         require(purpose == NodePurpose.ACTION || obligation == null) { "Una nota no puede ser obligación." }
@@ -131,7 +133,8 @@ class NodeRepository(
                 existing.title == normalizedTitle && existing.description == description &&
                 existing.startAt == startAt && existing.dueAt == dueAt && existing.purpose == purpose.name &&
                 existing.amountMinor == obligation?.amountMinor && existing.currencyCode == obligation?.currencyCode &&
-                database.personDao().assignmentIds(existing.id).toSet() == responsibleIds) {
+                database.personDao().assignmentIds(existing.id).toSet() == responsibleIds &&
+                database.tagDao().nodeIds(existing.id).toSet() == tagIds) {
                 "Creation already committed with different content or destination"
             }
             return@withTransaction existing.toNode(nodeDao.hasChildren(projectId, creationId))
@@ -139,6 +142,7 @@ class NodeRepository(
         require(database.projectDao().getById(projectId) != null) { "Project not found" }
         validateParent(projectId, parentId)
         responsibleIds.forEach { requireNotNull(database.personDao().get(it)) { "Person not found" } }
+        tags.validate(tagIds)
         val now = currentTimeMillis()
         val entity = NodeEntity(
             id = creationId, projectId = projectId, parentId = parentId,
@@ -149,6 +153,7 @@ class NodeRepository(
         )
         nodeDao.insert(entity)
         if (responsibleIds.isNotEmpty()) database.personDao().assign(responsibleIds.map { NodePersonEntity(entity.id, it) })
+        tags.assignNode(entity.id, tagIds)
         entity.toNode(hasChildren = false)
     }
 
@@ -159,10 +164,12 @@ class NodeRepository(
         batchId: String,
         specifications: List<GeneratedNodeSpec>,
         responsibleIds: Set<String> = emptySet(),
+        tagIds: Set<String> = emptySet(),
     ): List<Node> {
         // Snapshot caller-owned collections before suspending.
         val specs = specifications.toList()
         val people = responsibleIds.toSet()
+        val labels = tagIds.toSet()
         NodeBatchGenerator.validateSpecs(specs)
         require(batchId.isNotBlank())
         val ids = specs.indices.map { UUID.nameUUIDFromBytes("$batchId:$it".toByteArray(Charsets.UTF_8)).toString() }
@@ -178,7 +185,7 @@ class NodeRepository(
                         node.description == spec.description && node.purpose == spec.purpose.name &&
                         node.startAt == null && node.dueAt == spec.dueAt &&
                         node.amountMinor == spec.obligation?.amountMinor && node.currencyCode == spec.obligation?.currencyCode &&
-                        database.personDao().assignmentIds(node.id).toSet() == people) {
+                        database.personDao().assignmentIds(node.id).toSet() == people && database.tagDao().nodeIds(node.id).toSet() == labels) {
                         "El lote ya fue creado con otros datos."
                     }
                     node.toNode(nodeDao.hasChildren(projectId, node.id))
@@ -187,6 +194,7 @@ class NodeRepository(
                 require(database.projectDao().getById(projectId) != null) { "Project not found" }
                 validateParent(projectId, parentId)
                 people.forEach { requireNotNull(database.personDao().get(it)) { "Person not found" } }
+                tags.validate(labels)
                 var maximum = nodeDao.maxPosition(projectId, parentId) ?: -1
                 if (maximum.toLong() + specs.size > Int.MAX_VALUE) {
                     writeOrder(sortSiblingsForDisplay(nodeDao.getSiblings(projectId, parentId)))
@@ -202,6 +210,7 @@ class NodeRepository(
                     if (people.isNotEmpty()) database.personDao().assign(people.map {
                         NodePersonEntity(entity.id, it)
                     })
+                    tags.assignNode(entity.id, labels)
                     entity.toNode(hasChildren = false)
                 }
             }
@@ -230,6 +239,15 @@ class NodeRepository(
         if (current.purpose != NodePurpose.ACTION.name || nodeDao.hasChildren(current.projectId, id)) return@withTransaction false
         require(current.amountMinor == null || obligation != null || removeObligation) { "Confirma la eliminación de los datos financieros." }
         nodeDao.updateLeaf(id, validateTitle(title), description, startAt, dueAt, obligation?.amountMinor, obligation?.currencyCode, currentTimeMillis()) == 1
+    }
+
+    suspend fun updateEditor(id: String, title: String, description: String, startAt: Long?, dueAt: Long?,
+        obligation: Obligation?, removeObligation: Boolean, editDates: Boolean, tagIds: Set<String>): Boolean = database.withTransaction {
+        tags.validate(tagIds)
+        val updated = if (editDates) updateLeaf(id, title, description, startAt, dueAt, obligation, removeObligation)
+            else updateNode(id, title, description)
+        if (updated) tags.assignNode(id, tagIds)
+        updated
     }
 
     /** Conversion retains identity, content, dates, position and assignments; completion is cleared. */

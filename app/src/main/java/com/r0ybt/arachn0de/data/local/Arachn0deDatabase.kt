@@ -7,11 +7,12 @@ import androidx.room.RoomDatabase
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 
-@Database(entities = [ProjectEntity::class, NodeEntity::class, PersonEntity::class, NodePersonEntity::class, RecurrenceRuleEntity::class, RecurrenceOccurrenceEntity::class, RecurrencePersonEntity::class], version = 9, exportSchema = true)
+@Database(entities = [ProjectEntity::class, NodeEntity::class, PersonEntity::class, NodePersonEntity::class, RecurrenceRuleEntity::class, RecurrenceOccurrenceEntity::class, RecurrencePersonEntity::class, TagEntity::class, NodeTagEntity::class, RecurrenceTagEntity::class], version = 10, exportSchema = true)
 abstract class Arachn0deDatabase : RoomDatabase() {
     abstract fun projectDao(): ProjectDao
     abstract fun nodeDao(): NodeDao
     abstract fun recurrenceDao(): RecurrenceDao
+    abstract fun tagDao(): TagDao
     abstract fun personDao(): PersonDao
     internal abstract fun backupDao(): BackupDao
 
@@ -22,7 +23,7 @@ abstract class Arachn0deDatabase : RoomDatabase() {
             Arachn0deDatabase::class.java,
             "arachn0de.db",
         )
-            .addMigrations(MIGRATION_1_2, NodeMigration2To3, ProjectMigration3To4, PersonMigration4To5, TaskDatesMigration5To6, NodePurposeMigration6To7, ObligationMigration7To8, RecurrenceMigration8To9)
+            .addMigrations(MIGRATION_1_2, NodeMigration2To3, ProjectMigration3To4, PersonMigration4To5, TaskDatesMigration5To6, NodePurposeMigration6To7, ObligationMigration7To8, RecurrenceMigration8To9, TagMigration9To10)
             .addCallback(object : Callback() {
                 override fun onCreate(db: SupportSQLiteDatabase) {
                     NodeInvariants.install(db)

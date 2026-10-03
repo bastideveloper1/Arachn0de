@@ -15,8 +15,9 @@ enum class TimeFilter { TODAY, TOMORROW, THIS_WEEK, NEXT_WEEK, THIS_MONTH, PREVI
 enum class CompletionFilter { ALL, PENDING, COMPLETED }
 
 /** Membership only: each consuming view defines eligible Nodes and its temporal field. */
-data class NodeFilter(val range: TemporalRange? = null, val personId: String? = null, val completion: CompletionFilter = CompletionFilter.ALL) {
-    fun matches(node: Node, responsibleIds: Set<String>, temporalInstant: Long? = node.dueAt): Boolean =
+data class NodeFilter(val range: TemporalRange? = null, val personId: String? = null, val completion: CompletionFilter = CompletionFilter.ALL, val tagId: String? = null) {
+    fun matches(node: Node, responsibleIds: Set<String>, temporalInstant: Long? = node.dueAt, tagIds: Set<String> = emptySet()): Boolean =
+        (tagId == null || tagId in tagIds) &&
         (range == null || (temporalInstant != null && temporalInstant in range)) &&
             (personId == null || personId in responsibleIds) &&
             when (completion) {
@@ -26,8 +27,9 @@ data class NodeFilter(val range: TemporalRange? = null, val personId: String? = 
             }
 
     fun apply(nodes: List<Node>, responsibleIdsByNode: Map<String, Set<String>>,
+        tagIdsByNode: Map<String, Set<String>> = emptyMap(),
         temporalInstant: (Node) -> Long? = { it.dueAt }): List<Node> =
-        nodes.filter { matches(it, responsibleIdsByNode[it.id].orEmpty(), temporalInstant(it)) }
+        nodes.filter { matches(it, responsibleIdsByNode[it.id].orEmpty(), temporalInstant(it), tagIdsByNode[it.id].orEmpty()) }
 }
 
 object TemporalRanges {
@@ -90,8 +92,8 @@ object TemporalRanges {
 }
 
 /** Filter the existing Calendar index, preserving eligibility, IDs, order, currencies and tree. */
-class FilteredCalendar(val source: CalendarSnapshot, val filter: NodeFilter, responsibleIds: Map<String, Set<String>>) {
-    val tasksByDay: Map<CalendarDay, List<Node>> = source.tasksByDay.mapValues { (_, nodes) -> filter.apply(nodes, responsibleIds) }
+class FilteredCalendar(val source: CalendarSnapshot, val filter: NodeFilter, responsibleIds: Map<String, Set<String>>, tagIds: Map<String, Set<String>> = emptyMap()) {
+    val tasksByDay: Map<CalendarDay, List<Node>> = source.tasksByDay.mapValues { (_, nodes) -> filter.apply(nodes, responsibleIds, tagIds) }
         .filterValues { it.isNotEmpty() }
     val tasks: List<Node> = tasksByDay.values.flatten().sortedWith(compareBy<Node> { it.dueAt }.thenBy { it.createdAt }.thenBy { it.id })
     fun tasksOn(day: CalendarDay): List<Node> = tasksByDay[day].orEmpty()

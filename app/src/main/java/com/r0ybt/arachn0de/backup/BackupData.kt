@@ -16,6 +16,9 @@ internal data class BackupData(
     val recurrenceRules: List<RecurrenceRuleEntity> = emptyList(),
     val recurrenceOccurrences: List<RecurrenceOccurrenceEntity> = emptyList(),
     val recurrenceAssignments: List<RecurrencePersonEntity> = emptyList(),
+    val tags: List<TagEntity> = emptyList(),
+    val nodeTags: List<NodeTagEntity> = emptyList(),
+    val recurrenceTags: List<RecurrenceTagEntity> = emptyList(),
 )
 
 internal object BackupLimits {
@@ -29,7 +32,7 @@ internal object BackupLimits {
 /** Validate before staging or deleting anything; return parent-first order without recursion. */
 internal fun BackupData.validate(): List<NodeEntity> {
     require(appVersion.isNotBlank() && appVersion.length <= 128 && createdAt >= 0) { "Metadatos de backup inválidos." }
-    require(projects.size.toLong() + nodes.size + persons.size + assignments.size + recurrenceRules.size + recurrenceOccurrences.size + recurrenceAssignments.size <= BackupLimits.RECORDS) { "Demasiados registros en el backup." }
+    require(projects.size.toLong() + nodes.size + persons.size + assignments.size + recurrenceRules.size + recurrenceOccurrences.size + recurrenceAssignments.size + tags.size + nodeTags.size + recurrenceTags.size <= BackupLimits.RECORDS) { "Demasiados registros en el backup." }
     fun unique(ids: List<String>): Set<String> {
         require(ids.all { it.isNotBlank() && it.length <= 256 }) { "Identidad inválida." }
         return ids.toSet().also { require(it.size == ids.size) { "Identidades duplicadas." } }
@@ -82,6 +85,14 @@ internal fun BackupData.validate(): List<NodeEntity> {
         // Missing Nodes are intentional deletion receipts, not broken backup references.
     }
     require(recurrenceAssignments.toSet().size == recurrenceAssignments.size && recurrenceAssignments.all { it.ruleId in ruleIds && it.personId in personIds })
+    val tagIds = unique(tags.map { it.id })
+    require(tags.map { it.normalizedName }.toSet().size == tags.size) { "Etiquetas duplicadas." }
+    tags.forEach {
+        require(it.name == com.r0ybt.arachn0de.domain.model.TagNames.display(it.name) &&
+            it.normalizedName == com.r0ybt.arachn0de.domain.model.TagNames.normalize(it.name)) { "Etiqueta inválida." }
+    }
+    require(nodeTags.toSet().size == nodeTags.size && nodeTags.all { it.nodeId in nodeIds && it.tagId in tagIds })
+    require(recurrenceTags.toSet().size == recurrenceTags.size && recurrenceTags.all { it.ruleId in ruleIds && it.tagId in tagIds })
     val names = persons.mapNotNull { it.avatarFile }.toSet()
     require(names == avatars.keys && names.all { BackupLimits.avatarName.matches(it) }) { "Referencias de avatar inválidas." }
     require(avatars.values.sumOf { it.size.toLong() } <= BackupLimits.TOTAL_AVATAR_BYTES) { "Avatares demasiado grandes." }

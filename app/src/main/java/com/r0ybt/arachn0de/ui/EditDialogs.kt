@@ -16,6 +16,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -38,6 +39,7 @@ internal fun NodeDialog(
     editDates: Boolean = true,
     people: List<com.r0ybt.arachn0de.domain.model.Person> = emptyList(),
     peopleLoaded: Boolean = true,
+    tagRepository: com.r0ybt.arachn0de.data.repository.TagRepository? = null,
 ) {
     var confirmFinancialRemoval by rememberSaveable(draft.creationId) { mutableStateOf(false) }
     val financialValid = !editDates || draft.purpose != NodePurpose.ACTION || runCatching { draft.obligation() }.isSuccess
@@ -64,6 +66,8 @@ internal fun NodeDialog(
         title = { Text(if (draft.id == null) "Nuevo elemento" else "Editar elemento") },
         text = {
             Column(modifier = Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                tagRepository?.let { repo -> val state by remember(repo) { repo.observe() }.collectAsState(initial = com.r0ybt.arachn0de.domain.model.TagState())
+                    TagSelector(state.tags, draft.tagIds.toSet(), { draft.tagIds = it.toList() }, repository = repo) }
                 if (draft.id == null) {
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         for ((purpose, label) in listOf(NodePurpose.ACTION to "Tarea", NodePurpose.NOTE to "Nota")) {

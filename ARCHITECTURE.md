@@ -390,7 +390,7 @@ Utilizar:
 
 Room debe proporcionar la capa de persistencia.
 
-El esquema actual es la versión 9 (motor de recurrencia; véase la sección final). La versión 8: v4 incorporó el orden persistente de proyectos, v5 Personas/Responsables, v6 las fechas opcionales de Nodes, v7 el propósito ACTION/NOTE y v8 la capacidad financiera opcional de hojas ACTION. Se conservan los esquemas históricos 1–8 y sus rutas de migración; no se usa `fallbackToDestructiveMigration`.
+El esquema actual es la versión 10 (etiquetas; véase la sección final). La versión 8: v4 incorporó el orden persistente de proyectos, v5 Personas/Responsables, v6 las fechas opcionales de Nodes, v7 el propósito ACTION/NOTE y v8 la capacidad financiera opcional de hojas ACTION. Se conservan los esquemas históricos 1–10 y sus rutas de migración; no se usa `fallbackToDestructiveMigration`.
 
 ### Invariantes de nodos
 
@@ -1046,9 +1046,9 @@ Dogfooding pendiente: CLP y múltiples monedas; los cuatro períodos; Persona y 
 
 ## PRÓXIMA ETAPA — capacidades previstas, no implementadas
 
-### 9. Tags / Etiquetas
+### 9. Tags / Etiquetas — IMPLEMENTADO
 
-Un Node podrá tener múltiples etiquetas. **Capa = dónde está el Node; Tag = qué es o con qué se relaciona.** Las etiquetas complementan la jerarquía y no la reemplazan.
+Un Node puede tener múltiples etiquetas (Room v10, sección final). **Capa = dónde está el Node; Tag = qué es o con qué se relaciona.** Las etiquetas complementan la jerarquía y no la reemplazan.
 
 ### 10. Favoritos
 
@@ -1511,3 +1511,72 @@ Archivos de este sprint: nuevos `domain/model/NodeFilters.kt`, `ui/state/Calenda
 Validación de filtros: **32 métodos nuevos / 34 ejecuciones correctas** (NodeFiltersTest 20 JVM, CalendarFilterStateTest 4 JVM, CalendarFiltersUiTest 6 API 28, CalendarFiltersRepositoryTest 2 × API 24/28). Cubren los ocho rangos, fronteras exactas, mes/año/febrero bisiesto, zonas y DST de 23/25 h, medianoche repetida y fecha civil omitida, Persona/Estado/AND, Notes/startAt excluidos según Calendar, monedas preservadas, 10000 Nodes, navegación/restauración, filtros activos/limpieza/vacío, Persona eliminada y recurrencia materializada sin evento abstracto duplicado.
 
 La ejecución dirigida final de Calendar/Temporal/Personas/Finance/Recurrence y las pruebas nuevas pasó **151/151**, sin errores ni omitidas, junto a `assembleDebug`. `git diff --check` correcto. No se ejecutó la suite completa: no se modificaron consultas/DAOs/repositorios compartidos ni persistencia; no se investigaron fallos históricos ajenos. Sin lint completo, cambios de versión, commit, push, tag o Release. Pendientes dogfooding físico en pantallas pequeñas/TalkBack y benchmark; las preferencias se conservan en estado guardable de sesión, sin persistencia permanente.
+
+
+## Etiquetas y filtros por ámbito — Room v10
+
+`Tag(id, name, normalizedName)` es una entidad reutilizable independiente. `TagNames`
+quita espacios exteriores, comprime espacios repetidos y rechaza nombres vacíos;
+la clave usa minúsculas con `Locale.ROOT`. Se conserva el nombre legible inicial.
+Crear un nombre equivalente devuelve la etiqueta existente; renombrar hacia una
+clave ocupada se rechaza. No se eliminan ni fusionan etiquetas automáticamente.
+
+Room v10 añade `tags` con índice UNIQUE de `normalizedName`, `node_tag` y
+`recurrence_tag` con claves compuestas, índices de ambos extremos y FKs CASCADE.
+La migración explícita 9→10 solo crea estas tablas/índices: conserva todos los
+campos anteriores, recibos de recurrencia y los quince triggers de invariantes.
+Los esquemas exportados y todas las migraciones anteriores permanecen disponibles.
+
+La relación Node↔Tag es many-to-many y directa, sin herencia. ACTION, NOTE,
+obligaciones, capas y ocurrencias reales pueden etiquetarse. Quitar una asociación
+no elimina la etiqueta. Eliminar un Node quita sus asociaciones; eliminar una
+etiqueta global quita únicamente sus asociaciones (también de plantillas).
+La gestión global confirma la eliminación e informa usos en nodos y plantillas;
+las etiquetas sin uso siguen visibles y se incluyen en backups.
+
+Los formularios individuales y de lote permiten búsqueda y creación inline,
+selección múltiple y retirada de etiquetas. Los borradores guardan IDs en su
+Saver, incluidos los lotes y las plantillas. Las tarjetas muestran dos chips y
+`+N`; nombres largos se acotan. El selector usa LazyColumn y búsqueda, sin cargar
+un control visible por cada etiqueta fuera del diálogo.
+
+`NodeFilter.tagId` añade un único criterio opcional combinado por AND con persona,
+estado y rango temporal. Calendar filtra su índice ACTION existente, sin notas,
+capas ni reglas abstractas, y mantiene counts, orden y navegación del Node real.
+Los filtros de proyecto y capa se guardan por ámbito durante la sesión y recreación.
+`ScopedNodeFilter` recorre iterativamente los descendientes del ámbito, conserva
+el orden de hermanos y retiene ancestros necesarios mediante una pasada inversa.
+Las filas no coincidentes se rotulan **Contexto**; no cuentan como coincidencias.
+La raíz de proyecto no mezcla otros proyectos y una capa no muestra ramas ajenas.
+Limpiar vuelve inmediatamente a la vista ordinaria con sus controles de orden.
+No se reconstruye un árbol filtrado para calcular progreso: se conserva el snapshot
+original. Las proyecciones se preparan en Dispatchers.Default solo si hay filtros.
+
+`TagDao.observe` usa relaciones Room en consultas agrupadas y una transacción,
+observando etiquetas y ambos tipos de asociaciones; no hay consulta por tarjeta.
+`TagState` contiene índices por Node/regla y por ID de etiqueta. Crear y actualizar
+Node, crear Batch y guardar plantilla incluyen validación/asociaciones dentro de
+la transacción existente. Los reintentos estables comprueban también las etiquetas.
+Al materializar recurrencia se copian las etiquetas de la plantilla; editarla
+primero procesa deuda activa con la plantilla anterior y solo afecta fechas futuras.
+Las etiquetas de ocurrencias anteriores permanecen independientes y los recibos
+siguen evitando recrear ocurrencias borradas.
+
+Backup lógico v3 añade `tags`, `nodeTags`, `recurrenceTags`; el contenedor sigue v1.
+Se validan claves normalizadas únicas, referencias, duplicados y límites antes de
+restaurar. La restauración transaccional conserva IDs, nombres, relaciones y
+etiquetas sin uso. Los datos lógicos v1/v2 se leen con etiquetas vacías y sustituyen
+las etiquetas presentes al restaurarse. Los límites de texto/registros incluyen
+las etiquetas y sus relaciones. No cambia versionName/versionCode ni la publicación.
+
+Validación de etiquetas: 200 pruebas dirigidas pasaron, incluidas 23 nuevas.
+`assembleDebug` y `git diff --check` pasaron. La suite completa se ejecutó una sola
+vez: 468 pruebas, 459 pasaron y 9 fallaron. Cinco fallos corresponden a los
+históricos de ScrollRestorationTest (2), LargeListsTest (2) y MvpReadinessTest (1).
+Cuatro regresiones nuevas de visibilidad (NodeOrderUiTest, 3; NotesUiTest, 1)
+se corrigieron moviendo el acceso a filtros al encabezado, sin una fila extra.
+La verificación posterior dirigida pasó 39 pruebas sin fallos, incluyendo
+las cuatro regresiones y las pruebas de etiquetas, Calendar, Batch y Recurrence UI.
+No se repitió la suite completa ni se ejecutó lint completo. No hubo errores
+de memoria/entorno en la ejecución completa. Queda dogfooding en dispositivo
+físico de diálogos, teclado y navegación con grandes cantidades de etiquetas.

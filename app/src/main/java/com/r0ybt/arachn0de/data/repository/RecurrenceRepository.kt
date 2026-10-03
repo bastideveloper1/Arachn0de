@@ -11,6 +11,8 @@ class RecurrenceRepository(
     private val database: Arachn0deDatabase,
     private val now: () -> Long = System::currentTimeMillis,
 ) {
+    val tags = TagRepository(database)
+    suspend fun tagIds(id: String) = database.tagDao().ruleIds(id).toSet()
     private val dao = database.recurrenceDao()
     val destinationProjects = database.projectDao().observeAll()
     suspend fun destinationNodes(projectId: String) = NodeRepository(database, now).getProjectNodes(projectId)
@@ -20,17 +22,19 @@ class RecurrenceRepository(
     suspend fun get(id: String) = dao.get(id)
     suspend fun people(id: String): Set<String> = dao.people(id).toSet()
 
-    suspend fun create(rule: RecurrenceRuleEntity, people: Set<String> = emptySet()): String = database.withTransaction {
+    suspend fun create(rule: RecurrenceRuleEntity, people: Set<String> = emptySet(), tagIds: Set<String> = emptySet()): String = database.withTransaction {
         validate(rule)
+        tags.validate(tagIds)
         require(rule.status == RecurrenceStatus.ACTIVE.name && rule.nextIndex == 0L)
         validateDestination(rule)
         people.forEach { requireNotNull(database.personDao().get(it)) { "Responsable ausente." } }
         dao.get(rule.id)?.let {
             // Stable creation identity survives retry after a committed insert/materialization.
-            check(it.copy(nextIndex = 0, status = "ACTIVE") == rule && dao.people(rule.id).toSet() == people) { "La regla ya existe con otra configuración." }
+            check(it.copy(nextIndex = 0, status = "ACTIVE") == rule && dao.people(rule.id).toSet() == people && database.tagDao().ruleIds(rule.id).toSet() == tagIds) { "La regla ya existe con otra configuración." }
             return@withTransaction rule.id
         }
         dao.insert(rule)
+        tags.assignRule(rule.id, tagIds)
         dao.assign(people.map { RecurrencePersonEntity(rule.id, it) })
         rule.id
     }
@@ -63,7 +67,7 @@ class RecurrenceRepository(
                         creationId = id,
                         startAt = rule.startOffsetMillis?.let { Math.subtractExact(due, it) }, dueAt = due,
                         obligation = rule.amountMinor?.let { Obligation(it, checkNotNull(rule.currencyCode)) },
-                        responsibleIds = dao.people(rule.id).toSet())
+                        responsibleIds = dao.people(rule.id).toSet(), tagIds = database.tagDao().ruleIds(rule.id).toSet())
                     dao.record(RecurrenceOccurrenceEntity(rule.id, day, id))
                 }
                 rule = rule.copy(nextIndex = Math.addExact(rule.nextIndex, 1))
@@ -106,15 +110,17 @@ class RecurrenceRepository(
 
     /** Template only. Schedule identity is immutable so edits cannot accidentally replay old periods. */
     suspend fun editTemplate(id: String, projectId: String, parentId: String?, title: String, description: String,
-        obligation: Obligation?, people: Set<String>) {
+        obligation: Obligation?, people: Set<String>, tagIds: Set<String>? = null) {
         settle(now())
         database.withTransaction {
+            tagIds?.let { tags.validate(it) }
             val old = requireNotNull(dao.get(id))
             require(old.status != "FINISHED") { "La regla finalizada conserva su configuración histórica." }
             val updated = old.copy(projectId = projectId, parentId = parentId, title = title.trim(), description = description,
                 amountMinor = obligation?.amountMinor, currencyCode = obligation?.currencyCode)
             validate(updated); validateDestination(updated)
             people.forEach { requireNotNull(database.personDao().get(it)) }
+            tagIds?.let { tags.assignRule(id, it) }
             dao.update(updated); dao.clearPeople(id); dao.assign(people.map { RecurrencePersonEntity(id, it) })
         }
     }

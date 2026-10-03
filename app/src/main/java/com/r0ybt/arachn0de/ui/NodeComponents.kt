@@ -170,6 +170,7 @@ internal fun NodeCard(
     canCopy: Boolean = true,
     onCopy: (Boolean) -> Unit = {},
     onRecurrence: (() -> Unit)? = null,
+    tags: List<com.r0ybt.arachn0de.domain.model.Tag> = emptyList(),
 ) {
     var showContextMenu by remember { mutableStateOf(false) }
     val completedTint = if (node.isCompleted) Arachn0deColors.Completed else Arachn0deColors.Primary
@@ -234,6 +235,7 @@ internal fun NodeCard(
             Column(
                 modifier = Modifier.weight(1f),
             ) {
+                TagChips(tags)
                 if (onRecurrence != null) TextButton(onClick = onRecurrence) { Text("↻ Recurrencia", color = Arachn0deColors.Primary, fontSize = 12.sp) }
                 Text(
                     text = node.title,

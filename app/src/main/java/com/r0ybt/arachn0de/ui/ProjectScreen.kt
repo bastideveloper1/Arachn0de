@@ -24,6 +24,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.FilterList
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -45,6 +46,7 @@ import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.ui.platform.testTag
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
@@ -132,9 +134,24 @@ internal fun ProjectNodeScreen(
     val isSubmittingNode = actions.operation.busy
     val currentNodeId = currentPath.lastOrNull()
     val currentNode = projectState.nodesById[currentNodeId]
+    val tagState by remember(nodeRepository) { nodeRepository.tags.observe() }.collectAsState(initial = com.r0ybt.arachn0de.domain.model.TagState())
+    val now = com.r0ybt.arachn0de.ui.state.rememberTaskScreenNow(projectState.nodes, clock)
+    val scopeFilterStore = rememberSaveable(project.id, saver = ScopeFilterStore.Saver) { ScopeFilterStore() }
+    val scopeFilters = scopeFilterStore.scope(currentNodeId ?: "project-root")
+    val scopedFilter = com.r0ybt.arachn0de.domain.model.NodeFilter(
+        com.r0ybt.arachn0de.domain.model.TemporalRanges.resolve(scopeFilters.time, now, java.util.TimeZone.getDefault(), java.util.Locale.getDefault()),
+        scopeFilters.person, scopeFilters.completion, scopeFilters.tag)
+    val filteredRows by androidx.compose.runtime.produceState<List<com.r0ybt.arachn0de.domain.model.FilteredNodeRow>?>(null, projectState, currentNodeId, scopedFilter, tagState, responsibleByNode) {
+        value = null
+        if (!scopeFilters.active) { value = emptyList(); return@produceState }
+        value = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
+            com.r0ybt.arachn0de.domain.model.ScopedNodeFilter.apply(projectState, project.id, currentNodeId, scopedFilter,
+                responsibleByNode.mapValues { (_, people) -> people.map { it.id }.toSet() }, tagState.nodeIds)
+        }
+    }
+    if (scopeFilters.open) ScopeFiltersDialog(scopeFilters, people, tagState.tags)
     val currentNodes = projectState.childrenOf(currentNodeId)
     val currentProgress = projectState.progressById[currentNodeId]
-    val now = com.r0ybt.arachn0de.ui.state.rememberTaskScreenNow(projectState.nodes, clock)
     val attention by com.r0ybt.arachn0de.ui.state.rememberAttention(projectState, now)
     val currentMonth = remember(now) { com.r0ybt.arachn0de.domain.model.CalendarDates.localDay(now, java.util.TimeZone.getDefault()).calendarMonth }
     val financial by com.r0ybt.arachn0de.ui.state.rememberFinancial(projectState, responsibleByNode,
@@ -260,6 +277,11 @@ internal fun ProjectNodeScreen(
                                         fontWeight = FontWeight.SemiBold,
                                         modifier = Modifier.weight(1f),
                                     )
+                                    androidx.compose.material3.IconButton(onClick = { scopeFilters.open = true }, modifier = Modifier.size(32.dp)) {
+                                        androidx.compose.material3.Icon(androidx.compose.material.icons.Icons.Default.FilterList,
+                                            contentDescription = if (scopeFilters.active) "Filtros activos" else "Filtros",
+                                            tint = if (scopeFilters.active) Arachn0deColors.Accent else Arachn0deColors.TextSecondary)
+                                    }
                                 }
 
                                 Spacer(modifier = Modifier.height(8.dp))
@@ -332,7 +354,7 @@ internal fun ProjectNodeScreen(
                                         Button(
                                             onClick = {
                                                 if (!isSubmittingNode) {
-                                                    draft = EditorDraft(currentNode.id, currentNode.parentId, currentNode.title, currentNode.description, startAt = currentNode.startAt, dueAt = currentNode.dueAt, purpose = currentNode.purpose, obligation = currentNode.obligation)
+                                                    draft = EditorDraft(currentNode.id, currentNode.parentId, currentNode.title, currentNode.description, startAt = currentNode.startAt, dueAt = currentNode.dueAt, purpose = currentNode.purpose, obligation = currentNode.obligation).apply { tagIds = tagState.nodeIds[currentNode.id].orEmpty().toList() }
                                                 }
                                             },
                                             enabled = !isSubmittingNode,
@@ -399,6 +421,7 @@ internal fun ProjectNodeScreen(
                                             onClick = { movingNodeId = currentNode.id }, enabled = !isSubmittingNode,
                                         ) { Text("Mover a…") }
                                     }
+                                    TagChips(tagState.forNode(currentNode.id))
                                     ResponsibleAvatars(responsibleByNode[currentNode.id].orEmpty())
                                     TextButton(enabled = !copyActions.busy, onClick = {
                                         copyActions.copy(projectState, currentNode.id, false)
@@ -411,6 +434,20 @@ internal fun ProjectNodeScreen(
 
                             }
                         }
+                        if (scopeFilters.active) {
+                            if (filteredRows == null) item { Text("Cargando resultados…") }
+                            else if (filteredRows!!.none { it.isMatch }) item { Text("Sin coincidencias") }
+                            items(filteredRows.orEmpty(), key = { "filtered:${it.node.id}" }) { row ->
+                                Column(Modifier.padding(start = minOf(row.depth, 6).times(12).dp)) {
+                                    if (!row.isMatch) Text("Contexto · ${row.node.title}", color = Arachn0deColors.TextSecondary)
+                                    else {
+                                        TextButton(onClick = { actions.navigate(row.node.id) { path -> currentPath.clear(); currentPath.addAll(path) } }) { Text(row.node.title) }
+                                        TagChips(tagState.forNode(row.node.id))
+                                        TextButton(onClick = { draft = EditorDraft(row.node.id, row.node.parentId, row.node.title, row.node.description, startAt = row.node.startAt, dueAt = row.node.dueAt, purpose = row.node.purpose, obligation = row.node.obligation).apply { tagIds = tagState.nodeIds[row.node.id].orEmpty().toList() } }) { Text("Editar") }
+                                    }
+                                }
+                            }
+                        } else {
                         if (currentNodes.isEmpty()) {
                             item(key = "empty-layer", contentType = "empty") { if (currentNode?.purpose != NodePurpose.NOTE && currentNode?.obligation == null) EmptyLayerState() }
                         }
@@ -434,6 +471,7 @@ internal fun ProjectNodeScreen(
                             items(renderNodes, key = { "node:${it.id}" }, contentType = { "node" }) { node ->
                                 val dragging = drag.isDragging(node.id)
                                 NodeCard(
+                                    tags = tagState.forNode(node.id),
                                     node = node,
                                     onRecurrence = recurrenceByNode[node.id]?.let { ruleId -> ({ recurrenceSelected = ruleId }) },
                                     progress = progressMap[node.id],
@@ -451,7 +489,7 @@ internal fun ProjectNodeScreen(
                                     canCopy = !copyActions.busy,
                                     onCopy = { descendants -> copyActions.copy(projectState, node.id, descendants) },
                                     onEdit = {
-                                        draft = EditorDraft(node.id, node.parentId, node.title, node.description, startAt = node.startAt, dueAt = node.dueAt, purpose = node.purpose, obligation = node.obligation)
+                                        draft = EditorDraft(node.id, node.parentId, node.title, node.description, startAt = node.startAt, dueAt = node.dueAt, purpose = node.purpose, obligation = node.obligation).apply { tagIds = tagState.nodeIds[node.id].orEmpty().toList() }
                                     },
                                     canMoveUp = node.id != renderNodes.firstOrNull()?.id && !isSubmittingNode,
                                     canMoveDown = node.id != renderNodes.lastOrNull()?.id && !isSubmittingNode,
@@ -472,6 +510,7 @@ internal fun ProjectNodeScreen(
                                     ).then(drag.cardModifier(node.id)),
                                 )
                             }
+                        }
                         }
                     }
                 }
@@ -533,7 +572,7 @@ internal fun ProjectNodeScreen(
     }
 
     batchDraft?.let { batch ->
-        NodeBatchDialog(batch, people, peopleLoaded, isSubmittingNode,
+        NodeBatchDialog(batch, people, peopleLoaded, isSubmittingNode, tagRepository = nodeRepository.tags,
             onDismiss = { if (!isSubmittingNode) batchDraft = null },
             onCreate = { specs, ids -> actions.createBatch(project.id, batch, specs, ids) { batchDraft = null } })
     }
@@ -541,6 +580,7 @@ internal fun ProjectNodeScreen(
     draft?.let { editor ->
         NodeDialog(
             draft = editor,
+            tagRepository = nodeRepository.tags,
             people = people, peopleLoaded = peopleLoaded,
             isSubmitting = isSubmittingNode,
             editDates = editor.purpose == NodePurpose.ACTION && (editor.id == null || projectState.nodesById[editor.id]?.isCompletable == true),
@@ -553,7 +593,7 @@ internal fun ProjectNodeScreen(
                 if (editor.recurrenceFrequency != "NONE" && editor.id == null && editor.purpose == NodePurpose.ACTION) {
                     actions.createRecurrence(project.id, editor) { draft = null }
                 } else actions.save(project.id, editor.parentId, editor.id, title, description, editor.creationId, editor.startAt, editor.dueAt,
-                    editDates = editor.purpose == NodePurpose.ACTION && (editor.id == null || projectState.nodesById[editor.id]?.isCompletable == true), purpose = editor.purpose, obligation = editor.obligation(), removeObligation = editor.financialRemovalConfirmed, responsibleIds = editor.responsibleIds.toSet()) {
+                    editDates = editor.purpose == NodePurpose.ACTION && (editor.id == null || projectState.nodesById[editor.id]?.isCompletable == true), purpose = editor.purpose, obligation = editor.obligation(), removeObligation = editor.financialRemovalConfirmed, responsibleIds = editor.responsibleIds.toSet(), tagIds = editor.tagIds.toSet()) {
                     draft = null
                 }
             },

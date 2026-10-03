@@ -20,6 +20,7 @@ internal class EditorDraft(
     val moneyLocaleTag: String = java.util.Locale.getDefault().toLanguageTag(),
     val hadObligation: Boolean = obligation != null,
 ) {
+    var tagIds by mutableStateOf(emptyList<String>())
     var responsibleIds by mutableStateOf(emptyList<String>())
     var showResponsible by mutableStateOf(false)
     var financialEnabled by mutableStateOf(obligation != null)
@@ -61,7 +62,7 @@ internal class EditorDraft(
         val Saver = listSaver<EditorDraft?, String>(
             save = {
                 if (it == null) emptyList()
-                else listOf(it.id.orEmpty(), it.parentId.orEmpty(), it.title, it.description, it.creationId, it.startAt?.toString().orEmpty(), it.dueAt?.toString().orEmpty(), it.purpose.name, it.financialEnabled.toString(), it.amountText, it.currencyCode, it.moneyLocaleTag, it.hadObligation.toString(), it.financialRemovalConfirmed.toString(), it.showResponsible.toString()) + listOf("__recurrence_v1", it.recurrenceFrequency, it.recurrenceInterval, it.recurrenceStart, it.recurrenceEnd) + it.responsibleIds
+                else listOf(it.id.orEmpty(), it.parentId.orEmpty(), it.title, it.description, it.creationId, it.startAt?.toString().orEmpty(), it.dueAt?.toString().orEmpty(), it.purpose.name, it.financialEnabled.toString(), it.amountText, it.currencyCode, it.moneyLocaleTag, it.hadObligation.toString(), it.financialRemovalConfirmed.toString(), it.showResponsible.toString()) + listOf("__recurrence_v1", it.recurrenceFrequency, it.recurrenceInterval, it.recurrenceStart, it.recurrenceEnd) + listOf("__tags_v1", it.tagIds.size.toString()) + it.tagIds + it.responsibleIds
             },
             restore = {
                 if (it.isEmpty()) null
@@ -73,7 +74,7 @@ internal class EditorDraft(
                     showResponsible = it.getOrNull(14)?.toBoolean() ?: false
                     if (it.getOrNull(15) == "__recurrence_v1") {
                         recurrenceFrequency = it[16]; recurrenceInterval = it[17]; recurrenceStart = it[18]; recurrenceEnd = it[19]
-                        responsibleIds = it.drop(20)
+                        if (it.getOrNull(20) == "__tags_v1") { val count = it[21].toInt(); tagIds = it.drop(22).take(count); responsibleIds = it.drop(22 + count) } else responsibleIds = it.drop(20)
                     } else responsibleIds = it.drop(15)
                 }
             },

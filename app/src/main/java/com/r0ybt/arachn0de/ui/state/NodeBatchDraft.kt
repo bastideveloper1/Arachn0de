@@ -30,7 +30,7 @@ internal class NodeBatchDraft(val parentId: String?, val batchId: String = UUID.
         val Saver = listSaver<NodeBatchDraft?, String>(
             save = { draft -> if (draft == null) emptyList() else listOf(draft.parentId.orEmpty(), draft.batchId,
                 draft.baseName, draft.quantity, draft.numberingMode.name, draft.startNumber, draft.purpose.name,
-                draft.description, draft.temporalRule.name, draft.dates.dueAt?.toString().orEmpty(), draft.showResponsible.toString(), "financial-v1", draft.dates.financialEnabled.toString(), draft.dates.amountText, draft.dates.currencyCode, draft.dates.moneyLocaleTag) + draft.responsibleIds },
+                draft.description, draft.temporalRule.name, draft.dates.dueAt?.toString().orEmpty(), draft.showResponsible.toString(), "financial-v1", draft.dates.financialEnabled.toString(), draft.dates.amountText, draft.dates.currencyCode, draft.dates.moneyLocaleTag) + listOf("tags-v1", draft.dates.tagIds.size.toString()) + draft.dates.tagIds + draft.responsibleIds },
             restore = { values ->
                 if (values.isEmpty()) null else {
                     val financial = values.getOrNull(11) == "financial-v1"
@@ -43,7 +43,7 @@ internal class NodeBatchDraft(val parentId: String?, val batchId: String = UUID.
                         if (financial) {
                             dates.financialEnabled = values[12].toBoolean(); dates.amountText = values[13]; dates.currencyCode = values[14]
                         }
-                        responsibleIds = values.drop(if (financial) 16 else 11)
+                        if (financial && values.getOrNull(16) == "tags-v1") { val count = values[17].toInt(); dates.tagIds = values.drop(18).take(count); responsibleIds = values.drop(18 + count) } else responsibleIds = values.drop(if (financial) 16 else 11)
                     }
                 }
             },

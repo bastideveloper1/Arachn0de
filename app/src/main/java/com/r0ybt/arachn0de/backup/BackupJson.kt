@@ -15,13 +15,13 @@ internal object BackupJson {
     fun encode(data: BackupData): ByteArray {
         data.validate()
         // Bound user text before constructing JSON, which otherwise could exhaust the heap.
-        val textBytes = data.projects.sumOf { it.name.toByteArray().size.toLong() + it.description.toByteArray().size } +
+        val textBytes = data.tags.sumOf { it.name.toByteArray().size.toLong() + it.normalizedName.toByteArray().size } + data.projects.sumOf { it.name.toByteArray().size.toLong() + it.description.toByteArray().size } +
             data.nodes.sumOf { it.title.toByteArray().size.toLong() + it.description.toByteArray().size } +
             data.persons.sumOf { it.name.toByteArray().size.toLong() } + data.recurrenceRules.sumOf { it.title.toByteArray().size.toLong() + it.description.toByteArray().size }
         require(textBytes <= BackupLimits.PAYLOAD_BYTES / 2) { "El contenido supera el límite de backup v1." }
         fun obj(vararg values: Pair<String, Any?>) = JSONObject().apply { values.forEach { (key, value) -> put(key, value ?: JSONObject.NULL) } }
         val json = obj(
-            "dataVersion" to 2, "appVersion" to data.appVersion, "createdAt" to data.createdAt,
+            "dataVersion" to 3, "appVersion" to data.appVersion, "createdAt" to data.createdAt,
             "projects" to JSONArray(data.projects.map { obj("id" to it.id, "name" to it.name, "description" to it.description, "position" to it.position, "createdAt" to it.createdAt, "updatedAt" to it.updatedAt) }),
             "nodes" to JSONArray(data.nodes.map { obj("id" to it.id, "projectId" to it.projectId, "parentId" to it.parentId, "title" to it.title, "description" to it.description, "isCompleted" to it.isCompleted, "position" to it.position, "createdAt" to it.createdAt, "updatedAt" to it.updatedAt, "startAt" to it.startAt, "dueAt" to it.dueAt, "purpose" to it.purpose, "amountMinor" to it.amountMinor, "currencyCode" to it.currencyCode) }),
             "persons" to JSONArray(data.persons.map { obj("id" to it.id, "name" to it.name, "avatarFile" to it.avatarFile) }),
@@ -29,6 +29,9 @@ internal object BackupJson {
             "recurrenceRules" to JSONArray(data.recurrenceRules.map { obj("id" to it.id, "projectId" to it.projectId, "parentId" to it.parentId, "title" to it.title, "description" to it.description, "amountMinor" to it.amountMinor, "currencyCode" to it.currencyCode, "startDay" to it.startDay, "frequency" to it.frequency, "interval" to it.interval, "endDay" to it.endDay, "nextIndex" to it.nextIndex, "status" to it.status, "zoneId" to it.zoneId, "dueMinute" to it.dueMinute, "startOffsetMillis" to it.startOffsetMillis) }),
             "recurrenceOccurrences" to JSONArray(data.recurrenceOccurrences.map { obj("ruleId" to it.ruleId, "day" to it.day, "nodeId" to it.nodeId) }),
             "recurrenceAssignments" to JSONArray(data.recurrenceAssignments.map { obj("ruleId" to it.ruleId, "personId" to it.personId) }),
+            "tags" to JSONArray(data.tags.map { obj("id" to it.id, "name" to it.name, "normalizedName" to it.normalizedName) }),
+            "nodeTags" to JSONArray(data.nodeTags.map { obj("nodeId" to it.nodeId, "tagId" to it.tagId) }),
+            "recurrenceTags" to JSONArray(data.recurrenceTags.map { obj("ruleId" to it.ruleId, "tagId" to it.tagId) }),
             "avatars" to JSONArray(data.avatars.toSortedMap().map { (name, bytes) -> obj("name" to name, "png" to Base64.encodeToString(bytes, Base64.NO_WRAP)) }),
         )
         return json.toString().toByteArray(Charsets.UTF_8).also {
@@ -45,10 +48,10 @@ internal object BackupJson {
             value as? JSONObject ?: error("Backup no es un objeto.")
         }
         val version = root.integer("dataVersion")
-        require(version == 1L || version == 2L) { "Versión de datos no compatible." }
+        require(version in 1L..3L) { "Versión de datos no compatible." }
         val baseFields = arrayOf("dataVersion", "appVersion", "createdAt", "projects", "nodes", "persons", "assignments", "avatars")
-        root.fields(*(if (version == 1L) baseFields else baseFields + arrayOf("recurrenceRules", "recurrenceOccurrences", "recurrenceAssignments")))
-        require(version in 1L..2L) { "Versión de datos no compatible." }
+        root.fields(*(baseFields + (if (version >= 2L) arrayOf("recurrenceRules", "recurrenceOccurrences", "recurrenceAssignments") else emptyArray()) + (if (version >= 3L) arrayOf("tags", "nodeTags", "recurrenceTags") else emptyArray())))
+        require(version in 1L..3L) { "Versión de datos no compatible." }
         val projects = root.records("projects").map { row ->
             row.fields("id", "name", "description", "position", "createdAt", "updatedAt")
             ProjectEntity(row.string("id"), row.string("name"), row.string("description"), row.position(), row.integer("createdAt"), row.integer("updatedAt"))
@@ -77,6 +80,16 @@ internal object BackupJson {
             row.fields("ruleId", "personId")
             RecurrencePersonEntity(row.string("ruleId"), row.string("personId"))
         }
+        val tags = if (version < 3L) emptyList() else root.records("tags").map {
+            it.fields("id", "name", "normalizedName")
+            TagEntity(it.string("id"), it.string("name"), it.string("normalizedName"))
+        }
+        val nodeTags = if (version < 3L) emptyList() else root.records("nodeTags").map {
+            it.fields("nodeId", "tagId"); NodeTagEntity(it.string("nodeId"), it.string("tagId"))
+        }
+        val recurrenceTags = if (version < 3L) emptyList() else root.records("recurrenceTags").map {
+            it.fields("ruleId", "tagId"); RecurrenceTagEntity(it.string("ruleId"), it.string("tagId"))
+        }
         var avatarBytes = 0L
         val avatars = linkedMapOf<String, ByteArray>()
         root.records("avatars").forEach { row ->
@@ -91,7 +104,7 @@ internal object BackupJson {
             require(avatarBytes <= BackupLimits.TOTAL_AVATAR_BYTES) { "Avatares demasiado grandes." }
             avatars[name] = decoded
         }
-        return BackupData(root.string("appVersion"), root.integer("createdAt"), projects, nodes, persons, assignments, avatars, rules, occurrences, recurrenceAssignments).also { it.validate() }
+        return BackupData(root.string("appVersion"), root.integer("createdAt"), projects, nodes, persons, assignments, avatars, rules, occurrences, recurrenceAssignments, tags, nodeTags, recurrenceTags).also { it.validate() }
     }
 
     private fun readValue(reader: JsonReader, depth: Int): Any {

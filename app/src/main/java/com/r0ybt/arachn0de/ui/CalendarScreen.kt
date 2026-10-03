@@ -38,6 +38,7 @@ internal fun CalendarScreen(
     snapshot: CalendarSnapshot?, projects: List<Project>, responsibleByNode: Map<String, List<Person>>,
     loaded: Boolean, now: Long, zoneId: String, onOpen: (Node) -> Unit, onBack: () -> Unit,
     people: List<Person> = emptyList(), peopleLoaded: Boolean = true,
+    tagState: TagState = TagState(),
 ) {
     BackHandler(onBack = onBack)
     val locale = LocalConfiguration.current.locales[0]
@@ -50,11 +51,11 @@ internal fun CalendarScreen(
     val month = selected.calendarMonth
     val firstWeekday = remember(locale) { GregorianCalendar(zone, locale).firstDayOfWeek }
     val range = remember(state.view, state.timePreset, selected, today, zoneId, firstWeekday) { state.range(today, zone, firstWeekday) }
-    val filter = NodeFilter(range, state.personId, state.completion)
-    val filtered by produceState<FilteredCalendar?>(null, snapshot, filter, responsibleByNode) {
+    val filter = NodeFilter(range, state.personId, state.completion, state.tagId)
+    val filtered by produceState<FilteredCalendar?>(null, snapshot, filter, responsibleByNode, tagState) {
         value = null
         value = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
-            snapshot?.let { source -> FilteredCalendar(source, filter, responsibleByNode.mapValues { (_, persons) -> persons.map { it.id }.toSet() }) }
+            snapshot?.let { source -> FilteredCalendar(source, filter, responsibleByNode.mapValues { (_, persons) -> persons.map { it.id }.toSet() }, tagState.nodeIds) }
         }
     }
     val ready = loaded && snapshot?.zoneId == zoneId && filtered?.source === snapshot && filtered?.filter == filter
@@ -89,12 +90,12 @@ internal fun CalendarScreen(
                     FilterChip(selected = !all && state.view == view, onClick = { state.selectView(view, today) }, label = { Text(label) }, modifier = Modifier.testTag("calendar-view:${view.name}"))
                 }
                 TextButton(onClick = { state.showFilters = true }, modifier = Modifier.testTag("calendar-filters")) {
-                    Text(if (state.personId != null || state.completion != CompletionFilter.ALL || extraTime) "Filtros •" else "Filtros")
+                    Text(if (state.tagId != null || state.personId != null || state.completion != CompletionFilter.ALL || extraTime) "Filtros •" else "Filtros")
                 }
             }
-            if (state.personId != null || state.completion != CompletionFilter.ALL || extraTime) Text(
+            if (state.tagId != null || state.personId != null || state.completion != CompletionFilter.ALL || extraTime) Text(
                 listOfNotNull(if (extraTime) timeFilterLabel(TimeFilter.valueOf(state.timePreset)) else null, state.personId?.let { id -> if (!peopleLoaded) "Cargando personas…" else people.firstOrNull { it.id == id }?.name ?: "Persona ausente" },
-                    state.completion.takeIf { it != CompletionFilter.ALL }?.let(::completionLabel)).joinToString(" · "),
+                    state.completion.takeIf { it != CompletionFilter.ALL }?.let(::completionLabel), state.tagId?.let { id -> tagState.tags.firstOrNull { it.id == id }?.name ?: "Etiqueta ausente" }).joinToString(" · "),
                 fontSize = 12.sp, color = Arachn0deColors.PathHighlight, modifier = Modifier.testTag("calendar-active-filters"))
             LazyColumn(Modifier.weight(1f).testTag("calendar-list"), state = listState, verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 if (!all && state.view == CalendarView.MONTH) item(key = "month", contentType = "month") {
@@ -121,7 +122,7 @@ internal fun CalendarScreen(
                 }
                 if (!ready) item(key = "loading") { Text("Cargando Calendario…") }
                 else if (tasks.isEmpty()) item(key = "empty") {
-                    Text(if (state.personId != null || state.completion != CompletionFilter.ALL) "No hay elementos que coincidan con los filtros."
+                    Text(if (state.tagId != null || state.personId != null || state.completion != CompletionFilter.ALL) "No hay elementos que coincidan con los filtros."
                         else if (state.view == CalendarView.DAY && selected == today && !all) "No hay elementos para hoy."
                         else if (state.view == CalendarView.WEEK && !all) "No hay elementos para esta semana."
                         else if (all) "No hay elementos con vencimiento." else "Sin tareas para este día", color = Arachn0deColors.TextSecondary)
@@ -137,6 +138,7 @@ internal fun CalendarScreen(
                             val path = remember(snapshot!!.tree, node.id, project.name) { (listOf(project.name) + snapshot.pathTo(node.id).dropLast(1).map { it.title }).joinToString(" › ") }
                             Card(Modifier.fillMaxWidth().testTag("calendar-task:${node.id}").clickable { onOpen(node) }, colors = CardDefaults.cardColors(containerColor = Arachn0deColors.Surface)) {
                                 Column(Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                    TagChips(tagState.forNode(node.id))
                                     Text(node.title, maxLines = 2, overflow = TextOverflow.Ellipsis)
                                     Text(timeFormat.format(Date(checkNotNull(node.dueAt))), fontSize = 12.sp, color = Arachn0deColors.TextSecondary)
                                     Text(path, fontSize = 12.sp, color = Arachn0deColors.TextSecondary, maxLines = 2, overflow = TextOverflow.Ellipsis)
@@ -151,7 +153,7 @@ internal fun CalendarScreen(
             }
         }
     }
-    if (state.showFilters) CalendarFiltersDialog(state, today, people, peopleLoaded)
+    if (state.showFilters) CalendarFiltersDialog(state, today, people, peopleLoaded, tagState.tags)
 }
 
 @Composable

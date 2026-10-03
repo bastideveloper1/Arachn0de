@@ -7,6 +7,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -30,6 +31,7 @@ internal fun AppRoot(projectRepository: ProjectRepository, nodeRepository: NodeR
 
 @Composable
 private fun AppRootContent(projectRepository: ProjectRepository, nodeRepository: NodeRepository, clock: () -> Long, onRestored: () -> Unit) {
+    val tagState by remember(nodeRepository) { nodeRepository.tags.observe() }.collectAsState(initial = com.r0ybt.arachn0de.domain.model.TagState())
     val personRepository = (androidx.compose.ui.platform.LocalContext.current.applicationContext as com.r0ybt.arachn0de.Arachn0deApplication).personRepository
     val screenStates = androidx.compose.runtime.saveable.rememberSaveableStateHolder()
     var showAbout by rememberSaveable { mutableStateOf(false) }
@@ -129,7 +131,7 @@ private fun AppRootContent(projectRepository: ProjectRepository, nodeRepository:
                         showCalendar = false
                     }
                 },
-                people = people, peopleLoaded = financialPeopleLoaded,
+                people = people, peopleLoaded = financialPeopleLoaded, tagState = tagState,
                 onBack = { showCalendar = false },
             )
         }
@@ -152,7 +154,7 @@ private fun AppRootContent(projectRepository: ProjectRepository, nodeRepository:
         }
     } else if (selectedProjectId == null) {
         ProjectDashboardScreen(
-            recurrenceContent = { RecurrenceManager(nodeRepository.recurrence, "", emptyList(), people, financialPeopleLoaded) },
+            recurrenceContent = { TagManager(nodeRepository.tags, tagState); RecurrenceManager(nodeRepository.recurrence, "", emptyList(), people, financialPeopleLoaded) },
             repository = projectRepository,
             listState = projectsListState,
             projects = projects.orEmpty(),

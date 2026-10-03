@@ -101,11 +101,12 @@ private fun RecurrenceRuleDialog(rule: RecurrenceRuleEntity, repository: Recurre
     var assignmentsLoaded by rememberSaveable(rule.id) { mutableStateOf(false) }
     val assignmentLoad = remember(repository, rule.id) { LoadState() }
     LaunchedEffect(rule.id, assignmentLoad.attempt) { if (!assignmentsLoaded) {
-        assignmentLoad.collect(flow { emit(repository.people(rule.id).toList()) }) { editor.responsibleIds = it; assignmentsLoaded = true }
+        val initialTagIds = repository.tagIds(rule.id).toList()
+        assignmentLoad.collect(flow { emit(repository.people(rule.id).toList()) }) { editor.responsibleIds = it; editor.tagIds = initialTagIds; assignmentsLoaded = true }
     } }
     val saveTemplate: () -> Unit = {
         operation.submit("No se pudo editar la regla. Revisa el destino y los datos.", {
-            repository.editTemplate(rule.id, destinationProject, destination, editor.title, editor.description, editor.obligation(), editor.responsibleIds.toSet()); true
+            repository.editTemplate(rule.id, destinationProject, destination, editor.title, editor.description, editor.obligation(), editor.responsibleIds.toSet(), editor.tagIds.toSet()); true
         }, { edit = false; confirmRemoval = false })
     }
     AlertDialog(containerColor = Arachn0deColors.Surface,
@@ -117,6 +118,8 @@ private fun RecurrenceRuleDialog(rule: RecurrenceRuleEntity, repository: Recurre
             if (rule.status != "FINISHED") {
                 TextButton(enabled = !operation.busy, onClick = { edit = !edit }) { Text("Editar futuras ocurrencias") }
                 if (edit) {
+                    val tagState by remember(repository) { repository.tags.observe() }.collectAsState(initial = TagState())
+                    TagSelector(tagState.tags, editor.tagIds.toSet(), { editor.tagIds = it.toList() }, repository = repository.tags)
                     OutlinedTextField(editor.title, { editor.title = it }, enabled = !operation.busy, label = { Text("Título futuro") })
                     OutlinedTextField(editor.description, { editor.description = it }, enabled = !operation.busy, label = { Text("Descripción futura") })
                     ObligationFields(editor, !operation.busy)

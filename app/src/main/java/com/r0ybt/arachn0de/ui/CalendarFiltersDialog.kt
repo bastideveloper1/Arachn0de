@@ -19,7 +19,7 @@ internal fun timeFilterLabel(value: TimeFilter): String = when (value) {
 }
 
 @Composable
-internal fun CalendarFiltersDialog(state: CalendarFilterState, today: CalendarDay, people: List<Person>, peopleLoaded: Boolean) {
+internal fun CalendarFiltersDialog(state: CalendarFilterState, today: CalendarDay, people: List<Person>, peopleLoaded: Boolean, tags: List<Tag> = emptyList()) {
     AlertDialog(containerColor = Arachn0deColors.Surface, onDismissRequest = { state.showFilters = false }, title = { Text("Filtros del Calendario") },
         text = { Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             CalendarFilterMenu("Tiempo", if (state.timePreset == "SELECTED") "Período seleccionado" else timeFilterLabel(TimeFilter.valueOf(state.timePreset)), "calendar-time-filter") {
@@ -32,8 +32,9 @@ internal fun CalendarFiltersDialog(state: CalendarFilterState, today: CalendarDa
             CalendarFilterMenu("Estado", completionLabel(state.completion), "calendar-status-filter") { close ->
                 CompletionFilter.entries.forEach { status -> DropdownMenuItem(text = { Text(completionLabel(status)) }, onClick = { state.completion = status; close() }) }
             }
+            TagSelector(tags, setOfNotNull(state.tagId), { state.tagId = it.firstOrNull() }, single = true)
             Text("Los filtros se combinan: tiempo, persona y estado deben coincidir.", style = MaterialTheme.typography.bodySmall)
-            TextButton(onClick = { state.personId = null; state.completion = CompletionFilter.ALL }, modifier = Modifier.testTag("calendar-clear-filters")) { Text("Todas las personas · Todos los estados") }
+            TextButton(onClick = { state.tagId = null; state.personId = null; state.completion = CompletionFilter.ALL }, modifier = Modifier.testTag("calendar-clear-filters")) { Text("Todas las personas · Todos los estados") }
         } }, confirmButton = { TextButton(onClick = { state.showFilters = false }) { Text("Listo") } })
 }
 

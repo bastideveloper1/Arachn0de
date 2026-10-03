@@ -73,7 +73,7 @@ class NodeCopyUiTest {
         compose.onNode(hasText("Copiar este elemento") and hasAnyAncestor(isDialog())).performScrollTo().performClick()
         copied(expected(note,false))
         assertEquals(before,runBlocking{app.nodeRepository.getProjectNodes(project)})
-        assertEquals(9,app.database.openHelper.writableDatabase.version)
+        assertEquals(10, app.database.openHelper.writableDatabase.version)
     }
     @Test fun openNodeContextCopiesFromItsOwnRoot(){
         mount();compose.onNodeWithText("Bugs").performClick();await("CAPA 1")

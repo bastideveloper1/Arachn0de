@@ -76,6 +76,8 @@ internal fun ProjectNodeScreen(
     onOpenPeople: () -> Unit = {},
     onOpenAttention: () -> Unit = {},
     onOpenCalendar: () -> Unit = {},
+    onOpenObligations: () -> Unit = {},
+    onBackToObligations: (() -> Unit)? = null,
     onBackToCalendar: (() -> Unit)? = null,
     openNodeId: String? = null,
     onOpenNodeHandled: () -> Unit = {},
@@ -126,6 +128,9 @@ internal fun ProjectNodeScreen(
     val currentProgress = projectState.progressById[currentNodeId]
     val now = com.r0ybt.arachn0de.ui.state.rememberTaskScreenNow(projectState.nodes, clock)
     val attention by com.r0ybt.arachn0de.ui.state.rememberAttention(projectState, now)
+    val currentMonth = remember(now) { com.r0ybt.arachn0de.domain.model.CalendarDates.localDay(now, java.util.TimeZone.getDefault()).calendarMonth }
+    val financial by com.r0ybt.arachn0de.ui.state.rememberFinancial(projectState, responsibleByNode,
+        com.r0ybt.arachn0de.domain.model.FinancialSelection(com.r0ybt.arachn0de.domain.model.FinancialPeriod.ALL), currentMonth, java.util.TimeZone.getDefault().id)
     val pathNodes = currentPath.mapNotNull { projectState.nodesById[it] }
     val currentLayer = pathNodes.size
     val progressMap = projectState.progressById
@@ -166,7 +171,8 @@ internal fun ProjectNodeScreen(
     }
 
     BackHandler {
-        if (onBackToCalendar != null) onBackToCalendar()
+        if (onBackToObligations != null) onBackToObligations()
+        else if (onBackToCalendar != null) onBackToCalendar()
         else if (currentPath.isNotEmpty()) {
             currentPath.removeAt(currentPath.lastIndex)
         } else {
@@ -227,12 +233,13 @@ internal fun ProjectNodeScreen(
                                     if (currentPath.isNotEmpty()) {
                                         IconButton(
                                             onClick = {
-                                                if (onBackToCalendar != null) onBackToCalendar()
+                                                if (onBackToObligations != null) onBackToObligations()
+                                                else if (onBackToCalendar != null) onBackToCalendar()
                                                 else if (currentPath.isNotEmpty()) currentPath.removeAt(currentPath.lastIndex)
                                             },
                                             modifier = Modifier.size(48.dp),
                                         ) {
-                                            Icon(imageVector = Icons.Default.ArrowBack, contentDescription = if (onBackToCalendar != null) "Volver al Calendario" else "Volver a la capa anterior", tint = Arachn0deColors.Accent)
+                                            Icon(imageVector = Icons.Default.ArrowBack, contentDescription = if (onBackToObligations != null) "Volver a Obligaciones" else if (onBackToCalendar != null) "Volver al Calendario" else "Volver a la capa anterior", tint = Arachn0deColors.Accent)
                                         }
                                         Spacer(modifier = Modifier.width(8.dp))
                                     }
@@ -302,6 +309,8 @@ internal fun ProjectNodeScreen(
                                 }
 
                                 AttentionIndicator(if (currentNode == null) attention?.byProjectId?.get(project.id) else if (currentNode.hasChildren) attention?.byNodeId?.get(currentNode.id) else null)
+                                if (currentNode == null || currentNode.hasChildren) FinancialSummaryCard(
+                                    if (currentNode == null) financial?.byProjectId?.get(project.id) else financial?.byNodeId?.get(currentNode.id), title = "Obligaciones · Todo el período")
                                 if (currentNode != null && currentNode.hasChildren && currentProgress != null) {
                                     NodeProgressCard(progress = currentProgress!!)
                                     Spacer(modifier = Modifier.height(12.dp))
@@ -492,7 +501,7 @@ internal fun ProjectNodeScreen(
                         .background(Arachn0deColors.Scrim.copy(alpha = 0.45f))
                         .clickable { showDrawer = false },
                 ) {
-                    AppIdentityDrawer(onDismiss = { showDrawer = false }, onPeople = { showDrawer = false; onOpenPeople() }, onAttention = { showDrawer = false; onOpenAttention() }, onCalendar = { showDrawer = false; onOpenCalendar() })
+                    AppIdentityDrawer(onDismiss = { showDrawer = false }, onPeople = { showDrawer = false; onOpenPeople() }, onAttention = { showDrawer = false; onOpenAttention() }, onCalendar = { showDrawer = false; onOpenCalendar() }, onObligations = { showDrawer = false; onOpenObligations() })
                 }
             }
         }

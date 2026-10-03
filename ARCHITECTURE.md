@@ -968,7 +968,7 @@ Límites: vista mensual y lista del día únicamente; carga todos los Nodes loca
 
 ### Obligaciones — base financiera de ACTION Nodes IMPLEMENTADA
 
-La solicitud de este bloque resuelve la decisión abierta del modelo: **Obligación es una capacidad financiera opcional de una hoja ACTION**. Mantiene el mismo Node y árbol; no existe FinancialNode, CalendarEvent, tabla de obligaciones ni entidad especial de cuota. Una Capa como «Notebook» sigue siendo un contenedor normal de ACTION independientes. No calcula dinero agregado en esta versión.
+La solicitud de este bloque resuelve la decisión abierta del modelo: **Obligación es una capacidad financiera opcional de una hoja ACTION**. Mantiene el mismo Node y árbol; no existe FinancialNode, CalendarEvent, tabla de obligaciones ni entidad especial de cuota. Una Capa como «Notebook» sigue siendo un contenedor normal de ACTION independientes. El bloque base no calculaba dinero agregado; #19–22 añade la proyección derivada descrita más abajo.
 
 El dominio expone `Node.obligation: Obligation?`, una pieza de valor inmutable con `amountMinor: Long` y `currencyCode: String`. La misma fila `nodes` guarda dos columnas nullable: ambas nulas significan tarea normal; ambas presentes representan la capacidad financiera. No hay booleano persistido redundante. Solo ACTION sin hijos puede operarla. `Obligation` valida importe positivo y moneda con unidades menores definidas.
 
@@ -1000,13 +1000,27 @@ Pruebas dirigidas nuevas: Money con Locale fijo para CLP/USD/EUR y tres decimale
 
 Validación del bloque: 114 ejecuciones dirigidas (15 nuevas y 99 regresiones). Tras ajustar expectativas de versión/cantidad de triggers y el selector modal de Cancelar, se repitieron las clases afectadas con resultado correcto. La restricción final de lote financiero homogéneo también pasó las pruebas de generación, repositorio y UI de lotes.
 
-Límites: sin totales por Capa/Proyecto/período/Persona, filtros ni dashboard financiero, informes PNG, historial/fecha de pagos, parcialidades, intereses, amortización, deudas, cuentas bancarias, presupuestos, tasas externas, recurrencia ni avisos. Las futuras agregaciones siguen pendientes. No se acredita validación física, muerte real de proceso ni benchmark; las restauraciones usan el arnés de estado guardable existente y sus límites de Bundle.
+Límites: sin totales por Capa/Proyecto/período/Persona, filtros ni dashboard financiero, informes PNG, historial/fecha de pagos, parcialidades, intereses, amortización, deudas, cuentas bancarias, presupuestos, tasas externas, recurrencia ni avisos. Estos límites describen el bloque base; los totales y filtros están implementados posteriormente en #19–22. No se acredita validación física, muerte real de proceso ni benchmark; las restauraciones usan el arnés de estado guardable existente y sus límites de Bundle.
 
 ## PRÓXIMA ETAPA — capacidades previstas, no implementadas
 
-### 7. Agregaciones de Obligaciones — pendientes
+### 7. Agregaciones de Obligaciones — #19–22 IMPLEMENTADAS
 
-La capacidad financiera de hojas ACTION ya está implementada. El siguiente bloque deberá definir y calcular total monetario, pendiente y completado por Capa/Proyecto, período y Persona, incluido el alcance recursivo de Subcapas. Cada moneda se agrega por separado: CLP + USD nunca produce un único total. No hay conversión de monedas ni UI simulada de totales. Los informes PNG siguen pendientes.
+FinancialSnapshot deriva una proyección de solo lectura sobre NodeTreeSnapshot y responsables existentes. Solo hojas ACTION con obligation aportan dinero, comprobando hijos reales. Acumula de abajo hacia arriba sin recursión y expone byNodeId, byProjectId y resumen global de la selección. Cada hoja aporta una vez a sus ancestros y Proyecto, incluidas Subcapas.
+
+Cada moneda tiene total, pendiente y completado separados, junto con cantidades. CLP y USD nunca se mezclan ni convierten. Los importes persistidos siguen siendo Long; los agregados usan BigInteger en unidades menores para evitar overflow. Money.format comparte formato localizado para importes individuales y agregados, incluido cero. Se reutiliza isCompleted: completar satisface todo el importe y reabrir lo vuelve pendiente. Los estados Sin obligaciones, Pendiente, Parcialmente completado y Completado se derivan de cantidades; no representan pagos parciales ni porcentajes monetarios.
+
+Períodos: Este mes (inicial), Mes anterior, Próximo mes y Todo el período. Cada mes usa dueAt en la zona local del dispositivo. Todo incluye Nodes sin vencimiento y completados. El filtro por Persona usa responsables propios: cada coincidencia aporta el importe completo una vez, sin herencia, reparto ni duplicación. Los filtros de distintas Personas pueden solaparse y no deben sumarse. Una Persona eliminada seleccionada conserva su ID y muestra una selección vacía hasta cambiar el filtro.
+
+La vista transversal **Obligaciones** se abre desde el drawer. Presenta selección, resumen por moneda y Nodes reales con importe, completado, vencimiento, Proyecto, ruta y responsables propios. Ordena por vencimiento, creación e ID, dejando sin vencimiento al final; no modifica posiciones. Tocar abre el contexto real; volver regresa directamente a Obligaciones con filtros y desplazamiento guardables. Abrir la vista desde una Capa ordinaria y volver conserva esa ubicación.
+
+Los contextos de Proyecto y Capa muestran totales recursivos de **Todo el período**, sin filtro por Persona, solo si tienen obligaciones. Las hojas conservan su importe individual. La vista transversal muestra los totales globales filtrados.
+
+rememberFinancial calcula fuera del hilo principal por datos, responsables, selección, mes civil y zona. Las emisiones existentes actualizan completado/reapertura, importe/moneda, fecha, traslado, eliminación, propósito y responsables. Se reutiliza el reloj único de pantalla en primer plano para cambios de mes/zona y reanudación; no recalcula cada minuto si las claves no cambian. No hay consultas por fila ni temporizadores financieros adicionales.
+
+Coste: N Nodes, M obligaciones seleccionadas, C monedas y A asociaciones. Recorrido iterativo con combinaciones que copian/ordenan mapas de monedas: cota O(N·C log C + M log M), memoria O(N·C + M + A). Las rutas visibles se resuelven en O(profundidad). Se prueban 10.000 niveles y sumas mayores que Long. Room permanece v8: sin cambios de esquema, DAO, entidades persistidas, triggers ni migraciones.
+
+Pruebas nuevas: cinco de dominio, cuatro ejecuciones de repositorio API 24/28 y tres Compose API 28. Cubren alcance, monedas, estados, períodos/zona, responsables múltiples sin herencia, overflow, lotes, reactividad, navegación y restauración de filtros. El arnés guardable no acredita muerte real del proceso. Pendientes: dogfooding físico, accesibilidad y benchmark. Sin períodos arbitrarios, historial de pagos ni pagos parciales. PNG, exportación, compartir, guardar y renderer no están implementados: #23 requiere una misión separada después de validar #19–22.
 
 ### 8. Informe PNG de Obligaciones
 
@@ -1046,7 +1060,7 @@ Se distinguen dos conceptos: **Release DE Arachn0de** actualiza/distribuye la ap
 
 ### Secuencia tentativa de implementación
 
-Este orden es una propuesta revisable, no una obligación irreversible. Los primeros diez pasos y el Calendario derivado ya están implementados; los restantes siguen pendientes:
+Este orden es una propuesta revisable, no una obligación irreversible. Los primeros once pasos y el Calendario derivado ya están implementados; los restantes siguen pendientes:
 
 1. Mover Node a otra Capa — IMPLEMENTADO.
 2. Personas — IMPLEMENTADO.
@@ -1057,8 +1071,8 @@ Este orden es una propuesta revisable, no una obligación irreversible. Los prim
 7. Creación múltiple y numeración — IMPLEMENTADO.
 8. Reglas temporales finitas para creación múltiple — IMPLEMENTADO; recurrencia persistente no implementada.
 9. Definir Obligación como capacidad de ACTION hoja — RESUELTO en el bloque financiero.
-10. Implementar base de Obligaciones — IMPLEMENTADO; agregaciones pendientes.
-11. Agregaciones, totales y filtros financieros.
+10. Implementar base de Obligaciones — IMPLEMENTADO.
+11. Agregaciones, totales y filtros financieros — IMPLEMENTADO en #19–22.
 12. Informe PNG.
 13. Tags.
 14. Favoritos.
@@ -1086,7 +1100,7 @@ Desktop y sincronización local constituyen una etapa avanzada/final de esta lí
 
 ## DECISIONES ABIERTAS — resolver antes de implementar
 
-- **Agregaciones de Obligaciones:** la capacidad financiera de ACTION hoja y Room v8 ya están implementados. Definir el alcance recursivo, períodos y asociaciones por Persona antes de implementar totales; monedas distintas se mantienen separadas.
+- **Finanzas avanzadas:** alcance recursivo, períodos mensuales y filtros por responsables implementados en #19–22. Períodos arbitrarios, pagos parciales e historial requieren diseño separado; monedas distintas permanecen separadas.
 - **Capas explícitamente vacías:** decidir si deben existir en el futuro. Actualmente perder el último hijo convierte el nodo en tarea; esta documentación no cambia esa regla ni elige una alternativa futura.
 - **Notas avanzadas:** formato y adjuntos se diseñarán en otra etapa; el propósito NOTE y la conversión de hojas ya están implementados. No se definen Notas contenedoras.
 - **Atención avanzada y generación temporal:** la propagación básica y generación temporal finita ya están implementadas; diseñar futuras reglas adicionales y recurrencia persistente antes de desarrollar esos bloques.

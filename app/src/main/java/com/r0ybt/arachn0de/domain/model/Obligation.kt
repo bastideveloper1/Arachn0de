@@ -51,13 +51,18 @@ object Money {
         BigDecimal.valueOf(amountMinor, fractionDigits(code)).toPlainString()
             .replace('.', DecimalFormatSymbols(locale).decimalSeparator)
 
-    fun format(obligation: Obligation, locale: Locale): String {
-        val currency = currency(obligation.currencyCode)
+    fun format(obligation: Obligation, locale: Locale): String =
+        format(java.math.BigInteger.valueOf(obligation.amountMinor), obligation.currencyCode, locale)
+
+    /** Aggregate formatting supports zero and exact sums beyond a single persisted Long. */
+    fun format(amountMinor: java.math.BigInteger, code: String, locale: Locale): String {
+        require(amountMinor.signum() >= 0)
+        val currency = currency(code)
         val format = NumberFormat.getCurrencyInstance(locale).apply {
             this.currency = currency
             minimumFractionDigits = currency.defaultFractionDigits
             maximumFractionDigits = currency.defaultFractionDigits
         }
-        return "${format.format(BigDecimal.valueOf(obligation.amountMinor, currency.defaultFractionDigits))} ${currency.currencyCode}"
+        return "${format.format(BigDecimal(amountMinor, currency.defaultFractionDigits))} ${currency.currencyCode}"
     }
 }

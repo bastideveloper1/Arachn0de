@@ -33,7 +33,7 @@ internal class BackupRepository(private val database: Arachn0deDatabase, context
                     }
                 }
                 BackupData(BuildConfig.VERSION_NAME, System.currentTimeMillis(), projects,
-                    nodes, people, assignments, images, database.recurrenceDao().rules(), database.recurrenceDao().occurrences(), database.recurrenceDao().assignments(), database.tagDao().tags(), database.tagDao().nodeTags(), database.tagDao().ruleTags()).also { it.validate() }
+                    nodes, people, assignments, images, database.recurrenceDao().rules(), database.recurrenceDao().occurrences(), database.recurrenceDao().assignments(), database.tagDao().tags(), database.tagDao().nodeTags(), database.tagDao().ruleTags(), database.nodeEventDao().all()).also { it.validate() }
             }
         }
     }
@@ -95,6 +95,7 @@ internal class BackupRepository(private val database: Arachn0deDatabase, context
                     database.tagDao().insert(data.tags)
                     database.tagDao().assignNodes(data.nodeTags)
                     database.tagDao().assignRules(data.recurrenceTags)
+                    database.nodeEventDao().insertAll(data.nodeEvents)
                     currentCoroutineContext().ensureActive()
                 }
             } finally {

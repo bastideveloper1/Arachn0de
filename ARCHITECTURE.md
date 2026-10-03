@@ -390,7 +390,7 @@ Utilizar:
 
 Room debe proporcionar la capa de persistencia.
 
-El esquema actual es la versión 10 (etiquetas; véase la sección final). La versión 8: v4 incorporó el orden persistente de proyectos, v5 Personas/Responsables, v6 las fechas opcionales de Nodes, v7 el propósito ACTION/NOTE y v8 la capacidad financiera opcional de hojas ACTION. Se conservan los esquemas históricos 1–10 y sus rutas de migración; no se usa `fallbackToDestructiveMigration`.
+El esquema actual es la versión 11 (historial de eventos; véase la sección final). La versión 8: v4 incorporó el orden persistente de proyectos, v5 Personas/Responsables, v6 las fechas opcionales de Nodes, v7 el propósito ACTION/NOTE y v8 la capacidad financiera opcional de hojas ACTION. Se conservan los esquemas históricos 1–11 y sus rutas de migración; no se usa `fallbackToDestructiveMigration`.
 
 ### Invariantes de nodos
 
@@ -1580,3 +1580,160 @@ las cuatro regresiones y las pruebas de etiquetas, Calendar, Batch y Recurrence 
 No se repitió la suite completa ni se ejecutó lint completo. No hubo errores
 de memoria/entorno en la ejecución completa. Queda dogfooding en dispositivo
 físico de diálogos, teclado y navegación con grandes cantidades de etiquetas.
+
+
+## Historial de eventos V1 — Room v11
+
+`NodeEvent(id, nodeId, type, occurredAt)` conserva eventos inmutables de entidades
+existentes. Los tipos V1 son `CREATED`, `COMPLETED` y `REOPENED`. `occurredAt` es
+UTC epoch milliseconds del reloj de la operación; la UI lo convierte a fecha/hora
+local. No se guarda texto temporal, actor, estadísticas ni otros tipos de evento.
+El reloj civil puede retroceder si cambia el reloj del dispositivo: no se inventan
+instantes ni se ajustan artificialmente a una secuencia monotónica.
+
+`Node.isCompleted` sigue siendo la fuente del estado actual. El historial explica
+sus transiciones y no sustituye el progreso derivado. `NodeRepository.setCompleted`
+lee el estado persistido, comprueba ACTION/hoja y escribe estado y evento dentro
+de la misma transacción Room. Solicitar el estado actual es un éxito sin escritura,
+sin cambiar `updatedAt` y sin evento. Un fallo al insertar el evento revierte el
+estado; un fallo al actualizar el Node no deja evento. Las transacciones serializan
+solicitudes concurrentes del mismo estado. `toggleCompleted` reutiliza la misma
+operación para callers existentes; dos toggles deliberados son dos transiciones.
+
+La UI ahora envía el estado deseado (`setCompleted`) y conserva el bloqueo síncrono
+de `OperationState.busy`; no invierte otra vez el estado real en un reintento o tap
+con snapshot visual antiguo. Los puntos operativos son el checkbox de tarjeta y
+Completar/Reabrir del detalle en Proyecto/Capa. Attention, Calendar y Obligaciones
+navegan al Node real y usan esas mismas acciones; no escriben completado por otra
+ruta. No se registran eventos desde collectors, recomposición o presentación.
+
+La revisión de todas las escrituras encontró dos reinicios implícitos adicionales:
+convertir una ACTION completada en NOTE y añadir/mover el primer hijo a una ACTION
+completada. Antes de perder su capacidad de hoja se reabre mediante la misma
+operación atómica; conserva su historia anterior. No se registra un evento de
+conversión o traslado: únicamente la transición real true→false. Las fechas del
+padre se conservan como antes al volverse capa; el evento sí usa el instante real.
+Los triggers de defensa estructural continúan instalados. NOTE/capas existentes
+rechazan completar/reabrir, incluso si se pide false→false. Perder el último hijo
+no crea una reapertura porque la capa ya estaba pendiente. El historial no es
+un trigger global de SQL: los writes funcionales usan Repository; los DAOs de
+snapshot se reservan para migración/restore y los tests de defensa de SQLite.
+
+La creación normal registra exactamente un CREATED con el mismo instante que
+`Node.createdAt`, dentro de la transacción de Node, responsables y etiquetas.
+Su ID estable se deriva del ID de Node; un reintento confirmado no vuelve a insertar.
+Batch añade un CREATED por Node en la transacción completa del lote. Recurrence
+materializa por `NodeRepository.createNode`: Node, CREATED, relaciones, recibo y
+cursor se confirman o revierten juntos. Un vencimiento recuperado recibe la fecha
+real de materialización como CREATED, no una fecha de vencimiento ficticia.
+Cada ocurrencia tiene historia independiente; las reglas abstractas no tienen
+NodeEvents. Editar/pausar/finalizar reglas no reescribe historias existentes; si
+se procesa deuda activa antes de una operación, las nuevas ocurrencias reales
+reciben su CREATED. Los recibos siguen evitando recrear Nodes borrados.
+
+En una obligación, COMPLETED se presenta como **Pagada** y REOPENED como
+**Reabierta**; no se duplica un evento PAID. Registrar eventos no modifica monto,
+moneda, fechas ni responsables. La etiqueta visual usa la capacidad financiera
+actual del Node: V1 no captura snapshots de monto, plazo, propósito o responsables
+por evento. No se atribuye un actor a los responsables. Esa semántica histórica
+necesitará un diseño explícito antes de métricas por responsabilidad/plazo.
+
+Room v11 añade `node_events`, PK `id`, FK `nodeId`→`nodes.id` ON DELETE CASCADE,
+e índice compuesto `(nodeId, occurredAt)`. La migración explícita 10→11 solo añade
+la tabla y el índice, sin cambiar filas/triggers existentes ni usar fallback
+destructivo. Se conserva el esquema exportado 11 junto a los anteriores.
+Aunque `createdAt` se mantiene y suele proceder de la creación original, los
+snapshots históricos/importados y las migraciones antiguas no garantizan una
+proveniencia de eventos. Se elige historial inicialmente vacío para **todos los
+Nodes preexistentes**, en lugar de reconstruir CREATED o inferir completados desde
+`updatedAt`. La primera transición posterior se registra aunque no haya CREATED.
+
+No hay API de editar, borrar o crear manualmente eventos. Los DAOs solo permiten
+append/lectura e inserción de snapshots durante restore. Borrar un Node, su subárbol
+o su proyecto elimina sus eventos por FK; se conserva el borrado iterativo seguro
+para árboles profundos. No queda historial huérfano, tombstone ni auditoría forense
+global. No hay poda automática de eventos de Nodes existentes.
+
+Desde **Historial** en el menú de tarjeta, el detalle y los resultados filtrados
+se abre un diálogo compacto de solo lectura. Consulta exclusivamente el Node
+seleccionado con un Flow y muestra eventos recientes primero, con estados distintos
+de carga, error/reintento y «Aún no hay eventos registrados.». Usa LazyColumn con
+claves de evento. La consulta ordena `occurredAt DESC, rowid DESC`: con timestamps
+iguales conserva el orden inverso de append sin añadir campos al modelo. El índice
+satisface búsqueda y orden; no se cargan eventos de toda la base ni hay N+1 por
+lista de tarjetas. El acceso en detalle comparte la fila de acciones existente.
+
+Backup lógico **v4** incluye `nodeEvents` con IDs, Node, tipo e instante exactos;
+el contenedor conserva su versión 1. Valida identidades únicas, referencias,
+tipos conocidos, campos estrictos, enteros Long y presupuesto total de registros
+antes de borrar datos. Snapshot conserva orden de append para preservar desempates
+iguales al restaurar. Restore inserta Nodes mediante DAO y después sus eventos;
+no usa semántica de creación normal ni agrega CREATED. La sustitución es atómica,
+incluyendo eventos y archivos de avatar según el journal vigente. v1/v2/v3 se leen
+con historia vacía, que también sustituye la historia presente. Restore seguido
+de Recurrence conserva Nodes, recibos e historia; solo nuevas ocurrencias reciben
+eventos. No se deduce una secuencia completa de backups con historial parcial.
+
+La estructura permite futuros eventos/metadatos mediante una migración posterior.
+V1 no implementa métricas, prioridad, sprints, pagos parciales, métodos de pago,
+actor autenticado ni snapshots de relaciones históricas. Eventos eliminados junto
+con su Node y cambios del reloj limitan cualquier futura interpretación forense.
+No cambia versionName/versionCode ni publicación.
+
+Archivos añadidos en el sprint de historial:
+
+- `app/schemas/com.r0ybt.arachn0de.data.local.Arachn0deDatabase/11.json`
+- `app/src/main/java/com/r0ybt/arachn0de/data/local/NodeEventEntity.kt`
+- `app/src/main/java/com/r0ybt/arachn0de/data/local/NodeEventMigration10To11.kt`
+- `app/src/main/java/com/r0ybt/arachn0de/domain/model/NodeEvent.kt`
+- `app/src/main/java/com/r0ybt/arachn0de/ui/NodeHistoryDialog.kt`
+- `app/src/test/java/com/r0ybt/arachn0de/backup/NodeEventBackupTest.kt`
+- `app/src/test/java/com/r0ybt/arachn0de/data/NodeEventMigrationTest.kt`
+- `app/src/test/java/com/r0ybt/arachn0de/data/NodeEventRecurrenceTest.kt`
+- `app/src/test/java/com/r0ybt/arachn0de/data/NodeEventRepositoryTest.kt`
+- `app/src/test/java/com/r0ybt/arachn0de/ui/NodeHistoryUiTest.kt`
+
+Archivos modificados en el sprint de historial:
+
+- `ARCHITECTURE.md`
+- `app/src/main/java/com/r0ybt/arachn0de/backup/BackupData.kt`
+- `app/src/main/java/com/r0ybt/arachn0de/backup/BackupJson.kt`
+- `app/src/main/java/com/r0ybt/arachn0de/backup/BackupRepository.kt`
+- `app/src/main/java/com/r0ybt/arachn0de/data/local/Arachn0deDatabase.kt`
+- `app/src/main/java/com/r0ybt/arachn0de/data/repository/NodeRepository.kt`
+- `app/src/main/java/com/r0ybt/arachn0de/ui/NodeComponents.kt`
+- `app/src/main/java/com/r0ybt/arachn0de/ui/ProjectScreen.kt`
+- `app/src/main/java/com/r0ybt/arachn0de/ui/state/NodeActions.kt`
+- `app/src/test/java/com/r0ybt/arachn0de/backup/BackupFormatTest.kt`
+- `app/src/test/java/com/r0ybt/arachn0de/backup/BackupRepositoryTest.kt`
+- `app/src/test/java/com/r0ybt/arachn0de/backup/RecurrenceBackupTest.kt`
+- `app/src/test/java/com/r0ybt/arachn0de/backup/TagsBackupTest.kt`
+- `app/src/test/java/com/r0ybt/arachn0de/data/AttentionRepositoryTest.kt`
+- `app/src/test/java/com/r0ybt/arachn0de/data/CalendarFiltersRepositoryTest.kt`
+- `app/src/test/java/com/r0ybt/arachn0de/data/CalendarRepositoryTest.kt`
+- `app/src/test/java/com/r0ybt/arachn0de/data/FinancialRepositoryTest.kt`
+- `app/src/test/java/com/r0ybt/arachn0de/data/NodeBatchRepositoryTest.kt`
+- `app/src/test/java/com/r0ybt/arachn0de/data/NodeMigrationTest.kt`
+- `app/src/test/java/com/r0ybt/arachn0de/data/NodePurposeTest.kt`
+- `app/src/test/java/com/r0ybt/arachn0de/data/ObligationMigrationTest.kt`
+- `app/src/test/java/com/r0ybt/arachn0de/data/ObligationRepositoryTest.kt`
+- `app/src/test/java/com/r0ybt/arachn0de/data/PersonRepositoryTest.kt`
+- `app/src/test/java/com/r0ybt/arachn0de/data/RecurrenceMigrationTest.kt`
+- `app/src/test/java/com/r0ybt/arachn0de/data/TagMigrationTest.kt`
+- `app/src/test/java/com/r0ybt/arachn0de/data/TaskDatesRepositoryTest.kt`
+- `app/src/test/java/com/r0ybt/arachn0de/export/NodeCopyUiTest.kt`
+- `app/src/test/java/com/r0ybt/arachn0de/report/ObligationReportUiTest.kt`
+
+Validación de historial: 279 pruebas dirigidas pasaron, incluidas 54 nuevas
+(en cinco archivos de pruebas; persistencia/migración/backup también en API 24/28).
+`assembleDebug` final y `git diff --check` pasaron. La suite completa se ejecutó
+una sola vez: 522 pruebas, 517 pasaron y 5 fallaron. Los cinco fallos coinciden
+con los históricos de ScrollRestorationTest (dashboard/map), LargeListsTest
+(scroll de capa/drag de proyectos) y MvpReadinessTest (dashboard estrecho).
+No se detectaron regresiones nuevas ni fallos por memoria. Hubo advertencias
+de Robolectric de decoder y CloseGuard sin fallo de prueba asociado; no se afirma
+una auditoría de recursos en dispositivo físico. No se repitió la suite completa
+ni se ejecutó lint completo ni se arreglaron esos fallos históricos.
+Queda validación manual de Historial desde tarjeta/detalle/Calendar/Attention/
+Obligaciones, recreación, fechas locales y teclado en un dispositivo real.
+Versión conservada: 0.2.2 / código 4; sin commit, push, tag o Release.

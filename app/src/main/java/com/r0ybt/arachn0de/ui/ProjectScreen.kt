@@ -134,6 +134,8 @@ internal fun ProjectNodeScreen(
     val isSubmittingNode = actions.operation.busy
     val currentNodeId = currentPath.lastOrNull()
     val currentNode = projectState.nodesById[currentNodeId]
+    var historyNodeId by rememberSaveable { mutableStateOf<String?>(null) }
+    historyNodeId?.let { id -> projectState.nodesById[id]?.let { node -> NodeHistoryDialog(node, nodeRepository) { historyNodeId = null } } }
     val tagState by remember(nodeRepository) { nodeRepository.tags.observe() }.collectAsState(initial = com.r0ybt.arachn0de.domain.model.TagState())
     val now = com.r0ybt.arachn0de.ui.state.rememberTaskScreenNow(projectState.nodes, clock)
     val scopeFilterStore = rememberSaveable(project.id, saver = ScopeFilterStore.Saver) { ScopeFilterStore() }
@@ -390,7 +392,7 @@ internal fun ProjectNodeScreen(
                                             Button(
                                                 onClick = {
                                                     if (!isSubmittingNode) {
-                                                        actions.toggle(currentNode.id)
+                                                        actions.setCompleted(currentNode.id, !currentNode.isCompleted)
                                                     }
                                                 },
                                                 enabled = !isSubmittingNode,
@@ -420,6 +422,7 @@ internal fun ProjectNodeScreen(
                                         androidx.compose.material3.OutlinedButton(
                                             onClick = { movingNodeId = currentNode.id }, enabled = !isSubmittingNode,
                                         ) { Text("Mover a…") }
+                                        TextButton(onClick = { historyNodeId = currentNode.id }) { Text("Historial") }
                                     }
                                     TagChips(tagState.forNode(currentNode.id))
                                     ResponsibleAvatars(responsibleByNode[currentNode.id].orEmpty())
@@ -443,6 +446,7 @@ internal fun ProjectNodeScreen(
                                     else {
                                         TextButton(onClick = { actions.navigate(row.node.id) { path -> currentPath.clear(); currentPath.addAll(path) } }) { Text(row.node.title) }
                                         TagChips(tagState.forNode(row.node.id))
+                                        TextButton(onClick = { historyNodeId = row.node.id }) { Text("Historial") }
                                         TextButton(onClick = { draft = EditorDraft(row.node.id, row.node.parentId, row.node.title, row.node.description, startAt = row.node.startAt, dueAt = row.node.dueAt, purpose = row.node.purpose, obligation = row.node.obligation).apply { tagIds = tagState.nodeIds[row.node.id].orEmpty().toList() } }) { Text("Editar") }
                                     }
                                 }
@@ -471,6 +475,7 @@ internal fun ProjectNodeScreen(
                             items(renderNodes, key = { "node:${it.id}" }, contentType = { "node" }) { node ->
                                 val dragging = drag.isDragging(node.id)
                                 NodeCard(
+                                    onHistory = { historyNodeId = node.id },
                                     tags = tagState.forNode(node.id),
                                     node = node,
                                     onRecurrence = recurrenceByNode[node.id]?.let { ruleId -> ({ recurrenceSelected = ruleId }) },
@@ -501,7 +506,7 @@ internal fun ProjectNodeScreen(
                                         deletingNodeName = node.title
                                     },
                                     onToggleComplete = {
-                                        if (node.isCompletable) actions.toggle(node.id)
+                                        if (node.isCompletable) actions.setCompleted(node.id, !node.isCompleted)
                                     },
                                     dragging = dragging,
                                     modifier = Modifier.animateItem(

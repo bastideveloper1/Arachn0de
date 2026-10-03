@@ -51,8 +51,8 @@ internal class NodeActions(private val repository: NodeRepository, scope: Corout
             repository.reorderNodeTo(id, parentId, targetId)
         })
 
-    fun toggle(id: String) = operation.submit("No se pudo cambiar el completado. Puedes reintentar.", {
-        repository.toggleCompleted(id)
+    fun setCompleted(id: String, completed: Boolean) = operation.submit("No se pudo cambiar el completado. Puedes reintentar.", {
+        repository.setCompleted(id, completed)
     })
 
     fun navigate(id: String, onSuccess: (List<String>) -> Unit) {

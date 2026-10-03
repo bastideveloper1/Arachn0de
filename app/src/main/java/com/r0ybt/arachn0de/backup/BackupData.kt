@@ -19,6 +19,7 @@ internal data class BackupData(
     val tags: List<TagEntity> = emptyList(),
     val nodeTags: List<NodeTagEntity> = emptyList(),
     val recurrenceTags: List<RecurrenceTagEntity> = emptyList(),
+    val nodeEvents: List<NodeEventEntity> = emptyList(),
 )
 
 internal object BackupLimits {
@@ -32,7 +33,7 @@ internal object BackupLimits {
 /** Validate before staging or deleting anything; return parent-first order without recursion. */
 internal fun BackupData.validate(): List<NodeEntity> {
     require(appVersion.isNotBlank() && appVersion.length <= 128 && createdAt >= 0) { "Metadatos de backup inválidos." }
-    require(projects.size.toLong() + nodes.size + persons.size + assignments.size + recurrenceRules.size + recurrenceOccurrences.size + recurrenceAssignments.size + tags.size + nodeTags.size + recurrenceTags.size <= BackupLimits.RECORDS) { "Demasiados registros en el backup." }
+    require(projects.size.toLong() + nodes.size + persons.size + assignments.size + recurrenceRules.size + recurrenceOccurrences.size + recurrenceAssignments.size + tags.size + nodeTags.size + recurrenceTags.size + nodeEvents.size <= BackupLimits.RECORDS) { "Demasiados registros en el backup." }
     fun unique(ids: List<String>): Set<String> {
         require(ids.all { it.isNotBlank() && it.length <= 256 }) { "Identidad inválida." }
         return ids.toSet().also { require(it.size == ids.size) { "Identidades duplicadas." } }
@@ -93,6 +94,11 @@ internal fun BackupData.validate(): List<NodeEntity> {
     }
     require(nodeTags.toSet().size == nodeTags.size && nodeTags.all { it.nodeId in nodeIds && it.tagId in tagIds })
     require(recurrenceTags.toSet().size == recurrenceTags.size && recurrenceTags.all { it.ruleId in ruleIds && it.tagId in tagIds })
+    unique(nodeEvents.map { it.id })
+    nodeEvents.forEach {
+        require(it.nodeId in nodeIds) { "Evento de un nodo ausente." }
+        com.r0ybt.arachn0de.domain.model.NodeEventType.valueOf(it.type)
+    }
     val names = persons.mapNotNull { it.avatarFile }.toSet()
     require(names == avatars.keys && names.all { BackupLimits.avatarName.matches(it) }) { "Referencias de avatar inválidas." }
     require(avatars.values.sumOf { it.size.toLong() } <= BackupLimits.TOTAL_AVATAR_BYTES) { "Avatares demasiado grandes." }

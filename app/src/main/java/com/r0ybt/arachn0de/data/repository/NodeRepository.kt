@@ -3,6 +3,9 @@ package com.r0ybt.arachn0de.data.repository
 import androidx.room.withTransaction
 import com.r0ybt.arachn0de.data.local.Arachn0deDatabase
 import com.r0ybt.arachn0de.data.local.NodePersonEntity
+import com.r0ybt.arachn0de.data.local.NodeEventEntity
+import com.r0ybt.arachn0de.data.local.toEvent
+import com.r0ybt.arachn0de.domain.model.NodeEventType
 import com.r0ybt.arachn0de.data.local.NodeEntity
 import com.r0ybt.arachn0de.data.local.toNode
 import com.r0ybt.arachn0de.domain.model.Node
@@ -28,6 +31,22 @@ class NodeRepository(
     val tags = TagRepository(database)
     val recurrence = RecurrenceRepository(database, currentTimeMillis)
     private val nodeDao = database.nodeDao()
+
+    fun observeHistory(nodeId: String) = database.nodeEventDao().observe(nodeId).map { rows -> rows.map { it.toEvent() } }
+        .flowOn(Dispatchers.Default)
+
+    private suspend fun appendEvent(nodeId: String, type: NodeEventType, occurredAt: Long) {
+        val id = if (type == NodeEventType.CREATED) UUID.nameUUIDFromBytes("node-created:$nodeId".toByteArray(Charsets.UTF_8)).toString()
+            else UUID.randomUUID().toString()
+        database.nodeEventDao().insert(NodeEventEntity(id, nodeId, type.name, occurredAt))
+    }
+
+    /** Reopen a completed ACTION leaf before it becomes a NOTE/container; triggers remain the defence. */
+    private suspend fun reopenBeforeConversion(id: String?, at: Long) {
+        if (id == null) return
+        val current = nodeDao.getById(id) ?: return
+        if (current.isCompleted) check(changeCompletion(current, false, at, updatedAt = current.updatedAt))
+    }
 
     fun observeAllState(): Flow<NodeTreeSnapshot> =
         nodeDao.observeAllNodes().map(::snapshot).flowOn(Dispatchers.Default)
@@ -151,7 +170,9 @@ class NodeRepository(
             startAt = startAt, dueAt = dueAt, purpose = purpose.name,
             amountMinor = obligation?.amountMinor, currencyCode = obligation?.currencyCode,
         )
+        reopenBeforeConversion(parentId, now)
         nodeDao.insert(entity)
+        appendEvent(entity.id, NodeEventType.CREATED, now)
         if (responsibleIds.isNotEmpty()) database.personDao().assign(responsibleIds.map { NodePersonEntity(entity.id, it) })
         tags.assignNode(entity.id, tagIds)
         entity.toNode(hasChildren = false)
@@ -206,7 +227,9 @@ class NodeRepository(
                     val entity = NodeEntity(ids[index], projectId, parentId, spec.title, spec.description,
                         false, maximum + 1 + index, now, now, startAt = null, dueAt = spec.dueAt, purpose = spec.purpose.name,
                         amountMinor = spec.obligation?.amountMinor, currencyCode = spec.obligation?.currencyCode)
+                    reopenBeforeConversion(parentId, now)
                     nodeDao.insert(entity)
+                    appendEvent(entity.id, NodeEventType.CREATED, now)
                     if (people.isNotEmpty()) database.personDao().assign(people.map {
                         NodePersonEntity(entity.id, it)
                     })
@@ -256,7 +279,10 @@ class NodeRepository(
         if (nodeDao.hasChildren(current.projectId, id)) return@withTransaction false
         if (current.purpose == purpose.name) return@withTransaction true
         require(current.amountMinor == null || removeObligation) { "Confirma la eliminación de los datos financieros." }
-        nodeDao.updatePurpose(id, purpose.name, currentTimeMillis()) == 1
+        val at = currentTimeMillis()
+        reopenBeforeConversion(id, at)
+        check(nodeDao.updatePurpose(id, purpose.name, at) == 1) { "Purpose change was not written" }
+        true
     }
 
     /** A null parent explicitly moves the node to the project root. */
@@ -264,16 +290,29 @@ class NodeRepository(
         val current = nodeDao.getById(id) ?: return@withTransaction false
         validateParent(current.projectId, parentId, movingId = id)
         if (current.parentId == parentId) return@withTransaction true
-        nodeDao.move(id, parentId, nextPosition(current.projectId, parentId), currentTimeMillis()) == 1
+        val at = currentTimeMillis()
+        reopenBeforeConversion(parentId, at)
+        check(nodeDao.move(id, parentId, nextPosition(current.projectId, parentId), at) == 1) { "Move was not written" }
+        true
     }
 
     suspend fun setCompleted(id: String, completed: Boolean): Boolean = database.withTransaction {
-        nodeDao.setCompleted(id, completed, currentTimeMillis()) == 1
+        val current = nodeDao.getById(id) ?: return@withTransaction false
+        changeCompletion(current, completed, currentTimeMillis())
     }
 
     suspend fun toggleCompleted(id: String): Boolean = database.withTransaction {
         val current = nodeDao.getById(id) ?: return@withTransaction false
-        nodeDao.setCompleted(id, !current.isCompleted, currentTimeMillis()) == 1
+        changeCompletion(current, !current.isCompleted, currentTimeMillis())
+    }
+
+    /** Read/validate current persisted state under the same Room transaction as both writes. */
+    private suspend fun changeCompletion(current: NodeEntity, completed: Boolean, at: Long, updatedAt: Long = at): Boolean {
+        if (current.purpose != NodePurpose.ACTION.name || nodeDao.hasChildren(current.projectId, current.id)) return false
+        if (current.isCompleted == completed) return true
+        if (nodeDao.setCompleted(current.id, completed, updatedAt) != 1) return false
+        appendEvent(current.id, if (completed) NodeEventType.COMPLETED else NodeEventType.REOPENED, at)
+        return true
     }
 
     suspend fun deleteNode(id: String): Boolean = database.withTransaction { nodeDao.delete(id) == 1 }

@@ -171,6 +171,7 @@ internal fun NodeCard(
     onCopy: (Boolean) -> Unit = {},
     onRecurrence: (() -> Unit)? = null,
     tags: List<com.r0ybt.arachn0de.domain.model.Tag> = emptyList(),
+    onHistory: (() -> Unit)? = null,
 ) {
     var showContextMenu by remember { mutableStateOf(false) }
     val completedTint = if (node.isCompleted) Arachn0deColors.Completed else Arachn0deColors.Primary
@@ -334,6 +335,9 @@ internal fun NodeCard(
                     ) {
                         Text("Editar", textAlign = TextAlign.Start, modifier = Modifier.fillMaxWidth())
                     }
+                    onHistory?.let { openHistory -> TextButton(onClick = { showContextMenu = false; openHistory() }, modifier = Modifier.fillMaxWidth()) {
+                        Text("Historial", modifier = Modifier.fillMaxWidth())
+                    } }
                     if (!hasChildren) {
                         TextButton(onClick = { onConvert { showContextMenu = false } }, modifier = Modifier.fillMaxWidth()) {
                             Text(if (node.purpose == NodePurpose.NOTE) "Convertir en tarea" else "Convertir en nota", modifier = Modifier.fillMaxWidth())

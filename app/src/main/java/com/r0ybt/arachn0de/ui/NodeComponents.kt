@@ -246,6 +246,7 @@ internal fun NodeCard(
                         maxLines = 2, overflow = TextOverflow.Ellipsis)
                 }
 
+                ObligationIndicator(node)
                 TaskDateIndicator(node, now)
                 if (hasChildren) AttentionIndicator(attention)
 

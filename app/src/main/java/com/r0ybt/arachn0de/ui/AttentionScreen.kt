@@ -60,6 +60,7 @@ internal fun AttentionScreen(
                         Column(Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                             Text(node.title, maxLines = 2, overflow = TextOverflow.Ellipsis)
                             Text(path, color = Arachn0deColors.TextSecondary, fontSize = 12.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                            ObligationIndicator(node)
                             TaskDateIndicator(node, attention.now)
                             ResponsibleAvatars(responsibleByNode[node.id].orEmpty())
                         }

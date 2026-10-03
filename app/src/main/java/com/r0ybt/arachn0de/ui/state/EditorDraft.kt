@@ -16,7 +16,17 @@ internal class EditorDraft(
     startAt: Long? = null,
     dueAt: Long? = null,
     purpose: com.r0ybt.arachn0de.domain.model.NodePurpose = com.r0ybt.arachn0de.domain.model.NodePurpose.ACTION,
+    obligation: com.r0ybt.arachn0de.domain.model.Obligation? = null,
+    val moneyLocaleTag: String = java.util.Locale.getDefault().toLanguageTag(),
+    val hadObligation: Boolean = obligation != null,
 ) {
+    var financialEnabled by mutableStateOf(obligation != null)
+    var amountText by mutableStateOf(obligation?.let { com.r0ybt.arachn0de.domain.model.Money.input(it.amountMinor, it.currencyCode, java.util.Locale.forLanguageTag(moneyLocaleTag)) }.orEmpty())
+    var currencyCode by mutableStateOf(obligation?.currencyCode ?: "CLP")
+    var financialRemovalConfirmed by mutableStateOf(false)
+    fun obligation(): com.r0ybt.arachn0de.domain.model.Obligation? = if (!financialEnabled || purpose != com.r0ybt.arachn0de.domain.model.NodePurpose.ACTION) null else
+        com.r0ybt.arachn0de.domain.model.Obligation(com.r0ybt.arachn0de.domain.model.Money.parse(amountText, currencyCode, java.util.Locale.forLanguageTag(moneyLocaleTag)), currencyCode)
+
     var purpose by mutableStateOf(purpose)
     var title by mutableStateOf(title)
     var description by mutableStateOf(description)
@@ -27,11 +37,16 @@ internal class EditorDraft(
         val Saver = listSaver<EditorDraft?, String>(
             save = {
                 if (it == null) emptyList()
-                else listOf(it.id.orEmpty(), it.parentId.orEmpty(), it.title, it.description, it.creationId, it.startAt?.toString().orEmpty(), it.dueAt?.toString().orEmpty(), it.purpose.name)
+                else listOf(it.id.orEmpty(), it.parentId.orEmpty(), it.title, it.description, it.creationId, it.startAt?.toString().orEmpty(), it.dueAt?.toString().orEmpty(), it.purpose.name, it.financialEnabled.toString(), it.amountText, it.currencyCode, it.moneyLocaleTag, it.hadObligation.toString(), it.financialRemovalConfirmed.toString())
             },
             restore = {
                 if (it.isEmpty()) null
-                else EditorDraft(it[0].ifEmpty { null }, it[1].ifEmpty { null }, it[2], it[3], it[4], it.getOrNull(5)?.toLongOrNull(), it.getOrNull(6)?.toLongOrNull(), it.getOrNull(7)?.let(com.r0ybt.arachn0de.domain.model.NodePurpose::valueOf) ?: com.r0ybt.arachn0de.domain.model.NodePurpose.ACTION)
+                else EditorDraft(it[0].ifEmpty { null }, it[1].ifEmpty { null }, it[2], it[3], it[4], it.getOrNull(5)?.toLongOrNull(), it.getOrNull(6)?.toLongOrNull(), it.getOrNull(7)?.let(com.r0ybt.arachn0de.domain.model.NodePurpose::valueOf) ?: com.r0ybt.arachn0de.domain.model.NodePurpose.ACTION,
+                    moneyLocaleTag = it.getOrNull(11) ?: java.util.Locale.getDefault().toLanguageTag(), hadObligation = it.getOrNull(12)?.toBoolean() ?: false).apply {
+                    financialEnabled = it.getOrNull(8)?.toBoolean() ?: false
+                    amountText = it.getOrNull(9).orEmpty(); currencyCode = it.getOrNull(10) ?: "CLP"
+                    financialRemovalConfirmed = it.getOrNull(13)?.toBoolean() ?: false
+                }
             },
         )
     }

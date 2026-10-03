@@ -53,7 +53,7 @@ class NodeBatchRepositoryTest {
         assertEquals(1, AttentionSnapshot(snapshot, 200).byProjectId.getValue(project).overdue)
         assertEquals(1, AttentionSnapshot(snapshot, 200).byProjectId.getValue(project).upcoming)
         result.forEach { assertEquals(setOf("p", "q"), people.observeAssignments(project).first().getValue(it.id).map { p -> p.id }.toSet()) }
-        assertEquals(7, db.openHelper.readableDatabase.version)
+        assertEquals(8, db.openHelper.readableDatabase.version)
         val notes = nodes.createBatch(project, parent.id, "notes", specs(purpose = NodePurpose.NOTE))
         assertTrue(notes.all { !it.isCompletable && it.dueAt == null })
         assertEquals(5, nodes.calculateProjectProgress(project)!!.total)

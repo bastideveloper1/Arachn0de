@@ -66,7 +66,7 @@ internal fun LayerNavigator(
     val expanded = remember(expandedIds) { expandedIds.toSet() }
     val excluded = remember(index, movingId) { movingId?.let(index::subtreeIds).orEmpty() }
     val rows = remember(index, expanded, excluded, movingId) {
-        index.visibleRows(expanded).filter { it.node.id !in excluded && it.node.purpose == com.r0ybt.arachn0de.domain.model.NodePurpose.ACTION && (movingId != null || it.hasChildren) }
+        index.visibleRows(expanded).filter { it.node.id !in excluded && it.node.purpose == com.r0ybt.arachn0de.domain.model.NodePurpose.ACTION && (movingId != null || it.hasChildren) && (movingId == null || it.node.obligation == null) }
     }
     LazyColumn(
         state = listState,

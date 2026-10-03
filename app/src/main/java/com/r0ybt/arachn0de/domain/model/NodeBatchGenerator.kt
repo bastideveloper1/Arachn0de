@@ -16,9 +16,10 @@ data class NodeBatchParameters(
     val description: String = "",
     val temporalRule: BatchTemporalRule = BatchTemporalRule.NONE,
     val firstDueAt: Long? = null,
+    val obligation: Obligation? = null,
 )
 
-data class GeneratedNodeSpec(val title: String, val description: String, val purpose: NodePurpose, val dueAt: Long?)
+data class GeneratedNodeSpec(val title: String, val description: String, val purpose: NodePurpose, val dueAt: Long?, val obligation: Obligation? = null)
 
 /** Finite, pure generation. The explicit zone belongs to this calculation, not persisted Nodes. */
 object NodeBatchGenerator {
@@ -26,6 +27,7 @@ object NodeBatchGenerator {
 
     fun generate(parameters: NodeBatchParameters, zone: TimeZone): List<GeneratedNodeSpec> {
         val p = parameters
+        require(p.purpose == NodePurpose.ACTION || p.obligation == null) { "Una nota no puede ser obligación." }
         require(p.quantity in 1..MAX_BATCH_SIZE) { "La cantidad debe estar entre 1 y $MAX_BATCH_SIZE." }
         val base = p.baseName.trim()
         validateTitle(base)
@@ -46,13 +48,15 @@ object NodeBatchGenerator {
                 NumberingMode.SUFFIX -> "$base $number"
             }
             validateTitle(title)
-            GeneratedNodeSpec(title, p.description, p.purpose, anchor?.let { dueAt(it, p.temporalRule, index, zone) })
+            GeneratedNodeSpec(title, p.description, p.purpose, anchor?.let { dueAt(it, p.temporalRule, index, zone) }, p.obligation)
         }
     }
 
     fun validateSpecs(specs: List<GeneratedNodeSpec>) {
         require(specs.size in 1..MAX_BATCH_SIZE) { "La cantidad debe estar entre 1 y $MAX_BATCH_SIZE." }
+        require(specs.map { it.obligation }.distinct().size == 1) { "Todo el lote debe compartir la misma capacidad financiera, monto y moneda." }
         specs.forEach {
+            require(it.purpose == NodePurpose.ACTION || it.obligation == null) { "Una nota no puede ser obligación." }
             validateTitle(it.title)
             require(it.title == it.title.trim()) { "El título generado contiene espacios en sus extremos." }
             require(it.purpose != NodePurpose.NOTE || it.dueAt == null) { "Las notas no permiten generación temporal." }

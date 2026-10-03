@@ -25,7 +25,7 @@ internal fun NodeBatchDialog(
 ) {
     val zone = TimeZone.getDefault()
     val generated = remember(draft.baseName, draft.quantity, draft.numberingMode, draft.startNumber,
-        draft.purpose, draft.description, draft.temporalRule, draft.dates.dueAt, zone.id) {
+        draft.purpose, draft.description, draft.dates.financialEnabled, draft.dates.amountText, draft.dates.currencyCode, draft.temporalRule, draft.dates.dueAt, zone.id) {
         runCatching { NodeBatchGenerator.generate(draft.parameters(), zone) }
     }
     val specs = generated.getOrNull()
@@ -46,13 +46,14 @@ internal fun NodeBatchDialog(
                     label = { Text("Número inicial") }, singleLine = true, enabled = !busy)
                 BatchChoices(listOf(NodePurpose.ACTION to "Tarea", NodePurpose.NOTE to "Nota"), draft.purpose, !busy) {
                     draft.purpose = it
-                    if (it == NodePurpose.NOTE) { draft.temporalRule = BatchTemporalRule.NONE; picker.field = null }
+                    if (it == NodePurpose.NOTE) { draft.temporalRule = BatchTemporalRule.NONE; draft.dates.financialEnabled = false; picker.field = null }
                 }
                 OutlinedTextField(draft.description, { draft.description = it }, label = { Text("Descripción común") }, enabled = !busy)
                 TextButton(enabled = !busy && peopleLoaded, onClick = { draft.showResponsible = true }) {
                     Text("Responsables comunes (${draft.responsibleIds.size})")
                 }
                 if (draft.purpose == NodePurpose.ACTION) {
+                    ObligationFields(draft.dates, !busy)
                     Text("Fechas de vencimiento")
                     BatchChoices(BatchTemporalRule.entries.map { it to when (it) {
                         BatchTemporalRule.NONE -> "Sin fechas"; BatchTemporalRule.DAILY -> "Diaria"
@@ -70,7 +71,7 @@ internal fun NodeBatchDialog(
                     indices.forEachIndexed { previewIndex, index ->
                         if (previewIndex == 3 && specs.size > 4) Text("…")
                         val spec = specs[index]
-                        Text(spec.title + (spec.dueAt?.let { " — ${formatTaskDate(it)}" } ?: ""), maxLines = 2, overflow = TextOverflow.Ellipsis)
+                        Text(spec.title + (spec.obligation?.let { " — ${Money.format(it, androidx.compose.ui.platform.LocalConfiguration.current.locales[0])}" } ?: "") + (spec.dueAt?.let { " — ${formatTaskDate(it)}" } ?: ""), maxLines = 2, overflow = TextOverflow.Ellipsis)
                     }
                 }
             }

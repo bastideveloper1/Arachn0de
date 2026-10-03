@@ -6,6 +6,7 @@ import com.r0ybt.arachn0de.data.local.NodePersonEntity
 import com.r0ybt.arachn0de.data.local.NodeEntity
 import com.r0ybt.arachn0de.data.local.toNode
 import com.r0ybt.arachn0de.domain.model.Node
+import com.r0ybt.arachn0de.domain.model.Obligation
 import com.r0ybt.arachn0de.domain.model.GeneratedNodeSpec
 import com.r0ybt.arachn0de.domain.model.NodeBatchGenerator
 import com.r0ybt.arachn0de.domain.model.NodePurpose
@@ -117,14 +118,17 @@ class NodeRepository(
         startAt: Long? = null,
         dueAt: Long? = null,
         purpose: NodePurpose = NodePurpose.ACTION,
+        obligation: Obligation? = null,
     ): Node = database.withTransaction {
         com.r0ybt.arachn0de.domain.model.TaskTemporal.validateDates(startAt, dueAt)
+        require(purpose == NodePurpose.ACTION || obligation == null) { "Una nota no puede ser obligación." }
         val normalizedTitle = validateTitle(title)
         require(creationId.isNotBlank())
         nodeDao.getById(creationId)?.let { existing ->
             check(existing.projectId == projectId && existing.parentId == parentId &&
                 existing.title == normalizedTitle && existing.description == description &&
-                existing.startAt == startAt && existing.dueAt == dueAt && existing.purpose == purpose.name) {
+                existing.startAt == startAt && existing.dueAt == dueAt && existing.purpose == purpose.name &&
+                existing.amountMinor == obligation?.amountMinor && existing.currencyCode == obligation?.currencyCode) {
                 "Creation already committed with different content or destination"
             }
             return@withTransaction existing.toNode(nodeDao.hasChildren(projectId, creationId))
@@ -137,6 +141,7 @@ class NodeRepository(
             title = normalizedTitle, description = description, isCompleted = false,
             position = nextPosition(projectId, parentId), createdAt = now, updatedAt = now,
             startAt = startAt, dueAt = dueAt, purpose = purpose.name,
+            amountMinor = obligation?.amountMinor, currencyCode = obligation?.currencyCode,
         )
         nodeDao.insert(entity)
         entity.toNode(hasChildren = false)
@@ -167,6 +172,7 @@ class NodeRepository(
                     check(node.projectId == projectId && node.parentId == parentId && node.title == spec.title &&
                         node.description == spec.description && node.purpose == spec.purpose.name &&
                         node.startAt == null && node.dueAt == spec.dueAt &&
+                        node.amountMinor == spec.obligation?.amountMinor && node.currencyCode == spec.obligation?.currencyCode &&
                         database.personDao().assignmentIds(node.id).toSet() == people) {
                         "El lote ya fue creado con otros datos."
                     }
@@ -185,7 +191,8 @@ class NodeRepository(
                 val now = currentTimeMillis()
                 specs.mapIndexed { index, spec ->
                     val entity = NodeEntity(ids[index], projectId, parentId, spec.title, spec.description,
-                        false, maximum + 1 + index, now, now, startAt = null, dueAt = spec.dueAt, purpose = spec.purpose.name)
+                        false, maximum + 1 + index, now, now, startAt = null, dueAt = spec.dueAt, purpose = spec.purpose.name,
+                        amountMinor = spec.obligation?.amountMinor, currencyCode = spec.obligation?.currencyCode)
                     nodeDao.insert(entity)
                     if (people.isNotEmpty()) database.personDao().assign(people.map {
                         NodePersonEntity(entity.id, it)
@@ -211,11 +218,21 @@ class NodeRepository(
             nodeDao.updateContentAndDates(id, validateTitle(title), description, startAt, dueAt, currentTimeMillis()) == 1
         }
 
+    /** Financial/content/date edits are atomic and preserve completion, identity and assignments. */
+    suspend fun updateLeaf(id: String, title: String, description: String, startAt: Long?, dueAt: Long?, obligation: Obligation?, removeObligation: Boolean = false): Boolean = database.withTransaction {
+        com.r0ybt.arachn0de.domain.model.TaskTemporal.validateDates(startAt, dueAt)
+        val current = nodeDao.getById(id) ?: return@withTransaction false
+        if (current.purpose != NodePurpose.ACTION.name || nodeDao.hasChildren(current.projectId, id)) return@withTransaction false
+        require(current.amountMinor == null || obligation != null || removeObligation) { "Confirma la eliminación de los datos financieros." }
+        nodeDao.updateLeaf(id, validateTitle(title), description, startAt, dueAt, obligation?.amountMinor, obligation?.currencyCode, currentTimeMillis()) == 1
+    }
+
     /** Conversion retains identity, content, dates, position and assignments; completion is cleared. */
-    suspend fun convertPurpose(id: String, purpose: NodePurpose): Boolean = database.withTransaction {
+    suspend fun convertPurpose(id: String, purpose: NodePurpose, removeObligation: Boolean = false): Boolean = database.withTransaction {
         val current = nodeDao.getById(id) ?: return@withTransaction false
         if (nodeDao.hasChildren(current.projectId, id)) return@withTransaction false
         if (current.purpose == purpose.name) return@withTransaction true
+        require(current.amountMinor == null || removeObligation) { "Confirma la eliminación de los datos financieros." }
         nodeDao.updatePurpose(id, purpose.name, currentTimeMillis()) == 1
     }
 
@@ -290,6 +307,7 @@ class NodeRepository(
             check(visited.add(currentId)) { "Cycle in existing hierarchy" }
             val parent = nodeDao.getById(currentId)
             requireNotNull(parent) { "Parent node not found" }
+            require(parent.amountMinor == null) { "Convierte esta obligación en una tarea antes de usarla como capa." }
             require(parent.purpose == NodePurpose.ACTION.name) { "Notes cannot receive children" }
             require(parent.projectId == projectId) { "Parent node must belong to the same project" }
             currentId = parent.parentId

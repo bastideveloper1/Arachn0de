@@ -7,10 +7,10 @@ import java.util.UUID
 
 internal class NodeActions(private val repository: NodeRepository, scope: CoroutineScope) {
     val operation = OperationState(scope)
-    fun save(projectId: String, parentId: String?, id: String?, title: String, description: String, creationId: String = UUID.randomUUID().toString(), startAt: Long? = null, dueAt: Long? = null, editDates: Boolean = true, purpose: com.r0ybt.arachn0de.domain.model.NodePurpose = com.r0ybt.arachn0de.domain.model.NodePurpose.ACTION, onSuccess: () -> Unit) =
+    fun save(projectId: String, parentId: String?, id: String?, title: String, description: String, creationId: String = UUID.randomUUID().toString(), startAt: Long? = null, dueAt: Long? = null, editDates: Boolean = true, purpose: com.r0ybt.arachn0de.domain.model.NodePurpose = com.r0ybt.arachn0de.domain.model.NodePurpose.ACTION, obligation: com.r0ybt.arachn0de.domain.model.Obligation? = null, removeObligation: Boolean = false, onSuccess: () -> Unit) =
         operation.submit("No se pudo guardar el elemento. Tus cambios siguen en el formulario.", {
-            if (id == null) { repository.createNode(projectId, parentId, title, description, creationId, startAt, dueAt, purpose); true }
-            else if (editDates) repository.updateNodeWithDates(id, title, description, startAt, dueAt)
+            if (id == null) { repository.createNode(projectId, parentId, title, description, creationId, startAt, dueAt, purpose, obligation); true }
+            else if (editDates) repository.updateLeaf(id, title, description, startAt, dueAt, obligation, removeObligation)
             else repository.updateNode(id, title, description)
         }, onSuccess)
 
@@ -20,9 +20,9 @@ internal class NodeActions(private val repository: NodeRepository, scope: Corout
             true
         }, onSuccess)
 
-    fun convert(id: String, purpose: com.r0ybt.arachn0de.domain.model.NodePurpose, onSuccess: () -> Unit = {}) =
+    fun convert(id: String, purpose: com.r0ybt.arachn0de.domain.model.NodePurpose, removeObligation: Boolean = false, onSuccess: () -> Unit = {}) =
         operation.submit("No se pudo convertir el elemento. Puedes reintentar.", {
-            repository.convertPurpose(id, purpose)
+            repository.convertPurpose(id, purpose, removeObligation)
         }, onSuccess)
 
     fun delete(id: String, onSuccess: () -> Unit) =

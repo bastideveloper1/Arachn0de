@@ -15,6 +15,9 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
@@ -34,6 +37,8 @@ internal fun NodeDialog(
     onSave: (String, String) -> Unit,
     editDates: Boolean = true,
 ) {
+    var confirmFinancialRemoval by rememberSaveable(draft.creationId) { mutableStateOf(false) }
+    val financialValid = !editDates || draft.purpose != NodePurpose.ACTION || runCatching { draft.obligation() }.isSuccess
     val datePicker = rememberSaveable(draft.creationId, saver = TaskDatePickerDraft.Saver) { TaskDatePickerDraft() }
     var title by draft::title
     var description by draft::description
@@ -59,7 +64,7 @@ internal fun NodeDialog(
                 if (draft.id == null) {
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         for ((purpose, label) in listOf(NodePurpose.ACTION to "Tarea", NodePurpose.NOTE to "Nota")) {
-                            FilterChip(selected = draft.purpose == purpose, onClick = { draft.purpose = purpose },
+                            FilterChip(selected = draft.purpose == purpose, onClick = { draft.purpose = purpose; if (purpose == NodePurpose.NOTE) draft.financialEnabled = false },
                                 enabled = !isSubmitting, label = { Text(label) })
                         }
                     }
@@ -84,13 +89,14 @@ internal fun NodeDialog(
                     enabled = !isSubmitting,
                 )
                 if (editDates && draft.purpose == NodePurpose.ACTION) {
+                    ObligationFields(draft, enabled = !isSubmitting)
                     TaskDatesEditor(draft, enabled = !isSubmitting, picker = datePicker)
                     if (draft.startAt != null && draft.dueAt != null && draft.dueAt!! < draft.startAt!!) {
                         Text("El vencimiento no puede ser anterior al inicio. Corrige las fechas para guardar.", color = Arachn0deColors.Destructive)
                     }
                 }
                 Text(
-                    text = if (draft.purpose == NodePurpose.NOTE) "Una nota conserva información. Para añadir hijos, conviértela primero en tarea." else "Una tarea se convierte automáticamente en capa al añadir hijos.",
+                    text = if (draft.purpose == NodePurpose.NOTE) "Una nota conserva información. Para añadir hijos, conviértela primero en tarea." else if (draft.financialEnabled) "Convierte esta obligación en una tarea antes de usarla como capa." else "Una tarea se convierte automáticamente en capa al añadir hijos.",
                     color = Arachn0deColors.TextSecondary,
                     fontSize = 12.sp,
                 )
@@ -98,12 +104,13 @@ internal fun NodeDialog(
         },
         confirmButton = {
             TextButton(
-                enabled = !isSubmitting && title.trim().isNotEmpty() && TitleLimits.count(title) <= TitleLimits.NODE &&
+                enabled = !isSubmitting && financialValid && title.trim().isNotEmpty() && TitleLimits.count(title) <= TitleLimits.NODE &&
                     (!editDates || draft.purpose == NodePurpose.NOTE || draft.startAt == null || draft.dueAt == null || draft.dueAt!! >= draft.startAt!!),
                 onClick = {
                     val cleanTitle = title.trim()
                     if (!isSubmitting && cleanTitle.isNotEmpty() && TitleLimits.count(cleanTitle) <= TitleLimits.NODE) {
-                        onSave(cleanTitle, description.trim())
+                        if (draft.hadObligation && !draft.financialEnabled && !draft.financialRemovalConfirmed) confirmFinancialRemoval = true
+                        else onSave(cleanTitle, description.trim())
                     }
                 },
             ) {
@@ -116,6 +123,11 @@ internal fun NodeDialog(
             }
         },
     )
+    if (confirmFinancialRemoval) RemoveObligationDialog(isSubmitting, false,
+        onDismiss = { confirmFinancialRemoval = false }, onConfirm = {
+            draft.financialRemovalConfirmed = true
+            onSave(title.trim(), description.trim())
+        })
 }
 
 @Composable

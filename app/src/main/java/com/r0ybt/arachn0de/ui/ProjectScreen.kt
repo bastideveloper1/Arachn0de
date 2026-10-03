@@ -107,6 +107,7 @@ internal fun ProjectNodeScreen(
     var hasLoaded by remember(project.id) { mutableStateOf(false) }
     var projectState by remember(project.id) { mutableStateOf(NodeTreeSnapshot(emptyList())) }
     var draft by rememberSaveable(project.id, stateSaver = EditorDraft.Saver) { mutableStateOf<EditorDraft?>(null) }
+    var convertingObligationId by rememberSaveable(project.id) { mutableStateOf<String?>(null) }
     var batchDraft by rememberSaveable(project.id, stateSaver = NodeBatchDraft.Saver) { mutableStateOf<NodeBatchDraft?>(null) }
     var deletingNodeId by rememberSaveable(project.id) { mutableStateOf<String?>(null) }
     var deletingNodeName by rememberSaveable(project.id) { mutableStateOf("") }
@@ -314,7 +315,7 @@ internal fun ProjectNodeScreen(
                                         Button(
                                             onClick = {
                                                 if (!isSubmittingNode) {
-                                                    draft = EditorDraft(currentNode.id, currentNode.parentId, currentNode.title, currentNode.description, startAt = currentNode.startAt, dueAt = currentNode.dueAt, purpose = currentNode.purpose)
+                                                    draft = EditorDraft(currentNode.id, currentNode.parentId, currentNode.title, currentNode.description, startAt = currentNode.startAt, dueAt = currentNode.dueAt, purpose = currentNode.purpose, obligation = currentNode.obligation)
                                                 }
                                             },
                                             enabled = !isSubmittingNode,
@@ -364,10 +365,13 @@ internal fun ProjectNodeScreen(
                                     }
                                     if (!currentNode.hasChildren) {
                                         TextButton(enabled = !isSubmittingNode, onClick = {
-                                            actions.convert(currentNode.id, if (currentNode.purpose == NodePurpose.NOTE) NodePurpose.ACTION else NodePurpose.NOTE)
+                                            if (currentNode.obligation != null) convertingObligationId = currentNode.id
+                                            else actions.convert(currentNode.id, if (currentNode.purpose == NodePurpose.NOTE) NodePurpose.ACTION else NodePurpose.NOTE)
                                         }) { Text(if (currentNode.purpose == NodePurpose.NOTE) "Convertir en tarea" else "Convertir en nota") }
                                     }
                                     if (currentNode.purpose == NodePurpose.NOTE) Text("Nota · Convierte en tarea para añadir hijos", color = Arachn0deColors.TextSecondary)
+                                    ObligationIndicator(currentNode)
+                                    if (currentNode.obligation != null) Text("Convierte esta obligación en una tarea antes de usarla como capa.", color = Arachn0deColors.TextSecondary)
                                     TaskDateIndicator(currentNode, now)
                                     ResponsibleAvatars(responsibleByNode[currentNode.id].orEmpty())
                                     TextButton(
@@ -384,7 +388,7 @@ internal fun ProjectNodeScreen(
                             }
                         }
                         if (currentNodes.isEmpty()) {
-                            item(key = "empty-layer", contentType = "empty") { if (currentNode?.purpose != NodePurpose.NOTE) EmptyLayerState() }
+                            item(key = "empty-layer", contentType = "empty") { if (currentNode?.purpose != NodePurpose.NOTE && currentNode?.obligation == null) EmptyLayerState() }
                         }
                         for (completedGroup in listOf(false, true)) {
                             val groupNodes = currentNodes.filter { it.isCompleted == completedGroup }
@@ -409,7 +413,7 @@ internal fun ProjectNodeScreen(
                                     node = node,
                                     progress = progressMap[node.id],
                                     hasChildren = node.hasChildren,
-                                    onConvert = { done -> actions.convert(node.id, if (node.purpose == NodePurpose.NOTE) NodePurpose.ACTION else NodePurpose.NOTE, done) },
+                                    onConvert = { done -> if (node.obligation != null) { convertingObligationId = node.id; done() } else actions.convert(node.id, if (node.purpose == NodePurpose.NOTE) NodePurpose.ACTION else NodePurpose.NOTE, onSuccess = done) },
                                     canToggleComplete = node.isCompletable,
                                     onOpen = {
                                         currentPath.add(node.id)
@@ -420,7 +424,7 @@ internal fun ProjectNodeScreen(
                                     onResponsible = { if (!isSubmittingNode && !personActions.operation.busy && peopleLoaded && assignmentsLoaded) responsibleNodeId = node.id },
                                     onMove = { if (!isSubmittingNode) movingNodeId = node.id },
                                     onEdit = {
-                                        draft = EditorDraft(node.id, node.parentId, node.title, node.description, startAt = node.startAt, dueAt = node.dueAt, purpose = node.purpose)
+                                        draft = EditorDraft(node.id, node.parentId, node.title, node.description, startAt = node.startAt, dueAt = node.dueAt, purpose = node.purpose, obligation = node.obligation)
                                     },
                                     canMoveUp = node.id != renderNodes.firstOrNull()?.id && !isSubmittingNode,
                                     canMoveDown = node.id != renderNodes.lastOrNull()?.id && !isSubmittingNode,
@@ -444,18 +448,18 @@ internal fun ProjectNodeScreen(
                         }
                     }
                 }
-                TextButton(enabled = !isSubmittingNode && currentNode?.purpose != NodePurpose.NOTE, onClick = { batchDraft = NodeBatchDraft(currentNodeId) }) { Text("Crear varios") }
+                TextButton(enabled = !isSubmittingNode && (currentNode?.purpose != NodePurpose.NOTE && currentNode?.obligation == null), onClick = { batchDraft = NodeBatchDraft(currentNodeId) }) { Text("Crear varios") }
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Button(
-                        onClick = { if (!isSubmittingNode && currentNode?.purpose != NodePurpose.NOTE) draft = EditorDraft(null, currentNodeId, "", "") },
+                        onClick = { if (!isSubmittingNode && (currentNode?.purpose != NodePurpose.NOTE && currentNode?.obligation == null)) draft = EditorDraft(null, currentNodeId, "", "") },
                         modifier = Modifier.weight(1f).heightIn(min = 52.dp),
                         colors = ButtonDefaults.buttonColors(containerColor = Arachn0deColors.Primary),
                         shape = RoundedCornerShape(14.dp),
-                        enabled = !isSubmittingNode && currentNode?.purpose != NodePurpose.NOTE,
+                        enabled = !isSubmittingNode && (currentNode?.purpose != NodePurpose.NOTE && currentNode?.obligation == null),
                     ) {
                         Icon(imageVector = Icons.Default.Add, contentDescription = null)
                         Spacer(Modifier.width(8.dp))
@@ -494,6 +498,12 @@ internal fun ProjectNodeScreen(
         }
     }
 
+    convertingObligationId?.let { id ->
+        RemoveObligationDialog(isSubmittingNode, true,
+            onDismiss = { convertingObligationId = null },
+            onConfirm = { actions.convert(id, NodePurpose.NOTE, removeObligation = true) { convertingObligationId = null } })
+    }
+
     batchDraft?.let { batch ->
         NodeBatchDialog(batch, people, peopleLoaded, isSubmittingNode,
             onDismiss = { if (!isSubmittingNode) batchDraft = null },
@@ -512,7 +522,7 @@ internal fun ProjectNodeScreen(
             },
             onSave = { title, description ->
                 actions.save(project.id, editor.parentId, editor.id, title, description, editor.creationId, editor.startAt, editor.dueAt,
-                    editDates = editor.purpose == NodePurpose.ACTION && (editor.id == null || projectState.nodesById[editor.id]?.isCompletable == true), purpose = editor.purpose) {
+                    editDates = editor.purpose == NodePurpose.ACTION && (editor.id == null || projectState.nodesById[editor.id]?.isCompletable == true), purpose = editor.purpose, obligation = editor.obligation(), removeObligation = editor.financialRemovalConfirmed) {
                     draft = null
                 }
             },

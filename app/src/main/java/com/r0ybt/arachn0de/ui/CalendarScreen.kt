@@ -135,6 +135,7 @@ internal fun CalendarScreen(
                             Text(node.title, maxLines = 2, overflow = TextOverflow.Ellipsis)
                             Text(timeFormat.format(Date(checkNotNull(node.dueAt))), fontSize = 12.sp, color = Arachn0deColors.TextSecondary)
                             Text(path, fontSize = 12.sp, color = Arachn0deColors.TextSecondary, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                            ObligationIndicator(node)
                             TaskDateIndicator(node, now)
                             ResponsibleAvatars(responsibleByNode[node.id].orEmpty())
                         }

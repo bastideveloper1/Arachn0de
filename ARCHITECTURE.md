@@ -226,6 +226,7 @@ updatedAt
 startAt (opcional)
 dueAt (opcional)
 purpose (ACTION / NOTE, persistido)
+amountMinor / currencyCode (capacidad de Obligación opcional)
 ```
 
 Desde el esquema Room 3, `isStructural` e `isCompletable` no son columnas persistidas ni parámetros de creación/edición. El dominio expone `hasChildren` derivado de las relaciones persistidas; `isStructural = hasChildren` e `isCompletable = !hasChildren && purpose == ACTION` son propiedades calculadas de solo lectura.
@@ -391,7 +392,7 @@ Utilizar:
 
 Room debe proporcionar la capa de persistencia.
 
-El esquema actual es la versión 7: v4 incorporó el orden persistente de proyectos, v5 Personas/Responsables, v6 las fechas opcionales de Nodes y v7 el propósito ACTION/NOTE. Se conservan los esquemas históricos 1–6 y sus rutas de migración; no se usa `fallbackToDestructiveMigration`.
+El esquema actual es la versión 8: v4 incorporó el orden persistente de proyectos, v5 Personas/Responsables, v6 las fechas opcionales de Nodes, v7 el propósito ACTION/NOTE y v8 la capacidad financiera opcional de hojas ACTION. Se conservan los esquemas históricos 1–7 y sus rutas de migración; no se usa `fallbackToDestructiveMigration`.
 
 ### Invariantes de nodos
 
@@ -827,7 +828,7 @@ Proyecto → Nodo → jerarquía arbitraria de Nodos → Capas de cebolla
 
 Las capas no se completan manualmente. El progreso existente se deriva de todas las tareas hoja descendientes, incluidas subcapas, sin contar los contenedores ni promediar sus porcentajes. `NodeTreeSnapshot` y los flujos del repositorio mantienen esta información reactiva. Las hojas NOTE quedan excluidas del trabajo medible.
 
-La base actual es local-first y offline-first, sin cuenta ni backend obligatorio: proyectos, nodos, navegación por Capas de cebolla, orden manual, drag/reorder y progreso derivado se apoyan en Room/SQLite v7, con Personas, responsables, fechas locales y propósito de hoja. Las secciones anteriores y los ajustes finales describen su implementación y las verificaciones físicas pendientes. Esta documentación no convierte esos pendientes en comprobaciones realizadas.
+La base actual es local-first y offline-first, sin cuenta ni backend obligatorio: proyectos, nodos, navegación por Capas de cebolla, orden manual, drag/reorder y progreso derivado se apoyan en Room/SQLite v8, con Personas, responsables, fechas locales, propósito de hoja y capacidad financiera opcional. Las secciones anteriores y los ajustes finales describen su implementación y las verificaciones físicas pendientes. Esta documentación no convierte esos pendientes en comprobaciones realizadas.
 
 El repositorio ofrece `moveNode(id, parentId)` transaccional, valida el proyecto del padre y rechaza ciclos. La acción visible «Mover a…» está implementada y reutiliza esta operación. Reordenar entre hermanos y trasladar a otro padre son operaciones distintas.
 
@@ -965,21 +966,47 @@ Cobertura dirigida nueva: cinco pruebas puras (inclusión, orden global determin
 
 Límites: vista mensual y lista del día únicamente; carga todos los Nodes locales, sin paginación ni benchmark de dispositivo. Se usa calendario gregoriano con localización del dispositivo. No añade creación contextual, edición de fechas, drag temporal, vista semanal/diaria completa, filtros, búsqueda, eventos externos, recurrencia persistente, alarmas, notificaciones ni sincronización. Pendiente dogfooding en tamaños pequeños, texto ampliado, TalkBack y cambios reales de zona/ciclo de vida.
 
+### Obligaciones — base financiera de ACTION Nodes IMPLEMENTADA
+
+La solicitud de este bloque resuelve la decisión abierta del modelo: **Obligación es una capacidad financiera opcional de una hoja ACTION**. Mantiene el mismo Node y árbol; no existe FinancialNode, CalendarEvent, tabla de obligaciones ni entidad especial de cuota. Una Capa como «Notebook» sigue siendo un contenedor normal de ACTION independientes. No calcula dinero agregado en esta versión.
+
+El dominio expone `Node.obligation: Obligation?`, una pieza de valor inmutable con `amountMinor: Long` y `currencyCode: String`. La misma fila `nodes` guarda dos columnas nullable: ambas nulas significan tarea normal; ambas presentes representan la capacidad financiera. No hay booleano persistido redundante. Solo ACTION sin hijos puede operarla. `Obligation` valida importe positivo y moneda con unidades menores definidas.
+
+Room pasa **v7 → v8** mediante `ObligationMigration7To8`: añade `amountMinor INTEGER` y `currencyCode TEXT`, ambos NULL para TODOS los Nodes existentes. Preserva IDs, jerarquía, posición, propósito, completado, fechas, Proyectos, Personas, asociaciones, índices y los once triggers anteriores; añade cuatro defensas financieras. Se exporta `8.json` y se conserva toda la cadena histórica sin migración destructiva ni reconstrucción de tablas.
+
+`Money` centraliza validación ISO con `Currency.getInstance`, `defaultFractionDigits`, parseo y formateo. El importe se guarda en unidades menores Long: CLP 50000 → 50000; USD 10.50 → 1050. No se usa Float/Double para dinero. `BigDecimal` realiza la conversión exacta y `longValueExact` rechaza overflow. Se exige monto > 0 y entrada numérica con separadores del Locale; no se aceptan símbolos monetarios, signos, exponentes, NaN/Infinity, agrupación incorrecta ni más decimales que los de la moneda. El texto de entrada es solo un borrador, nunca la fuente persistida. Las entradas se limitan a 128 caracteres. El Locale de entrada se guarda junto al borrador para interpretar sus separadores consistentemente al restaurar; el formateo visible usa el Locale actual. La moneda siempre queda explícita en la línea visual.
+
+La UI ofrece CLP (default), USD y EUR, más la moneda existente si se edita una futura obligación de otro código válido. La representación no está limitada a esas tres: respeta monedas de cero, dos o tres decimales según Currency. Códigos sin unidades menores definidas no son operativos. Cambiar moneda requiere que el monto introducido sea compatible; no convierte tasas ni mezcla monedas.
+
+«Nuevo elemento» y «Editar elemento» conservan campos existentes y agregan una opción secundaria **Obligación** solo para tareas hoja; al activarla aparecen Monto y Moneda. Errores bloquean Guardar y conservan el formulario. Tarea normal ↔ Obligación actualiza contenido/fechas/capacidad en una transacción, sin recrear el Node: conserva identidad, padre, Proyecto, posición, createdAt, completado y responsables; actualiza updatedAt. Quitar la opción de una obligación existente requiere confirmar **Eliminar datos financieros** al guardar, indicando que se borrarán monto y moneda. Cancelar la confirmación no escribe. No se mantienen finanzas latentes.
+
+Obligación ACTION → NOTE requiere la misma confirmación antes de convertir. Repository exige intención explícita de borrado; el DAO borra ambos campos en la escritura de propósito que ya normaliza completado. Fechas siguen latentes según la política existente de Notes. NOTE → ACTION vuelve a tarea normal pendiente, sin restaurar dinero eliminado. NOTE no muestra campos financieros ni permite activarlos.
+
+Una obligación no puede recibir hijos: creación individual/lote y traslado hacia ella se rechazan en Repository y SQLite, y las entradas de creación están deshabilitadas al abrirla con el mensaje «Convierte esta obligación en una tarea antes de usarla como capa». El selector de traslado excluye obligaciones como destinos. La validación de hojas es transaccional: activar finanzas en una Capa se rechaza y, ante creación concurrente de un hijo, solo puede confirmarse una de las operaciones válidas. Convertir primero en tarea normal habilita la transición hoja → Capa habitual.
+
+Los triggers exigen par monto/moneda, tipo INTEGER y monto > 0, código de tres letras mayúsculas, propósito ACTION y ausencia de hijos; otros dos impiden insertar/mover hijos bajo obligación. La pertenencia real del código a ISO y su cantidad de decimales se validan en dominio/Repository mediante Currency; SQLite garantiza la forma del código sin replicar un catálogo ISO en otra tabla. Las defensas de ciclos, identidad, propósito, completado y relaciones siguen instaladas. SQL externo con un código de forma correcta pero ajeno a Currency no está soportado: la lectura valida el dato y informa error de integridad mediante el mecanismo existente.
+
+Se reutilizan exactamente `isCompleted`, `node_person`, `startAt` y `dueAt`: completar equivale en esta base a obligación satisfecha/pagada; reabrir vuelve a pendiente, conservando dinero. No hay fecha real de pago, pagos parciales ni historial. Responsables son las mismas 0..N Personas, sin payer/debtor/creditor ni herencia. Mover y reorder escriben solo sus campos habituales, preservando monto/moneda; borrar conserva la limpieza de asociaciones.
+
+Calendario y Atención siguen clasificando exclusivamente ACTION/estructura/fechas mediante sus proyecciones actuales y TaskTemporal. Añaden una línea compacta del importe, también en tarjeta y contexto del Node, usando el naranja existente. Completadas permanecen en Calendario y salen de urgencia por la prioridad temporal existente. Progreso sigue contando una unidad por ACTION hoja, con el mismo peso que cualquier tarea; no hay progreso financiero ni porcentaje de dinero.
+
+«Crear varios» permite un lote ACTION de obligaciones con monto y moneda comunes, responsables/numeración y generación temporal existentes. `NodeBatchGenerator` entrega las propiedades financieras en las mismas `GeneratedNodeSpec` de la preview, sin fórmula temporal alternativa. La validación rechaza lotes parcialmente financieros o con monto/moneda distintos entre entradas. Cada entrada es un Node independiente creado ahora; no hay agrupación persistida de cuotas ni generación futura. `createBatch` inserta TODOS los Nodes financieros y asociaciones en la transacción existente o revierte todo, incluidas las normalizaciones. Los reintentos comparan también monto/moneda exactos, rechazando contenido financiero distinto.
+
+Los Flows existentes propagan creación, edición de monto/moneda, fechas, completado/reapertura, responsables, movimiento, reorder, borrados, conversiones y lotes. No se añade refresh manual. `EditorDraft.Saver` y `NodeBatchDraft.Saver` incluyen opción, importe introducido, código y Locale de entrada; conservan los demás campos/IDs. Las confirmaciones se restauran sin ejecutar escrituras y la versión del borrador de lote acepta el formato anterior. No hay persistencia de borradores en Room.
+
+La representación permite futuros cálculos por moneda sobre Nodes existentes y sus relaciones, sin implementarlos: **no sumar monedas distintas**, convertir monedas ni interpretar progreso estructural como proporción monetaria. No se añaden índices monetarios especulativos ni consultas de agregación.
+
+Pruebas dirigidas nuevas: Money con Locale fijo para CLP/USD/EUR y tres decimales, precisión/overflow/errores; repositorio y SQLite en API 24/28 para identidad, conversiones, bloqueos, traslados, reorder, completado, responsables, proyecciones y lotes atómicos/reintentos; migración del schema exportado v7 en API 24/28 conservando filas y triggers; Compose para creación/restauración, retiro confirmado, NOTE, presentación en Calendario/Atención y lote mensual financiero restaurado.
+
+Validación del bloque: 114 ejecuciones dirigidas (15 nuevas y 99 regresiones). Tras ajustar expectativas de versión/cantidad de triggers y el selector modal de Cancelar, se repitieron las clases afectadas con resultado correcto. La restricción final de lote financiero homogéneo también pasó las pruebas de generación, repositorio y UI de lotes.
+
+Límites: sin totales por Capa/Proyecto/período/Persona, filtros ni dashboard financiero, informes PNG, historial/fecha de pagos, parcialidades, intereses, amortización, deudas, cuentas bancarias, presupuestos, tasas externas, recurrencia ni avisos. Las futuras agregaciones siguen pendientes. No se acredita validación física, muerte real de proceso ni benchmark; las restauraciones usan el arnés de estado guardable existente y sus límites de Bundle.
+
 ## PRÓXIMA ETAPA — capacidades previstas, no implementadas
 
-### 7. Obligación — comportamiento previsto, modelo abierto
+### 7. Agregaciones de Obligaciones — pendientes
 
-**DECISIÓN ABIERTA: no se fija el modelo de Obligación.** Las alternativas a evaluar son:
-
-- A) una cualidad, tipo o propiedad de una tarea;
-- B) una Capa con propósito financiero cuyas tareas representan Obligaciones;
-- C) otra composición que represente mejor el dominio.
-
-Ninguna alternativa se selecciona en esta etapa documental. No se diseñan tablas, columnas, relaciones persistidas ni schema financiero.
-
-El comportamiento deseado incluye representar importes monetarios, asociarlos a Personas/responsables, utilizar fechas y vencimientos, conocer cuánto corresponde pagar, sumar importes, calcular total pendiente, consultar totales por mes/período, filtrar por Persona y generar informes. Incluir elementos de Subcapas dependerá del modelo final aprobado.
-
-Ejemplo conceptual para Octubre: Internet $30.000 y Luz $45.000 a cargo de Persona A; Notebook $50.000 a cargo de Persona B. Se desea obtener total del período, total pendiente y total por Persona. El ejemplo expresa necesidades funcionales, no entidades ni una decisión de representación. Diseñar formalmente Obligación será un paso separado y previo a implementarla.
+La capacidad financiera de hojas ACTION ya está implementada. El siguiente bloque deberá definir y calcular total monetario, pendiente y completado por Capa/Proyecto, período y Persona, incluido el alcance recursivo de Subcapas. Cada moneda se agrega por separado: CLP + USD nunca produce un único total. No hay conversión de monedas ni UI simulada de totales. Los informes PNG siguen pendientes.
 
 ### 8. Informe PNG de Obligaciones
 
@@ -1019,7 +1046,7 @@ Se distinguen dos conceptos: **Release DE Arachn0de** actualiza/distribuye la ap
 
 ### Secuencia tentativa de implementación
 
-Este orden es una propuesta revisable, no una obligación irreversible. Los primeros ocho pasos y el Calendario derivado ya están implementados; los restantes siguen pendientes:
+Este orden es una propuesta revisable, no una obligación irreversible. Los primeros diez pasos y el Calendario derivado ya están implementados; los restantes siguen pendientes:
 
 1. Mover Node a otra Capa — IMPLEMENTADO.
 2. Personas — IMPLEMENTADO.
@@ -1029,8 +1056,8 @@ Este orden es una propuesta revisable, no una obligación irreversible. Los prim
 6. Notas y conversión Tarea ↔ Nota — IMPLEMENTADO.
 7. Creación múltiple y numeración — IMPLEMENTADO.
 8. Reglas temporales finitas para creación múltiple — IMPLEMENTADO; recurrencia persistente no implementada.
-9. Diseñar formalmente Obligación.
-10. Implementar Obligaciones según el diseño aprobado.
+9. Definir Obligación como capacidad de ACTION hoja — RESUELTO en el bloque financiero.
+10. Implementar base de Obligaciones — IMPLEMENTADO; agregaciones pendientes.
 11. Agregaciones, totales y filtros financieros.
 12. Informe PNG.
 13. Tags.
@@ -1059,7 +1086,7 @@ Desktop y sincronización local constituyen una etapa avanzada/final de esta lí
 
 ## DECISIONES ABIERTAS — resolver antes de implementar
 
-- **Obligación:** elegir entre A, B u otra composición mediante diseño específico; definir allí el alcance de agregación por Subcapas. No hay modelo ni schema aprobado.
+- **Agregaciones de Obligaciones:** la capacidad financiera de ACTION hoja y Room v8 ya están implementados. Definir el alcance recursivo, períodos y asociaciones por Persona antes de implementar totales; monedas distintas se mantienen separadas.
 - **Capas explícitamente vacías:** decidir si deben existir en el futuro. Actualmente perder el último hijo convierte el nodo en tarea; esta documentación no cambia esa regla ni elige una alternativa futura.
 - **Notas avanzadas:** formato y adjuntos se diseñarán en otra etapa; el propósito NOTE y la conversión de hojas ya están implementados. No se definen Notas contenedoras.
 - **Atención avanzada y generación temporal:** la propagación básica y generación temporal finita ya están implementadas; diseñar futuras reglas adicionales y recurrencia persistente antes de desarrollar esos bloques.
@@ -1069,7 +1096,7 @@ Desktop y sincronización local constituyen una etapa avanzada/final de esta lí
 
 Se preservan local-first, offline-first, privacidad y ausencia de cuenta/backend obligatorio. `Node` sigue siendo la primitiva estructural con jerarquía de profundidad práctica arbitraria. La información será derivada cuando sea posible, evitando persistir datos calculables innecesariamente.
 
-La UI seguirá separada del dominio, repositorios y persistencia. Room/SQLite es el almacenamiento local actual; cualquier extensión que necesite cambios persistentes se implementará en su propio bloque mediante migraciones seguras, sin romper datos existentes. No se crean migraciones en esta etapa documental.
+La UI seguirá separada del dominio, repositorios y persistencia. Room/SQLite es el almacenamiento local actual; cualquier extensión que necesite cambios persistentes se implementará en su propio bloque mediante migraciones seguras, sin romper datos existentes. El roadmap de capacidades todavía pendientes no crea migraciones por sí mismo; los bloques implementados documentan sus propias migraciones.
 
 Las nuevas vistas reutilizarán el mismo dominio. La UI no debe sobrecargarse con conceptos que puedan permanecer implícitos. El siguiente desarrollo ampliará el núcleo del MVP; no lo reemplazará ni implementará anticipadamente todo este roadmap.
 

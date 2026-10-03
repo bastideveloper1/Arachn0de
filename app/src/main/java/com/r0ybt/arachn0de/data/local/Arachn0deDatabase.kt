@@ -12,6 +12,7 @@ abstract class Arachn0deDatabase : RoomDatabase() {
     abstract fun projectDao(): ProjectDao
     abstract fun nodeDao(): NodeDao
     abstract fun personDao(): PersonDao
+    internal abstract fun backupDao(): BackupDao
 
     companion object {
         /** The application owner should retain one instance and close it when no longer needed. */

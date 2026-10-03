@@ -22,6 +22,14 @@ import com.r0ybt.arachn0de.ui.state.rememberTaskScreenNow
 
 @Composable
 internal fun AppRoot(projectRepository: ProjectRepository, nodeRepository: NodeRepository, clock: () -> Long = System::currentTimeMillis) {
+    var generation by rememberSaveable { mutableStateOf(0) }
+    androidx.compose.runtime.key(generation) {
+        AppRootContent(projectRepository, nodeRepository, clock) { generation++ }
+    }
+}
+
+@Composable
+private fun AppRootContent(projectRepository: ProjectRepository, nodeRepository: NodeRepository, clock: () -> Long, onRestored: () -> Unit) {
     val personRepository = (androidx.compose.ui.platform.LocalContext.current.applicationContext as com.r0ybt.arachn0de.Arachn0deApplication).personRepository
     val screenStates = androidx.compose.runtime.saveable.rememberSaveableStateHolder()
     var showAbout by rememberSaveable { mutableStateOf(false) }
@@ -90,7 +98,7 @@ internal fun AppRoot(projectRepository: ProjectRepository, nodeRepository: NodeR
 
     val selectedProject = projects?.firstOrNull { it.id == selectedProjectId }
     if (showAbout) {
-        screenStates.SaveableStateProvider("about") { AboutScreen(onBack = { showAbout = false }) }
+        screenStates.SaveableStateProvider("about") { AboutScreen(onBack = { showAbout = false }, onRestored = onRestored) }
     } else if (showPeople) {
         screenStates.SaveableStateProvider("people") { PeopleScreen(personRepository) { showPeople = false } }
     } else if (showObligations) {

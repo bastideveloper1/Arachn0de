@@ -20,7 +20,7 @@ import com.r0ybt.arachn0de.ui.state.UpdateState
 import com.r0ybt.arachn0de.ui.theme.Arachn0deColors
 
 @Composable
-internal fun AboutScreen(onBack: () -> Unit, repository: UpdateRepository = remember { UpdateRepository() }, downloads: UpdateDownloads? = null) {
+internal fun AboutScreen(onBack: () -> Unit, repository: UpdateRepository = remember { UpdateRepository() }, downloads: UpdateDownloads? = null, onRestored: () -> Unit = {}) {
     var linkError by remember { mutableStateOf(false) }
     val context = LocalContext.current
     val store = remember(context) { UpdateDownloadStore(File(context.cacheDir, "updates"), GitHubAssetFetcher(), AndroidApkValidator(context.applicationContext)) }
@@ -74,6 +74,7 @@ internal fun AboutScreen(onBack: () -> Unit, repository: UpdateRepository = reme
                     Button(onClick = actions::download, enabled = !actions.busy) { Text("Descargar actualización") }
                 }
             }
+            BackupSection(onRestored)
             HorizontalDivider()
             Text("Autor", style = MaterialTheme.typography.titleMedium)
             Text("r0ybt")

@@ -1306,3 +1306,71 @@ Se ejecutó `test assembleDebug lintDebug --continue` dos veces: primero **299 c
 assembleDebug correcto. lintDebug sigue fallando únicamente por WrongConstant en ObligationPngRenderer.kt:68, con 19 warnings y 3 hints del baseline. Dos advertencias nuevas de la frontera Android (guardia API 26 y uso KTX de Uri) se corrigieron sin suprimir lint ni modificar el renderer. git diff --check correcto. Gradle/signingConfig, versión 0.2.0/código 2, Room v8 e informes #23 intactos. No se tocó el keystore ni se creó/publicó una Release, tag, commit o push.
 
 Pendiente antes de validar una distribución: prueba física completa en API 24–25 y 26+, denegar/conceder origen, volver de Settings (incluida recreación), cancelación/error del instalador, cache purgada, red interrumpida/espacio insuficiente y actualización real con APK de versión/código superiores firmado con la misma clave. #33/#34 son cambios locales posteriores al tag publicado v0.2.0; su APK publicado no incorpora estos bloques. Publicar una siguiente versión formal y probar la actualización son misiones separadas; esta intervención no incrementa versiones ni sustituye assets. Rotación de claves sigue fuera del alcance.
+
+## Backup y restauración completa — formato v1
+
+Recuperación manual del **estado funcional completo** desde Acerca de → Backup y restauración, con botones Crear backup / Restaurar backup. No es exportación de un proyecto. Todo el código de esta función es local; no usa red, cuentas, nube ni telemetría. La exclusión de backup/transferencia administrados por Android permanece intacta. SAF usa ACTION_CREATE_DOCUMENT / ACTION_OPEN_DOCUMENT con EXTRA_LOCAL_ONLY, sin permisos amplios de almacenamiento ni permisos URI persistentes; el usuario elige el destino. El comportamiento final del proveedor de documentos pertenece a Android/proveedor.
+
+Inventario comprobado en Room v8, sin cambios de entidades, schema ni migraciones:
+
+| Tabla / archivo | Campos incluidos |
+| --- | --- |
+| `projects` | `id`, `name`, `description`, `position`, `createdAt`, `updatedAt` |
+| `nodes` | `id`, `projectId`, `parentId`, `title`, `description`, `isCompleted`, `position`, `createdAt`, `updatedAt`, `startAt`, `dueAt`, `purpose`, `amountMinor`, `currencyCode` |
+| `persons` | `id`, `name`, `avatarFile` como referencia portátil |
+| `node_person` | `nodeId`, `personId` (many-to-many) |
+| `files/avatars/*.png` referenciados | Bytes PNG completos; referencias compartidas se conservan |
+
+No hay otros almacenes funcionales persistentes en este checkout. Se excluyen índices/triggers/metadatos internos de Room (los crea la app), progreso y proyecciones derivados, estado de navegación/formularios del Bundle, cachés, APK/recibos de actualización, informes regenerables, temporales, avatares sin referencias y credenciales de firma. No se recortan títulos históricos ni se renumeran posiciones al exportar/restaurar; las normalizaciones de orden de las operaciones habituales siguen siendo las existentes.
+
+Cadena: UI `BackupSection` → `BackupActions` → `BackupRepository` → `BackupDao`/DAOs actuales y `BackupAvatarFiles`. `BackupData` representa el conjunto lógico; `BackupJson` hace el mapeo explícito de campos; `BackupContainer` encapsula el payload; `BackupDocuments` solo entrega/lee streams del SAF. El repositorio pertenece al Application; un mutex serializa snapshots/restauraciones/recuperación de sus archivos. IO y serialización corren fuera del hilo UI. La UI no consulta/escribe Room directamente.
+
+### Formato `.arachnode`
+
+Nombre sugerido `Arachn0de-Backup-YYYY-MM-DD.arachnode`, usando fecha local del dispositivo. Contenedor binario de tamaño acotado, sin ZIP ni copia SQLite:
+
+1. Magic: diez bytes ASCII `ARACHNODE\n` (el último byte es LF).
+2. `formatVersion`: Int32 big-endian, valor **1**.
+3. `encoding`: Int32 big-endian, valor **0** (JSON plano UTF-8).
+4. Long64 big-endian con longitud exacta del payload.
+5. 32 bytes SHA-256 calculados sobre **cabecera anterior + payload**.
+6. Payload JSON UTF-8: `dataVersion = 1`, `appVersion` creadora, `createdAt` epoch millis, arrays `projects`, `nodes`, `persons`, `assignments`, `avatars`. Cada avatar contiene nombre relativo y PNG codificado en Base64 canónico.
+
+Formato del contenedor y versión de datos son independientes de la versión de Room. v1 rechaza versiones/codificaciones desconocidas; una futura versión podrá añadir un adaptador de datos explícito antes de validar/restaurar. Importes y fechas son enteros Long exactos, nunca Double. El parser rechaza campos duplicados, ausentes/desconocidos, tipos incorrectos, overflow, UTF-8 inválido, profundidad excesiva y contenido sobrante. No se interpreta ninguna ruta absoluta ni se extraen archivos externos.
+
+SHA-256 detecta daño accidental, truncado o contenido agregado, incluyendo modificación de cabecera. **No ofrece autenticidad ni confidencialidad**: alguien con acceso puede leer o modificar/recalcular un archivo. v1 no tiene cifrado, contraseña, YubiKey ni claves ligadas al dispositivo. Límites explícitos: payload de **16 MiB**, hasta **100.000 registros** sumados entre las cuatro tablas, avatar de **1 MiB** y hasta **8 MiB** de PNG en total; dimensiones 1..512 px. También se acota el texto previo a serializar a 8 MiB. Superar los límites rechaza la operación sin exportación/restauración parcial. v1 trabaja en memoria con límites; no promete volumen ilimitado.
+
+### Consistencia e integridad
+
+El snapshot lee todas las tablas y copia los PNG referenciados **dentro de una sola transacción Room**. No normaliza ni modifica datos. Un avatar referenciado ausente/dañado impide generar el backup, en lugar de perderlo silenciosamente. Tras validar el snapshot, genera un archivo privado en `cache/backups`, escribe/cierra/sincroniza y publica mediante rename únicamente cuando está completo. El selector de destino se abre después. Fallo/cancelación de creación elimina staging; los archivos privados completos pendientes caducan al volver a esta sección tras 24 h.
+
+Antes de confirmar restauración se verifica magic/versiones/tamaño exacto/hash, JSON, identidades únicas, proyectos/padres existentes y del mismo proyecto, ausencia de ciclos mediante recorrido iterativo, propósito/completado válidos, fechas, dinero/monedas con `Obligation`, pares monto/moneda, prohibición de hijos en Notes/obligaciones, relaciones many-to-many únicas y referencias exactas de avatares. PNG exige firma, estructura de chunks, CRC, IEND final, dimensiones y decodificación correcta. Un archivo inválido no abre la confirmación y no escribe datos.
+
+### Restauración atómica y archivos
+
+La confirmación explica que **se reemplazan todos los datos actuales**, con recuentos y opción Cancelar. Recomienda cancelar y usar el mismo Crear backup para conservar primero el estado actual; no hay un segundo sistema de backup. No se restaura automáticamente al seleccionar/restaurar estado UI.
+
+1. Revalidar todos los datos antes de cualquier reemplazo.
+2. Preparar los PNG con **nombres UUID nuevos**. Nunca sobrescribir los avatares actuales. Un diario privado durable `files/backup-restore-journal.json` registra los nuevos nombres antes de escribirlos; todos los archivos y directorios se sincronizan antes de que Room pueda referenciarlos.
+3. En una transacción Room, registrar también los avatares actuales en el diario; borrar asociaciones, desconectar padres de todos los nodos antes de borrarlos para evitar cascadas recursivas profundas, borrar las cuatro tablas y reinsertar Proyectos/Personas, Nodes en orden padre→hijo y asociaciones. Mantener todos los campos/IDs/UUID/fechas/posiciones y triggers. Solo remapear los nombres privados de avatar, conservando sus bytes y referencias compartidas.
+4. Ante excepción/cancelación previa al commit, Room revierte todas las filas; los nombres anteriores nunca se sobrescribieron. Tras commit o rollback, limpiar **solo** archivos del diario sin referencias en la base confirmada y retirar el diario. Si la limpieza falla, no se comunica como restauración fallida después de un commit: se reintenta al abrir la sección o iniciar otra restauración. No se borran los avatares de borradores de Personas ajenos al diario.
+
+Un cierre del proceso conserva el commit/rollback SQLite y deja archivos preparados antes de referenciarlos. Al volver a la sección, el diario permite decidir por referencias confirmadas qué archivos conservar/eliminar, tanto antes como después del commit. Base + archivos forman una operación lógica mediante preparación inmutable/commit/recolección; no existe una transacción filesystem+SQLite nativa. Pérdida física del almacenamiento/corrupción del dispositivo queda fuera de esta garantía.
+
+Los observadores Room reciben los datos confirmados. Tras éxito, la raíz Compose cambia su generación, descarta navegación/borradores/scroll de la sesión anterior y vuelve a Proyectos; un aviso confirma la restauración. No se reinstala ni se cierra/reabre la base. La recreación cancela operaciones ligadas a la composición: no serializa datos del backup en Bundle ni repite el reemplazo; si se pierde la confirmación hay que seleccionar nuevamente. El nombre temporal de una exportación con selector abierto sí puede recuperarse y se valida antes de guardar.
+
+### Límites y evolución
+
+La escritura al proveedor SAF **no puede ser transaccional**: si falla/cancela se intenta borrar el documento y nunca se anuncia éxito. Si el proveedor impide el borrado puede quedar un parcial que el usuario debe eliminar; sus longitud/hash no lo convierten en un backup válido. EXTRA_LOCAL_ONLY solicita destinos locales; la app no controla proveedores que incumplan el contrato. No hay historial, backup automático, merge, recuperación selectiva, compatibilidad con formatos futuros, compresión ni cifrado en v1. Faltan pruebas físicas con proveedores SAF reales, poco espacio, interrupción del proceso/dispositivo y fsync real en Android; Robolectric prueba filesystem/SQLite del host, con un adaptador JVM para fsync de directorios porque ShadowLinux API 28 no permite abrirlos.
+
+Para añadir protección futura se mantiene la frontera **datos lógicos → serialización → transformación del payload → contenedor → almacenamiento Android**. Un encoding nuevo podrá transportar cifrado autenticado estándar y sus parámetros/versiones. Habrá que diseñar y probar derivación de contraseña, envolturas de clave para varias YubiKeys autorizadas, autenticación del contenedor, UX de desbloqueo y migración/compatibilidad; no atarlo exclusivamente a Android Keystore ni a una clave del teléfono. Los repositorios/snapshot/restauración no necesitan una nueva semántica para ello. No se implementa criptografía propia ni esos componentes ahora.
+
+### Validación de Backup/Restore
+
+Pruebas nuevas: `BackupFormatTest` (7 casos × API 24/28 = 14), `BackupRepositoryTest` (10 × API 24/28 = 20), `BackupDocumentsTest` (3 × API 24/28 = 6) y `BackupUiTest` (5 Compose, cuatro API 28 y uno API 24): **45 ejecuciones correctas**. Cubren round-trip de todos los campos, Long.MAX_VALUE en dinero, UUID, jerarquía/orden/estados/Notes/fechas, Personas y many-to-many, avatares compartidos, Estado A → backup → Estado B → restauración exacta de A, vacío, corrupción/truncado/versión/codificación desconocida, JSON/tipos/referencias/ciclos inválidos, PNG/CRC, rollback SQLite inyectado después de borrar las tablas, fallo de sincronización de staging, recuperación de diario, snapshot consistente ante escrituras concurrentes en varias tablas, jerarquía de 1100 niveles, SAF/copia/error de proveedor y confirmación/cancelación/retorno al dashboard. Un fallo en el callback UI después del commit no se informa como rollback de datos.
+
+Primero se ejecutó el módulo nuevo. Los ajustes iniciales corrigieron el adaptador de fsync en Robolectric API 28 y una expectativa del contrato SAF, sin debilitar la sincronización de Android. La prueba UI detectó un Toast fuera del Looper; su entrega se pasó explícitamente al Handler principal y las esperas sincronizan la cola Android. La validación dirigida final con NodePersistence, NodeInvariant, PersonRepository, ProjectPersistence, FinancialRepository, NodeBatchRepository y UpdateUi pasó **103 ejecuciones** (45 nuevas + 58 regresiones), junto a `assembleDebug`. Tras acotar la acumulación de PNG durante el snapshot se repitieron las 20 pruebas del repositorio y `assembleDebug`, correctos.
+
+Después se ejecutó **una sola vez** toda la suite unitaria Debug: `:app:testDebugUnitTest`, **348 casos, 343 correctos, 5 fallidos**, sin errores ni omitidos. Los 45 casos nuevos pasaron también en esa suite. Los cinco fallos coinciden con los antecedentes documentados de #33/#34: `ScrollRestorationTest.dashboardRetainsScrollAcrossProjectVisitAndRecreation`, `ScrollRestorationTest.mapRetainsScrollWhileClosedAndAcrossRecreation`, `LargeListsTest.largeTaskLayerScrollsWithoutNavigatingIntoLeaf`, `LargeListsTest.projectListLongPressDragReordersByStableId`, `MvpReadinessTest.narrowDashboardAndDrawerExposeNoNonfunctionalFeatures`. No se arreglaron ni se ejecutó una segunda suite general. No aparecieron fallos nuevos observados fuera de esos cinco. Esta intervención no volvió a ejecutar una suite baseline sin cambios; la clasificación histórica usa la evidencia ya registrada en el documento.
+
+`assembleDebug` correcto; `git diff --check` correcto. No se ejecutó lint completo. Versión `0.2.1 / 3`, Room v8, dependencias, manifiesto, firma y reglas Android de exclusión de backup intactos. Sin commit, push, tag, APK Release ni publicación.

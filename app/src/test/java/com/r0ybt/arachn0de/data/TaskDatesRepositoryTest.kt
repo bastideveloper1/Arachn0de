@@ -123,7 +123,7 @@ class TaskDatesRepositoryTest {
         helper.writableDatabase.execSQL("INSERT INTO persons VALUES ('p', 'Person', 'original-avatar.png')")
         helper.writableDatabase.execSQL("INSERT INTO node_person VALUES ('leaf', 'p')")
         helper.close(); open()
-        assertEquals(6, db.openHelper.readableDatabase.version)
+        assertEquals(7, db.openHelper.readableDatabase.version)
         val original = db.projectDao().getById("old")!!
         assertEquals("Original", original.name); assertEquals("Description", original.description)
         assertEquals(8, original.position); assertEquals(100L, original.createdAt); assertEquals(150L, original.updatedAt)
@@ -132,7 +132,7 @@ class TaskDatesRepositoryTest {
         assertEquals(PersonEntity("p", "Person", "original-avatar.png"), db.personDao().get("p"))
         assertEquals("p", people.observeAssignments("old").first().getValue("leaf").single().id)
         db.openHelper.readableDatabase.query("PRAGMA foreign_key_check").use { assertFalse(it.moveToFirst()) }
-        db.openHelper.readableDatabase.query("SELECT COUNT(*) FROM sqlite_master WHERE type='trigger' AND name LIKE 'nodes_%'").use { assertTrue(it.moveToFirst()); assertEquals(7, it.getInt(0)) }
+        db.openHelper.readableDatabase.query("SELECT COUNT(*) FROM sqlite_master WHERE type='trigger' AND name LIKE 'nodes_%'").use { assertTrue(it.moveToFirst()); assertEquals(11, it.getInt(0)) }
         val child = nodes.createNode("old", "leaf", "Child")
         assertFalse(nodes.getNode("leaf")!!.isCompleted)
         assertFalse(nodes.setCompleted("leaf", true))

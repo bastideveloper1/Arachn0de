@@ -21,6 +21,8 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.Description
+import com.r0ybt.arachn0de.domain.model.NodePurpose
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -164,6 +166,7 @@ internal fun NodeCard(
     responsiblePeople: List<com.r0ybt.arachn0de.domain.model.Person> = emptyList(),
     now: Long = 0L,
     attention: com.r0ybt.arachn0de.domain.model.AttentionSummary? = null,
+    onConvert: (() -> Unit) -> Unit = { done -> done() },
 ) {
     var showContextMenu by remember { mutableStateOf(false) }
     val completedTint = if (node.isCompleted) Arachn0deColors.Completed else Arachn0deColors.Primary
@@ -212,6 +215,8 @@ internal fun NodeCard(
                         )
                     }
                 }
+            } else if (node.purpose == NodePurpose.NOTE) {
+                Icon(Icons.Default.Description, contentDescription = "Nota", tint = Arachn0deColors.TextSecondary, modifier = Modifier.size(36.dp))
             } else if (hasChildren) {
                 Image(
                     painter = painterResource(id = R.drawable.cebolla_icon),
@@ -321,6 +326,11 @@ internal fun NodeCard(
                         modifier = Modifier.fillMaxWidth(),
                     ) {
                         Text("Editar", textAlign = TextAlign.Start, modifier = Modifier.fillMaxWidth())
+                    }
+                    if (!hasChildren) {
+                        TextButton(onClick = { onConvert { showContextMenu = false } }, modifier = Modifier.fillMaxWidth()) {
+                            Text(if (node.purpose == NodePurpose.NOTE) "Convertir en tarea" else "Convertir en nota", modifier = Modifier.fillMaxWidth())
+                        }
                     }
                     TextButton(
                         onClick = { showContextMenu = false; onResponsible() },

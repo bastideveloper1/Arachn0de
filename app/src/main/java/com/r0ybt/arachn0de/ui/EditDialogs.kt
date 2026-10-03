@@ -3,6 +3,9 @@ package com.r0ybt.arachn0de.ui
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.material3.FilterChip
+import androidx.compose.foundation.layout.Row
+import com.r0ybt.arachn0de.domain.model.NodePurpose
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
@@ -53,6 +56,14 @@ internal fun NodeDialog(
         title = { Text(if (draft.id == null) "Nuevo elemento" else "Editar elemento") },
         text = {
             Column(modifier = Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                if (draft.id == null) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        for ((purpose, label) in listOf(NodePurpose.ACTION to "Tarea", NodePurpose.NOTE to "Nota")) {
+                            FilterChip(selected = draft.purpose == purpose, onClick = { draft.purpose = purpose },
+                                enabled = !isSubmitting, label = { Text(label) })
+                        }
+                    }
+                }
                 OutlinedTextField(
                     value = title,
                     onValueChange = { if (!isSubmitting) title = it },
@@ -72,14 +83,14 @@ internal fun NodeDialog(
                     modifier = Modifier.fillMaxWidth(),
                     enabled = !isSubmitting,
                 )
-                if (editDates) {
+                if (editDates && draft.purpose == NodePurpose.ACTION) {
                     TaskDatesEditor(draft, enabled = !isSubmitting, picker = datePicker)
                     if (draft.startAt != null && draft.dueAt != null && draft.dueAt!! < draft.startAt!!) {
                         Text("El vencimiento no puede ser anterior al inicio. Corrige las fechas para guardar.", color = Arachn0deColors.Destructive)
                     }
                 }
                 Text(
-                    text = "Un elemento sin hijos funciona como tarea. Si añade hijos, se convierte automáticamente en capa.",
+                    text = if (draft.purpose == NodePurpose.NOTE) "Una nota conserva información. Para añadir hijos, conviértela primero en tarea." else "Una tarea se convierte automáticamente en capa al añadir hijos.",
                     color = Arachn0deColors.TextSecondary,
                     fontSize = 12.sp,
                 )
@@ -88,7 +99,7 @@ internal fun NodeDialog(
         confirmButton = {
             TextButton(
                 enabled = !isSubmitting && title.trim().isNotEmpty() && TitleLimits.count(title) <= TitleLimits.NODE &&
-                    (!editDates || draft.startAt == null || draft.dueAt == null || draft.dueAt!! >= draft.startAt!!),
+                    (!editDates || draft.purpose == NodePurpose.NOTE || draft.startAt == null || draft.dueAt == null || draft.dueAt!! >= draft.startAt!!),
                 onClick = {
                     val cleanTitle = title.trim()
                     if (!isSubmitting && cleanTitle.isNotEmpty() && TitleLimits.count(cleanTitle) <= TitleLimits.NODE) {

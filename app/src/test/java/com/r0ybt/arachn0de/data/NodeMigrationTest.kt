@@ -48,7 +48,7 @@ class NodeMigrationTest {
         val root = repo.createNode("project", null, "Root")
         repo.createNode("project", root.id, "Child")
         assertFalse(repo.setCompleted(root.id, true))
-        assertEquals(6, db.openHelper.readableDatabase.version)
+        assertEquals(7, db.openHelper.readableDatabase.version)
     }
 
     @Test
@@ -154,7 +154,7 @@ class NodeMigrationTest {
         sql.query("PRAGMA foreign_key_check").use { assertFalse(it.moveToFirst()) }
         sql.query("SELECT COUNT(*) FROM sqlite_master WHERE type = 'trigger' AND name LIKE 'nodes_%'").use {
             assertTrue(it.moveToFirst())
-            assertEquals(7, it.getInt(0))
+            assertEquals(11, it.getInt(0))
         }
         val repo = NodeRepository(db)
         val root = repo.createNode("project", null, "SQL guard root")

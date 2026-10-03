@@ -37,6 +37,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.saveable.listSaver
 import androidx.compose.runtime.toMutableStateList
 import androidx.compose.runtime.snapshots.SnapshotStateList
+import com.r0ybt.arachn0de.domain.model.NodePurpose
 import com.r0ybt.arachn0de.ui.state.EditorDraft
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.saveable.rememberSaveableStateHolder
@@ -307,7 +308,7 @@ internal fun ProjectNodeScreen(
                                         Button(
                                             onClick = {
                                                 if (!isSubmittingNode) {
-                                                    draft = EditorDraft(currentNode.id, currentNode.parentId, currentNode.title, currentNode.description, startAt = currentNode.startAt, dueAt = currentNode.dueAt)
+                                                    draft = EditorDraft(currentNode.id, currentNode.parentId, currentNode.title, currentNode.description, startAt = currentNode.startAt, dueAt = currentNode.dueAt, purpose = currentNode.purpose)
                                                 }
                                             },
                                             enabled = !isSubmittingNode,
@@ -355,6 +356,12 @@ internal fun ProjectNodeScreen(
                                             }
                                         }
                                     }
+                                    if (!currentNode.hasChildren) {
+                                        TextButton(enabled = !isSubmittingNode, onClick = {
+                                            actions.convert(currentNode.id, if (currentNode.purpose == NodePurpose.NOTE) NodePurpose.ACTION else NodePurpose.NOTE)
+                                        }) { Text(if (currentNode.purpose == NodePurpose.NOTE) "Convertir en tarea" else "Convertir en nota") }
+                                    }
+                                    if (currentNode.purpose == NodePurpose.NOTE) Text("Nota · Convierte en tarea para añadir hijos", color = Arachn0deColors.TextSecondary)
                                     TaskDateIndicator(currentNode, now)
                                     ResponsibleAvatars(responsibleByNode[currentNode.id].orEmpty())
                                     TextButton(
@@ -371,7 +378,7 @@ internal fun ProjectNodeScreen(
                             }
                         }
                         if (currentNodes.isEmpty()) {
-                            item(key = "empty-layer", contentType = "empty") { EmptyLayerState() }
+                            item(key = "empty-layer", contentType = "empty") { if (currentNode?.purpose != NodePurpose.NOTE) EmptyLayerState() }
                         }
                         for (completedGroup in listOf(false, true)) {
                             val groupNodes = currentNodes.filter { it.isCompleted == completedGroup }
@@ -396,6 +403,7 @@ internal fun ProjectNodeScreen(
                                     node = node,
                                     progress = progressMap[node.id],
                                     hasChildren = node.hasChildren,
+                                    onConvert = { done -> actions.convert(node.id, if (node.purpose == NodePurpose.NOTE) NodePurpose.ACTION else NodePurpose.NOTE, done) },
                                     canToggleComplete = node.isCompletable,
                                     onOpen = {
                                         currentPath.add(node.id)
@@ -406,7 +414,7 @@ internal fun ProjectNodeScreen(
                                     onResponsible = { if (!isSubmittingNode && !personActions.operation.busy && peopleLoaded && assignmentsLoaded) responsibleNodeId = node.id },
                                     onMove = { if (!isSubmittingNode) movingNodeId = node.id },
                                     onEdit = {
-                                        draft = EditorDraft(node.id, node.parentId, node.title, node.description, startAt = node.startAt, dueAt = node.dueAt)
+                                        draft = EditorDraft(node.id, node.parentId, node.title, node.description, startAt = node.startAt, dueAt = node.dueAt, purpose = node.purpose)
                                     },
                                     canMoveUp = node.id != renderNodes.firstOrNull()?.id && !isSubmittingNode,
                                     canMoveDown = node.id != renderNodes.lastOrNull()?.id && !isSubmittingNode,
@@ -436,11 +444,11 @@ internal fun ProjectNodeScreen(
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Button(
-                        onClick = { if (!isSubmittingNode) draft = EditorDraft(null, currentNodeId, "", "") },
+                        onClick = { if (!isSubmittingNode && currentNode?.purpose != NodePurpose.NOTE) draft = EditorDraft(null, currentNodeId, "", "") },
                         modifier = Modifier.weight(1f).heightIn(min = 52.dp),
                         colors = ButtonDefaults.buttonColors(containerColor = Arachn0deColors.Primary),
                         shape = RoundedCornerShape(14.dp),
-                        enabled = !isSubmittingNode,
+                        enabled = !isSubmittingNode && currentNode?.purpose != NodePurpose.NOTE,
                     ) {
                         Icon(imageVector = Icons.Default.Add, contentDescription = null)
                         Spacer(Modifier.width(8.dp))
@@ -483,7 +491,7 @@ internal fun ProjectNodeScreen(
         NodeDialog(
             draft = editor,
             isSubmitting = isSubmittingNode,
-            editDates = editor.id == null || projectState.nodesById[editor.id]?.hasChildren == false,
+            editDates = editor.purpose == NodePurpose.ACTION && (editor.id == null || projectState.nodesById[editor.id]?.isCompletable == true),
             onDismiss = {
                 if (!isSubmittingNode) {
                     draft = null
@@ -491,7 +499,7 @@ internal fun ProjectNodeScreen(
             },
             onSave = { title, description ->
                 actions.save(project.id, editor.parentId, editor.id, title, description, editor.creationId, editor.startAt, editor.dueAt,
-                    editDates = editor.id == null || projectState.nodesById[editor.id]?.hasChildren == false) {
+                    editDates = editor.purpose == NodePurpose.ACTION && (editor.id == null || projectState.nodesById[editor.id]?.isCompletable == true), purpose = editor.purpose) {
                     draft = null
                 }
             },

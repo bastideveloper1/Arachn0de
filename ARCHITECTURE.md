@@ -225,9 +225,10 @@ createdAt
 updatedAt
 startAt (opcional)
 dueAt (opcional)
+purpose (ACTION / NOTE, persistido)
 ```
 
-Desde el esquema Room 3, `isStructural` e `isCompletable` no son columnas persistidas ni parámetros de creación/edición. El dominio expone `hasChildren` derivado de las relaciones persistidas; `isStructural = hasChildren` e `isCompletable = !hasChildren` son propiedades calculadas de solo lectura.
+Desde el esquema Room 3, `isStructural` e `isCompletable` no son columnas persistidas ni parámetros de creación/edición. El dominio expone `hasChildren` derivado de las relaciones persistidas; `isStructural = hasChildren` e `isCompletable = !hasChildren && purpose == ACTION` son propiedades calculadas de solo lectura.
 
 `isCompleted` conserva exclusivamente el completado manual de una hoja. Para una capa siempre es `false`; no equivale a su progreso derivado.
 
@@ -269,12 +270,12 @@ No obstante, evitar implementar esas especializaciones durante el MVP.
 
 ## Fuente de verdad del dominio
 
-La estructura persistida es la única fuente de verdad:
+Las relaciones persistidas definen la estructura; el propósito persistido define el comportamiento de hoja:
 
-- Node sin hijos = hoja/tarea, siempre completable.
+- Node sin hijos = hoja: ACTION es tarea completable; NOTE es información no completable.
 - Node con uno o más hijos = capa/contenedor, nunca completable manualmente.
-- El usuario no elige un tipo técnico.
-- No existen hojas estructurales no completables, aunque versiones anteriores permitían crearlas.
+- El usuario elige propósito Tarea/Nota; hoja/Capa sigue derivándose de los hijos.
+- NOTE es una hoja informativa no completable; no existe una bandera estructural independiente.
 
 Se descarta mantener `isStructural` e `isCompletable` almacenados como fuentes independientes de la estructura.
 
@@ -290,7 +291,7 @@ Se descarta mantener `isStructural` e `isCompletable` almacenados como fuentes i
 
 ## Cálculo exacto de progreso
 
-Cada hoja aporta una unidad de trabajo, con igual peso. Su progreso es 0/1 o 1/1. Una capa suma las hojas de todos sus descendientes; no se cuenta a sí misma ni se promedian los porcentajes de sus hijos.
+Cada hoja ACTION aporta una unidad de trabajo, con igual peso; NOTE aporta cero. El progreso de ACTION es 0/1 o 1/1. Una capa suma las hojas de todos sus descendientes; no se cuenta a sí misma ni se promedian los porcentajes de sus hijos.
 
 ```text
 Temporada 1
@@ -302,7 +303,7 @@ Temporada 1
 Progreso: 2 / 4 = 50 %
 ```
 
-El porcentaje entero se trunca: `completed * 100 / total`. Los estados son `NOT_STARTED`, `PARTIAL` y `COMPLETE`. Con estas reglas, todo nodo de un árbol válido tiene al menos una hoja relevante; un nodo vacío es una tarea pendiente con total 1. Un proyecto sin nodos tiene una instantánea vacía.
+El porcentaje entero se trunca: `completed * 100 / total`. Los estados son `NOT_STARTED`, `PARTIAL` y `COMPLETE`. Una hoja ACTION tiene total 1. Una hoja NOTE, una Capa con solo Notes o un proyecto sin hojas ACTION tiene total 0 y estado NO_WORK. Un proyecto sin nodos tiene una instantánea vacía.
 
 Los porcentajes y contadores no se guardan en SQLite. `NodeTreeSnapshot` calcula todos los progresos de una instantánea con un recorrido iterativo de hojas a raíz, sin profundidad fija. Un ciclo o relación inválida produce un error de integridad controlado, no recursión infinita.
 
@@ -390,7 +391,7 @@ Utilizar:
 
 Room debe proporcionar la capa de persistencia.
 
-El esquema actual es la versión 6: v4 incorporó el orden persistente de proyectos, v5 Personas/Responsables y v6 las fechas opcionales de Nodes. Se conservan los esquemas históricos 1–5 y sus rutas de migración; no se usa `fallbackToDestructiveMigration`.
+El esquema actual es la versión 7: v4 incorporó el orden persistente de proyectos, v5 Personas/Responsables, v6 las fechas opcionales de Nodes y v7 el propósito ACTION/NOTE. Se conservan los esquemas históricos 1–6 y sus rutas de migración; no se usa `fallbackToDestructiveMigration`.
 
 ### Invariantes de nodos
 
@@ -822,11 +823,11 @@ Proyecto → Nodo → jerarquía arbitraria de Nodos → Capas de cebolla
 
 ## IMPLEMENTADO — base que se conserva
 
-`Node` es la unidad estructural universal. Actualmente una hoja sin hijos es una tarea completable; un nodo con hijos es una Capa/contenedor. La profundidad práctica no tiene un límite artificial. Una tarea que recibe hijos pasa a Capa; una Capa que pierde todos sus hijos por eliminación o traslado vuelve a hoja pendiente. Completar un hijo mantiene la relación estructural y la condición de Capa de su padre, aunque todos los hijos estén completados.
+`Node` es la unidad estructural universal. Actualmente una hoja ACTION es una tarea completable y una hoja NOTE es información; un nodo con hijos es una Capa/contenedor. La profundidad práctica no tiene un límite artificial. Una tarea que recibe hijos pasa a Capa; una Capa que pierde todos sus hijos por eliminación o traslado vuelve a hoja pendiente. Completar un hijo mantiene la relación estructural y la condición de Capa de su padre, aunque todos los hijos estén completados.
 
-Las capas no se completan manualmente. El progreso existente se deriva de todas las tareas hoja descendientes, incluidas subcapas, sin contar los contenedores ni promediar sus porcentajes. `NodeTreeSnapshot` y los flujos del repositorio mantienen esta información reactiva. Actualmente no existe un tipo Nota ni una exclusión de hojas informativas del progreso.
+Las capas no se completan manualmente. El progreso existente se deriva de todas las tareas hoja descendientes, incluidas subcapas, sin contar los contenedores ni promediar sus porcentajes. `NodeTreeSnapshot` y los flujos del repositorio mantienen esta información reactiva. Las hojas NOTE quedan excluidas del trabajo medible.
 
-La base actual es local-first y offline-first, sin cuenta ni backend obligatorio: proyectos, nodos, navegación por Capas de cebolla, orden manual, drag/reorder y progreso derivado se apoyan en Room/SQLite v6, con Personas, responsables y fechas locales. Las secciones anteriores y los ajustes finales describen su implementación y las verificaciones físicas pendientes. Esta documentación no convierte esos pendientes en comprobaciones realizadas.
+La base actual es local-first y offline-first, sin cuenta ni backend obligatorio: proyectos, nodos, navegación por Capas de cebolla, orden manual, drag/reorder y progreso derivado se apoyan en Room/SQLite v7, con Personas, responsables, fechas locales y propósito de hoja. Las secciones anteriores y los ajustes finales describen su implementación y las verificaciones físicas pendientes. Esta documentación no convierte esos pendientes en comprobaciones realizadas.
 
 El repositorio ofrece `moveNode(id, parentId)` transaccional, valida el proyecto del padre y rechaza ciclos. La acción visible «Mover a…» está implementada y reutiliza esta operación. Reordenar entre hermanos y trasladar a otro padre son operaciones distintas.
 
@@ -900,13 +901,27 @@ Observadores globales de solo lectura de Nodes y asignaciones reutilizan Room **
 
 Validación dirigida: seis pruebas del modelo (reglas, fronteras, orden, conteos, raíces, camino y 10.000 niveles), tres de repositorios (emisiones, traslado, completado/reapertura, cambios estructurales, fechas, nombres y asignaciones) y tres de Compose (proyección, navegación al ID real, ruta guardable, retorno, cambios reactivos y reloj de descendientes ocultos). Pasaron además 15 regresiones dirigidas de navegación, traslado, Personas y reloj temporal. No se afirma prueba física, benchmark de dispositivo ni muerte real del proceso: restauración usa el arnés de estado guardable. La proyección carga todos los Nodes locales, sin paginación; el coste de los caminos visibles depende de su profundidad. El movimiento conserva el alcance existente dentro del mismo proyecto. Prioridad, notificaciones, recurrencias y atención avanzada quedan fuera de esta etapa.
 
+### Notas como propósito de Node + conversión Tarea ↔ Nota — IMPLEMENTADO
+
+```text
+Node
+├── estructura: hoja / Capa (derivada de hijos)
+└── propósito: ACTION / NOTE (persistido)
+```
+
+`NodePurpose` distingue ACTION (trabajo) y NOTE (información). Una Nota sigue siendo un Node, con título y descripción de texto plano, ubicación, posición e identidad normales; no hay entidad ni tabla Note. ACTION es el default para creaciones y datos históricos. Room pasa de **v6 a v7**: `NodePurposeMigration6To7` añade únicamente `nodes.purpose TEXT NOT NULL DEFAULT 'ACTION'`. Conserva proyectos, jerarquía, posiciones, fechas, Personas, asociaciones, foreign keys y los siete triggers anteriores. Cuatro triggers adicionales rechazan propósito inválido, Notas completadas/con hijos y destinos NOTE al insertar o trasladar. Repository aplica las mismas restricciones transaccionalmente; no hay migración destructiva.
+
+Solo hojas pueden convertirse. «Convertir en nota» y «Convertir en tarea» usan el mismo ID; actualizan propósito, `isCompleted = false` y `updatedAt`, conservando padre, proyecto, título, descripción, posición, creación, responsables y `startAt`/`dueAt`. ACTION completada → NOTE pierde el completado operativo; NOTE → ACTION vuelve pendiente, sin recuperar un completado histórico. Repetir el propósito actual es un no-op. Fechas quedan latentes en NOTE: no se muestran ni editan operativamente, pero no se borran y vuelven a actuar al convertir a ACTION.
+
+`NodeTreeSnapshot` mantiene su suma iterativa y porcentaje truncado; solo hojas ACTION aportan trabajo. Notes aportan 0/0 y no se cuentan como pendientes. Capas con solo Notes y proyectos sin hojas ACTION quedan NO_WORK. `TaskTemporal.state` y `nextTransition` ignoran hojas NOTE, de modo que el mismo `AttentionSnapshot` las excluye de la vista y señales ancestras sin una segunda política temporal. Los flujos actualizan progreso, Atención, acciones, fechas e iconografía sin reiniciar.
+
+«Nuevo elemento» conserva Tarea por defecto y añade selector compacto Tarea/Nota; el propósito forma parte del borrador guardable y de la comprobación de reintentos idempotentes. Una tarjeta Nota usa un icono discreto de documento, sin checkbox, progreso ni urgencia; conserva vista previa y responsables. Al abrir sigue la navegación existente, permite editar texto, convertir, mover, gestionar responsables y eliminar. «Nuevo elemento» está deshabilitado con explicación: debe convertirse primero en tarea para recibir hijos. El selector de traslado excluye Notes como destinos; la operación también lo valida.
+
+Las Notes permanecen en Disponibles (`isCompleted = false`) y se reordenan entre hermanos de ese grupo junto con tareas pendientes y Capas. No cambia `DragReorder`, sus gestos ni su política de posiciones. Mover conserva propósito, fechas y responsables; eliminar usa el borrado seguro de Nodes, limpia asociaciones y conserva Personas. ACTION que recibe hijos sigue pasando a Capa y al perderlos vuelve a tarea pendiente.
+
+Pruebas dirigidas incluyen migración real v6 en API 24/28 con todos los datos existentes, creación/reintentos por propósito, conversión y normalización, fechas latentes, progreso mixto/NO_WORK, Atención, defensas de hijos/completado, traslado/reorder y borrado con responsables. Compose cubre creación con borrador restaurado, conversión/edición, iconografía, restricción de hijos y actualizaciones de Proyecto/vista Atención. Se mantienen regresiones afectadas de migraciones históricas, Personas, fechas, Atención, borradores, traslado y orden. No se afirma instalación física sobre una APK previa ni validación de drag en dispositivo para esta etapa. Texto plano únicamente: sin Markdown, formato enriquecido, imágenes ni adjuntos. Movimiento entre proyectos sigue fuera del alcance.
+
 ## PRÓXIMA ETAPA — capacidades previstas, no implementadas
-
-### 5. Nota y conversión Tarea ↔ Nota
-
-Una **Nota** se plantea inicialmente como un Node hoja de propósito informativo: observación, pregunta, decisión, informe, objetivo, links o información del proyecto. Tendrá título y descripción/contenido opcional; no se completará y no participará del progreso.
-
-Se prevé conversión **Tarea → Nota** y **Nota → Tarea**, preservando la identidad del Node, inicialmente solo para hojas. No se definen Notas como contenedores. Esta capacidad requiere diseñar una extensión futura del dominio: la regla actual de que toda hoja es completable sigue vigente hasta su implementación. La representación del propósito informativo y el tratamiento del completado al convertir quedan por diseñar; no se modifica ahora la fórmula ni el esquema.
 
 ### 6. Creación múltiple combinable
 
@@ -970,14 +985,14 @@ Se distinguen dos conceptos: **Release DE Arachn0de** actualiza/distribuye la ap
 
 ### Secuencia tentativa de implementación
 
-Este orden es una propuesta revisable, no una obligación irreversible. Los primeros cinco pasos ya están implementados; los restantes siguen pendientes:
+Este orden es una propuesta revisable, no una obligación irreversible. Los primeros seis pasos ya están implementados; los restantes siguen pendientes:
 
 1. Mover Node a otra Capa — IMPLEMENTADO.
 2. Personas — IMPLEMENTADO.
 3. Responsables — IMPLEMENTADO.
 4. Fechas — IMPLEMENTADO.
 5. Atención básica — IMPLEMENTADO.
-6. Notas y conversión Tarea ↔ Nota.
+6. Notas y conversión Tarea ↔ Nota — IMPLEMENTADO.
 7. Creación múltiple y numeración.
 8. Reglas temporales/recurrencia para creación múltiple.
 9. Diseñar formalmente Obligación.
@@ -1010,7 +1025,7 @@ Desktop y sincronización local constituyen una etapa avanzada/final de esta lí
 
 - **Obligación:** elegir entre A, B u otra composición mediante diseño específico; definir allí el alcance de agregación por Subcapas. No hay modelo ni schema aprobado.
 - **Capas explícitamente vacías:** decidir si deben existir en el futuro. Actualmente perder el último hijo convierte el nodo en tarea; esta documentación no cambia esa regla ni elige una alternativa futura.
-- **Notas:** representación del propósito informativo y reglas de conversión para hojas, incluyendo tratamiento del completado y exclusión del progreso. No se definen Notas contenedoras.
+- **Notas avanzadas:** formato y adjuntos se diseñarán en otra etapa; el propósito NOTE y la conversión de hojas ya están implementados. No se definen Notas contenedoras.
 - **Atención avanzada y generación temporal:** la propagación básica ya está implementada; diseñar futuras reglas adicionales y recurrencia antes de desarrollar esos bloques.
 - **Distribución de la app:** definir firma, publicación y comprobación/descarga de actualizaciones antes de implementarlas.
 
@@ -1117,4 +1132,4 @@ Al soltar, el ID ubicado en el índice final dentro del orden original es el tar
 
 ## Visualización del progreso en proyectos y capas
 
-Las tarjetas de proyectos y capas con trabajo, y la cabecera de la capa abierta, muestran `percentage% · pending de total pendientes` y una barra fina de 4 dp con relleno naranja `PathHighlight` y track `ControlSurface`. Consumen el `NodeProgress` derivado existente; `pending = total - completed`. Las capas reciben `progressById[node.id]` de `NodeTreeSnapshot`, incluyendo todas las hojas de subcapas sin contar los contenedores. Las tareas hoja no muestran progreso. El estado `NO_WORK` muestra solo «Contenedor vacío», sin métricas ni barra. La regla del dominio se conserva: un nodo sin hijos es una tarea hoja, no un tipo persistido de capa vacía.
+Las tarjetas de proyectos y capas con trabajo, y la cabecera de la capa abierta, muestran `percentage% · pending de total pendientes` y una barra fina de 4 dp con relleno naranja `PathHighlight` y track `ControlSurface`. Consumen el `NodeProgress` derivado existente; `pending = total - completed`. Las capas reciben `progressById[node.id]` de `NodeTreeSnapshot`, incluyendo todas las hojas de subcapas sin contar los contenedores. Las hojas ACTION y NOTE no muestran progreso; solo ACTION participa en el cálculo. El estado `NO_WORK` muestra solo «Contenedor vacío», sin métricas ni barra. La regla del dominio se conserva: un nodo sin hijos es una hoja ACTION o NOTE, no un tipo persistido de capa vacía.

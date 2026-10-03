@@ -42,12 +42,15 @@ interface NodeDao {
     @Query("UPDATE nodes SET title = :title, description = :description, startAt = :startAt, dueAt = :dueAt, updatedAt = :updatedAt WHERE id = :id")
     suspend fun updateContentAndDates(id: String, title: String, description: String, startAt: Long?, dueAt: Long?, updatedAt: Long): Int
 
+    @Query("UPDATE nodes SET purpose = :purpose, isCompleted = 0, updatedAt = :updatedAt WHERE id = :id AND NOT EXISTS(SELECT 1 FROM nodes AS child WHERE child.parentId = nodes.id)")
+    suspend fun updatePurpose(id: String, purpose: String, updatedAt: Long): Int
+
     @Query("UPDATE nodes SET parentId = :parentId, position = :position, updatedAt = :updatedAt WHERE id = :id")
     suspend fun move(id: String, parentId: String?, position: Int, updatedAt: Long): Int
 
     @Query("""
         UPDATE nodes SET isCompleted = :completed, updatedAt = :updatedAt
-        WHERE id = :id AND NOT EXISTS(
+        WHERE id = :id AND purpose = 'ACTION' AND NOT EXISTS(
             SELECT 1 FROM nodes AS child WHERE child.projectId = nodes.projectId AND child.parentId = nodes.id
         )
     """)

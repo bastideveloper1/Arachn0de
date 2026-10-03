@@ -7,7 +7,7 @@ import androidx.room.RoomDatabase
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 
-@Database(entities = [ProjectEntity::class, NodeEntity::class, PersonEntity::class, NodePersonEntity::class], version = 6, exportSchema = true)
+@Database(entities = [ProjectEntity::class, NodeEntity::class, PersonEntity::class, NodePersonEntity::class], version = 7, exportSchema = true)
 abstract class Arachn0deDatabase : RoomDatabase() {
     abstract fun projectDao(): ProjectDao
     abstract fun nodeDao(): NodeDao
@@ -20,10 +20,11 @@ abstract class Arachn0deDatabase : RoomDatabase() {
             Arachn0deDatabase::class.java,
             "arachn0de.db",
         )
-            .addMigrations(MIGRATION_1_2, NodeMigration2To3, ProjectMigration3To4, PersonMigration4To5, TaskDatesMigration5To6)
+            .addMigrations(MIGRATION_1_2, NodeMigration2To3, ProjectMigration3To4, PersonMigration4To5, TaskDatesMigration5To6, NodePurposeMigration6To7)
             .addCallback(object : Callback() {
                 override fun onCreate(db: SupportSQLiteDatabase) {
                     NodeInvariants.install(db)
+                    NodePurposeInvariants.install(db)
                 }
             })
             .build()

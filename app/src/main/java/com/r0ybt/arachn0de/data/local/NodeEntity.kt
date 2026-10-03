@@ -1,5 +1,6 @@
 package com.r0ybt.arachn0de.data.local
 
+import androidx.room.ColumnInfo
 import androidx.room.Entity
 import androidx.room.ForeignKey
 import androidx.room.Index
@@ -37,9 +38,10 @@ data class NodeEntity(
     val updatedAt: Long,
     val startAt: Long? = null,
     val dueAt: Long? = null,
+    @ColumnInfo(defaultValue = "'ACTION'") val purpose: String = "ACTION",
 )
 
 internal fun NodeEntity.toNode(hasChildren: Boolean) = Node(
     id, projectId, parentId, title, description, isCompleted,
-    position, createdAt, updatedAt, hasChildren, startAt, dueAt,
+    position, createdAt, updatedAt, hasChildren, startAt, dueAt, com.r0ybt.arachn0de.domain.model.NodePurpose.valueOf(purpose),
 )

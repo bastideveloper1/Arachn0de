@@ -6,11 +6,16 @@ import java.util.UUID
 
 internal class NodeActions(private val repository: NodeRepository, scope: CoroutineScope) {
     val operation = OperationState(scope)
-    fun save(projectId: String, parentId: String?, id: String?, title: String, description: String, creationId: String = UUID.randomUUID().toString(), startAt: Long? = null, dueAt: Long? = null, editDates: Boolean = true, onSuccess: () -> Unit) =
+    fun save(projectId: String, parentId: String?, id: String?, title: String, description: String, creationId: String = UUID.randomUUID().toString(), startAt: Long? = null, dueAt: Long? = null, editDates: Boolean = true, purpose: com.r0ybt.arachn0de.domain.model.NodePurpose = com.r0ybt.arachn0de.domain.model.NodePurpose.ACTION, onSuccess: () -> Unit) =
         operation.submit("No se pudo guardar el elemento. Tus cambios siguen en el formulario.", {
-            if (id == null) { repository.createNode(projectId, parentId, title, description, creationId, startAt, dueAt); true }
+            if (id == null) { repository.createNode(projectId, parentId, title, description, creationId, startAt, dueAt, purpose); true }
             else if (editDates) repository.updateNodeWithDates(id, title, description, startAt, dueAt)
             else repository.updateNode(id, title, description)
+        }, onSuccess)
+
+    fun convert(id: String, purpose: com.r0ybt.arachn0de.domain.model.NodePurpose, onSuccess: () -> Unit = {}) =
+        operation.submit("No se pudo convertir el elemento. Puedes reintentar.", {
+            repository.convertPurpose(id, purpose)
         }, onSuccess)
 
     fun delete(id: String, onSuccess: () -> Unit) =

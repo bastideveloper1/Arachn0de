@@ -34,14 +34,15 @@ class NodeTreeSnapshot(val nodes: List<Node>) {
             val node = queue.removeFirst()
             check(node.id !in result) { "Repeated node during traversal" }
             val leaf = childrenOf(node.id).isEmpty()
-            val count = if (leaf) 1 else total.getValue(node.id)
-            val done = if (leaf) { if (node.isCompleted) 1 else 0 } else completed.getValue(node.id)
+            val count = if (leaf) { if (node.purpose == NodePurpose.ACTION) 1 else 0 } else total.getValue(node.id)
+            val done = if (leaf) { if (count > 0 && node.isCompleted) 1 else 0 } else completed.getValue(node.id)
             result[node.id] = NodeProgress(
                 nodeId = node.id, completed = done, total = count,
-                percentage = ((done.toLong() * 100) / count).toInt(),
-                state = when (done) {
-                    0 -> NodeProgressState.NOT_STARTED
-                    count -> NodeProgressState.COMPLETE
+                percentage = if (count == 0) 0 else ((done.toLong() * 100) / count).toInt(),
+                state = when {
+                    count == 0 -> NodeProgressState.NO_WORK
+                    done == 0 -> NodeProgressState.NOT_STARTED
+                    done == count -> NodeProgressState.COMPLETE
                     else -> NodeProgressState.PARTIAL
                 },
             )
@@ -60,7 +61,7 @@ class NodeTreeSnapshot(val nodes: List<Node>) {
         val byProject = nodes.groupBy { it.projectId }
         return byProject.mapValues { (projectId, projectNodes) ->
             val projectChildren = projectNodes.groupBy { it.parentId }
-            val leafNodes = projectNodes.filter { node -> !projectChildren.containsKey(node.id) }
+            val leafNodes = projectNodes.filter { node -> !projectChildren.containsKey(node.id) && node.purpose == NodePurpose.ACTION }
             if (leafNodes.isEmpty()) {
                 NodeProgress(
                     nodeId = projectId,

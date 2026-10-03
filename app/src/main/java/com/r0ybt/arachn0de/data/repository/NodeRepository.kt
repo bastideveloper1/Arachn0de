@@ -5,6 +5,7 @@ import com.r0ybt.arachn0de.data.local.Arachn0deDatabase
 import com.r0ybt.arachn0de.data.local.NodeEntity
 import com.r0ybt.arachn0de.data.local.toNode
 import com.r0ybt.arachn0de.domain.model.Node
+import com.r0ybt.arachn0de.domain.model.NodePurpose
 import com.r0ybt.arachn0de.domain.model.NodeProgress
 import com.r0ybt.arachn0de.domain.model.NodeTreeSnapshot
 import java.util.UUID
@@ -112,6 +113,7 @@ class NodeRepository(
         creationId: String = UUID.randomUUID().toString(),
         startAt: Long? = null,
         dueAt: Long? = null,
+        purpose: NodePurpose = NodePurpose.ACTION,
     ): Node = database.withTransaction {
         com.r0ybt.arachn0de.domain.model.TaskTemporal.validateDates(startAt, dueAt)
         val normalizedTitle = validateTitle(title)
@@ -119,7 +121,7 @@ class NodeRepository(
         nodeDao.getById(creationId)?.let { existing ->
             check(existing.projectId == projectId && existing.parentId == parentId &&
                 existing.title == normalizedTitle && existing.description == description &&
-                existing.startAt == startAt && existing.dueAt == dueAt) {
+                existing.startAt == startAt && existing.dueAt == dueAt && existing.purpose == purpose.name) {
                 "Creation already committed with different content or destination"
             }
             return@withTransaction existing.toNode(nodeDao.hasChildren(projectId, creationId))
@@ -131,7 +133,7 @@ class NodeRepository(
             id = creationId, projectId = projectId, parentId = parentId,
             title = normalizedTitle, description = description, isCompleted = false,
             position = nextPosition(projectId, parentId), createdAt = now, updatedAt = now,
-            startAt = startAt, dueAt = dueAt,
+            startAt = startAt, dueAt = dueAt, purpose = purpose.name,
         )
         nodeDao.insert(entity)
         entity.toNode(hasChildren = false)
@@ -148,9 +150,17 @@ class NodeRepository(
         database.withTransaction {
             com.r0ybt.arachn0de.domain.model.TaskTemporal.validateDates(startAt, dueAt)
             val current = nodeDao.getById(id) ?: return@withTransaction false
-            if (nodeDao.hasChildren(current.projectId, id)) return@withTransaction false
+            if (current.purpose != NodePurpose.ACTION.name || nodeDao.hasChildren(current.projectId, id)) return@withTransaction false
             nodeDao.updateContentAndDates(id, validateTitle(title), description, startAt, dueAt, currentTimeMillis()) == 1
         }
+
+    /** Conversion retains identity, content, dates, position and assignments; completion is cleared. */
+    suspend fun convertPurpose(id: String, purpose: NodePurpose): Boolean = database.withTransaction {
+        val current = nodeDao.getById(id) ?: return@withTransaction false
+        if (nodeDao.hasChildren(current.projectId, id)) return@withTransaction false
+        if (current.purpose == purpose.name) return@withTransaction true
+        nodeDao.updatePurpose(id, purpose.name, currentTimeMillis()) == 1
+    }
 
     /** A null parent explicitly moves the node to the project root. */
     suspend fun moveNode(id: String, parentId: String?): Boolean = database.withTransaction {
@@ -223,6 +233,7 @@ class NodeRepository(
             check(visited.add(currentId)) { "Cycle in existing hierarchy" }
             val parent = nodeDao.getById(currentId)
             requireNotNull(parent) { "Parent node not found" }
+            require(parent.purpose == NodePurpose.ACTION.name) { "Notes cannot receive children" }
             require(parent.projectId == projectId) { "Parent node must belong to the same project" }
             currentId = parent.parentId
         }

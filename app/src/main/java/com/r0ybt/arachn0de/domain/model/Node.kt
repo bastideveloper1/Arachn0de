@@ -14,7 +14,8 @@ data class Node(
     val hasChildren: Boolean,
     val startAt: Long? = null,
     val dueAt: Long? = null,
+    val purpose: NodePurpose = NodePurpose.ACTION,
 ) {
     val isStructural: Boolean get() = hasChildren
-    val isCompletable: Boolean get() = !hasChildren
+    val isCompletable: Boolean get() = !hasChildren && purpose == NodePurpose.ACTION
 }

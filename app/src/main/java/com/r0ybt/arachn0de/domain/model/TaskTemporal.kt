@@ -11,7 +11,7 @@ object TaskTemporal {
     }
 
     fun state(node: Node, now: Long): TaskTemporalState? {
-        if (node.hasChildren) return null
+        if (!node.isCompletable) return null
         if (node.isCompleted) return TaskTemporalState.COMPLETED
         if (node.startAt == null && node.dueAt == null) return null
         if (node.startAt != null && now < node.startAt) return TaskTemporalState.SCHEDULED
@@ -25,7 +25,7 @@ object TaskTemporal {
 
     /** Earliest strictly future change; dueAt itself is still upcoming, dueAt + 1 is overdue. */
     fun nextTransition(node: Node, now: Long): Long? {
-        if (node.hasChildren || node.isCompleted) return null
+        if (!node.isCompletable || node.isCompleted) return null
         if (node.startAt != null && node.startAt > now) return node.startAt
         return buildList {
             node.dueAt?.let {

@@ -1,6 +1,9 @@
 package com.r0ybt.arachn0de.ui
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.foundation.Image
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.layout.ContentScale
@@ -153,6 +156,15 @@ internal fun ProjectNodeScreen(
     }
     if (scopeFilters.open) ScopeFiltersDialog(scopeFilters, people, tagState.tags)
     val currentNodes = projectState.childrenOf(currentNodeId)
+    val selection = remember(project.id, currentNodeId, scopedFilter) { com.r0ybt.arachn0de.ui.state.NodeSelection() }
+    val visibleSelectionIds = if(scopeFilters.active) filteredRows.orEmpty().map { it.node.id }.toSet() else currentNodes.map { it.id }.toSet()
+    LaunchedEffect(visibleSelectionIds, filteredRows != null) { if(!scopeFilters.active || filteredRows != null) selection.retain(visibleSelectionIds) }
+    var bulkDelete by remember(selection) { mutableStateOf(false) }
+    var bulkMove by remember(selection) { mutableStateOf(false) }
+    var groupReview by remember { mutableStateOf<List<com.r0ybt.arachn0de.domain.model.Node>?>(null) }
+
+    LaunchedEffect(draft?.creationId) { groupReview = null }
+
     val currentProgress = projectState.progressById[currentNodeId]
     val attention by com.r0ybt.arachn0de.ui.state.rememberAttention(projectState, now)
     val currentMonth = remember(now) { com.r0ybt.arachn0de.domain.model.CalendarDates.localDay(now, java.util.TimeZone.getDefault()).calendarMonth }
@@ -207,6 +219,7 @@ internal fun ProjectNodeScreen(
         }
     }
 
+    BackHandler(enabled = selection.ids.isNotEmpty()) { selection.clear() }
     BackHandler(enabled = showDrawer) { showDrawer = false }
 
     if (!hasLoaded) {
@@ -235,13 +248,19 @@ internal fun ProjectNodeScreen(
                     .padding(horizontal = 12.dp, vertical = 10.dp),
             ) {
                 HeaderBar(onMenuClick = { showDrawer = true })
+                if(selection.ids.isNotEmpty()) Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("${selection.ids.size} seleccionados", Modifier.weight(1f))
+                    TextButton(enabled = !isSubmittingNode, onClick = { bulkMove = true }) { Text("Mover") }
+                    TextButton(enabled = !isSubmittingNode, onClick = { bulkDelete = true }) { Text("Eliminar") }
+                    TextButton(enabled = !isSubmittingNode, onClick = { selection.clear() }) { Text("Salir") }
+                }
 
                 layerScrollStates.SaveableStateProvider(currentNodeId?.let { "node:$it" } ?: "project-root") {
                     val nodeListState = rememberLazyListState()
                     val groups = listOf(false, true).associateWith { completed ->
                         currentNodes.filter { it.projectId == project.id && it.parentId == currentNodeId && it.isCompleted == completed }.map { it.id }
                     }
-                    val drag = rememberDragReorderState(nodeListState, "node:", groups, isSubmittingNode, actions.operation.error, currentNodeId) { source, target, _ ->
+                    val drag = rememberDragReorderState(nodeListState, "node:", groups, isSubmittingNode || selection.ids.isNotEmpty(), actions.operation.error, currentNodeId) { source, target, _ ->
                         actions.reorderTo(source, currentNodeId, target)
                     }
                     LazyColumn(
@@ -356,7 +375,7 @@ internal fun ProjectNodeScreen(
                                         Button(
                                             onClick = {
                                                 if (!isSubmittingNode) {
-                                                    if (assignmentsLoaded && peopleLoaded) drafts.open(currentNode.parentId, currentNode.id) { EditorDraft(currentNode.id, currentNode.parentId, currentNode.title, currentNode.description, startAt = currentNode.startAt, dueAt = currentNode.dueAt, purpose = currentNode.purpose, obligation = currentNode.obligation, priority = currentNode.priority).apply { tagIds = tagState.nodeIds[currentNode.id].orEmpty().toList(); responsibleIds = responsibleByNode[currentNode.id].orEmpty().map { it.id } } }
+                                                    if (assignmentsLoaded && peopleLoaded) drafts.open(currentNode.parentId, currentNode.id) { EditorDraft(currentNode.id, currentNode.parentId, currentNode.title, currentNode.description, startAt = currentNode.startAt, dueAt = currentNode.dueAt, purpose = currentNode.purpose, obligation = currentNode.obligation, priority = currentNode.priority).apply { tagIds = tagState.nodeIds[currentNode.id].orEmpty().toList(); responsibleIds = responsibleByNode[currentNode.id].orEmpty().map { it.id }; creationGroupId = currentNode.creationGroupId; captureSharedBaseline() } }
                                                 }
                                             },
                                             enabled = !isSubmittingNode,
@@ -442,14 +461,15 @@ internal fun ProjectNodeScreen(
                             if (filteredRows == null) item { Text("Cargando resultados…") }
                             else if (filteredRows!!.none { it.isMatch }) item { Text("Sin coincidencias") }
                             items(filteredRows.orEmpty(), key = { "filtered:${it.node.id}" }) { row ->
-                                Column(Modifier.padding(start = minOf(row.depth, 6).times(12).dp)) {
+                                Column(Modifier.padding(start = minOf(row.depth, 6).times(12).dp).semantics { selected = row.node.id in selection.ids; stateDescription = if(row.node.id in selection.ids) "Seleccionado" else "Sin seleccionar" }) {
+                                    TextButton(enabled = !isSubmittingNode, onClick = { selection.toggle(row.node.id) }) { Text(if(row.node.id in selection.ids) "✓ Seleccionado" else "Seleccionar") }
                                     if (!row.isMatch) Text("Contexto · ${row.node.title}", color = Arachn0deColors.TextSecondary)
                                     else {
-                                        TextButton(onClick = { actions.navigate(row.node.id) { path -> currentPath.clear(); currentPath.addAll(path) } }) { Text(row.node.title) }
+                                        TextButton(onClick = { if(selection.ids.isNotEmpty()) selection.toggle(row.node.id) else actions.navigate(row.node.id) { path -> currentPath.clear(); currentPath.addAll(path) } }) { Text(row.node.title) }
                                         PriorityIndicator(row.node)
                                         TagChips(tagState.forNode(row.node.id))
                                         TextButton(onClick = { historyNodeId = row.node.id }) { Text("Historial") }
-                                        TextButton(onClick = { if (assignmentsLoaded && peopleLoaded) drafts.open(row.node.parentId, row.node.id) { EditorDraft(row.node.id, row.node.parentId, row.node.title, row.node.description, startAt = row.node.startAt, dueAt = row.node.dueAt, purpose = row.node.purpose, obligation = row.node.obligation, priority = row.node.priority).apply { tagIds = tagState.nodeIds[row.node.id].orEmpty().toList(); responsibleIds = responsibleByNode[row.node.id].orEmpty().map { it.id } } } }) { Text("Editar") }
+                                        TextButton(onClick = { if (assignmentsLoaded && peopleLoaded) drafts.open(row.node.parentId, row.node.id) { EditorDraft(row.node.id, row.node.parentId, row.node.title, row.node.description, startAt = row.node.startAt, dueAt = row.node.dueAt, purpose = row.node.purpose, obligation = row.node.obligation, priority = row.node.priority).apply { tagIds = tagState.nodeIds[row.node.id].orEmpty().toList(); responsibleIds = responsibleByNode[row.node.id].orEmpty().map { it.id }; creationGroupId = row.node.creationGroupId; captureSharedBaseline() } } }) { Text("Editar") }
                                     }
                                 }
                             }
@@ -492,11 +512,14 @@ internal fun ProjectNodeScreen(
                                     now = now,
                                     attention = attention?.byNodeId?.get(node.id),
                                     onResponsible = { if (!isSubmittingNode && !personActions.operation.busy && peopleLoaded && assignmentsLoaded) responsibleNodeId = node.id },
+                                    selected = node.id in selection.ids,
+                                    selecting = selection.ids.isNotEmpty(),
+                                    onSelect = { if(!isSubmittingNode) selection.toggle(node.id) },
                                     onMove = { if (!isSubmittingNode) movingNodeId = node.id },
                                     canCopy = !copyActions.busy,
                                     onCopy = { descendants -> copyActions.copy(projectState, node.id, descendants) },
                                     onEdit = {
-                                        if (assignmentsLoaded && peopleLoaded) drafts.open(node.parentId, node.id) { EditorDraft(node.id, node.parentId, node.title, node.description, startAt = node.startAt, dueAt = node.dueAt, purpose = node.purpose, obligation = node.obligation, priority = node.priority).apply { tagIds = tagState.nodeIds[node.id].orEmpty().toList(); responsibleIds = responsibleByNode[node.id].orEmpty().map { it.id } } }
+                                        if (assignmentsLoaded && peopleLoaded) drafts.open(node.parentId, node.id) { EditorDraft(node.id, node.parentId, node.title, node.description, startAt = node.startAt, dueAt = node.dueAt, purpose = node.purpose, obligation = node.obligation, priority = node.priority).apply { tagIds = tagState.nodeIds[node.id].orEmpty().toList(); responsibleIds = responsibleByNode[node.id].orEmpty().map { it.id }; creationGroupId = node.creationGroupId; captureSharedBaseline() } }
                                     },
                                     canMoveUp = node.id != renderNodes.firstOrNull()?.id && !isSubmittingNode,
                                     canMoveDown = node.id != renderNodes.lastOrNull()?.id && !isSubmittingNode,
@@ -521,6 +544,7 @@ internal fun ProjectNodeScreen(
                         }
                     }
                 }
+                androidx.compose.material3.SnackbarHost(actions.snackbar, Modifier.fillMaxWidth())
                 RecurrenceManager(nodeRepository.recurrence, project.id, projectState.nodes, people, peopleLoaded, recurrenceSelected) { recurrenceSelected = null }
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -591,10 +615,36 @@ internal fun ProjectNodeScreen(
             },
             onDiscard = { drafts.clear() },
             onSave = { _, _ ->
-                actions.saveDraft(project.id, editor, editor.purpose == NodePurpose.ACTION &&
-                    (editor.id == null || projectState.nodesById[editor.id]?.isCompletable == true)) { drafts.clear() }
+                val dates = editor.purpose == NodePurpose.ACTION && (editor.id == null || projectState.nodesById[editor.id]?.isCompletable == true)
+                if(editor.creationGroupId != null && !editor.sharedPatch().isEmpty) actions.reviewGroup(editor) { members ->
+                    if(members.size > 1) groupReview = members else actions.saveDraft(project.id,editor,dates) { drafts.clear() }
+                } else actions.saveDraft(project.id, editor, dates) { drafts.clear() }
             },
         )
+    }
+
+    groupReview?.let { members -> draft?.let { editor ->
+        val dates = editor.purpose == NodePurpose.ACTION && projectState.nodesById[editor.id]?.isCompletable == true
+        AlertDialog(onDismissRequest = { if(!isSubmittingNode) groupReview = null }, title = { Text("Aplicar cambios compartidos") },
+            text = { Text("El grupo tiene ${members.size} elementos existentes, incluidos los movidos a otras capas. Solo se propagarán los campos compartidos modificados; títulos y fechas de los demás se conservarán.") },
+            confirmButton = { Button(enabled = !isSubmittingNode, onClick = { actions.saveGroup(editor,members.map { it.id }.toSet(),dates) { groupReview = null; drafts.clear() } }) { Text("Todos los elementos del grupo") } },
+            dismissButton = { Column {
+                TextButton(enabled = !isSubmittingNode, onClick = { actions.saveDraft(project.id,editor,dates) { groupReview = null; drafts.clear() } }) { Text("Solo este elemento") }
+                TextButton(enabled = !isSubmittingNode, onClick = { groupReview = null }) { Text("Volver al editor") }
+            } })
+    } }
+    if(bulkDelete && selection.ids.isNotEmpty()) AlertDialog(onDismissRequest = { if(!isSubmittingNode) bulkDelete = false },
+        title = { Text("¿Eliminar ${selection.ids.size} elementos?") }, text = { Text("Las capas seleccionadas también eliminarán todos sus descendientes, relaciones e historial. Esta operación no tiene Deshacer.") },
+        confirmButton = { Button(enabled = !isSubmittingNode, onClick = { actions.deleteSelected(project.id,selection.ids) { bulkDelete = false; selection.clear() } }) { Text("Eliminar seleccionados") } },
+        dismissButton = { TextButton(enabled = !isSubmittingNode, onClick = { bulkDelete = false }) { Text("Cancelar") } })
+    if(bulkMove && selection.ids.isNotEmpty()) {
+        var expanded by remember { mutableStateOf(currentPath.toList()) }
+        AlertDialog(onDismissRequest = { if(!isSubmittingNode) bulkMove = false }, title = { Text("Mover ${selection.ids.size} elementos") },
+            text = { LayerNavigator(nodes = projectState.nodes, expandedIds = expanded, onToggle = { id -> expanded = if(id in expanded) expanded - id else expanded + id },
+                currentNodeId = currentNodeId, projectName = project.name, movingIds = selection.ids, enabled = !isSubmittingNode,
+                onHome = {}, onProject = { actions.moveSelected(project.id,selection.ids,null) { bulkMove = false; selection.clear() } },
+                onNavigateTo = { target -> actions.moveSelected(project.id,selection.ids,target) { bulkMove = false; selection.clear() } }) },
+            confirmButton = {}, dismissButton = { TextButton(enabled = !isSubmittingNode, onClick = { bulkMove = false }) { Text("Cancelar") } })
     }
 
     responsibleNodeId?.let { id ->

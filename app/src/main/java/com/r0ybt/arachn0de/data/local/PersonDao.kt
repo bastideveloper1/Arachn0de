@@ -5,6 +5,8 @@ import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface PersonDao {
+    @Query("SELECT * FROM node_person WHERE nodeId IN (:ids)") suspend fun assignmentsForNodes(ids: List<String>): List<NodePersonEntity>
+
     @Query("SELECT * FROM persons ORDER BY name COLLATE NOCASE, id")
     fun observePeople(): Flow<List<PersonEntity>>
     @Query("SELECT * FROM persons WHERE id = :id")

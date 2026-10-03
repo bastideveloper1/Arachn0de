@@ -51,6 +51,7 @@ internal fun BackupData.validate(): List<NodeEntity> {
             val parent = requireNotNull(byId[parentId]) { "Padre ausente." }
             require(parent.projectId == node.projectId && parent.id != node.id && parent.purpose == "ACTION" && parent.amountMinor == null) { "Jerarquía inválida." }
         }
+        require(node.creationGroupId == null || (node.creationGroupId.isNotBlank() && node.creationGroupId.length <= 200)) { "Grupo inválido." }
         com.r0ybt.arachn0de.domain.model.Priority.valueOf(node.priority)
         require(node.purpose == "ACTION" || node.purpose == "NOTE") { "Propósito desconocido." }
         require(!node.isCompleted || (node.purpose == "ACTION" && children[node.id].isNullOrEmpty())) { "Completado inválido." }
@@ -62,6 +63,7 @@ internal fun BackupData.validate(): List<NodeEntity> {
             Obligation(it, requireNotNull(node.currencyCode))
         }
     }
+    require(nodes.filter { it.creationGroupId != null }.groupBy { it.creationGroupId }.values.all { group -> group.map { it.projectId }.distinct().size == 1 }) { "Grupo compartido entre proyectos." }
     val queue = ArrayDeque<NodeEntity>()
     queue.addAll(children[null].orEmpty())
     val ordered = ArrayList<NodeEntity>(nodes.size)

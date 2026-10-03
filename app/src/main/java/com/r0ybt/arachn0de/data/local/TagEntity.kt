@@ -19,6 +19,8 @@ data class TagLinks(@Embedded val tag: TagEntity,
     @Relation(parentColumn = "id", entityColumn = "tagId") val nodes: List<NodeTagEntity>,
     @Relation(parentColumn = "id", entityColumn = "tagId") val rules: List<RecurrenceTagEntity>)
 @Dao interface TagDao {
+    @Query("SELECT * FROM node_tag WHERE nodeId IN (:ids)") suspend fun tagsForNodes(ids: List<String>): List<NodeTagEntity>
+
     @Transaction @Query("SELECT * FROM tags ORDER BY normalizedName") fun observe(): Flow<List<TagLinks>>
     @Query("SELECT * FROM tags") suspend fun tags(): List<TagEntity>
     @Query("SELECT * FROM node_tag") suspend fun nodeTags(): List<NodeTagEntity>

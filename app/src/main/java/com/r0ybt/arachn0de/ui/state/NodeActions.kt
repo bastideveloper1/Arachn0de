@@ -4,14 +4,46 @@ import com.r0ybt.arachn0de.domain.model.GeneratedNodeSpec
 import com.r0ybt.arachn0de.data.repository.NodeRepository
 import kotlinx.coroutines.CoroutineScope
 import java.util.UUID
+import kotlinx.coroutines.launch
+import androidx.compose.material3.*
+import com.r0ybt.arachn0de.domain.model.CreationUndo
 
-internal class NodeActions(private val repository: NodeRepository, scope: CoroutineScope) {
+internal class NodeActions(private val repository: NodeRepository, private val scope: CoroutineScope) {
     val operation = OperationState(scope)
-    fun save(projectId: String, parentId: String?, id: String?, title: String, description: String, creationId: String = UUID.randomUUID().toString(), startAt: Long? = null, dueAt: Long? = null, editDates: Boolean = true, purpose: com.r0ybt.arachn0de.domain.model.NodePurpose = com.r0ybt.arachn0de.domain.model.NodePurpose.ACTION, obligation: com.r0ybt.arachn0de.domain.model.Obligation? = null, removeObligation: Boolean = false, responsibleIds: Set<String> = emptySet(), tagIds: Set<String> = emptySet(), priority: com.r0ybt.arachn0de.domain.model.Priority = com.r0ybt.arachn0de.domain.model.Priority.NONE, editResponsible: Boolean = false, onSuccess: () -> Unit) =
+    val snackbar = SnackbarHostState()
+    private var notice: kotlinx.coroutines.Job? = null
+    fun feedback(message: String) {
+        notice?.cancel(); snackbar.currentSnackbarData?.dismiss()
+        notice = scope.launch { snackbar.showSnackbar(message, duration = SnackbarDuration.Short) }
+    }
+    private fun showCreated(token: CreationUndo) {
+        notice?.cancel(); snackbar.currentSnackbarData?.dismiss()
+        notice = scope.launch {
+            val result = snackbar.showSnackbar(if(token.nodes.size == 1) "Elemento creado" else "${token.nodes.size} elementos creados", "Deshacer", duration = SnackbarDuration.Short)
+            if(result == SnackbarResult.ActionPerformed) operation.submit("Ya no es seguro deshacer esta creación. Los elementos se conservaron.", { check(repository.undoCreation(token)); true }, { feedback("Creación deshecha") })
+        }
+    }
+    fun deleteSelected(projectId: String, ids: Set<String>, onSuccess: () -> Unit) = operation.submit("No se pudo eliminar la selección. No se aplicaron cambios.", {
+        repository.deleteSelected(projectId,ids); true
+    }, { onSuccess(); feedback("${ids.size} elementos eliminados") })
+    fun moveSelected(projectId: String, ids: Set<String>, parentId: String?, onSuccess: () -> Unit) = operation.submit("No se pudo mover la selección. Revisa el destino.", {
+        repository.moveSelected(projectId,ids,parentId); true
+    }, { onSuccess(); feedback("${ids.size} elementos movidos") })
+    fun reviewGroup(draft: EditorDraft, onSuccess: (List<com.r0ybt.arachn0de.domain.model.Node>) -> Unit) {
+        var members=emptyList<com.r0ybt.arachn0de.domain.model.Node>()
+        operation.submit("No se pudo revisar el grupo.", { members=repository.groupMembers(requireNotNull(draft.creationGroupId)); members.isNotEmpty() }, { onSuccess(members) })
+    }
+    fun saveGroup(draft: EditorDraft, members: Set<String>, editDates: Boolean, onSuccess: () -> Unit) = operation.submit("No se pudo actualizar el grupo. Se conservan tus cambios; revisa sus miembros y capacidades.", {
+        repository.updateGroup(requireNotNull(draft.id), draft.sharedPatch(), members, draft.title.trim(), draft.description.trim(), draft.activeStart, draft.activeDue,
+            editDates, draft.obligation(), draft.financialRemovalConfirmed, draft.tagIds.toSet(), draft.priority, draft.responsibleIds.toSet()); true
+    }, { onSuccess(); feedback("${members.size} elementos actualizados") })
+    fun save(projectId: String, parentId: String?, id: String?, title: String, description: String, creationId: String = UUID.randomUUID().toString(), startAt: Long? = null, dueAt: Long? = null, editDates: Boolean = true, purpose: com.r0ybt.arachn0de.domain.model.NodePurpose = com.r0ybt.arachn0de.domain.model.NodePurpose.ACTION, obligation: com.r0ybt.arachn0de.domain.model.Obligation? = null, removeObligation: Boolean = false, responsibleIds: Set<String> = emptySet(), tagIds: Set<String> = emptySet(), priority: com.r0ybt.arachn0de.domain.model.Priority = com.r0ybt.arachn0de.domain.model.Priority.NONE, editResponsible: Boolean = false, onSuccess: () -> Unit) {
+        var created: CreationUndo? = null
         operation.submit("No se pudo guardar el elemento. Tus cambios siguen en el formulario.", {
-            if (id == null) { repository.createNode(projectId, parentId, title, description, creationId, startAt, dueAt, purpose, obligation, responsibleIds, tagIds, if (purpose == com.r0ybt.arachn0de.domain.model.NodePurpose.ACTION) priority else com.r0ybt.arachn0de.domain.model.Priority.NONE); true }
+            if (id == null) { created = repository.createNodeWithUndo(projectId, parentId, title, description, creationId, startAt, dueAt, purpose, obligation, responsibleIds, tagIds, if (purpose == com.r0ybt.arachn0de.domain.model.NodePurpose.ACTION) priority else com.r0ybt.arachn0de.domain.model.Priority.NONE); true }
             else repository.updateEditor(id, title, description, startAt, dueAt, obligation, removeObligation, editDates, tagIds, if (editDates) priority else null, if (editResponsible) responsibleIds else null)
-        }, onSuccess)
+        }, { onSuccess(); created?.let { showCreated(it) } })
+    }
 
     fun saveDraft(projectId: String, draft: EditorDraft, editDates: Boolean, onSuccess: () -> Unit) {
         when {
@@ -34,11 +66,13 @@ internal class NodeActions(private val repository: NodeRepository, scope: Corout
             true
         }, onSuccess)
 
-    fun createBatch(projectId: String, draft: NodeBatchDraft, specs: List<GeneratedNodeSpec>, responsibleIds: Set<String>, onSuccess: () -> Unit) =
+    fun createBatch(projectId: String, draft: NodeBatchDraft, specs: List<GeneratedNodeSpec>, responsibleIds: Set<String>, onSuccess: () -> Unit) {
+        var created: CreationUndo? = null
         operation.submit("No se pudo crear el lote. Se conservan tus parámetros; revisa el destino y los responsables y reintenta.", {
-            repository.createBatch(projectId, draft.parentId, draft.batchId, specs, responsibleIds, draft.dates.tagIds.toSet())
+            created = repository.createBatchWithUndo(projectId, draft.parentId, draft.batchId, specs, responsibleIds, draft.dates.tagIds.toSet())
             true
-        }, onSuccess)
+        }, { onSuccess(); created?.let { showCreated(it) } })
+    }
 
     fun convert(id: String, purpose: com.r0ybt.arachn0de.domain.model.NodePurpose, removeObligation: Boolean = false, onSuccess: () -> Unit = {}) =
         operation.submit("No se pudo convertir el elemento. Puedes reintentar.", {

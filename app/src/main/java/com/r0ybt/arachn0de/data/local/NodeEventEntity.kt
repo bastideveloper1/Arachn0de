@@ -13,6 +13,8 @@ internal fun NodeEventEntity.toEvent() = NodeEvent(id, nodeId, NodeEventType.val
 
 /** No event mutation API: ordinary domain writes only append; restore inserts the snapshot. */
 @Dao interface NodeEventDao {
+    @Query("SELECT * FROM node_events WHERE nodeId IN (:ids) ORDER BY occurredAt DESC, rowid DESC") suspend fun eventsForNodes(ids: List<String>): List<NodeEventEntity>
+
     @Query("SELECT * FROM node_events WHERE nodeId = :nodeId ORDER BY occurredAt DESC, rowid DESC")
     fun observe(nodeId: String): Flow<List<NodeEventEntity>>
     @Query("SELECT * FROM node_events WHERE nodeId = :nodeId ORDER BY occurredAt DESC, rowid DESC")

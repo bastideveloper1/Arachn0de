@@ -2,6 +2,7 @@ package com.r0ybt.arachn0de.data.repository
 
 import androidx.room.withTransaction
 import com.r0ybt.arachn0de.data.local.Arachn0deDatabase
+import com.r0ybt.arachn0de.data.local.NodeTagEntity
 import com.r0ybt.arachn0de.data.local.NodePersonEntity
 import com.r0ybt.arachn0de.data.local.NodeEventEntity
 import com.r0ybt.arachn0de.data.local.toEvent
@@ -195,7 +196,7 @@ class NodeRepository(
         val people = responsibleIds.toSet()
         val labels = tagIds.toSet()
         NodeBatchGenerator.validateSpecs(specs)
-        require(batchId.isNotBlank())
+        require(batchId.isNotBlank() && batchId.length <= 200)
         val ids = specs.indices.map { UUID.nameUUIDFromBytes("$batchId:$it".toByteArray(Charsets.UTF_8)).toString() }
         return database.withTransaction {
             val existing = ids.map { nodeDao.getById(it) }
@@ -208,7 +209,7 @@ class NodeRepository(
                     check(node.projectId == projectId && node.parentId == parentId && node.title == spec.title &&
                         node.description == spec.description && node.purpose == spec.purpose.name &&
                         node.startAt == null && node.dueAt == spec.dueAt &&
-                        node.amountMinor == spec.obligation?.amountMinor && node.currencyCode == spec.obligation?.currencyCode && node.priority == spec.priority.name &&
+                        node.amountMinor == spec.obligation?.amountMinor && node.currencyCode == spec.obligation?.currencyCode && node.priority == spec.priority.name && node.creationGroupId == batchId &&
                         database.personDao().assignmentIds(node.id).toSet() == people && database.tagDao().nodeIds(node.id).toSet() == labels) {
                         "El lote ya fue creado con otros datos."
                     }
@@ -229,7 +230,7 @@ class NodeRepository(
                 specs.mapIndexed { index, spec ->
                     val entity = NodeEntity(ids[index], projectId, parentId, spec.title, spec.description,
                         false, maximum + 1 + index, now, now, startAt = null, dueAt = spec.dueAt, purpose = spec.purpose.name,
-                        amountMinor = spec.obligation?.amountMinor, currencyCode = spec.obligation?.currencyCode, priority = spec.priority.name)
+                        amountMinor = spec.obligation?.amountMinor, currencyCode = spec.obligation?.currencyCode, priority = spec.priority.name, creationGroupId = batchId)
                     reopenBeforeConversion(parentId, now)
                     nodeDao.insert(entity)
                     appendEvent(entity.id, NodeEventType.CREATED, now)
@@ -331,6 +332,126 @@ class NodeRepository(
         if (nodeDao.setCompleted(current.id, completed, updatedAt) != 1) return false
         appendEvent(current.id, if (completed) NodeEventType.COMPLETED else NodeEventType.REOPENED, at)
         return true
+    }
+
+    suspend fun createNodeWithUndo(projectId: String, parentId: String?, title: String, description: String, creationId: String,
+        startAt: Long?, dueAt: Long?, purpose: NodePurpose, obligation: Obligation?, responsibleIds: Set<String>, tagIds: Set<String>, priority: Priority) = database.withTransaction {
+        val node = createNode(projectId,parentId,title,description,creationId,startAt,dueAt,purpose,obligation,responsibleIds,tagIds,priority)
+        captureCreation(listOf(node.id))
+    }
+    suspend fun createBatchWithUndo(projectId: String, parentId: String?, batchId: String, specs: List<GeneratedNodeSpec>, responsibleIds: Set<String>, tagIds: Set<String>) = database.withTransaction {
+        captureCreation(createBatch(projectId,parentId,batchId,specs,responsibleIds,tagIds).map { it.id })
+    }
+
+    suspend fun groupMembers(groupId: String): List<Node> = database.withTransaction {
+        val members = nodeDao.groupMembers(groupId)
+        val parents = members.map { it.projectId }.distinct().flatMap { nodeDao.getProjectNodes(it) }.mapNotNull { it.parentId }.toSet()
+        members.map { it.toNode(it.id in parents) }
+    }
+
+    suspend fun captureCreation(ids: List<String>): com.r0ybt.arachn0de.domain.model.CreationUndo = database.withTransaction {
+        require(ids.isNotEmpty() && ids.size == ids.toSet().size)
+        val rows = ids.chunked(500).flatMap { nodeDao.byIds(it) }.associateBy { it.id }
+        require(rows.size == ids.size) { "La creación cambió." }
+        val parents = ids.chunked(500).flatMap { nodeDao.parentsWithChildren(it) }.toSet()
+        val tags = ids.chunked(500).flatMap { database.tagDao().tagsForNodes(it) }.groupBy { it.nodeId }
+        val people = ids.chunked(500).flatMap { database.personDao().assignmentsForNodes(it) }.groupBy { it.nodeId }
+        val events = ids.chunked(500).flatMap { database.nodeEventDao().eventsForNodes(it) }.groupBy { it.nodeId }
+        com.r0ybt.arachn0de.domain.model.CreationUndo(ids.map { rows.getValue(it).toNode(it in parents) },
+            ids.associateWith { tags[it].orEmpty().map { row -> row.tagId }.toSet() },
+            ids.associateWith { people[it].orEmpty().map { row -> row.personId }.toSet() },
+            ids.associateWith { events[it].orEmpty().map { row -> row.toEvent() } })
+    }
+
+    suspend fun deleteSelected(projectId: String, selected: Set<String>): Int = database.withTransaction {
+        val nodes = nodeDao.getProjectNodes(projectId).map { it.toNode(false) }
+        val roots = com.r0ybt.arachn0de.domain.model.SelectionRoots.normalize(nodes, selected)
+        val children = nodes.groupBy { it.parentId }
+        val stack = ArrayDeque<String>(); stack.addAll(roots)
+        val affected = mutableListOf<String>()
+        while (stack.isNotEmpty()) {
+            val id = stack.removeLast(); affected.add(id)
+            children[id].orEmpty().forEach { stack.addLast(it.id) }
+        }
+        val batches = affected.chunked(500)
+        batches.forEach { nodeDao.detachNodes(it) }
+        batches.forEach { nodeDao.deleteDetachedNodes(it) }
+        selected.size
+    }
+
+    suspend fun moveSelected(projectId: String, selected: Set<String>, parentId: String?): Int = database.withTransaction {
+        val nodes = nodeDao.getProjectNodes(projectId).map { it.toNode(false) }
+        val roots = com.r0ybt.arachn0de.domain.model.SelectionRoots.normalize(nodes, selected)
+        val byId = nodes.associateBy { it.id }
+        val rootsSet = roots.toSet()
+        val visited = hashSetOf<String>()
+        var ancestor = parentId
+        while (ancestor != null) {
+            require(ancestor !in rootsSet && visited.add(ancestor)) { "Destino dentro de la selección." }
+            val parent = requireNotNull(byId[ancestor]) { "Destino ausente." }
+            require(parent.purpose == NodePurpose.ACTION && parent.obligation == null) { "Destino incompatible." }
+            ancestor = parent.parentId
+        }
+        val changing = roots.filter { byId.getValue(it).parentId != parentId }
+        if (changing.isNotEmpty()) {
+            val at = currentTimeMillis()
+            reopenBeforeConversion(parentId, at)
+            var maximum = nodes.filter { it.parentId == parentId }.maxOfOrNull { it.position } ?: -1
+            if (maximum.toLong() + changing.size > Int.MAX_VALUE) {
+                writeOrder(nodeDao.getSiblings(projectId, parentId))
+                maximum = nodeDao.maxPosition(projectId, parentId) ?: -1
+            }
+            check(maximum.toLong() + changing.size <= Int.MAX_VALUE) { "Orden agotado." }
+            changing.forEachIndexed { index, id -> check(nodeDao.move(id,parentId,maximum+index+1,at) == 1) }
+        }
+        selected.size
+    }
+
+    /** Refuse undo if any captured row changed, vanished or acquired children. Never delete new work. */
+    suspend fun undoCreation(token: com.r0ybt.arachn0de.domain.model.CreationUndo): Boolean = database.withTransaction {
+        val expected = token.nodes
+        if (expected.isEmpty()) return@withTransaction false
+        val actual = runCatching { captureCreation(expected.map { it.id }) }.getOrNull() ?: return@withTransaction false
+        if (expected.any { it.hasChildren } || actual != token) return@withTransaction false
+        // Every captured node is still a leaf; direct chunks cannot cascade into new work.
+        expected.map { it.id }.chunked(500).forEach { nodeDao.deleteDetachedNodes(it) }
+        true
+    }
+
+    suspend fun updateGroup(sourceId: String, patch: com.r0ybt.arachn0de.domain.model.SharedNodePatch,
+        expectedIds: Set<String>, title: String, description: String, startAt: Long?, dueAt: Long?,
+        editDates: Boolean, obligation: Obligation?, removeObligation: Boolean, tagIds: Set<String>, priority: Priority,
+        responsibleIds: Set<String>): Int = database.withTransaction {
+        val source = requireNotNull(nodeDao.getById(sourceId)) { "El elemento ya no existe." }
+        val group = requireNotNull(source.creationGroupId) { "No pertenece a un grupo." }
+        val members = nodeDao.groupMembers(group)
+        check(members.map { it.id }.toSet() == expectedIds) { "El grupo cambió. Vuelve a revisar sus miembros." }
+        require(!patch.isEmpty)
+        require(members.all { it.projectId == source.projectId })
+        val parents = nodeDao.getProjectNodes(source.projectId).mapNotNull { it.parentId }.toSet()
+        patch.tags?.let { tags.validate(it) }
+        patch.responsibleIds?.forEach { requireNotNull(database.personDao().get(it)) { "Persona ausente." } }
+        val at = currentTimeMillis()
+        members.forEach { current ->
+            val actualAmount = if (patch.amount != null) patch.amount.value else current.amountMinor
+            val currency = if (patch.currency != null) patch.currency.value else current.currencyCode
+            val financial = actualAmount?.let { Obligation(it, requireNotNull(currency)) }
+            require((actualAmount == null) == (currency == null)) { "Monto y moneda deben ser consistentes." }
+            val leaf = current.purpose == "ACTION" && current.id !in parents
+            require((patch.amount == null && patch.currency == null && patch.priority == null) || leaf) { "El grupo contiene notas o capas incompatibles con estos cambios." }
+            patch.tags?.let { ids ->
+                database.tagDao().clearNode(current.id)
+                if(ids.isNotEmpty()) database.tagDao().assignNodes(ids.map { NodeTagEntity(current.id,it) })
+            }
+            patch.responsibleIds?.let { ids ->
+                database.personDao().clearAssignments(current.id)
+                if(ids.isNotEmpty()) database.personDao().assign(ids.map { NodePersonEntity(current.id,it) })
+            }
+            check(nodeDao.patchShared(current.id, patch.description ?: current.description, financial?.amountMinor,
+                financial?.currencyCode, patch.priority?.name ?: current.priority, at) == 1)
+        }
+        check(updateEditor(sourceId,title,description,startAt,dueAt,obligation,removeObligation,editDates,tagIds,priority.takeIf { editDates },responsibleIds))
+        members.size
     }
 
     suspend fun deleteNode(id: String): Boolean = database.withTransaction { nodeDao.delete(id) == 1 }

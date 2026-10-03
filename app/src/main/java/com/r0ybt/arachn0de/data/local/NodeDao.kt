@@ -9,6 +9,9 @@ import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface NodeDao {
+    @Query("SELECT * FROM nodes WHERE id IN (:ids)") suspend fun byIds(ids: List<String>): List<NodeEntity>
+    @Query("SELECT DISTINCT parentId FROM nodes WHERE parentId IN (:ids)") suspend fun parentsWithChildren(ids: List<String>): List<String>
+
     @Query("SELECT * FROM nodes ORDER BY projectId, position, createdAt, id")
     fun observeAllNodes(): Flow<List<NodeEntity>>
 
@@ -17,6 +20,12 @@ interface NodeDao {
 
     @Query("SELECT * FROM nodes WHERE projectId = :projectId ORDER BY position, createdAt, id")
     suspend fun getProjectNodes(projectId: String): List<NodeEntity>
+
+    @Query("SELECT * FROM nodes WHERE creationGroupId = :groupId ORDER BY projectId, position, createdAt, id")
+    suspend fun groupMembers(groupId: String): List<NodeEntity>
+
+    @Query("UPDATE nodes SET description = :description, amountMinor = :amount, currencyCode = :currency, priority = :priority, updatedAt = :at WHERE id = :id")
+    suspend fun patchShared(id: String, description: String, amount: Long?, currency: String?, priority: String, at: Long): Int
 
     @Query("SELECT * FROM nodes WHERE id = :id")
     suspend fun getById(id: String): NodeEntity?

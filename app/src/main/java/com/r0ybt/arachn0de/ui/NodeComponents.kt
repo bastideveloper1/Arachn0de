@@ -44,7 +44,12 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.onLongClick
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
@@ -172,6 +177,9 @@ internal fun NodeCard(
     onRecurrence: (() -> Unit)? = null,
     tags: List<com.r0ybt.arachn0de.domain.model.Tag> = emptyList(),
     onHistory: (() -> Unit)? = null,
+    selected: Boolean = false,
+    selecting: Boolean = false,
+    onSelect: (() -> Unit)? = null,
 ) {
     var showContextMenu by remember { mutableStateOf(false) }
     val completedTint = if (node.isCompleted) Arachn0deColors.Completed else Arachn0deColors.Primary
@@ -184,7 +192,8 @@ internal fun NodeCard(
             .alpha(rowAlpha)
             .border(1.dp, Arachn0deColors.Outline.copy(alpha = 0.9f), RoundedCornerShape(8.dp))
             .zIndex(if (dragging) 1f else 0f)
-            .clickable(onClick = onOpen),
+            .semantics { onSelect?.let { select -> onLongClick("Seleccionar") { select(); true } }; this.selected = selected; if(selecting) stateDescription = if(selected) "Seleccionado" else "No seleccionado" }
+            .clickable(onClick = if(selecting) ({ onSelect?.invoke(); Unit }) else onOpen),
         shape = RoundedCornerShape(8.dp),
         colors = CardDefaults.cardColors(containerColor = Arachn0deColors.Surface),
     ) {
@@ -194,7 +203,8 @@ internal fun NodeCard(
                 .padding(horizontal = 12.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            if (canToggleComplete) {
+            if (selecting) androidx.compose.material3.Checkbox(selected, { onSelect?.invoke() })
+            else if (canToggleComplete) {
                 IconButton(
                     onClick = onToggleComplete,
                     modifier = Modifier
@@ -304,9 +314,13 @@ internal fun NodeCard(
                     )
                 }
 
-                IconButton(
-                    onClick = { showContextMenu = true },
-                    modifier = Modifier.size(48.dp),
+                Box(
+                    modifier = Modifier.size(48.dp).testTag("node-options:${node.id}").combinedClickable(
+                        onClick = { if(selecting) onSelect?.invoke() else showContextMenu = true },
+                        role = androidx.compose.ui.semantics.Role.Button,
+                        onLongClickLabel = "Seleccionar",
+                        onLongClick = { onSelect?.invoke() },
+                    ), contentAlignment = Alignment.Center,
                 ) {
                     Icon(
                         imageVector = Icons.Default.MoreVert,
@@ -327,6 +341,7 @@ internal fun NodeCard(
             title = { Text(node.title, maxLines = 2, overflow = TextOverflow.Ellipsis) },
             text = {
                 Column(modifier = Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    onSelect?.let { select -> TextButton(onClick = { showContextMenu = false; select() }) { Text("Seleccionar") } }
                     TextButton(
                         onClick = {
                             showContextMenu = false

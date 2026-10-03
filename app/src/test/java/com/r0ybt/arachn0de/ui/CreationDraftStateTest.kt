@@ -36,12 +36,38 @@ class CreationDraftStateTest {
         }
         recovered.clear();recovered.open("parent") { EditorDraft(null,"parent","","") };assertFalse(recovered.active!!.hasWork)
     }
+    @Test fun groupedDraftKeepsBaselineThroughCloseRestoreAndDetectsOnlyChangedFields() {
+        val store=EditorDraftStore()
+        store.open(null,"member") { EditorDraft("member",null,"Cuota 2","Original",obligation=Obligation(10000,"CLP"),priority=Priority.LOW).apply {
+            creationGroupId="group";tagIds=listOf("tag");responsibleIds=listOf("person");captureSharedBaseline()
+        } }
+        assertTrue(store.active!!.sharedPatch().isEmpty)
+        store.active!!.apply { amountText="12000";title="Título individual";dueAt=200 }
+        store.close()
+        val recovered=restore(store)
+        recovered.open(null,"member") { error("Must retain draft") }
+        val d=recovered.active!!
+        assertEquals("group",d.creationGroupId)
+        assertEquals(SharedNodePatch(amount=FieldChange(12000L)),d.sharedPatch())
+        d.description="";d.tagIds=emptyList();d.responsibleIds=emptyList();d.priority=Priority.HIGH
+        assertEquals(SharedNodePatch(description="",amount=FieldChange(12000L),priority=Priority.HIGH,tags=emptySet(),responsibleIds=emptySet()),d.sharedPatch())
+        d.amountText="10000";d.description="Original";d.tagIds=listOf("tag");d.responsibleIds=listOf("person");d.priority=Priority.LOW
+        assertTrue(d.sharedPatch().isEmpty)
+        recovered.clear();assertNull(recovered.active)
+    }
+    @Test fun selectionNormalizesTenThousandLevelsIterativelyAndDoesNotSelectChildrenVisually() {
+        val tree=(0 until 10000).map { i -> Node("$i","p",if(i==0) null else "${i-1}","N","",false,0,0,0,i<9999) }
+        assertEquals(listOf("0"),SelectionRoots.normalize(tree,setOf("0","9999")))
+        val state=NodeSelection();state.toggle("0");assertEquals(setOf("0"),state.ids)
+        state.toggle("9999");state.toggle("0");assertEquals(setOf("9999"),state.ids)
+        state.retain(setOf("other"));assertTrue(state.ids.isEmpty())
+    }
     @Test fun previousSavedEditorFormatRemainsReadable() {
         val d=EditorDraft(null,"p","Title","Desc",startAt=100,dueAt=200,priority=Priority.HIGH).apply {
             recurrenceFrequency="YEARLY";recurrenceStart="2090-01-01";tagIds=listOf("tag");responsibleIds=listOf("person")
         }
         val current=(with(EditorDraft.Saver) { scope.save(d) } as List<*>).map { it as String }
-        val old=current.drop(9)
+        val old=current.drop(3).drop(9)
         val restored=checkNotNull(EditorDraft.Saver.restore(old))
         assertEquals(d.creationId,restored.creationId);assertEquals(Priority.HIGH,restored.priority)
         assertEquals(100L,restored.activeStart);assertEquals(200L,restored.activeDue)

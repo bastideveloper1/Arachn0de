@@ -58,6 +58,6 @@ class CalendarFiltersRepositoryTest {
         nodes.setCompleted(task.id,false); nodes.updateNodeWithDates(task.id,"Task","",null,now+86400000)
         assertTrue(filtered(criteria).tasks.isEmpty()); assertEquals(1,filtered(criteria.copy(range=null)).tasks.size)
         nodes.deleteNode(task.id); assertTrue(filtered(criteria.copy(range=null)).tasks.isEmpty())
-        assertEquals(12, db.openHelper.readableDatabase.version)
+        assertEquals(13, db.openHelper.readableDatabase.version)
     }
 }

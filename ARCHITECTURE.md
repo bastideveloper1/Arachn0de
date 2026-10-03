@@ -2033,3 +2033,143 @@ se arreglaron fallos históricos. Informe completo conservado en
 `/tmp/arachnode-creation-ux-full-results`.
 assembleDebug final y git diff --check correctos. Sin lint completo, Release,
 cambios de versión, commit, push o tag.
+
+## Recuperación, selección y grupos de creación (UX bloque 2)
+
+El estado actual pasa a **Room v13 y backup lógico v6**. Los apartados anteriores
+que describen Room v12/backup v5 corresponden al bloque previo. La versión de app
+permanece 0.2.2 (code 4).
+
+### Undo V1
+
+`NodeActions` ofrece Snackbar Material Short con «Deshacer» tras creación normal
+o Batch: aproximadamente cuatro segundos, ampliables por accesibilidad Material.
+El token efímero `CreationUndo` contiene los IDs exactos, filas, relaciones de
+etiquetas/responsables e historial capturados dentro de la transacción creadora.
+No se infieren IDs por título, posición ni timestamp. Undo compara nuevamente
+el snapshot entero y rechaza filas desaparecidas, modificadas o con nuevos hijos;
+si es válido, borra únicamente esas filas en una transacción. Cascades eliminan
+relaciones y CREATED, pero conservan etiquetas/personas del catálogo. Fallos no
+se presentan como éxito. El borrador se limpia al crear con éxito y Undo no lo
+resucita. La oportunidad termina por timeout, salida/recreación de pantalla o
+nuevo feedback; no se persiste un historial de comandos.
+
+Se evaluó Undo de eliminación y quedó fuera de V1: la eliminación detacha y borra
+subárboles, cascades y relaciones; restaurarlos exactamente exigiría snapshots de
+historial/relaciones/posición y resolver conflictos con padres, catálogos,
+normalización y restauraciones concurrentes. No se introducen papelera ni
+soft-delete. Tampoco se ofrece Undo de edición, movimiento, recurrencia o bulk.
+La eliminación conserva confirmación explícita, incluida advertencia de ausencia
+de Deshacer para selección múltiple.
+
+### Creation group y persistencia
+
+`Node.creationGroupId`/`NodeEntity.creationGroupId` es nullable e indexado. El UUID
+estable de la ejecución Batch se usa como grupo de sus Nodes; otra ejecución
+obtiene otro ID. La API conserva IDs opacos de Batch existentes en pruebas y
+reintentos. Crear individualmente o materializar recurrencia no asigna grupo.
+Mover/editar conserva identidad histórica y eliminar un miembro no afecta los
+otros por pertenencia. No hace falta tabla de grupos ni cascades de grupo.
+
+`CreationGroupMigration12To13` añade columna nullable e índice, sin reescribir
+filas: Nodes anteriores quedan sin grupo. Se exporta schema 13 y se conservan
+rutas históricas, triggers y foreign keys. Backup v6 exige y preserva el campo;
+v1–v5 usan null. Se rechazan grupos vacíos/excesivos o compartidos entre proyectos
+antes de restaurar. El contenedor de backup no cambia. Batch es generación finita;
+creation group es origen persistente; RecurrenceRule/receipts siguen siendo el
+motor recurrente independiente.
+
+### Selección, eliminación y movimiento
+
+La pulsación larga sobre «Más opciones» de una tarjeta entra en selección y
+selecciona ese Node; «Seleccionar» del menú y acción semántica son alternativas.
+Se reserva el cuerpo de la tarjeta para el drag individual existente. En selección,
+tap agrega/quita, aparecen checkbox/estado semántico y barra con contador,
+Mover/Eliminar/Salir. No se seleccionan visualmente descendientes por elegir una
+Capa. No hay drag múltiple; reorder se desactiva mientras hay selección.
+
+La selección vive solo en la composición del contexto Proyecto/Capa/filtro;
+cambiar de contexto o recrear limpia y una emisión retiene únicamente IDs
+visibles. Back/Salir limpian. Filtros incluyen filas de contexto visibles y
+selección explícita accesible. No hay selección entre proyectos.
+
+`SelectionRoots.normalize` recorre iterativamente el bosque ordenado, valida la
+selección y elimina raíces cubiertas por ancestros seleccionados. Bulk delete
+expande esas raíces iterativamente, detacha en bloques de 500 y elimina en una
+sola transacción; una confirmación advierte descendientes/relaciones/historial.
+Bulk move valida la cadena de destino contra el snapshot y raíces elegidas,
+rechaza ciclos, NOTE/obligaciones y destinos ajenos; mueve raíces preservando
+subárboles y orden relativo, append al destino. Reabre el destino completado
+mediante la semántica existente. Sin cambios parciales; errores conservan selección
+y diálogo para reintentar. Un éxito produce un único feedback con cantidad de
+IDs seleccionados (puede incluir descendientes ya cubiertos por una raíz).
+
+### Edición grupal y Draft
+
+Al guardar un Node agrupado con cambios propagables y más de un miembro existente
+se ofrece «Solo este elemento»/«Todos los elementos del grupo». La revisión
+comunica cantidad total e incluye miembros movidos a otras capas. Solo este usa
+el editor individual existente. Todos aplica `SharedNodePatch` explícito, nunca
+clona Nodes. Allowlist: descripción, monto, moneda, Priority, etiquetas y
+responsables. Se propagan exclusivamente valores diferentes de la baseline del
+borrador; conjuntos se comparan sin depender del orden. `FieldChange` distingue
+campo ausente de retirada nullable; descripción vacía y conjuntos vacíos son
+cambios explícitos. No se propagan título/numeración, fechas, posición, jerarquía,
+completion, recurrencia ni eventos. Título/fechas modificados del Node editado
+se guardan únicamente en ese Node, en la misma transacción.
+
+El editor captura baseline después de cargar relaciones. Saver conserva grupo,
+baseline y valores al cerrar/reabrir/recrear, con compatibilidad del formato de
+Draft anterior. Error retiene Draft/revisión; éxito o descarte explícito limpia.
+Cambiar solo título/fecha o editar sin grupo no provoca pregunta grupal. Borrados
+no se recrean: se aplican cambios a miembros existentes. Cambios de membresía
+entre revisión y guardado requieren revisar de nuevo. Un patch financiero o de
+prioridad exige que TODOS los miembros sean hojas ACTION compatibles; se rechaza
+el grupo entero si alguno se convirtió en NOTE/Capa. Descripción/relaciones pueden
+aplicarse a miembros con esas capacidades. Nodes heterogéneos conservan campos
+sin cambios, incluida moneda cuando solo se cambió monto.
+
+Filas y relaciones se actualizan en una única transacción Room y cualquier fallo
+revierte todas. History sigue CREATED/COMPLETED/REOPENED: Undo y bulk/group edit
+no añaden tipos de evento. Los receipts recurrentes conservan su política previa
+cuando se elimina una ocurrencia. No se edita una regla por pertenecer a un grupo.
+
+### Rendimiento y cobertura
+
+No se consulta por tarjeta para selección/grupo. IDs usan sets y normalización,
+expansión y validación de jerarquía son iterativas, con prueba de 10.000 niveles.
+Snapshot Undo lee Nodes, hijos, relaciones y eventos en consultas IN de hasta
+500 IDs; validación y bulk usan snapshots del proyecto, evitando lecturas por
+Node para recorrer ancestros. Las escrituras por miembro son necesarias y quedan
+dentro de una transacción; la consulta de grupo usa su índice.
+
+`GroupBulkUndoTest` cubre identidad, Undo seguro/rechazo/rollback, padres/hijos,
+movimiento y patches heterogéneos/atómicos. `CreationGroupMigrationTest` usa el
+schema real v12, preserva todas las tablas y verifica v13/null/triggers/FKs.
+`CreationGroupBackupTest` verifica v6, distintos grupos, individuos, recurrencia,
+historial y v1–v5. `CreationDraftStateTest` verifica baseline restaurada, retirada
+explícita y selección profunda. `RecoveryUxTest` cubre Snackbar normal/Batch,
+selección por pulsación larga y menú, contador, confirmación única, errores,
+reintento, Solo este y Todo el grupo con borrador conservado.
+
+Undo elimina los Nodes capturados; no revierte normalizaciones de posiciones ni
+la reapertura previa de una hoja padre que se convirtió en Capa al crear hijos.
+Esos cambios del dominio existente y sus eventos se conservan. Al eliminar hijos
+no se completa automáticamente el padre. La eliminación validada de Undo también
+usa bloques de 500, sin consultar un subárbol por cada hoja del lote.
+
+Validación del bloque: tanda dirigida de 333 casos, 332 correctos y un fallo de
+sincronización al abrir el borrador de Proyecto (`DraftRestorationTest`, campo
+Nombre aún ausente); ese caso pasó aisladamente sin modificarlo. Tras optimizar
+el borrado Undo por bloques, las 22 pruebas de GroupBulkUndoTest/RecoveryUxTest
+pasaron y assembleDebug pasó con el código final. Una tanda anterior incluyó por
+coincidencia de nombre el fallo histórico de drag de proyectos; no se modificó.
+La suite completa se ejecutó UNA vez: **595/601**, frente a **565/571** del baseline.
+Los 30 casos añadidos pasan. Persisten exactamente los cinco fallos históricos:
+ScrollRestorationTest (2), LargeListsTest (2), MvpReadinessTest (1), más
+ObligationPngRendererTest.longTextWrapsWithinPanelsAndHeightIncludesAllRows por
+ReportMemoryException, que pasó **4/4** al ejecutar su clase aisladamente. No hay
+nuevos fallos en la suite completa. Reporte completo preservado en
+`/tmp/arachnode-recovery-full-report` y XML en
+`/tmp/arachnode-recovery-full-results`. `git diff --check` pasa. No se ejecutó lint
+completo ni se realizaron commit/push/tag/Release ni cambios de versión de app.

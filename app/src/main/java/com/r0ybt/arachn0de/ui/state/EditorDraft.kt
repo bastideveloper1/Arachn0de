@@ -21,6 +21,25 @@ internal class EditorDraft(
     val hadObligation: Boolean = obligation != null,
     priority: com.r0ybt.arachn0de.domain.model.Priority = com.r0ybt.arachn0de.domain.model.Priority.NONE,
 ) {
+    var creationGroupId: String? = null
+    private var sharedBaseline: List<String>? = null
+    private fun sharedValues(): List<String> {
+        val money = obligation()
+        return listOf(description.trim(), money?.amountMinor?.toString().orEmpty(), money?.currencyCode.orEmpty(), priority.name,
+            tagIds.sorted().joinToString("\u001f"), responsibleIds.sorted().joinToString("\u001f"))
+    }
+    fun captureSharedBaseline() { sharedBaseline = sharedValues() }
+    fun sharedPatch(): com.r0ybt.arachn0de.domain.model.SharedNodePatch {
+        val before = sharedBaseline ?: return com.r0ybt.arachn0de.domain.model.SharedNodePatch()
+        val after = sharedValues()
+        return com.r0ybt.arachn0de.domain.model.SharedNodePatch(
+            description = after[0].takeIf { it != before[0] },
+            amount = if(after[1] != before[1]) com.r0ybt.arachn0de.domain.model.FieldChange(after[1].toLongOrNull()) else null,
+            currency = if(after[2] != before[2]) com.r0ybt.arachn0de.domain.model.FieldChange(after[2].ifEmpty { null }) else null,
+            priority = priority.takeIf { after[3] != before[3] },
+            tags = tagIds.toSet().takeIf { after[4] != before[4] },
+            responsibleIds = responsibleIds.toSet().takeIf { after[5] != before[5] })
+    }
     var batchEnabled by mutableStateOf(false)
     var batchQuantity by mutableStateOf("1")
     var batchNumbering by mutableStateOf(com.r0ybt.arachn0de.domain.model.NumberingMode.NONE)
@@ -100,9 +119,12 @@ internal class EditorDraft(
         val Saver = listSaver<EditorDraft?, String>(
             save = {
                 if (it == null) emptyList()
-                else listOf("__ux_v1", it.batchEnabled.toString(), it.batchQuantity, it.batchNumbering.name, it.batchStartNumber, it.batchTemporal.name, it.latentFrequency, it.startEnabled.toString(), it.dueEnabled.toString()) + listOf(it.id.orEmpty(), it.parentId.orEmpty(), it.title, it.description, it.creationId, it.startAt?.toString().orEmpty(), it.dueAt?.toString().orEmpty(), it.purpose.name, it.financialEnabled.toString(), it.amountText, it.currencyCode, it.moneyLocaleTag, it.hadObligation.toString(), it.financialRemovalConfirmed.toString(), it.showResponsible.toString()) + listOf("__recurrence_v1", it.recurrenceFrequency, it.recurrenceInterval, it.recurrenceStart, it.recurrenceEnd) + listOf("__priority_v1", it.priority.name) + listOf("__tags_v1", it.tagIds.size.toString()) + it.tagIds + it.responsibleIds
+                else listOf("__shared_v1", it.creationGroupId.orEmpty(), (it.sharedBaseline?.size ?: 0).toString()) + it.sharedBaseline.orEmpty() + listOf("__ux_v1", it.batchEnabled.toString(), it.batchQuantity, it.batchNumbering.name, it.batchStartNumber, it.batchTemporal.name, it.latentFrequency, it.startEnabled.toString(), it.dueEnabled.toString()) + listOf(it.id.orEmpty(), it.parentId.orEmpty(), it.title, it.description, it.creationId, it.startAt?.toString().orEmpty(), it.dueAt?.toString().orEmpty(), it.purpose.name, it.financialEnabled.toString(), it.amountText, it.currencyCode, it.moneyLocaleTag, it.hadObligation.toString(), it.financialRemovalConfirmed.toString(), it.showResponsible.toString()) + listOf("__recurrence_v1", it.recurrenceFrequency, it.recurrenceInterval, it.recurrenceStart, it.recurrenceEnd) + listOf("__priority_v1", it.priority.name) + listOf("__tags_v1", it.tagIds.size.toString()) + it.tagIds + it.responsibleIds
             },
-            restore = { saved ->
+            restore = { encoded ->
+                val groupMeta = encoded.firstOrNull() == "__shared_v1"
+                val baselineSize = if(groupMeta) encoded[2].toInt() else 0
+                val saved = if(groupMeta) encoded.drop(3 + baselineSize) else encoded
                 val ux = saved.takeIf { it.firstOrNull() == "__ux_v1" }?.take(9)
                 val stored = if (ux != null) saved.drop(9) else saved
                 val priority = if (stored.getOrNull(20) == "__priority_v1") com.r0ybt.arachn0de.domain.model.Priority.valueOf(stored[21]) else com.r0ybt.arachn0de.domain.model.Priority.NONE
@@ -110,6 +132,8 @@ internal class EditorDraft(
                 if (it.isEmpty()) null
                 else EditorDraft(it[0].ifEmpty { null }, it[1].ifEmpty { null }, it[2], it[3], it[4], it.getOrNull(5)?.toLongOrNull(), it.getOrNull(6)?.toLongOrNull(), it.getOrNull(7)?.let(com.r0ybt.arachn0de.domain.model.NodePurpose::valueOf) ?: com.r0ybt.arachn0de.domain.model.NodePurpose.ACTION,
                     moneyLocaleTag = it.getOrNull(11) ?: java.util.Locale.getDefault().toLanguageTag(), hadObligation = it.getOrNull(12)?.toBoolean() ?: false).apply {
+                    creationGroupId = if(groupMeta) encoded[1].ifEmpty { null } else null
+                    sharedBaseline = if(baselineSize > 0) encoded.drop(3).take(baselineSize) else null
                     this.priority = priority
                     if (ux != null) {
                         batchEnabled = ux[1].toBoolean(); batchQuantity = ux[2]; batchNumbering = com.r0ybt.arachn0de.domain.model.NumberingMode.valueOf(ux[3])

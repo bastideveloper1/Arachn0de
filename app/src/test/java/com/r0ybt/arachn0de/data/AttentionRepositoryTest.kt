@@ -66,7 +66,7 @@ class AttentionRepositoryTest {
         assertTrue(attention().tasks.isEmpty())
         assertTrue(people.observeAllAssignments().first().isEmpty())
         assertEquals(1, people.observePeople().first().size)
-        assertEquals(12, db.openHelper.readableDatabase.version)
+        assertEquals(13, db.openHelper.readableDatabase.version)
     }
 
     @Test fun globalProjectionAndAssignmentsObserveMultipleProjectsAndNameChanges() = runBlocking {

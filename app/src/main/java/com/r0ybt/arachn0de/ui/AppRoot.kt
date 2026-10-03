@@ -24,6 +24,7 @@ import com.r0ybt.arachn0de.ui.state.rememberTaskScreenNow
 internal fun AppRoot(projectRepository: ProjectRepository, nodeRepository: NodeRepository, clock: () -> Long = System::currentTimeMillis) {
     val personRepository = (androidx.compose.ui.platform.LocalContext.current.applicationContext as com.r0ybt.arachn0de.Arachn0deApplication).personRepository
     val screenStates = androidx.compose.runtime.saveable.rememberSaveableStateHolder()
+    var showAbout by rememberSaveable { mutableStateOf(false) }
     var showPeople by rememberSaveable { mutableStateOf(false) }
     var showObligations by rememberSaveable { mutableStateOf(false) }
     var returnToObligations by rememberSaveable { mutableStateOf(false) }
@@ -76,7 +77,7 @@ internal fun AppRoot(projectRepository: ProjectRepository, nodeRepository: NodeR
     val projectProgressById = projects.orEmpty().associate { project ->
         project.id to (allState.projectProgressById[project.id] ?: NodeProgress(project.id, 0, 0, 0, NodeProgressState.NO_WORK))
     }
-    val globalView = !showPeople && (showObligations || showCalendar || showAttention || selectedProjectId == null)
+    val globalView = !showAbout && !showPeople && (showObligations || showCalendar || showAttention || selectedProjectId == null)
     val now = if (globalView) rememberTaskScreenNow(allState.nodes, clock, onRefresh = { zoneId = java.util.TimeZone.getDefault().id }) else 0L
     val calendar = if (showCalendar) {
         val snapshot by com.r0ybt.arachn0de.ui.state.rememberCalendar(allState, zoneId)
@@ -88,7 +89,9 @@ internal fun AppRoot(projectRepository: ProjectRepository, nodeRepository: NodeR
     } else null
 
     val selectedProject = projects?.firstOrNull { it.id == selectedProjectId }
-    if (showPeople) {
+    if (showAbout) {
+        screenStates.SaveableStateProvider("about") { AboutScreen(onBack = { showAbout = false }) }
+    } else if (showPeople) {
         screenStates.SaveableStateProvider("people") { PeopleScreen(personRepository) { showPeople = false } }
     } else if (showObligations) {
         screenStates.SaveableStateProvider("obligations") {
@@ -150,6 +153,7 @@ internal fun AppRoot(projectRepository: ProjectRepository, nodeRepository: NodeR
             onOpenAttention = { showAttention = true },
             onOpenCalendar = { showCalendar = true },
             onOpenObligations = { showObligations = true },
+            onOpenAbout = { showAbout = true },
         )
     } else if (selectedProject != null) {
         screenStates.SaveableStateProvider("project:${selectedProject.id}") {
@@ -164,6 +168,7 @@ internal fun AppRoot(projectRepository: ProjectRepository, nodeRepository: NodeR
                 onOpenAttention = { showAttention = true },
                 onOpenCalendar = { showCalendar = true },
                 onOpenObligations = { showObligations = true },
+                onOpenAbout = { showAbout = true },
                 onBackToObligations = if (returnToObligations) ({
                     screenStates.removeState("project:${selectedProject.id}")
                     selectedProjectId = null; openNodeId = null

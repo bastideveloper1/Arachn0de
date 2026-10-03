@@ -77,6 +77,7 @@ internal fun ProjectNodeScreen(
     onOpenAttention: () -> Unit = {},
     onOpenCalendar: () -> Unit = {},
     onOpenObligations: () -> Unit = {},
+    onOpenAbout: () -> Unit = {},
     onBackToObligations: (() -> Unit)? = null,
     onBackToCalendar: (() -> Unit)? = null,
     openNodeId: String? = null,
@@ -511,7 +512,7 @@ internal fun ProjectNodeScreen(
                         .background(Arachn0deColors.Scrim.copy(alpha = 0.45f))
                         .clickable { showDrawer = false },
                 ) {
-                    AppIdentityDrawer(onDismiss = { showDrawer = false }, onPeople = { showDrawer = false; onOpenPeople() }, onAttention = { showDrawer = false; onOpenAttention() }, onCalendar = { showDrawer = false; onOpenCalendar() }, onObligations = { showDrawer = false; onOpenObligations() })
+                    AppIdentityDrawer(onDismiss = { showDrawer = false }, onPeople = { showDrawer = false; onOpenPeople() }, onAttention = { showDrawer = false; onOpenAttention() }, onCalendar = { showDrawer = false; onOpenCalendar() }, onObligations = { showDrawer = false; onOpenObligations() }, onAbout = { showDrawer = false; onOpenAbout() })
                 }
             }
         }

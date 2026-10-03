@@ -53,6 +53,7 @@ internal fun ProjectDashboardScreen(
     onOpenAttention: () -> Unit = {},
     onOpenCalendar: () -> Unit = {},
     onOpenObligations: () -> Unit = {},
+    onOpenAbout: () -> Unit = {},
     projectAttentionById: Map<String, com.r0ybt.arachn0de.domain.model.AttentionSummary> = emptyMap(),
 ) {
     val scope = rememberCoroutineScope()
@@ -143,6 +144,7 @@ internal fun ProjectDashboardScreen(
                         onAttention = { showDrawer = false; onOpenAttention() },
                         onCalendar = { showDrawer = false; onOpenCalendar() },
                         onObligations = { showDrawer = false; onOpenObligations() },
+                        onAbout = { showDrawer = false; onOpenAbout() },
                     )
                 }
             }

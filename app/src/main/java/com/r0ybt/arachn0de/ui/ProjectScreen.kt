@@ -121,6 +121,8 @@ internal fun ProjectNodeScreen(
         stateSaver = listSaver<List<String>, String>(save = { it }, restore = { it.toList() }),
     ) { mutableStateOf(emptyList<String>()) }
     val actions = remember(nodeRepository, scope) { NodeActions(nodeRepository, scope) }
+    val copyContext = androidx.compose.ui.platform.LocalContext.current
+    val copyActions = remember(copyContext, scope) { com.r0ybt.arachn0de.ui.state.NodeCopyActions(copyContext, scope) }
     val isSubmittingNode = actions.operation.busy
     val currentNodeId = currentPath.lastOrNull()
     val currentNode = projectState.nodesById[currentNodeId]
@@ -391,6 +393,12 @@ internal fun ProjectNodeScreen(
                                         onClick = { movingNodeId = currentNode.id },
                                         enabled = !isSubmittingNode,
                                     ) { Text("Mover a…") }
+                                    TextButton(enabled = !copyActions.busy, onClick = {
+                                        copyActions.copy(projectState, currentNode.id, false)
+                                    }) { Text("Copiar este elemento") }
+                                    if (currentNode.hasChildren) TextButton(enabled = !copyActions.busy, onClick = {
+                                        copyActions.copy(projectState, currentNode.id, true)
+                                    }) { Text("Copiar con descendientes") }
                                     Spacer(modifier = Modifier.height(12.dp))
                                 }
 
@@ -432,6 +440,8 @@ internal fun ProjectNodeScreen(
                                     attention = attention?.byNodeId?.get(node.id),
                                     onResponsible = { if (!isSubmittingNode && !personActions.operation.busy && peopleLoaded && assignmentsLoaded) responsibleNodeId = node.id },
                                     onMove = { if (!isSubmittingNode) movingNodeId = node.id },
+                                    canCopy = !copyActions.busy,
+                                    onCopy = { descendants -> copyActions.copy(projectState, node.id, descendants) },
                                     onEdit = {
                                         draft = EditorDraft(node.id, node.parentId, node.title, node.description, startAt = node.startAt, dueAt = node.dueAt, purpose = node.purpose, obligation = node.obligation)
                                     },

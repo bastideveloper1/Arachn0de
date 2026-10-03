@@ -167,6 +167,8 @@ internal fun NodeCard(
     now: Long = 0L,
     attention: com.r0ybt.arachn0de.domain.model.AttentionSummary? = null,
     onConvert: (() -> Unit) -> Unit = { done -> done() },
+    canCopy: Boolean = true,
+    onCopy: (Boolean) -> Unit = {},
 ) {
     var showContextMenu by remember { mutableStateOf(false) }
     val completedTint = if (node.isCompleted) Arachn0deColors.Completed else Arachn0deColors.Primary
@@ -351,6 +353,14 @@ internal fun NodeCard(
                         modifier = Modifier.fillMaxWidth(),
                     ) {
                         Text("Eliminar", color = Arachn0deColors.Destructive, textAlign = TextAlign.Start, modifier = Modifier.fillMaxWidth())
+                    }
+                    TextButton(enabled = canCopy, onClick = { showContextMenu = false; onCopy(false) },
+                        modifier = Modifier.fillMaxWidth()) {
+                        Text("Copiar este elemento", modifier = Modifier.fillMaxWidth())
+                    }
+                    if (hasChildren) TextButton(enabled = canCopy, onClick = { showContextMenu = false; onCopy(true) },
+                        modifier = Modifier.fillMaxWidth()) {
+                        Text("Copiar con descendientes", modifier = Modifier.fillMaxWidth())
                     }
                     TextButton(
                         onClick = { showContextMenu = false },

@@ -169,6 +169,7 @@ internal fun NodeCard(
     onConvert: (() -> Unit) -> Unit = { done -> done() },
     canCopy: Boolean = true,
     onCopy: (Boolean) -> Unit = {},
+    onRecurrence: (() -> Unit)? = null,
 ) {
     var showContextMenu by remember { mutableStateOf(false) }
     val completedTint = if (node.isCompleted) Arachn0deColors.Completed else Arachn0deColors.Primary
@@ -233,6 +234,7 @@ internal fun NodeCard(
             Column(
                 modifier = Modifier.weight(1f),
             ) {
+                if (onRecurrence != null) TextButton(onClick = onRecurrence) { Text("↻ Recurrencia", color = Arachn0deColors.Primary, fontSize = 12.sp) }
                 Text(
                     text = node.title,
                     color = displayTextColor,

@@ -14,6 +14,13 @@ internal class NodeActions(private val repository: NodeRepository, scope: Corout
             else repository.updateNode(id, title, description)
         }, onSuccess)
 
+    fun createRecurrence(projectId: String, draft: EditorDraft, onSuccess: () -> Unit) =
+        operation.submit("No se pudo guardar la recurrencia. Revisa fechas, destino y responsables.", {
+            repository.recurrence.create(requireNotNull(draft.recurrenceRule(projectId)), draft.responsibleIds.toSet())
+            while (repository.recurrence.materializeDue()) kotlinx.coroutines.yield()
+            true
+        }, onSuccess)
+
     fun createBatch(projectId: String, draft: NodeBatchDraft, specs: List<GeneratedNodeSpec>, responsibleIds: Set<String>, onSuccess: () -> Unit) =
         operation.submit("No se pudo crear el lote. Se conservan tus parámetros; revisa el destino y los responsables y reintenta.", {
             repository.createBatch(projectId, draft.parentId, draft.batchId, specs, responsibleIds)

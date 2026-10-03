@@ -13,6 +13,9 @@ internal data class BackupData(
     val persons: List<PersonEntity>,
     val assignments: List<NodePersonEntity>,
     val avatars: Map<String, ByteArray>,
+    val recurrenceRules: List<RecurrenceRuleEntity> = emptyList(),
+    val recurrenceOccurrences: List<RecurrenceOccurrenceEntity> = emptyList(),
+    val recurrenceAssignments: List<RecurrencePersonEntity> = emptyList(),
 )
 
 internal object BackupLimits {
@@ -26,7 +29,7 @@ internal object BackupLimits {
 /** Validate before staging or deleting anything; return parent-first order without recursion. */
 internal fun BackupData.validate(): List<NodeEntity> {
     require(appVersion.isNotBlank() && appVersion.length <= 128 && createdAt >= 0) { "Metadatos de backup inválidos." }
-    require(projects.size.toLong() + nodes.size + persons.size + assignments.size <= BackupLimits.RECORDS) { "Demasiados registros en el backup." }
+    require(projects.size.toLong() + nodes.size + persons.size + assignments.size + recurrenceRules.size + recurrenceOccurrences.size + recurrenceAssignments.size <= BackupLimits.RECORDS) { "Demasiados registros en el backup." }
     fun unique(ids: List<String>): Set<String> {
         require(ids.all { it.isNotBlank() && it.length <= 256 }) { "Identidad inválida." }
         return ids.toSet().also { require(it.size == ids.size) { "Identidades duplicadas." } }
@@ -64,6 +67,21 @@ internal fun BackupData.validate(): List<NodeEntity> {
     }
     require(ordered.size == nodes.size) { "Ciclo en la jerarquía." }
     require(assignments.toSet().size == assignments.size && assignments.all { it.nodeId in nodeIds && it.personId in personIds }) { "Relación de responsables inválida." }
+    val ruleIds = unique(recurrenceRules.map { it.id })
+    recurrenceRules.forEach { com.r0ybt.arachn0de.data.repository.RecurrenceRepository.validate(it) }
+    require(recurrenceOccurrences.map { it.ruleId to it.day }.toSet().size == recurrenceOccurrences.size)
+    unique(recurrenceOccurrences.map { it.nodeId })
+    val rulesById = recurrenceRules.associateBy { it.id }
+    recurrenceOccurrences.forEach { receipt ->
+        val rule = requireNotNull(rulesById[receipt.ruleId]) { "Regla ausente." }
+        val frequency = com.r0ybt.arachn0de.domain.model.RecurrenceFrequency.valueOf(rule.frequency)
+        val index = com.r0ybt.arachn0de.domain.model.RecurrenceSchedule.indexOnOrAfter(rule.startDay, frequency, rule.interval, receipt.day)
+        require(index < rule.nextIndex && com.r0ybt.arachn0de.domain.model.RecurrenceSchedule.date(rule.startDay, frequency, rule.interval, index) == receipt.day)
+        require(rule.endDay == null || receipt.day <= rule.endDay)
+        require(receipt.nodeId == java.util.UUID.nameUUIDFromBytes("recurrence:${rule.id}:${receipt.day}".toByteArray(Charsets.UTF_8)).toString())
+        // Missing Nodes are intentional deletion receipts, not broken backup references.
+    }
+    require(recurrenceAssignments.toSet().size == recurrenceAssignments.size && recurrenceAssignments.all { it.ruleId in ruleIds && it.personId in personIds })
     val names = persons.mapNotNull { it.avatarFile }.toSet()
     require(names == avatars.keys && names.all { BackupLimits.avatarName.matches(it) }) { "Referencias de avatar inválidas." }
     require(avatars.values.sumOf { it.size.toLong() } <= BackupLimits.TOTAL_AVATAR_BYTES) { "Avatares demasiado grandes." }

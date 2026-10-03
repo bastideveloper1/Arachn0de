@@ -25,6 +25,7 @@ class NodeRepository(
     private val database: Arachn0deDatabase,
     private val currentTimeMillis: () -> Long = System::currentTimeMillis,
 ) {
+    val recurrence = RecurrenceRepository(database, currentTimeMillis)
     private val nodeDao = database.nodeDao()
 
     fun observeAllState(): Flow<NodeTreeSnapshot> =

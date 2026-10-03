@@ -103,6 +103,6 @@ class ObligationRepositoryTest {
         assertEquals(3,people.observeAssignments(project).first().size)
         try { nodes.createBatch(project,null,"batch",specs.map { it.copy(obligation=Obligation(1,"USD")) },setOf("p")); fail() } catch (_: IllegalStateException) {}
         invalid { NodeBatchGenerator.generate(NodeBatchParameters("Note",2,purpose=NodePurpose.NOTE,obligation=amount),utc) }
-        assertEquals(8,sql.version)
+        assertEquals(9,sql.version)
     }
 }

@@ -41,6 +41,7 @@ internal fun NodeDialog(
 ) {
     var confirmFinancialRemoval by rememberSaveable(draft.creationId) { mutableStateOf(false) }
     val financialValid = !editDates || draft.purpose != NodePurpose.ACTION || runCatching { draft.obligation() }.isSuccess
+    val recurrenceValid = draft.recurrenceFrequency == "NONE" || draft.purpose != NodePurpose.ACTION || runCatching { draft.recurrenceRule("validation") }.isSuccess
     val datePicker = rememberSaveable(draft.creationId, saver = TaskDatePickerDraft.Saver) { TaskDatePickerDraft() }
     var title by draft::title
     var description by draft::description
@@ -93,11 +94,12 @@ internal fun NodeDialog(
                 if (editDates && draft.purpose == NodePurpose.ACTION) {
                     ObligationFields(draft, enabled = !isSubmitting)
                     TaskDatesEditor(draft, enabled = !isSubmitting, picker = datePicker)
+                    if (draft.id == null) RecurrenceFields(draft, !isSubmitting)
                     if (draft.startAt != null && draft.dueAt != null && draft.dueAt!! < draft.startAt!!) {
                         Text("El vencimiento no puede ser anterior al inicio. Corrige las fechas para guardar.", color = Arachn0deColors.Destructive)
                     }
                 }
-                if (draft.id == null && draft.financialEnabled) {
+                if (draft.id == null && (draft.financialEnabled || draft.recurrenceFrequency != "NONE")) {
                     androidx.compose.material3.OutlinedButton(enabled = !isSubmitting && peopleLoaded, onClick = { draft.showResponsible = true }) {
                         Text("Responsables (${draft.responsibleIds.size})")
                     }
@@ -111,7 +113,7 @@ internal fun NodeDialog(
         },
         confirmButton = {
             TextButton(
-                enabled = !isSubmitting && (draft.id != null || !draft.financialEnabled || peopleLoaded) && financialValid && title.trim().isNotEmpty() && TitleLimits.count(title) <= TitleLimits.NODE &&
+                enabled = !isSubmitting && (draft.id != null || (!draft.financialEnabled && draft.recurrenceFrequency == "NONE") || peopleLoaded) && financialValid && recurrenceValid && title.trim().isNotEmpty() && TitleLimits.count(title) <= TitleLimits.NODE &&
                     (!editDates || draft.purpose == NodePurpose.NOTE || draft.startAt == null || draft.dueAt == null || draft.dueAt!! >= draft.startAt!!),
                 onClick = {
                     val cleanTitle = title.trim()

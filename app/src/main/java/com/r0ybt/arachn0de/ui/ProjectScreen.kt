@@ -121,6 +121,11 @@ internal fun ProjectNodeScreen(
         project.id,
         stateSaver = listSaver<List<String>, String>(save = { it }, restore = { it.toList() }),
     ) { mutableStateOf(emptyList<String>()) }
+    var recurrenceSelected by rememberSaveable(project.id) { mutableStateOf<String?>(null) }
+    var recurrenceReceipts by remember(nodeRepository) { mutableStateOf(emptyList<com.r0ybt.arachn0de.data.local.RecurrenceOccurrenceEntity>()) }
+    val recurrenceLoad = remember(nodeRepository) { LoadState() }
+    LaunchedEffect(nodeRepository, recurrenceLoad.attempt) { recurrenceLoad.collect(nodeRepository.recurrence.occurrences) { recurrenceReceipts = it } }
+    val recurrenceByNode = remember(recurrenceReceipts) { recurrenceReceipts.associate { it.nodeId to it.ruleId } }
     val actions = remember(nodeRepository, scope) { NodeActions(nodeRepository, scope) }
     val copyContext = androidx.compose.ui.platform.LocalContext.current
     val copyActions = remember(copyContext, scope) { com.r0ybt.arachn0de.ui.state.NodeCopyActions(copyContext, scope) }
@@ -430,6 +435,7 @@ internal fun ProjectNodeScreen(
                                 val dragging = drag.isDragging(node.id)
                                 NodeCard(
                                     node = node,
+                                    onRecurrence = recurrenceByNode[node.id]?.let { ruleId -> ({ recurrenceSelected = ruleId }) },
                                     progress = progressMap[node.id],
                                     hasChildren = node.hasChildren,
                                     onConvert = { done -> if (node.obligation != null) { convertingObligationId = node.id; done() } else actions.convert(node.id, if (node.purpose == NodePurpose.NOTE) NodePurpose.ACTION else NodePurpose.NOTE, onSuccess = done) },
@@ -469,6 +475,7 @@ internal fun ProjectNodeScreen(
                         }
                     }
                 }
+                RecurrenceManager(nodeRepository.recurrence, project.id, projectState.nodes, people, peopleLoaded, recurrenceSelected) { recurrenceSelected = null }
                 androidx.compose.material3.OutlinedButton(enabled = !isSubmittingNode && (currentNode?.purpose != NodePurpose.NOTE && currentNode?.obligation == null), onClick = { batchDraft = NodeBatchDraft(currentNodeId) }) { Text("Crear varios") }
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -543,7 +550,9 @@ internal fun ProjectNodeScreen(
                 }
             },
             onSave = { title, description ->
-                actions.save(project.id, editor.parentId, editor.id, title, description, editor.creationId, editor.startAt, editor.dueAt,
+                if (editor.recurrenceFrequency != "NONE" && editor.id == null && editor.purpose == NodePurpose.ACTION) {
+                    actions.createRecurrence(project.id, editor) { draft = null }
+                } else actions.save(project.id, editor.parentId, editor.id, title, description, editor.creationId, editor.startAt, editor.dueAt,
                     editDates = editor.purpose == NodePurpose.ACTION && (editor.id == null || projectState.nodesById[editor.id]?.isCompletable == true), purpose = editor.purpose, obligation = editor.obligation(), removeObligation = editor.financialRemovalConfirmed, responsibleIds = editor.responsibleIds.toSet()) {
                     draft = null
                 }
@@ -562,6 +571,7 @@ internal fun ProjectNodeScreen(
     OperationErrorDialog(personActions.operation)
     LoadErrorDialog(peopleLoad)
     LoadErrorDialog(assignmentsLoad)
+    LoadErrorDialog(recurrenceLoad)
 
     movingNodeId?.let { sourceId ->
         val source = projectState.nodesById[sourceId]

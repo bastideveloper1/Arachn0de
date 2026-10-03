@@ -76,8 +76,8 @@ private fun AppRootContent(projectRepository: ProjectRepository, nodeRepository:
             peopleLoad.collect(personRepository.observeAllAssignments()) { responsibleByNode = it; assignmentsLoaded = true }
         }
     }
-    LaunchedEffect(showObligations, personRepository, financialPeopleLoad.attempt) {
-        if (showObligations) {
+    LaunchedEffect(showObligations, selectedProjectId, personRepository, financialPeopleLoad.attempt) {
+        if (showObligations || selectedProjectId == null) {
             financialPeopleLoaded = false
             financialPeopleLoad.collect(personRepository.observePeople()) { people = it; financialPeopleLoaded = true }
         }
@@ -151,6 +151,7 @@ private fun AppRootContent(projectRepository: ProjectRepository, nodeRepository:
         }
     } else if (selectedProjectId == null) {
         ProjectDashboardScreen(
+            recurrenceContent = { RecurrenceManager(nodeRepository.recurrence, "", emptyList(), people, financialPeopleLoaded) },
             repository = projectRepository,
             listState = projectsListState,
             projects = projects.orEmpty(),
@@ -204,6 +205,6 @@ private fun AppRootContent(projectRepository: ProjectRepository, nodeRepository:
     }
     LoadErrorDialog(load)
     LoadErrorDialog(nodesLoad)
-    if (showObligations) LoadErrorDialog(financialPeopleLoad)
+    if (showObligations || selectedProjectId == null) LoadErrorDialog(financialPeopleLoad)
     if (showAttention || showCalendar || showObligations) LoadErrorDialog(peopleLoad)
 }

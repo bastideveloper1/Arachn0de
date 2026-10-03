@@ -60,7 +60,7 @@ internal fun BackupSection(onRestored: () -> Unit, backupRepository: com.r0ybt.a
         AlertDialog(
             onDismissRequest = actions::dismiss,
             title = { Text("¿Reemplazar todos los datos?") },
-            text = { Text("Este backup contiene ${data.projects.size} proyectos, ${data.nodes.size} elementos y ${data.persons.size} personas. Restaurarlo reemplazará todos los datos actuales de Arachn0de.\n\nSi quieres conservar el estado actual, cancela y pulsa Crear backup antes de restaurar.") },
+            text = { Text("Este backup contiene ${data.projects.size} proyectos, ${data.nodes.size} elementos y ${data.persons.size} personas y ${data.recurrenceRules.size} reglas de recurrencia. Restaurarlo reemplazará todos los datos actuales de Arachn0de.\n\nSi quieres conservar el estado actual, cancela y pulsa Crear backup antes de restaurar.") },
             confirmButton = { Button(enabled = !actions.busy, onClick = { actions.restore {
                 check(mainHandler.post {
                     android.widget.Toast.makeText(context, "Backup restaurado correctamente.", android.widget.Toast.LENGTH_LONG).show()

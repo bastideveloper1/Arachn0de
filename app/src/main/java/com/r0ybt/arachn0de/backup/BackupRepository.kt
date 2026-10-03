@@ -33,7 +33,7 @@ internal class BackupRepository(private val database: Arachn0deDatabase, context
                     }
                 }
                 BackupData(BuildConfig.VERSION_NAME, System.currentTimeMillis(), projects,
-                    nodes, people, assignments, images).also { it.validate() }
+                    nodes, people, assignments, images, database.recurrenceDao().rules(), database.recurrenceDao().occurrences(), database.recurrenceDao().assignments()).also { it.validate() }
             }
         }
     }
@@ -79,6 +79,8 @@ internal class BackupRepository(private val database: Arachn0deDatabase, context
                     val previous = dao.persons().mapNotNull { it.avatarFile }.toSet()
                     // Persist both sets before DB changes: recovery queries committed references after a crash.
                     avatars.record(previous + names.values)
+                    val recurrence = database.recurrenceDao()
+                    recurrence.deleteOccurrences(); recurrence.deleteAssignments(); recurrence.deleteRules()
                     dao.deleteAssignments()
                     dao.detachNodes() // Avoid SQLite's recursive cascade depth limit.
                     dao.deleteNodes(); dao.deleteProjects(); dao.deletePersons()
@@ -86,6 +88,9 @@ internal class BackupRepository(private val database: Arachn0deDatabase, context
                     data.persons.forEach { person -> database.personDao().insert(person.copy(avatarFile = person.avatarFile?.let(names::getValue))) }
                     ordered.forEach { database.nodeDao().insert(it) }
                     database.personDao().assign(data.assignments)
+                    data.recurrenceRules.forEach { recurrence.insert(it) }
+                    recurrence.assign(data.recurrenceAssignments)
+                    data.recurrenceOccurrences.forEach { recurrence.record(it) }
                     currentCoroutineContext().ensureActive()
                 }
             } finally {

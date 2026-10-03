@@ -54,6 +54,7 @@ internal fun ProjectDashboardScreen(
     onOpenCalendar: () -> Unit = {},
     onOpenObligations: () -> Unit = {},
     onOpenAbout: () -> Unit = {},
+    recurrenceContent: @Composable () -> Unit = {},
     projectAttentionById: Map<String, com.r0ybt.arachn0de.domain.model.AttentionSummary> = emptyMap(),
 ) {
     val scope = rememberCoroutineScope()
@@ -101,6 +102,7 @@ internal fun ProjectDashboardScreen(
                     fontWeight = FontWeight.SemiBold,
                 )
 
+                recurrenceContent()
                 Spacer(modifier = Modifier.height(12.dp))
 
                 if (projects.isEmpty()) {

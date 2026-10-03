@@ -390,7 +390,7 @@ Utilizar:
 
 Room debe proporcionar la capa de persistencia.
 
-El esquema actual es la versión 8: v4 incorporó el orden persistente de proyectos, v5 Personas/Responsables, v6 las fechas opcionales de Nodes, v7 el propósito ACTION/NOTE y v8 la capacidad financiera opcional de hojas ACTION. Se conservan los esquemas históricos 1–7 y sus rutas de migración; no se usa `fallbackToDestructiveMigration`.
+El esquema actual es la versión 9 (motor de recurrencia; véase la sección final). La versión 8: v4 incorporó el orden persistente de proyectos, v5 Personas/Responsables, v6 las fechas opcionales de Nodes, v7 el propósito ACTION/NOTE y v8 la capacidad financiera opcional de hojas ACTION. Se conservan los esquemas históricos 1–8 y sus rutas de migración; no se usa `fallbackToDestructiveMigration`.
 
 ### Invariantes de nodos
 
@@ -1091,7 +1091,7 @@ Este orden es una propuesta revisable, no una obligación irreversible. Los prim
 5. Atención básica — IMPLEMENTADO.
 6. Notas y conversión Tarea ↔ Nota — IMPLEMENTADO.
 7. Creación múltiple y numeración — IMPLEMENTADO.
-8. Reglas temporales finitas para creación múltiple — IMPLEMENTADO; recurrencia persistente no implementada.
+8. Reglas temporales finitas para creación múltiple — IMPLEMENTADO. Motor de recurrencia persistente V1 — IMPLEMENTADO en Room v9, descrito al final.
 9. Definir Obligación como capacidad de ACTION hoja — RESUELTO en el bloque financiero.
 10. Implementar base de Obligaciones — IMPLEMENTADO.
 11. Agregaciones, totales y filtros financieros — IMPLEMENTADO en #19–22.
@@ -1125,7 +1125,7 @@ Desktop y sincronización local constituyen una etapa avanzada/final de esta lí
 - **Finanzas avanzadas:** alcance recursivo, períodos mensuales y filtros por responsables implementados en #19–22. Períodos arbitrarios, pagos parciales e historial requieren diseño separado; monedas distintas permanecen separadas.
 - **Capas explícitamente vacías:** decidir si deben existir en el futuro. Actualmente perder el último hijo convierte el nodo en tarea; esta documentación no cambia esa regla ni elige una alternativa futura.
 - **Notas avanzadas:** formato y adjuntos se diseñarán en otra etapa; el propósito NOTE y la conversión de hojas ya están implementados. No se definen Notas contenedoras.
-- **Atención avanzada y generación temporal:** la propagación básica y generación temporal finita ya están implementadas; diseñar futuras reglas adicionales y recurrencia persistente antes de desarrollar esos bloques.
+- **Atención avanzada y generación temporal:** la propagación básica y generación temporal finita ya están implementadas; diseñar futuras reglas adicionales; la recurrencia persistente V1 se describe al final.
 - **Distribución de la app:** versionado, firma local y procedimiento manual implementados en #30–32; comprobación manual implementada en #33. Descarga/verificación y entrega manual al instalador implementadas en #34, siempre bajo control del usuario y sin actualización silenciosa. Rotación de claves y prueba física requieren trabajo separado.
 
 ## Principios de evolución
@@ -1374,3 +1374,116 @@ Primero se ejecutó el módulo nuevo. Los ajustes iniciales corrigieron el adapt
 Después se ejecutó **una sola vez** toda la suite unitaria Debug: `:app:testDebugUnitTest`, **348 casos, 343 correctos, 5 fallidos**, sin errores ni omitidos. Los 45 casos nuevos pasaron también en esa suite. Los cinco fallos coinciden con los antecedentes documentados de #33/#34: `ScrollRestorationTest.dashboardRetainsScrollAcrossProjectVisitAndRecreation`, `ScrollRestorationTest.mapRetainsScrollWhileClosedAndAcrossRecreation`, `LargeListsTest.largeTaskLayerScrollsWithoutNavigatingIntoLeaf`, `LargeListsTest.projectListLongPressDragReordersByStableId`, `MvpReadinessTest.narrowDashboardAndDrawerExposeNoNonfunctionalFeatures`. No se arreglaron ni se ejecutó una segunda suite general. No aparecieron fallos nuevos observados fuera de esos cinco. Esta intervención no volvió a ejecutar una suite baseline sin cambios; la clasificación histórica usa la evidencia ya registrada en el documento.
 
 `assembleDebug` correcto; `git diff --check` correcto. No se ejecutó lint completo. Versión `0.2.1 / 3`, Room v8, dependencias, manifiesto, firma y reglas Android de exclusión de backup intactos. Sin commit, push, tag, APK Release ni publicación.
+
+
+## Motor de recurrencia V1 — Room v9
+
+Cadena: `NodeDialog`/`RecurrenceManager` → `NodeActions`/`OperationState` → `RecurrenceRepository` → Room. `RecurrenceSchedule` calcula fechas sin UI, CalendarSnapshot ni Batch. **Crear varios** mantiene su comportamiento: genera inmediatamente un conjunto finito de Nodes. Una recurrencia persiste una regla y solo materializa vencimientos que ya corresponden; una regla con inicio futuro puede existir sin ningún Node.
+
+### Persistencia y migración
+
+| Tabla nueva | Contenido e invariantes |
+| --- | --- |
+| `recurrence_rules` | ID estable; plantilla de título/descripcion, proyecto/padre, amountMinor/currencyCode opcionales; startDay, frecuencia, intervalo, endDay opcional; nextIndex; estado; zoneId; dueMinute; startOffsetMillis opcional. Índice por estado. |
+| `recurrence_occurrences` | Recibo de materialización `(ruleId, day)` como PK; nodeId único. FK RESTRICT a regla; deliberadamente sin FK a Node para conservar recibos al eliminar ocurrencias, subárboles o proyectos. |
+| `recurrence_person` | Responsables de plantilla, PK `(ruleId, personId)`; FK a regla y Persona e índice personId. Eliminar Persona elimina su selección futura, igual que sus asignaciones actuales. |
+
+`RecurrenceMigration8To9` crea únicamente estas tablas/índices; no modifica ninguna fila, columna ni trigger anterior. Se registra junto a todas las rutas históricas en `Arachn0deDatabase.create`. Se exporta `9.json`; no se usa migración destructiva. La prueba de migración abre un esquema v8 exportado con jerarquía, tarea completada financiera, Nota, Persona/avatar y asociación; compara todos los campos, claves foráneas y los 15 triggers en API 24 y 28.
+
+Las referencias de destino de reglas no tienen cascada: una regla sobrevive al borrado de su destino y conserva recibos históricos. Al comprobar un destino ausente/no válido, el motor la pone en PAUSED sin avanzar el cursor. El gestor global de Proyectos permite reasignar proyecto/capa, reanudar o finalizar, incluso sin Nodes ni proyectos originales. Si se borra un proyecto, sus Nodes se eliminan por la operación existente; los recibos conservados impiden recrearlos.
+
+### Calendario determinista
+
+Frecuencias DAILY, WEEKLY, MONTHLY y YEARLY; intervalo entero 1..10000 como defensa de configuración. Inicio y fin son fechas civiles inclusivas, representadas por días epoch UTC; las ocurrencias se calculan siempre desde inicio + índice × intervalo. MONTHLY ajusta al último día del mes sin arrastrar el ajuste: 31 enero → 28/29 febrero → 31 marzo. YEARLY conserva el ancla 29 febrero: 28 febrero en años comunes, 29 en años bisiestos.
+
+La zona local se captura al crear la regla y queda persistida; cambiar la zona del dispositivo no cambia las fechas futuras de la regla. Se conserva una hora civil de vencimiento por regla. Calendar normaliza una hora inexistente por DST hacia adelante; una hora repetida utiliza la resolución estándar de GregorianCalendar. No hay selección de offset. Se prueba el salto 02:30 → 03:30 y la recuperación de 02:30 al día siguiente. El formulario acepta AAAA-MM-DD; no impone horizonte final al cálculo del motor. Una regla sin endDay continúa activa sin un número máximo de repeticiones ni límite de años de negocio, sujeta a representación numérica/almacenamiento del dispositivo.
+
+El inicio de la regla fija las fechas de cada vencimiento. El campo Vence del formulario fija la hora; si no se elige, utiliza 00:00. Si también se elige Inicio de tarea, guarda la diferencia en milisegundos hasta Vence y la aplica a cada snapshot. Inicio de tarea sin Vence se rechaza para evitar descartarlo silenciosamente. Una tarea recurrente sin obligación se materializa exactamente por el mismo motor.
+
+### Materialización, atrasos y unicidad
+
+MainActivity comprueba en onResume. El trabajo pertenece a una coroutine del ciclo de vida y se cancela en onPause/destrucción. Crear regla y cambiar su estado también comprueban vencimientos. No se añade red, backend, WorkManager, alarmas ni notificaciones; no hay garantía de generación mientras la aplicación está cerrada.
+
+Cada transacción procesa hasta 256 fechas debidas, inserta Node/assignments/recibo y avanza nextIndex de forma atómica. Por comprobación se ejecutan hasta 16 bloques (4096 fechas); si quedan atrasos devuelve pendiente, conserva el cursor y continúa en otra pasada con yield mientras la app está en primer plano. Pausar/editar/finalizar drena primero los atrasos ACTIVE, también cediendo entre pasadas. Estos presupuestos limitan trabajo por pasada, **no** la vida de la regla ni el total recuperable. Aritmética exacta, enums, intervalos, fechas/zona y cursores se validan; datos inválidos producen un fallo controlado y no un bucle no progresivo. Los reintentos continúan desde los bloques ya confirmados; el bloque fallido revierte por completo.
+
+Una app cerrada durante días/meses recupera todas las fechas vencidas mientras la regla siguió ACTIVE. No adelanta Nodes futuros. La identidad es regla + fecha civil; PK del recibo, nodeId UUID determinista y UNIQUE nodeId garantizan idempotencia, incluso entre ejecuciones concurrentes. Node y recibo pertenecen a la misma transacción; no hay estado confirmado de Node generado sin recibo. Borrar/completar/modificar/mover una ocurrencia no altera la regla. Borrar el Node deja el recibo durable; ejecutar nuevamente el motor no lo recrea.
+
+### Estados e historia
+
+- ACTIVE: genera fechas debidas y recupera atrasos. Cuando nextIndex supera endDay pasa automáticamente a FINISHED; incluye el vencimiento de la fecha final.
+- PAUSED: conserva configuración, cursor, historial y recibos; no genera. Pausar primero materializa deuda ACTIVE anterior a la pulsación.
+- PAUSED → ACTIVE: mantiene el ancla original y calcula sin recorrer todos los periodos pausados el primer índice con fecha >= fecha civil de reanudación, nunca menor que el cursor ya confirmado. Se omiten los periodos anteriores a ese día; si hoy es un día programado todavía no materializado, se genera cuando llegue su hora, o inmediatamente si ya pasó. Si excede fin, termina.
+- FINISHED: conserva regla/historial y no genera; Repository impide volver a ACTIVE/PAUSED o editar plantilla. Para comenzar otra recurrencia se crea otra regla.
+
+Editar plantilla drena primero los vencimientos ACTIVE pendientes con los datos anteriores; solo después actualiza título, descripción, importe/moneda, responsables y destino para fechas futuras aún no materializadas. No ejecuta UPDATE sobre Nodes históricos. Cada Node nuevo comienza ACTION pendiente con responsables propios, dueAt y startAt opcional; no copia completado, posición anterior, hijos ni historial. El formulario de edición confirma retirar datos financieros futuros. V1 mantiene inmutables frecuencia/ancla/intervalo/fin/zona/hora de una regla creada; crear otra regla permite una programación diferente.
+
+### UI, Finance, Calendar y Backup
+
+Nuevo elemento → Tarea ofrece Ninguna/Diaria/Semanal/Mensual/Anual, intervalo, inicio y fin opcional (vacío = sin fecha final). Conserva parámetros/ID/responsables al recrear el formulario. El gestor Recurrencias está disponible en Proyectos y dentro del proyecto. Cada tarjeta materializada muestra ↻ Recurrencia y abre su regla, aunque el Node se haya movido. El gestor permite editar plantilla/destino/responsables, pausar/reanudar y finalizar con confirmación irreversible; explica que la historia no cambia y que se liquidan atrasos activos antes de cambiar la regla.
+
+Finance sigue leyendo las obligaciones de Nodes y `node_person`; importar CLP u otra moneda no introduce un segundo sistema financiero ni cambia el significado de isCompleted. Calendar y Atención consumen los mismos Nodes fechados mediante sus proyecciones existentes; el motor no depende de la vista mensual. No se implementan filtros nuevos de Calendar.
+
+Backup escribe **dataVersion 2** dentro del contenedor `.arachnode` **formatVersion 1 / encoding 0** existente: conserva firma, SHA-256 y límites del contenedor. Añade arrays explícitos recurrenceRules, recurrenceOccurrences y recurrenceAssignments. El snapshot los lee en la misma transacción que el resto. La validación comprueba enums/configuración, unicidad, referencias de regla/Persona, fechas programadas, cursor posterior a los recibos y UUID determinista. Un recibo sin Node es válido por eliminación deliberada. Destinos ausentes se permiten por la política de preservación y pausa. Los registros nuevos cuentan dentro del presupuesto total de 100000; el texto de plantillas cuenta en el límite previo de serialización.
+
+Restore borra recibos/asociaciones/reglas antes de reemplazar las tablas antiguas, y reinserta reglas/asociaciones/recibos después de proyectos/personas/Nodes, **en la misma transacción**. Conserva todos sus IDs, estados, cursores y snapshots. Rollback inyectado comprueba que se recuperen también las tablas de recurrencia. Restaurar y ejecutar el motor no duplica ocurrencias ni revive Nodes eliminados; una regla ACTIVE restaurada recupera únicamente deuda posterior a su cursor.
+
+Backups de v0.2.2 **dataVersion 1** siguen siendo restaurables: el adaptador exige exactamente sus campos anteriores y añade colecciones de recurrencia vacías. Una restauración v1 reemplaza también las recurrencias actuales por ese estado vacío. Versiones futuras desconocidas se rechazan antes de tocar datos. Una app antigua no puede leer dataVersion 2; la compatibilidad garantizada es leer v1 en la app nueva, no downgrade.
+
+Limitaciones pendientes: dogfooding físico de UI/DST/cancelación por background/almacenamiento bajo; listas de reglas/destinos cargadas sin paginación; programación de reglas ya creadas inmutable en V1; el motor comprueba al reanudar/crear/cambiar estado, no continuamente al permanecer abierto durante días. No se añade benchmark ni generación en segundo plano. Si una configuración persistida está corrupta, se informa un fallo general y se reintenta al siguiente resume; no se repara ni descarta silenciosamente. Se conservan versión de app 0.2.2/código 4 y configuración de firma; sin Release, tag, commit ni push.
+
+### Archivos de esta intervención
+
+Inventario de cambios locales de recurrencia (las pruebas existentes solo actualizan la expectativa de Room 8→9 o la versión futura rechazada del backup):
+
+- `ARCHITECTURE.md`
+- `app/schemas/com.r0ybt.arachn0de.data.local.Arachn0deDatabase/9.json`
+- `app/src/main/java/com/r0ybt/arachn0de/MainActivity.kt`
+- `app/src/main/java/com/r0ybt/arachn0de/backup/BackupData.kt`
+- `app/src/main/java/com/r0ybt/arachn0de/backup/BackupJson.kt`
+- `app/src/main/java/com/r0ybt/arachn0de/backup/BackupRepository.kt`
+- `app/src/main/java/com/r0ybt/arachn0de/data/local/Arachn0deDatabase.kt`
+- `app/src/main/java/com/r0ybt/arachn0de/data/local/RecurrenceEntity.kt`
+- `app/src/main/java/com/r0ybt/arachn0de/data/local/RecurrenceMigration8To9.kt`
+- `app/src/main/java/com/r0ybt/arachn0de/data/repository/NodeRepository.kt`
+- `app/src/main/java/com/r0ybt/arachn0de/data/repository/RecurrenceRepository.kt`
+- `app/src/main/java/com/r0ybt/arachn0de/domain/model/RecurrenceSchedule.kt`
+- `app/src/main/java/com/r0ybt/arachn0de/ui/AppRoot.kt`
+- `app/src/main/java/com/r0ybt/arachn0de/ui/BackupSection.kt`
+- `app/src/main/java/com/r0ybt/arachn0de/ui/EditDialogs.kt`
+- `app/src/main/java/com/r0ybt/arachn0de/ui/NodeComponents.kt`
+- `app/src/main/java/com/r0ybt/arachn0de/ui/ProjectScreen.kt`
+- `app/src/main/java/com/r0ybt/arachn0de/ui/ProjectsScreen.kt`
+- `app/src/main/java/com/r0ybt/arachn0de/ui/RecurrenceUi.kt`
+- `app/src/main/java/com/r0ybt/arachn0de/ui/state/EditorDraft.kt`
+- `app/src/main/java/com/r0ybt/arachn0de/ui/state/NodeActions.kt`
+- `app/src/test/java/com/r0ybt/arachn0de/backup/BackupFormatTest.kt`
+- `app/src/test/java/com/r0ybt/arachn0de/backup/BackupRepositoryTest.kt`
+- `app/src/test/java/com/r0ybt/arachn0de/backup/RecurrenceBackupTest.kt`
+- `app/src/test/java/com/r0ybt/arachn0de/data/AttentionRepositoryTest.kt`
+- `app/src/test/java/com/r0ybt/arachn0de/data/CalendarRepositoryTest.kt`
+- `app/src/test/java/com/r0ybt/arachn0de/data/FinancialRepositoryTest.kt`
+- `app/src/test/java/com/r0ybt/arachn0de/data/NodeBatchRepositoryTest.kt`
+- `app/src/test/java/com/r0ybt/arachn0de/data/NodeMigrationTest.kt`
+- `app/src/test/java/com/r0ybt/arachn0de/data/NodePurposeTest.kt`
+- `app/src/test/java/com/r0ybt/arachn0de/data/ObligationMigrationTest.kt`
+- `app/src/test/java/com/r0ybt/arachn0de/data/ObligationRepositoryTest.kt`
+- `app/src/test/java/com/r0ybt/arachn0de/data/PersonRepositoryTest.kt`
+- `app/src/test/java/com/r0ybt/arachn0de/data/RecurrenceMigrationTest.kt`
+- `app/src/test/java/com/r0ybt/arachn0de/data/RecurrenceRepositoryTest.kt`
+- `app/src/test/java/com/r0ybt/arachn0de/data/TaskDatesRepositoryTest.kt`
+- `app/src/test/java/com/r0ybt/arachn0de/domain/RecurrenceScheduleTest.kt`
+- `app/src/test/java/com/r0ybt/arachn0de/export/NodeCopyUiTest.kt`
+- `app/src/test/java/com/r0ybt/arachn0de/report/ObligationReportUiTest.kt`
+- `app/src/test/java/com/r0ybt/arachn0de/ui/RecurrenceUiTest.kt`
+
+### Validación del motor de recurrencia
+
+Se añadieron **39 métodos de prueba / 63 ejecuciones**: RecurrenceScheduleTest (12 JVM), RecurrenceRepositoryTest (18 × API 24/28 = 36), RecurrenceMigrationTest (1 × API 24/28 = 2), RecurrenceBackupTest (5 × API 24/28 = 10) y RecurrenceUiTest (3 Compose API 28). Todos pasaron en ejecución específica y en la suite completa. Cubren las cuatro frecuencias, intervalos, ancla 31/29 febrero, horizonte indefinido, fin inclusivo, estados/pausa/reanudación/irreversibilidad, recuperación activa, hora/DST/zona, snapshots anteriores frente a cambios futuros, importes/responsables/destino, tareas/obligaciones, proyecciones Finance/Calendar, idempotencia/concurrencia, borrado con recibo durable/reapertura, rollback de Node+recibo+cursor, destino eliminado, reintento de creación, migración v8, backup v2/v1, restore+catch-up sin duplicados, validación de corrupción y rollback de restore.
+
+La ejecución dirigida conjunta de Nodes/dominio/Finance/Calendar/Backup y pantallas relacionadas pasó **285 pruebas**, junto a assembleDebug. Después de añadir manejo de errores/reintento de cargas se repitieron recurrencia, BackupUi y DraftRestoration, con resultado correcto y assembleDebug correcto. La expectativa de versión de las pruebas existentes se actualizó de Room 8 a 9; posiciones históricas con valor 8 permanecieron intactas. BackupFormatTest ahora utiliza dataVersion 3 como versión futura rechazada.
+
+Se ejecutó **una sola vez** la suite completa `:app:testDebugUnitTest assembleDebug --continue --offline`: **411 casos, 404 correctos, 7 fallidos**, sin errores/omitidos. Los **63 nuevos pasaron**. Cinco fallos coinciden con los antecedentes documentados: ScrollRestorationTest.dashboardRetainsScrollAcrossProjectVisitAndRecreation, ScrollRestorationTest.mapRetainsScrollWhileClosedAndAcrossRecreation, LargeListsTest.largeTaskLayerScrollsWithoutNavigatingIntoLeaf, LargeListsTest.projectListLongPressDragReordersByStableId, MvpReadinessTest.narrowDashboardAndDrawerExposeNoNonfunctionalFeatures. La clasificación histórica usa la evidencia existente en este documento, sin nueva suite baseline.
+
+Los otros dos fallaron con **ReportMemoryException** por el presupuesto de heap disponible del renderer PNG sin cambios: ObligationPngRendererTest.longTextWrapsWithinPanelsAndHeightIncludesAllRows (ya observado/documentado en #34) y ObligationPngRendererTest.measuresAndRendersRealNonemptyPngWithSeparateCurrenciesAndLogo (sin baseline propio para ese caso). Se repitió únicamente ObligationPngRendererTest de forma aislada: **4/4 correctos**, sin cambios al renderer ni a sus pruebas; evidencia de sensibilidad a recursos en la suite, no prueba de una suite general verde ni demostración baseline de ambos casos. No se repararon esos bloques ni se repitió la suite general. Informe completo preservado en `/tmp/arachnode-recurrence-full-suite/index.html`; XML en `/tmp/arachnode-recurrence-full-results`.
+
+assembleDebug final correcto (también terminó en la ejecución general cuyo task de tests falló); git diff --check correcto. No se ejecutó lint completo ni Release. VersionName/versionCode permanecen 0.2.2/4. No se realizó commit, push, tag ni publicación. Pendiente validación física y benchmark de recuperación con volúmenes extremos.

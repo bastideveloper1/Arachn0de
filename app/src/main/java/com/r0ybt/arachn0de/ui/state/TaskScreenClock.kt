@@ -17,10 +17,16 @@ import kotlinx.coroutines.isActive
 
 /** One foreground clock for the whole project screen, never one timer per card. */
 @Composable
-internal fun rememberTaskScreenNow(nodes: List<Node>, clock: () -> Long = System::currentTimeMillis): Long {
+internal fun rememberTaskScreenNow(nodes: List<Node>, clock: () -> Long = System::currentTimeMillis): Long =
+    rememberTaskScreenNow(nodes, clock, onRefresh = {})
+
+/** Refresh display environment even when an injected clock returns the same instant. */
+@Composable
+internal fun rememberTaskScreenNow(nodes: List<Node>, clock: () -> Long, onRefresh: () -> Unit): Long {
     val context = LocalContext.current
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     val readClock by rememberUpdatedState(clock)
+    val refreshEnvironment by rememberUpdatedState(onRefresh)
     var now by remember { mutableStateOf(readClock()) }
     var clockChange by remember { mutableIntStateOf(0) }
     DisposableEffect(context) {
@@ -41,6 +47,7 @@ internal fun rememberTaskScreenNow(nodes: List<Node>, clock: () -> Long = System
             while (isActive) {
                 val instant = readClock()
                 now = instant
+                refreshEnvironment()
                 val next = nodes.mapNotNull { TaskTemporal.nextTransition(it, instant) }.minOrNull()
                 // Also recheck wall-clock changes at most once a minute while foregrounded.
                 val until = next?.let { if (instant < 0 && it > Long.MAX_VALUE + instant) 60_000L else it - instant }

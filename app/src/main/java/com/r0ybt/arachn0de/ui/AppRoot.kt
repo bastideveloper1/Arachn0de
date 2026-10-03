@@ -25,6 +25,9 @@ internal fun AppRoot(projectRepository: ProjectRepository, nodeRepository: NodeR
     val personRepository = (androidx.compose.ui.platform.LocalContext.current.applicationContext as com.r0ybt.arachn0de.Arachn0deApplication).personRepository
     val screenStates = androidx.compose.runtime.saveable.rememberSaveableStateHolder()
     var showPeople by rememberSaveable { mutableStateOf(false) }
+    var showCalendar by rememberSaveable { mutableStateOf(false) }
+    var returnToCalendar by rememberSaveable { mutableStateOf(false) }
+    var zoneId by remember { mutableStateOf(java.util.TimeZone.getDefault().id) }
     var showAttention by rememberSaveable { mutableStateOf(false) }
     var returnToAttention by rememberSaveable { mutableStateOf(false) }
     var openNodeId by rememberSaveable { mutableStateOf<String?>(null) }
@@ -44,6 +47,7 @@ internal fun AppRoot(projectRepository: ProjectRepository, nodeRepository: NodeR
             if (selectedProjectId != null && items.none { it.id == selectedProjectId }) {
                 selectedProjectId = null
                 openNodeId = null
+                if (returnToCalendar) { showCalendar = true; returnToCalendar = false }
             }
         }
     }
@@ -51,8 +55,8 @@ internal fun AppRoot(projectRepository: ProjectRepository, nodeRepository: NodeR
     LaunchedEffect(nodeRepository, nodesLoad.attempt) {
         nodesLoad.collect(nodeRepository.observeAllState()) { allState = it; nodesLoaded = true }
     }
-    LaunchedEffect(showAttention, personRepository, peopleLoad.attempt) {
-        if (showAttention) {
+    LaunchedEffect(showAttention, showCalendar, personRepository, peopleLoad.attempt) {
+        if (showAttention || showCalendar) {
             assignmentsLoaded = false
             peopleLoad.collect(personRepository.observeAllAssignments()) { responsibleByNode = it; assignmentsLoaded = true }
         }
@@ -60,9 +64,13 @@ internal fun AppRoot(projectRepository: ProjectRepository, nodeRepository: NodeR
     val projectProgressById = projects.orEmpty().associate { project ->
         project.id to (allState.projectProgressById[project.id] ?: NodeProgress(project.id, 0, 0, 0, NodeProgressState.NO_WORK))
     }
-    val globalView = !showPeople && (showAttention || selectedProjectId == null)
-    val attention = if (globalView) {
-        val now = rememberTaskScreenNow(allState.nodes, clock)
+    val globalView = !showPeople && (showCalendar || showAttention || selectedProjectId == null)
+    val now = if (globalView) rememberTaskScreenNow(allState.nodes, clock, onRefresh = { zoneId = java.util.TimeZone.getDefault().id }) else 0L
+    val calendar = if (showCalendar) {
+        val snapshot by com.r0ybt.arachn0de.ui.state.rememberCalendar(allState, zoneId)
+        snapshot
+    } else null
+    val attention = if (globalView && !showCalendar) {
         val state by rememberAttention(allState, now)
         state
     } else null
@@ -70,6 +78,23 @@ internal fun AppRoot(projectRepository: ProjectRepository, nodeRepository: NodeR
     val selectedProject = projects?.firstOrNull { it.id == selectedProjectId }
     if (showPeople) {
         screenStates.SaveableStateProvider("people") { PeopleScreen(personRepository) { showPeople = false } }
+    } else if (showCalendar) {
+        screenStates.SaveableStateProvider("calendar") {
+            CalendarScreen(calendar, projects.orEmpty(), responsibleByNode, nodesLoaded && projects != null && assignmentsLoaded,
+                now, zoneId,
+                onOpen = { node ->
+                    val real = allState.nodesById[node.id]
+                    if (real != null && real.isCompletable && real.dueAt != null && projects.orEmpty().any { it.id == real.projectId }) {
+                        selectedProjectId = real.projectId
+                        openNodeId = real.id
+                        returnToCalendar = true
+                        returnToAttention = false
+                        showCalendar = false
+                    }
+                },
+                onBack = { showCalendar = false },
+            )
+        }
     } else if (showAttention) {
         screenStates.SaveableStateProvider("attention") {
             AttentionScreen(attention, projects.orEmpty(), responsibleByNode, nodesLoaded && projects != null && assignmentsLoaded,
@@ -79,6 +104,7 @@ internal fun AppRoot(projectRepository: ProjectRepository, nodeRepository: NodeR
                         selectedProjectId = real.projectId
                         openNodeId = real.id
                         returnToAttention = true
+                        returnToCalendar = false
                         showAttention = false
                     }
                 },
@@ -92,9 +118,10 @@ internal fun AppRoot(projectRepository: ProjectRepository, nodeRepository: NodeR
             projects = projects.orEmpty(),
             projectProgressById = projectProgressById,
             projectAttentionById = attention?.byProjectId.orEmpty(),
-            onOpenProject = { selectedProjectId = it.id; returnToAttention = false },
+            onOpenProject = { selectedProjectId = it.id; returnToAttention = false; returnToCalendar = false },
             onOpenPeople = { showPeople = true },
             onOpenAttention = { showAttention = true },
+            onOpenCalendar = { showCalendar = true },
         )
     } else if (selectedProject != null) {
         screenStates.SaveableStateProvider("project:${selectedProject.id}") {
@@ -107,10 +134,19 @@ internal fun AppRoot(projectRepository: ProjectRepository, nodeRepository: NodeR
                 onOpenNodeHandled = { openNodeId = null },
                 onOpenPeople = { showPeople = true },
                 onOpenAttention = { showAttention = true },
+                onOpenCalendar = { showCalendar = true },
+                onBackToCalendar = if (returnToCalendar) ({
+                    screenStates.removeState("project:${selectedProject.id}")
+                    selectedProjectId = null
+                    openNodeId = null
+                    showCalendar = true
+                    returnToCalendar = false
+                }) else null,
                 onBackToProjects = {
                     screenStates.removeState("project:${selectedProject.id}")
                     selectedProjectId = null
                     if (returnToAttention) { showAttention = true; returnToAttention = false }
+                    if (returnToCalendar) { showCalendar = true; returnToCalendar = false }
                 },
             )
         }
@@ -120,5 +156,5 @@ internal fun AppRoot(projectRepository: ProjectRepository, nodeRepository: NodeR
     }
     LoadErrorDialog(load)
     LoadErrorDialog(nodesLoad)
-    if (showAttention) LoadErrorDialog(peopleLoad)
+    if (showAttention || showCalendar) LoadErrorDialog(peopleLoad)
 }

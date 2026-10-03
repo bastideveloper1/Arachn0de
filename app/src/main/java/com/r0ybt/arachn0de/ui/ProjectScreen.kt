@@ -75,6 +75,8 @@ internal fun ProjectNodeScreen(
     personRepository: com.r0ybt.arachn0de.data.repository.PersonRepository = (androidx.compose.ui.platform.LocalContext.current.applicationContext as com.r0ybt.arachn0de.Arachn0deApplication).personRepository,
     onOpenPeople: () -> Unit = {},
     onOpenAttention: () -> Unit = {},
+    onOpenCalendar: () -> Unit = {},
+    onBackToCalendar: (() -> Unit)? = null,
     openNodeId: String? = null,
     onOpenNodeHandled: () -> Unit = {},
     clock: () -> Long = System::currentTimeMillis,
@@ -163,7 +165,8 @@ internal fun ProjectNodeScreen(
     }
 
     BackHandler {
-        if (currentPath.isNotEmpty()) {
+        if (onBackToCalendar != null) onBackToCalendar()
+        else if (currentPath.isNotEmpty()) {
             currentPath.removeAt(currentPath.lastIndex)
         } else {
             onBackToProjects()
@@ -223,11 +226,12 @@ internal fun ProjectNodeScreen(
                                     if (currentPath.isNotEmpty()) {
                                         IconButton(
                                             onClick = {
-                                                if (currentPath.isNotEmpty()) currentPath.removeAt(currentPath.lastIndex)
+                                                if (onBackToCalendar != null) onBackToCalendar()
+                                                else if (currentPath.isNotEmpty()) currentPath.removeAt(currentPath.lastIndex)
                                             },
                                             modifier = Modifier.size(48.dp),
                                         ) {
-                                            Icon(imageVector = Icons.Default.ArrowBack, contentDescription = "Volver a la capa anterior", tint = Arachn0deColors.Accent)
+                                            Icon(imageVector = Icons.Default.ArrowBack, contentDescription = if (onBackToCalendar != null) "Volver al Calendario" else "Volver a la capa anterior", tint = Arachn0deColors.Accent)
                                         }
                                         Spacer(modifier = Modifier.width(8.dp))
                                     }
@@ -484,7 +488,7 @@ internal fun ProjectNodeScreen(
                         .background(Arachn0deColors.Scrim.copy(alpha = 0.45f))
                         .clickable { showDrawer = false },
                 ) {
-                    AppIdentityDrawer(onDismiss = { showDrawer = false }, onPeople = { showDrawer = false; onOpenPeople() }, onAttention = { showDrawer = false; onOpenAttention() })
+                    AppIdentityDrawer(onDismiss = { showDrawer = false }, onPeople = { showDrawer = false; onOpenPeople() }, onAttention = { showDrawer = false; onOpenAttention() }, onCalendar = { showDrawer = false; onOpenCalendar() })
                 }
             }
         }

@@ -885,7 +885,7 @@ Hoja → Capa → hoja conserva ambas fechas: mientras hay hijos quedan sin indi
 
 Cobertura dirigida: estados y fronteras con `now` fijo, umbral y extremos Long; persistencia/edición/retirada/validación, idempotencia, progreso/orden/responsables y traslado; hoja → Capa → hoja; migración del schema real v5 en API 24/28 conservando tablas y triggers. Compose verifica selección de fecha/hora, restauración con selector abierto, error/corrección, reloj al reanudar/cambiar hora, presentación sin urgencia en completadas/Capas y edición real con recreación de Activity. Se verifican regresiones de Personas, traslado, borradores y rutas de migración anteriores.
 
-Limitaciones: selector Material con rango de años predeterminado 1900–2100, pendiente dogfooding en pantallas pequeñas, cambios reales de zona/horario y ciclos de foreground. No se afirma validación física ni muerte real de proceso. No hay notificaciones, alarmas, calendario ni recurrencias. El Motor de Atención básico se describe a continuación.
+Limitaciones: selector Material con rango de años predeterminado 1900–2100, pendiente dogfooding en pantallas pequeñas, cambios reales de zona/horario y ciclos de foreground. No se afirma validación física ni muerte real de proceso. En el bloque de fechas no se añadieron notificaciones, alarmas, calendario ni recurrencias; el Calendario derivado se implementa en su bloque posterior. El Motor de Atención básico se describe a continuación.
 
 ### Motor de Atención básico + propagación + vista Atención — IMPLEMENTADO
 
@@ -897,7 +897,7 @@ Proyectos, tarjetas de Capas y contexto abierto muestran un indicador compacto c
 
 El destino funcional «Atención», junto a Personas en el panel existente, muestra referencias a hojas de todos los proyectos, sin copias, movimientos ni escrituras. Ordena vencidas primero, luego próximas, por `dueAt` ascendente y desempata por `createdAt` e ID. Cada fila incluye título, vencimiento, Proyecto + ancestros y sus responsables propios, sin herencia. Las rutas largas se truncan visualmente. Al pulsar se revalida el ID y se abre el Node real usando la reconstrucción de ancestros de `ProjectScreen`; un destino desaparecido cae de forma segura a la raíz del proyecto. Atrás asciende por las Capas y al salir del proyecto vuelve a Atención. Visitar Atención desde una Capa y volver conserva su ubicación; la ruta y el estado guardable de la vista se restauran mediante el mecanismo existente.
 
-Observadores globales de solo lectura de Nodes y asignaciones reutilizan Room **v6**, entidades, tablas y relaciones existentes. Una instantánea global sustituye los observadores de progreso separados por proyecto, usando el mismo progreso derivado. Los flujos actualizan fechas, completado, estructura, nombres de ancestros/proyectos y responsables. Solo hay un reloj de pantalla activo: global para Proyectos/Atención, o del proyecto completo cuando este está abierto. Usa el mecanismo temporal existente en foreground, fronteras temporales, reanudación y cambios de hora/zona; no hay timers por tarjeta, alarmas ni trabajo temporal en background.
+Observadores globales de solo lectura de Nodes y asignaciones reutilizan Room **v6**, entidades, tablas y relaciones existentes. Una instantánea global sustituye los observadores de progreso separados por proyecto, usando el mismo progreso derivado. Los flujos actualizan fechas, completado, estructura, nombres de ancestros/proyectos y responsables. Solo hay un reloj de pantalla activo: global para Proyectos/Atención/Calendario, o del proyecto completo cuando este está abierto. Usa el mecanismo temporal existente en foreground, fronteras temporales, reanudación y cambios de hora/zona; no hay timers por tarjeta, alarmas ni trabajo temporal en background.
 
 Validación dirigida: seis pruebas del modelo (reglas, fronteras, orden, conteos, raíces, camino y 10.000 niveles), tres de repositorios (emisiones, traslado, completado/reapertura, cambios estructurales, fechas, nombres y asignaciones) y tres de Compose (proyección, navegación al ID real, ruta guardable, retorno, cambios reactivos y reloj de descendientes ocultos). Pasaron además 15 regresiones dirigidas de navegación, traslado, Personas y reloj temporal. No se afirma prueba física, benchmark de dispositivo ni muerte real del proceso: restauración usa el arnés de estado guardable. La proyección carga todos los Nodes locales, sin paginación; el coste de los caminos visibles depende de su profundidad. El movimiento conserva el alcance existente dentro del mismo proyecto. Prioridad, notificaciones, recurrencias y atención avanzada quedan fuera de esta etapa.
 
@@ -937,9 +937,33 @@ La preview muestra hasta cuatro líneas: primeros tres, «…» y último si hay
 
 IDs deterministas derivados del UUID guardable del borrador y del índice permiten reconocer un lote confirmado y reintentar sin duplicarlo, incluso tras reabrir Room o ante llamadas concurrentes. Se exige coincidencia de cantidad, destino, contenido, propósito, fechas y responsables y se rechaza una identidad existente parcialmente. No hay tabla/registro de lotes: la protección reconoce las filas mientras existan; no garantiza exactamente una vez después de borrarlas. Tras crear, cada Node es independiente: no existen edición/borrado del lote como unidad ni creación futura automática.
 
-Los Flows existentes incorporan la lista, responsables, progreso y Atención sin refresh manual: ACTION aporta trabajo y su `dueAt` alimenta `TaskTemporal`/`AttentionSnapshot`; NOTE queda excluida. No cambian sus fórmulas. Room permanece **v7**, con schema, entidades, migraciones y triggers intactos; `PersonDao` solo añade lectura de IDs de asociaciones para comprobar reintentos. Sin WorkManager, alarmas, notificaciones, Calendario ni recurrencia persistente. No se implementa intervalo personalizado en esta versión.
+Los Flows existentes incorporan la lista, responsables, progreso y Atención sin refresh manual: ACTION aporta trabajo y su `dueAt` alimenta `TaskTemporal`/`AttentionSnapshot`; NOTE queda excluida. No cambian sus fórmulas. Room permanece **v7**, con schema, entidades, migraciones y triggers intactos; `PersonDao` solo añade lectura de IDs de asociaciones para comprobar reintentos. Este bloque de lotes no añadió WorkManager, alarmas, notificaciones, Calendario ni recurrencia persistente; el Calendario se implementa después como proyección. No se implementa intervalo personalizado en esta versión.
 
 Validación dirigida: cinco pruebas puras de cantidad/numeración/títulos, propósito, fechas mensuales/anuales sin deriva, calendario local/DST y días inexistentes; tres pruebas de repositorio en API 24/28 (seis ejecuciones) para especificaciones exactas, asociaciones, progreso/Atención, orden, rollback de Nodes/asociaciones, saturación de posiciones y reintentos concurrentes/reapertura; dos pruebas Compose para creación en la Capa actual, Notes, responsables, borrador/selector restaurados, preview y fallo/reintento. Pasaron también 17 regresiones dirigidas de Notes, fechas, Atención, traslado, orden y acceso a creación en 320×480 con texto ampliado. Una prueba de Notes se adapta para desplazarse a la fila lazy antes de comprobarla. Estos resultados no acreditan instalación/prueba física, muerte real de proceso ni rendimiento con 500 elementos y muchos responsables; el borrador mantiene los límites del Bundle existentes.
+
+### Calendario — vista temporal derivada IMPLEMENTADA
+
+El destino **Calendario** se añade al panel transversal existente, junto a Personas y Atención, tanto desde Proyectos como desde una Capa. Es una vista mensual global de solo lectura y local/offline: los Nodes y sus fechas siguen siendo la única fuente de verdad. Room permanece **v7**, sin entidades, tablas, columnas, DAO ni migraciones nuevas.
+
+`CalendarSnapshot` recibe el `NodeTreeSnapshot` global observado y la zona actual del dispositivo. Incluye únicamente hojas ACTION reales con `dueAt != null`, comprobando las relaciones de padre en la instantánea. Excluye Notes (aunque conserven fechas latentes), Capas y ACTION sin vencimiento. Las completadas permanecen visibles; su etiqueta reutiliza `TaskDateIndicator`/`TaskTemporal`, donde COMPLETED conserva prioridad. No cambia ninguna fórmula de progreso, Atención ni clasificación temporal.
+
+`CalendarDates` centraliza epoch millis → zona local → fecha civil. El índice agrupa por `CalendarDay`, nunca por día UTC. Cambiar zona solo reconstruye la representación: no escribe `dueAt`. Los instantes en cambios DST, incluso horas repetidas, se convierten usando el offset correspondiente al instante; dos ocurrencias se ordenan por sus epoch reales. Las etiquetas de fechas civiles se formatean desde mediodía UTC para evitar desplazarlas por huecos de medianoche.
+
+`CalendarMonth` construye la cuadrícula gregoriana con días y huecos necesarios, en semanas completas (normalmente 4–6), incluyendo años bisiestos. Usa el primer día semanal del Locale del dispositivo; los nombres de mes/días y números se localizan y los encabezados siguen el mismo orden. Los controles anterior/siguiente conservan el número de día cuando existe y lo ajustan al último válido si hace falta. La navegación admite años 1–9999. El mes entero es un ítem de una lista lazy desplazable: no exige que toda la cuadrícula quepa en la pantalla.
+
+Hoy se distingue con borde naranja `PathHighlight`; la selección usa `Primary` morado. Un punto naranja indica días con tareas y la semántica anuncia su cantidad. Tocar un día selecciona su lista; **Hoy** vuelve a la fecha local actual. Sin entradas muestra «Sin tareas para este día». Cada fila compacta contiene título, hora local, Proyecto, ancestros, responsables propios y estado temporal existente. No presenta progreso ni controles de creación/completado. El orden es `dueAt`, `createdAt`, ID, independiente de `position`, que nunca se modifica desde Calendario.
+
+Al tocar una fila, `AppRoot` revalida el Node y su Proyecto y entrega el ID real a `ProjectScreen`, que reconstruye ancestros mediante la navegación existente. No hay detalle duplicado. Para una entrada desde Calendario, Atrás del sistema o la flecha superior vuelve directamente al contexto temporal; el patrón habitual de subir Capas y el retorno desde Atención se conservan para sus entradas normales. Visitar Calendario desde una Capa y cerrarlo conserva esa ubicación. Mes/día (el mes se deriva del día seleccionado) y scroll usan estado guardable dentro del proveedor `calendar`; también se guarda el origen de retorno cuando se abre una tarea. Si desaparece su Proyecto se vuelve al Calendario.
+
+Los Flows globales existentes alimentan Nodes/Proyectos y asignaciones. Crear, editar/retirar fechas, completar/reabrir, convertir ACTION ↔ NOTE, pasar hoja ↔ Capa, mover, borrar, renombrar ancestros/Proyectos y cambiar responsables actualizan la vista sin refresh manual. Los lotes con fechas son Nodes normales y aparecen por el mismo flujo; las fechas latentes se conservan al convertir/cambiar estructura.
+
+`rememberCalendar` construye el índice en `Dispatchers.Default`, únicamente al cambiar la instantánea o zona. Agrupar cuesta O(N); ordenar añade Σ O(k log k) por día y la memoria es O(N). Las celdas consultan el mapa por día, sin consultas Room ni observadores por celda. Solo las filas compuestas resuelven rutas iterativas O(profundidad), evitando copiar todos los caminos de árboles profundos. Cambios del reloj no reagrupan el índice.
+
+Sigue activo un solo `rememberTaskScreenNow`: global para Proyectos/Atención/Calendario, o para el proyecto abierto. Reutiliza foreground RESUMED, fronteras `TaskTemporal`, revisión como máximo cada minuto y cambios de hora/zona. Una devolución de llamada actualiza el entorno incluso si el instante observado no cambia. Reanudación y ticks actualizan hoy/estados sin emitir ni escribir Room; no hay timers por celda ni background. El scheduler puede retrasar el cambio visible de día hasta la siguiente revisión.
+
+Cobertura dirigida nueva: cinco pruebas puras (inclusión, orden global determinista, medianoche local, DST, meses/Locale y ruta de 10.000 niveles), dos de repositorios (conversiones, estructura, completado, fechas, traslado, borrados, lotes y Room v7), y tres Compose (ruta real/responsables, retorno/restauración, reactividad y cambio de día/zona con reloj controlado sin escrituras). Pasaron las 10 pruebas nuevas y 23 regresiones directamente afectadas de Atención, navegación, reloj temporal, Personas, traslado y creación múltiple (33 en total); la prueba Compose se repitió tras ampliar Atrás del sistema y selección distinta de hoy. La restauración usa el arnés de estado guardable; no acredita muerte real de proceso ni prueba física.
+
+Límites: vista mensual y lista del día únicamente; carga todos los Nodes locales, sin paginación ni benchmark de dispositivo. Se usa calendario gregoriano con localización del dispositivo. No añade creación contextual, edición de fechas, drag temporal, vista semanal/diaria completa, filtros, búsqueda, eventos externos, recurrencia persistente, alarmas, notificaciones ni sincronización. Pendiente dogfooding en tamaños pequeños, texto ampliado, TalkBack y cambios reales de zona/ciclo de vida.
 
 ## PRÓXIMA ETAPA — capacidades previstas, no implementadas
 
@@ -973,7 +997,7 @@ Una tarea o Capa podrá marcarse como Favorita para referencia y acceso rápido 
 
 ### 11. Menú lateral con destinos reales
 
-El menú lateral recuperará progresivamente destinos cuando existan funcionalidades utilizables: **Proyectos, Atención, Favoritos, Personas, Etiquetas, Configuración y Acerca de**. El panel actual conserva identidad, versión y cierre, y añade los destinos funcionales Personas y Atención; no se añadirán destinos vacíos para llenar el menú.
+El menú lateral recuperará progresivamente destinos cuando existan funcionalidades utilizables: **Proyectos, Atención, Favoritos, Personas, Etiquetas, Configuración y Acerca de**. El panel actual conserva identidad, versión y cierre, y añade los destinos funcionales Personas, Atención y Calendario; no se añadirán destinos vacíos para llenar el menú.
 
 ### 12. Acerca de e identidad
 
@@ -995,7 +1019,7 @@ Se distinguen dos conceptos: **Release DE Arachn0de** actualiza/distribuye la ap
 
 ### Secuencia tentativa de implementación
 
-Este orden es una propuesta revisable, no una obligación irreversible. Los primeros ocho pasos ya están implementados; los restantes siguen pendientes:
+Este orden es una propuesta revisable, no una obligación irreversible. Los primeros ocho pasos y el Calendario derivado ya están implementados; los restantes siguen pendientes:
 
 1. Mover Node a otra Capa — IMPLEMENTADO.
 2. Personas — IMPLEMENTADO.
@@ -1014,6 +1038,8 @@ Este orden es una propuesta revisable, no una obligación irreversible. Los prim
 15. Menú lateral cuando sus destinos sean reales.
 16. Acerca de y redes.
 17. Sistema formal de releases/actualizaciones de Arachn0de.
+
+El Calendario mensual derivado se implementó después de las reglas temporales finitas, antes del diseño financiero.
 
 ## ROADMAP FUTURO — evolución posterior
 

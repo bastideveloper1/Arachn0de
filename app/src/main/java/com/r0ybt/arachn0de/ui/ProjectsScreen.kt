@@ -51,6 +51,7 @@ internal fun ProjectDashboardScreen(
     listState: LazyListState = rememberLazyListState(),
     onOpenPeople: () -> Unit = {},
     onOpenAttention: () -> Unit = {},
+    onOpenCalendar: () -> Unit = {},
     projectAttentionById: Map<String, com.r0ybt.arachn0de.domain.model.AttentionSummary> = emptyMap(),
 ) {
     val scope = rememberCoroutineScope()
@@ -139,6 +140,7 @@ internal fun ProjectDashboardScreen(
                         onDismiss = { showDrawer = false },
                         onPeople = { showDrawer = false; onOpenPeople() },
                         onAttention = { showDrawer = false; onOpenAttention() },
+                        onCalendar = { showDrawer = false; onOpenCalendar() },
                     )
                 }
             }

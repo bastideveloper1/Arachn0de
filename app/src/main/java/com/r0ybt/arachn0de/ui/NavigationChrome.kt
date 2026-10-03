@@ -20,6 +20,7 @@ import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.widthIn
@@ -35,7 +36,7 @@ import com.r0ybt.arachn0de.ui.theme.Arachn0deColors
 import com.r0ybt.arachn0de.R
 
 @Composable
-internal fun AppIdentityDrawer(onDismiss: () -> Unit, onPeople: (() -> Unit)? = null, onAttention: (() -> Unit)? = null) {
+internal fun AppIdentityDrawer(onDismiss: () -> Unit, onPeople: (() -> Unit)? = null, onAttention: (() -> Unit)? = null, onCalendar: (() -> Unit)? = null) {
     Column(
         modifier = Modifier
             .fillMaxHeight()
@@ -84,6 +85,9 @@ internal fun AppIdentityDrawer(onDismiss: () -> Unit, onPeople: (() -> Unit)? = 
 
         onPeople?.let { open ->
             androidx.compose.material3.TextButton(onClick = open) { Text("Personas") }
+        }
+        onCalendar?.let { open ->
+            TextButton(onClick = open) { Text("Calendario") }
         }
         onAttention?.let { open ->
             androidx.compose.material3.TextButton(onClick = open) { Text("Atención") }

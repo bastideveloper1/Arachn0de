@@ -48,6 +48,7 @@ import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -71,7 +72,13 @@ internal fun ProjectNodeScreen(
     onBackToProjects: () -> Unit,
     personRepository: com.r0ybt.arachn0de.data.repository.PersonRepository = (androidx.compose.ui.platform.LocalContext.current.applicationContext as com.r0ybt.arachn0de.Arachn0deApplication).personRepository,
     onOpenPeople: () -> Unit = {},
+    onOpenAttention: () -> Unit = {},
+    openNodeId: String? = null,
+    onOpenNodeHandled: () -> Unit = {},
+    clock: () -> Long = System::currentTimeMillis,
 ) {
+    val pendingOpenNode by rememberUpdatedState(openNodeId)
+    val handleOpenNode by rememberUpdatedState(onOpenNodeHandled)
     val scope = rememberCoroutineScope()
     val personActions = remember(personRepository, scope) { com.r0ybt.arachn0de.ui.state.PersonActions(personRepository, scope) }
     var people by remember { mutableStateOf(emptyList<com.r0ybt.arachn0de.domain.model.Person>()) }
@@ -111,7 +118,8 @@ internal fun ProjectNodeScreen(
     val currentNode = projectState.nodesById[currentNodeId]
     val currentNodes = projectState.childrenOf(currentNodeId)
     val currentProgress = projectState.progressById[currentNodeId]
-    val now = com.r0ybt.arachn0de.ui.state.rememberTaskScreenNow(currentNodes + listOfNotNull(currentNode))
+    val now = com.r0ybt.arachn0de.ui.state.rememberTaskScreenNow(projectState.nodes, clock)
+    val attention by com.r0ybt.arachn0de.ui.state.rememberAttention(projectState, now)
     val pathNodes = currentPath.mapNotNull { projectState.nodesById[it] }
     val currentLayer = pathNodes.size
     val progressMap = projectState.progressById
@@ -119,6 +127,11 @@ internal fun ProjectNodeScreen(
     val load = remember(project.id, nodeRepository) { LoadState() }
     LaunchedEffect(project.id, nodeRepository, load.attempt) {
         load.collect(nodeRepository.observePreparedProjectState(project.id)) { snapshot ->
+            pendingOpenNode?.let { target ->
+                currentPath.clear()
+                if (snapshot.nodesById[target]?.projectId == project.id) currentPath.add(target)
+                handleOpenNode()
+            }
             // Preserve the open node when its ancestry changes, using only confirmed data.
             val openId = currentPath.lastOrNull()
             if (openId != null && openId in snapshot.nodesById) {
@@ -280,6 +293,7 @@ internal fun ProjectNodeScreen(
                                     }
                                 }
 
+                                AttentionIndicator(if (currentNode == null) attention?.byProjectId?.get(project.id) else if (currentNode.hasChildren) attention?.byNodeId?.get(currentNode.id) else null)
                                 if (currentNode != null && currentNode.hasChildren && currentProgress != null) {
                                     NodeProgressCard(progress = currentProgress!!)
                                     Spacer(modifier = Modifier.height(12.dp))
@@ -388,6 +402,7 @@ internal fun ProjectNodeScreen(
                                     },
                                     responsiblePeople = responsibleByNode[node.id].orEmpty(),
                                     now = now,
+                                    attention = attention?.byNodeId?.get(node.id),
                                     onResponsible = { if (!isSubmittingNode && !personActions.operation.busy && peopleLoaded && assignmentsLoaded) responsibleNodeId = node.id },
                                     onMove = { if (!isSubmittingNode) movingNodeId = node.id },
                                     onEdit = {
@@ -458,7 +473,7 @@ internal fun ProjectNodeScreen(
                         .background(Arachn0deColors.Scrim.copy(alpha = 0.45f))
                         .clickable { showDrawer = false },
                 ) {
-                    AppIdentityDrawer(onDismiss = { showDrawer = false }, onPeople = { showDrawer = false; onOpenPeople() })
+                    AppIdentityDrawer(onDismiss = { showDrawer = false }, onPeople = { showDrawer = false; onOpenPeople() }, onAttention = { showDrawer = false; onOpenAttention() })
                 }
             }
         }

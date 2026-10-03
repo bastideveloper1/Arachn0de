@@ -50,6 +50,8 @@ internal fun ProjectDashboardScreen(
     onOpenProject: (Project) -> Unit = {},
     listState: LazyListState = rememberLazyListState(),
     onOpenPeople: () -> Unit = {},
+    onOpenAttention: () -> Unit = {},
+    projectAttentionById: Map<String, com.r0ybt.arachn0de.domain.model.AttentionSummary> = emptyMap(),
 ) {
     val scope = rememberCoroutineScope()
     val actions = remember(repository, scope) { ProjectActions(repository, scope) }
@@ -106,6 +108,7 @@ internal fun ProjectDashboardScreen(
                     ProjectList(
                         projects = projects,
                         projectProgressById = projectProgressById,
+                        projectAttentionById = projectAttentionById,
                         reorderBusy = actions.operation.busy,
                         reorderError = actions.operation.error,
                         listState = listState,
@@ -135,6 +138,7 @@ internal fun ProjectDashboardScreen(
                     AppIdentityDrawer(
                         onDismiss = { showDrawer = false },
                         onPeople = { showDrawer = false; onOpenPeople() },
+                        onAttention = { showDrawer = false; onOpenAttention() },
                     )
                 }
             }

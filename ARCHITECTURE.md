@@ -846,7 +846,7 @@ Cada emisión confirmada reconstruye iterativamente los ancestros del nodo abier
 
 Room pasa de **v4 a v5** mediante `PersonMigration4To5`: añade `persons` y `node_person`, con clave compuesta `(nodeId, personId)`, índice por Persona y foreign keys con borrado en cascada. Una Persona puede participar en varios Nodes y un Node tener 0..N Personas. La relación guarda IDs, no nombres. La migración conserva tablas, contenido, posiciones y triggers anteriores; no utiliza migración destructiva.
 
-«Personas» es el único destino nuevo del panel existente, tanto desde proyectos como desde una capa. Permite listar, crear, editar y eliminar con confirmación, seleccionar/cambiar/quitar avatar. Al volver conserva la ruta del proyecto y el estado guardable mediante `SaveableStateHolder`. «Responsables» aparece en el menú de cada tarea/Capa y en el contexto de la capa abierta: un selector permite guardar ninguna, una o varias Personas. Su estado vacío indica dónde crearlas. Las tarjetas y la capa abierta muestran hasta tres avatares y `+N`, sin sección vacía. Los flujos de Room actualizan nombres, avatares y asignaciones sin reabrir pantallas.
+«Personas» es un destino funcional del panel existente, tanto desde proyectos como desde una capa. Permite listar, crear, editar y eliminar con confirmación, seleccionar/cambiar/quitar avatar. Al volver conserva la ruta del proyecto y el estado guardable mediante `SaveableStateHolder`. «Responsables» aparece en el menú de cada tarea/Capa y en el contexto de la capa abierta: un selector permite guardar ninguna, una o varias Personas. Su estado vacío indica dónde crearlas. Las tarjetas y la capa abierta muestran hasta tres avatares y `+N`, sin sección vacía. Los flujos de Room actualizan nombres, avatares y asignaciones sin reabrir pantallas.
 
 El selector Android `PickVisualMedia` entrega la imagen que `AvatarStore` copia inmediatamente al almacenamiento privado de la app. Room guarda únicamente el nombre del archivo PNG; no guarda blobs ni depende de mantener acceso a la URI original. Se acepta una entrada de hasta 20 MiB y se genera una miniatura de hasta 512 px por lado, respetando orientación EXIF. Sin imagen disponible se muestra la inicial. Cambiar/quitar/eliminar y cancelar un borrador limpia archivos sin referencias, con limpieza de archivos como mejor esfuerzo. No existe crop avanzado.
 
@@ -876,25 +876,31 @@ Crear/editar una tarea hoja permite seleccionar fecha mediante `DatePicker` Mate
 
 `UPCOMING_WINDOW_MILLIS` centraliza **24 horas exactas** (duración, no días de calendario); cambiar el umbral no requiere migración. Si Inicio y Vencimiento coinciden, antes del instante es programada, en él es próxima y después vencida. `nextTransition` calcula el siguiente cambio, usando `dueAt + 1 ms` para pasar a vencida, con protección ante overflow.
 
-`rememberTaskScreenNow` es el único mecanismo temporal de la pantalla de proyecto, compartido por tarjetas y contexto abierto. Mientras está RESUMED espera la próxima frontera de las tareas del nivel actual, con una revisión de reloj como máximo cada minuto. Relee inmediatamente al reanudar y al recibir cambio de hora/zona del sistema. No existen timers por tarjeta ni trabajo temporal en background. El scheduler del dispositivo puede retrasar la actualización; el estado siempre se deriva del instante observado, sin prometer alarmas exactas.
+`rememberTaskScreenNow` es el único mecanismo temporal de la pantalla de proyecto, compartido por tarjetas y contexto abierto. Mientras está RESUMED espera la próxima frontera de todas las tareas del proyecto, incluidas las descendientes ocultas que alimentan Atención, con una revisión de reloj como máximo cada minuto. Relee inmediatamente al reanudar y al recibir cambio de hora/zona del sistema. No existen timers por tarjeta ni trabajo temporal en background. El scheduler del dispositivo puede retrasar la actualización; el estado siempre se deriva del instante observado, sin prometer alarmas exactas.
 
 Las tarjetas y el contexto de una hoja muestran una línea compacta de estado y fecha/hora local. Próxima usa naranja existente y Vencida el color de error; no se recolorea toda la tarjeta. Completada usa texto discreto; sin fechas no aparece una sección vacía. Los responsables coexisten con esa línea y se siguen resolviendo por sus IDs/flujos.
 
-Hoja → Capa → hoja conserva ambas fechas: mientras hay hijos quedan sin indicador, edición operativa ni urgencia propia; al perder el último hijo vuelven a aplicarse a la hoja pendiente según los triggers existentes. No existe propagación hacia ancestros. Fechas no filtran tareas, no modifican orden manual, drag/reorder ni fórmula de progreso. Mover conserva fechas y responsables porque solo actualiza estructura/posición del mismo ID; editar responsables conserva fechas y editar fechas conserva responsables.
+Hoja → Capa → hoja conserva ambas fechas: mientras hay hijos quedan sin indicador, edición operativa ni urgencia propia; al perder el último hijo vuelven a aplicarse a la hoja pendiente según los triggers existentes. El estado temporal propio no se propaga hacia ancestros; Atención agrega sus señales por separado, como se describe a continuación. Fechas no filtran tareas, no modifican orden manual, drag/reorder ni fórmula de progreso. Mover conserva fechas y responsables porque solo actualiza estructura/posición del mismo ID; editar responsables conserva fechas y editar fechas conserva responsables.
 
 Cobertura dirigida: estados y fronteras con `now` fijo, umbral y extremos Long; persistencia/edición/retirada/validación, idempotencia, progreso/orden/responsables y traslado; hoja → Capa → hoja; migración del schema real v5 en API 24/28 conservando tablas y triggers. Compose verifica selección de fecha/hora, restauración con selector abierto, error/corrección, reloj al reanudar/cambiar hora, presentación sin urgencia en completadas/Capas y edición real con recreación de Activity. Se verifican regresiones de Personas, traslado, borradores y rutas de migración anteriores.
 
-Limitaciones: selector Material con rango de años predeterminado 1900–2100, pendiente dogfooding en pantallas pequeñas, cambios reales de zona/horario y ciclos de foreground. No se afirma validación física ni muerte real de proceso. No hay notificaciones, alarmas, calendario, recurrencias ni Motor de Atención; Atención permanece como siguiente etapa.
+Limitaciones: selector Material con rango de años predeterminado 1900–2100, pendiente dogfooding en pantallas pequeñas, cambios reales de zona/horario y ciclos de foreground. No se afirma validación física ni muerte real de proceso. No hay notificaciones, alarmas, calendario ni recurrencias. El Motor de Atención básico se describe a continuación.
+
+### Motor de Atención básico + propagación + vista Atención — IMPLEMENTADO
+
+`AttentionSnapshot` deriva del `NodeTreeSnapshot` validado y un único `now`; no persiste atención. `AttentionSummary` conserva conteos `upcoming`, `overdue` y `total`, con nivel `NONE`, `UPCOMING` u `OVERDUE`: cualquier vencida domina. Solo las hojas cuyo `TaskTemporal.state` existente devuelve UPCOMING u OVERDUE aportan una unidad. Se conserva su ventana de 24 horas y precedencia: completadas, programadas, activas, sin fechas y fechas latentes de contenedores no aportan señales. Una Capa nunca adquiere un vencimiento propio por esta agregación.
+
+Una cola iterativa procesa hojas y luego padres cuando todos sus hijos están resueltos, sumando cada aporte una vez hasta todos los ancestros y la raíz virtual de cada Proyecto. No hay recursión ni recorridos completos por cada Capa: derivación y orden transversal cuestan O(N + M log M), con memoria O(N + M), donde M son las hojas con atención. Los caminos se resuelven por ID bajo demanda en O(profundidad), sin guardar todas las rutas. `rememberAttention` ejecuta el cálculo en Dispatchers.Default.
+
+Proyectos, tarjetas de Capas y contexto abierto muestran un indicador compacto con conteos de vencidas/próximas. Usa el rojo de error existente si hay vencidas y el naranja existente para próximas; NONE no ocupa espacio. Convive con progreso y responsables, sin teñir tarjetas. Las hojas conservan su indicador temporal existente. Completado/reapertura, movimiento, eliminación y hoja → Capa → hoja regeneran las señales desde las relaciones actuales; fechas y responsables conservan la identidad del Node. La fórmula de progreso y el orden manual no cambian.
+
+El destino funcional «Atención», junto a Personas en el panel existente, muestra referencias a hojas de todos los proyectos, sin copias, movimientos ni escrituras. Ordena vencidas primero, luego próximas, por `dueAt` ascendente y desempata por `createdAt` e ID. Cada fila incluye título, vencimiento, Proyecto + ancestros y sus responsables propios, sin herencia. Las rutas largas se truncan visualmente. Al pulsar se revalida el ID y se abre el Node real usando la reconstrucción de ancestros de `ProjectScreen`; un destino desaparecido cae de forma segura a la raíz del proyecto. Atrás asciende por las Capas y al salir del proyecto vuelve a Atención. Visitar Atención desde una Capa y volver conserva su ubicación; la ruta y el estado guardable de la vista se restauran mediante el mecanismo existente.
+
+Observadores globales de solo lectura de Nodes y asignaciones reutilizan Room **v6**, entidades, tablas y relaciones existentes. Una instantánea global sustituye los observadores de progreso separados por proyecto, usando el mismo progreso derivado. Los flujos actualizan fechas, completado, estructura, nombres de ancestros/proyectos y responsables. Solo hay un reloj de pantalla activo: global para Proyectos/Atención, o del proyecto completo cuando este está abierto. Usa el mecanismo temporal existente en foreground, fronteras temporales, reanudación y cambios de hora/zona; no hay timers por tarjeta, alarmas ni trabajo temporal en background.
+
+Validación dirigida: seis pruebas del modelo (reglas, fronteras, orden, conteos, raíces, camino y 10.000 niveles), tres de repositorios (emisiones, traslado, completado/reapertura, cambios estructurales, fechas, nombres y asignaciones) y tres de Compose (proyección, navegación al ID real, ruta guardable, retorno, cambios reactivos y reloj de descendientes ocultos). Pasaron además 15 regresiones dirigidas de navegación, traslado, Personas y reloj temporal. No se afirma prueba física, benchmark de dispositivo ni muerte real del proceso: restauración usa el arnés de estado guardable. La proyección carga todos los Nodes locales, sin paginación; el coste de los caminos visibles depende de su profundidad. El movimiento conserva el alcance existente dentro del mismo proyecto. Prioridad, notificaciones, recurrencias y atención avanzada quedan fuera de esta etapa.
 
 ## PRÓXIMA ETAPA — capacidades previstas, no implementadas
-
-### 4. Atención básica y futuro Motor de Atención
-
-El **Attention Engine / Motor de Atención** busca evitar que trabajo temporalmente importante quede perdido en jerarquías profundas. Por ejemplo, `Personal → Salud → Tratamiento → Tomar remedio — hoy 21:00` deberá poder generar señales en sus Capas ancestras cuando requiera atención.
-
-El principio es paralelo al progreso: **progreso de Capa = derivado de descendientes; atención de Capa = derivada de descendientes**. Las reglas de urgencia se diseñarán sobre fechas y estado existente, sin duplicar innecesariamente datos calculados.
-
-El motor no cambiará automáticamente el orden manual dentro de las Capas. Una futura vista transversal **Atención** podrá ordenar referencias a elementos por urgencia manteniendo su ubicación y orden estructurales originales.
 
 ### 5. Nota y conversión Tarea ↔ Nota
 
@@ -942,7 +948,7 @@ Una tarea o Capa podrá marcarse como Favorita para referencia y acceso rápido 
 
 ### 11. Menú lateral con destinos reales
 
-El menú lateral recuperará progresivamente destinos cuando existan funcionalidades utilizables: **Proyectos, Atención, Favoritos, Personas, Etiquetas, Configuración y Acerca de**. El panel actual conserva identidad, versión y cierre, y añade el destino funcional Personas; no se añadirán destinos vacíos para llenar el menú.
+El menú lateral recuperará progresivamente destinos cuando existan funcionalidades utilizables: **Proyectos, Atención, Favoritos, Personas, Etiquetas, Configuración y Acerca de**. El panel actual conserva identidad, versión y cierre, y añade los destinos funcionales Personas y Atención; no se añadirán destinos vacíos para llenar el menú.
 
 ### 12. Acerca de e identidad
 
@@ -964,13 +970,13 @@ Se distinguen dos conceptos: **Release DE Arachn0de** actualiza/distribuye la ap
 
 ### Secuencia tentativa de implementación
 
-Este orden es una propuesta revisable, no una obligación irreversible. Los primeros cuatro pasos ya están implementados; los restantes siguen pendientes:
+Este orden es una propuesta revisable, no una obligación irreversible. Los primeros cinco pasos ya están implementados; los restantes siguen pendientes:
 
 1. Mover Node a otra Capa — IMPLEMENTADO.
 2. Personas — IMPLEMENTADO.
 3. Responsables — IMPLEMENTADO.
 4. Fechas — IMPLEMENTADO.
-5. Atención básica.
+5. Atención básica — IMPLEMENTADO.
 6. Notas y conversión Tarea ↔ Nota.
 7. Creación múltiple y numeración.
 8. Reglas temporales/recurrencia para creación múltiple.
@@ -1005,7 +1011,7 @@ Desktop y sincronización local constituyen una etapa avanzada/final de esta lí
 - **Obligación:** elegir entre A, B u otra composición mediante diseño específico; definir allí el alcance de agregación por Subcapas. No hay modelo ni schema aprobado.
 - **Capas explícitamente vacías:** decidir si deben existir en el futuro. Actualmente perder el último hijo convierte el nodo en tarea; esta documentación no cambia esa regla ni elige una alternativa futura.
 - **Notas:** representación del propósito informativo y reglas de conversión para hojas, incluyendo tratamiento del completado y exclusión del progreso. No se definen Notas contenedoras.
-- **Atención y generación temporal:** diseñar propagación de urgencia y recurrencia sobre la base temporal implementada antes de desarrollar cada bloque.
+- **Atención avanzada y generación temporal:** la propagación básica ya está implementada; diseñar futuras reglas adicionales y recurrencia antes de desarrollar esos bloques.
 - **Distribución de la app:** definir firma, publicación y comprobación/descarga de actualizaciones antes de implementarlas.
 
 ## Principios de evolución

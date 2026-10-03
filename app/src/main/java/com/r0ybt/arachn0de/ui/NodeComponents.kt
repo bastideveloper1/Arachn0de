@@ -163,6 +163,7 @@ internal fun NodeCard(
     onResponsible: () -> Unit = {},
     responsiblePeople: List<com.r0ybt.arachn0de.domain.model.Person> = emptyList(),
     now: Long = 0L,
+    attention: com.r0ybt.arachn0de.domain.model.AttentionSummary? = null,
 ) {
     var showContextMenu by remember { mutableStateOf(false) }
     val completedTint = if (node.isCompleted) Arachn0deColors.Completed else Arachn0deColors.Primary
@@ -241,6 +242,7 @@ internal fun NodeCard(
                 }
 
                 TaskDateIndicator(node, now)
+                if (hasChildren) AttentionIndicator(attention)
 
                 if (responsiblePeople.isNotEmpty()) {
                     Spacer(modifier = Modifier.height(4.dp))

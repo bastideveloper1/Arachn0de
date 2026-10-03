@@ -14,6 +14,9 @@ class PersonRepository(private val database: Arachn0deDatabase, private val avat
     fun observeAssignments(projectId: String) = dao.observeAssignments(projectId).map { rows ->
         rows.groupBy { it.nodeId }.mapValues { (_, people) -> people.map { Person(it.id, it.name, it.avatarFile) } }
     }
+    fun observeAllAssignments() = dao.observeAllAssignments().map { rows ->
+        rows.groupBy { it.nodeId }.mapValues { (_, people) -> people.map { Person(it.id, it.name, it.avatarFile) } }
+    }
     suspend fun importAvatar(uri: Uri): String {
         var file: String? = null
         try {

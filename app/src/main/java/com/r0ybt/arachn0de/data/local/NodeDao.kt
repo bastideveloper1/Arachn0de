@@ -9,6 +9,9 @@ import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface NodeDao {
+    @Query("SELECT * FROM nodes ORDER BY projectId, position, createdAt, id")
+    fun observeAllNodes(): Flow<List<NodeEntity>>
+
     @Query("SELECT * FROM nodes WHERE projectId = :projectId ORDER BY position, createdAt, id")
     fun observeProjectNodes(projectId: String): Flow<List<NodeEntity>>
 

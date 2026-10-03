@@ -172,6 +172,7 @@ internal fun ProjectList(
     reorderBusy: Boolean = false,
     reorderError: String? = null,
     listState: LazyListState = rememberLazyListState(),
+    projectAttentionById: Map<String, com.r0ybt.arachn0de.domain.model.AttentionSummary> = emptyMap(),
 ) {
     val order = projects.map { it.id }
     val drag = rememberDragReorderState(listState, "project:", mapOf(false to order), reorderBusy, reorderError) { source, target, _ ->
@@ -190,6 +191,7 @@ internal fun ProjectList(
             ProjectCard(
                 project = project,
                 progress = projectProgressById[project.id],
+                attention = projectAttentionById[project.id],
                 onOpen = { onOpenProject(project) },
                 onEdit = { onEdit(project) },
                 onDelete = { onDelete(project) },
@@ -227,6 +229,7 @@ internal fun ProjectCard(
     onDelete: () -> Unit,
     modifier: Modifier = Modifier,
     dragging: Boolean = false,
+    attention: com.r0ybt.arachn0de.domain.model.AttentionSummary? = null,
 ) {
     var showActions by remember { mutableStateOf(false) }
     Card(
@@ -283,6 +286,7 @@ internal fun ProjectCard(
                         fontSize = 12.sp,
                     )
                 }
+                AttentionIndicator(attention)
                 if (progress != null) {
                     val pending = progress.total - progress.completed
                     Spacer(modifier = Modifier.height(6.dp))

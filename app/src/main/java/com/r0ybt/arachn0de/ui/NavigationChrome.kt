@@ -35,7 +35,7 @@ import com.r0ybt.arachn0de.ui.theme.Arachn0deColors
 import com.r0ybt.arachn0de.R
 
 @Composable
-internal fun AppIdentityDrawer(onDismiss: () -> Unit, onPeople: (() -> Unit)? = null) {
+internal fun AppIdentityDrawer(onDismiss: () -> Unit, onPeople: (() -> Unit)? = null, onAttention: (() -> Unit)? = null) {
     Column(
         modifier = Modifier
             .fillMaxHeight()
@@ -84,6 +84,9 @@ internal fun AppIdentityDrawer(onDismiss: () -> Unit, onPeople: (() -> Unit)? = 
 
         onPeople?.let { open ->
             androidx.compose.material3.TextButton(onClick = open) { Text("Personas") }
+        }
+        onAttention?.let { open ->
+            androidx.compose.material3.TextButton(onClick = open) { Text("Atención") }
         }
         Text(
             text = "v0.1.0",

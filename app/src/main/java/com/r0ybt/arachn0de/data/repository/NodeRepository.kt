@@ -22,6 +22,9 @@ class NodeRepository(
 ) {
     private val nodeDao = database.nodeDao()
 
+    fun observeAllState(): Flow<NodeTreeSnapshot> =
+        nodeDao.observeAllNodes().map(::snapshot).flowOn(Dispatchers.Default)
+
     fun observeProjectState(projectId: String): Flow<NodeTreeSnapshot> =
         nodeDao.observeProjectNodes(projectId).map(::snapshot).flowOn(Dispatchers.Default)
 

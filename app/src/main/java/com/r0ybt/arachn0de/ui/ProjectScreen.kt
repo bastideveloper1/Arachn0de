@@ -111,9 +111,9 @@ internal fun ProjectNodeScreen(
     )) { mutableStateListOf<String>() }
     var hasLoaded by remember(project.id) { mutableStateOf(false) }
     var projectState by remember(project.id) { mutableStateOf(NodeTreeSnapshot(emptyList())) }
-    var draft by rememberSaveable(project.id, stateSaver = EditorDraft.Saver) { mutableStateOf<EditorDraft?>(null) }
+    val drafts = rememberSaveable(project.id, saver = com.r0ybt.arachn0de.ui.state.EditorDraftStore.Saver) { com.r0ybt.arachn0de.ui.state.EditorDraftStore() }
+    val draft = drafts.active
     var convertingObligationId by rememberSaveable(project.id) { mutableStateOf<String?>(null) }
-    var batchDraft by rememberSaveable(project.id, stateSaver = NodeBatchDraft.Saver) { mutableStateOf<NodeBatchDraft?>(null) }
     var deletingNodeId by rememberSaveable(project.id) { mutableStateOf<String?>(null) }
     var deletingNodeName by rememberSaveable(project.id) { mutableStateOf("") }
     var movingNodeId by rememberSaveable(project.id) { mutableStateOf<String?>(null) }
@@ -356,7 +356,7 @@ internal fun ProjectNodeScreen(
                                         Button(
                                             onClick = {
                                                 if (!isSubmittingNode) {
-                                                    draft = EditorDraft(currentNode.id, currentNode.parentId, currentNode.title, currentNode.description, startAt = currentNode.startAt, dueAt = currentNode.dueAt, purpose = currentNode.purpose, obligation = currentNode.obligation, priority = currentNode.priority).apply { tagIds = tagState.nodeIds[currentNode.id].orEmpty().toList() }
+                                                    if (assignmentsLoaded && peopleLoaded) drafts.open(currentNode.parentId, currentNode.id) { EditorDraft(currentNode.id, currentNode.parentId, currentNode.title, currentNode.description, startAt = currentNode.startAt, dueAt = currentNode.dueAt, purpose = currentNode.purpose, obligation = currentNode.obligation, priority = currentNode.priority).apply { tagIds = tagState.nodeIds[currentNode.id].orEmpty().toList(); responsibleIds = responsibleByNode[currentNode.id].orEmpty().map { it.id } } }
                                                 }
                                             },
                                             enabled = !isSubmittingNode,
@@ -449,7 +449,7 @@ internal fun ProjectNodeScreen(
                                         PriorityIndicator(row.node)
                                         TagChips(tagState.forNode(row.node.id))
                                         TextButton(onClick = { historyNodeId = row.node.id }) { Text("Historial") }
-                                        TextButton(onClick = { draft = EditorDraft(row.node.id, row.node.parentId, row.node.title, row.node.description, startAt = row.node.startAt, dueAt = row.node.dueAt, purpose = row.node.purpose, obligation = row.node.obligation, priority = row.node.priority).apply { tagIds = tagState.nodeIds[row.node.id].orEmpty().toList() } }) { Text("Editar") }
+                                        TextButton(onClick = { if (assignmentsLoaded && peopleLoaded) drafts.open(row.node.parentId, row.node.id) { EditorDraft(row.node.id, row.node.parentId, row.node.title, row.node.description, startAt = row.node.startAt, dueAt = row.node.dueAt, purpose = row.node.purpose, obligation = row.node.obligation, priority = row.node.priority).apply { tagIds = tagState.nodeIds[row.node.id].orEmpty().toList(); responsibleIds = responsibleByNode[row.node.id].orEmpty().map { it.id } } } }) { Text("Editar") }
                                     }
                                 }
                             }
@@ -496,7 +496,7 @@ internal fun ProjectNodeScreen(
                                     canCopy = !copyActions.busy,
                                     onCopy = { descendants -> copyActions.copy(projectState, node.id, descendants) },
                                     onEdit = {
-                                        draft = EditorDraft(node.id, node.parentId, node.title, node.description, startAt = node.startAt, dueAt = node.dueAt, purpose = node.purpose, obligation = node.obligation, priority = node.priority).apply { tagIds = tagState.nodeIds[node.id].orEmpty().toList() }
+                                        if (assignmentsLoaded && peopleLoaded) drafts.open(node.parentId, node.id) { EditorDraft(node.id, node.parentId, node.title, node.description, startAt = node.startAt, dueAt = node.dueAt, purpose = node.purpose, obligation = node.obligation, priority = node.priority).apply { tagIds = tagState.nodeIds[node.id].orEmpty().toList(); responsibleIds = responsibleByNode[node.id].orEmpty().map { it.id } } }
                                     },
                                     canMoveUp = node.id != renderNodes.firstOrNull()?.id && !isSubmittingNode,
                                     canMoveDown = node.id != renderNodes.lastOrNull()?.id && !isSubmittingNode,
@@ -522,14 +522,13 @@ internal fun ProjectNodeScreen(
                     }
                 }
                 RecurrenceManager(nodeRepository.recurrence, project.id, projectState.nodes, people, peopleLoaded, recurrenceSelected) { recurrenceSelected = null }
-                androidx.compose.material3.OutlinedButton(enabled = !isSubmittingNode && (currentNode?.purpose != NodePurpose.NOTE && currentNode?.obligation == null), onClick = { batchDraft = NodeBatchDraft(currentNodeId) }) { Text("Crear varios") }
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Button(
-                        onClick = { if (!isSubmittingNode && (currentNode?.purpose != NodePurpose.NOTE && currentNode?.obligation == null)) draft = EditorDraft(null, currentNodeId, "", "") },
+                        onClick = { if (!isSubmittingNode && (currentNode?.purpose != NodePurpose.NOTE && currentNode?.obligation == null)) drafts.open(currentNodeId) { EditorDraft(null, currentNodeId, "", "") } },
                         modifier = Modifier.weight(1f).heightIn(min = 52.dp),
                         colors = ButtonDefaults.buttonColors(containerColor = Arachn0deColors.Primary),
                         shape = RoundedCornerShape(14.dp),
@@ -578,12 +577,6 @@ internal fun ProjectNodeScreen(
             onConfirm = { actions.convert(id, NodePurpose.NOTE, removeObligation = true) { convertingObligationId = null } })
     }
 
-    batchDraft?.let { batch ->
-        NodeBatchDialog(batch, people, peopleLoaded, isSubmittingNode, tagRepository = nodeRepository.tags,
-            onDismiss = { if (!isSubmittingNode) batchDraft = null },
-            onCreate = { specs, ids -> actions.createBatch(project.id, batch, specs, ids) { batchDraft = null } })
-    }
-
     draft?.let { editor ->
         NodeDialog(
             draft = editor,
@@ -593,16 +586,13 @@ internal fun ProjectNodeScreen(
             editDates = editor.purpose == NodePurpose.ACTION && (editor.id == null || projectState.nodesById[editor.id]?.isCompletable == true),
             onDismiss = {
                 if (!isSubmittingNode) {
-                    draft = null
+                    drafts.close()
                 }
             },
-            onSave = { title, description ->
-                if (editor.recurrenceFrequency != "NONE" && editor.id == null && editor.purpose == NodePurpose.ACTION) {
-                    actions.createRecurrence(project.id, editor) { draft = null }
-                } else actions.save(project.id, editor.parentId, editor.id, title, description, editor.creationId, editor.startAt, editor.dueAt,
-                    editDates = editor.purpose == NodePurpose.ACTION && (editor.id == null || projectState.nodesById[editor.id]?.isCompletable == true), purpose = editor.purpose, obligation = editor.obligation(), removeObligation = editor.financialRemovalConfirmed, responsibleIds = editor.responsibleIds.toSet(), tagIds = editor.tagIds.toSet(), priority = editor.priority) {
-                    draft = null
-                }
+            onDiscard = { drafts.clear() },
+            onSave = { _, _ ->
+                actions.saveDraft(project.id, editor, editor.purpose == NodePurpose.ACTION &&
+                    (editor.id == null || projectState.nodesById[editor.id]?.isCompletable == true)) { drafts.clear() }
             },
         )
     }

@@ -32,15 +32,15 @@ class DraftRestorationTest {
     }).around(compose)
 
     private fun awaitText(text: String) {
-        compose.waitUntil(10_000) { compose.onAllNodesWithText(text).fetchSemanticsNodes().isNotEmpty() }
+        compose.waitUntil(10_000) { compose.onAllNodes(if (text == "Guardar") hasText("Guardar") or hasText("Crear") else hasText(text)).fetchSemanticsNodes().isNotEmpty() }
     }
     private fun recreate() {
         compose.activityRule.scenario.recreate()
         awaitText("Guardar")
     }
     private fun save() {
-        compose.onNodeWithText("Guardar").performClick()
-        compose.waitUntil(10_000) { compose.onAllNodesWithText("Guardar").fetchSemanticsNodes().isEmpty() }
+        compose.onNode(hasText("Guardar") or hasText("Crear")).performClick()
+        compose.waitUntil(10_000) { compose.onAllNodes(hasText("Guardar") or hasText("Crear")).fetchSemanticsNodes().isEmpty() }
     }
     private fun openProject() {
         awaitText("Proyecto borradores")
@@ -101,7 +101,7 @@ class DraftRestorationTest {
         runBlocking { app.nodeRepository.deleteNode(parentId) }
         recreate()
         compose.onNodeWithText("No redirigir").assertExists()
-        compose.onNodeWithText("Guardar").performClick()
+        compose.onNode(hasText("Guardar") or hasText("Crear")).performClick()
         awaitText("No se pudo completar la operación")
         compose.onNodeWithText("Entendido").performClick()
         compose.onNodeWithText("No redirigir").assertExists()
@@ -150,7 +150,7 @@ class DraftRestorationTest {
             @Suppress("DEPRECATION")
             org.robolectric.shadows.ShadowDialog.getLatestDialog().onBackPressed()
         }
-        compose.onNodeWithText("Guardar").assertDoesNotExist()
+        compose.onNode(hasText("Guardar") or hasText("Crear")).assertDoesNotExist()
         compose.onNodeWithText("Padre").assertExists()
         runBlocking { check(app.nodeRepository.getNode(parentId)?.title == "Padre") }
     }

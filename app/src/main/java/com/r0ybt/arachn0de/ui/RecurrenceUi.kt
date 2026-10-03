@@ -6,6 +6,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.r0ybt.arachn0de.data.local.RecurrenceRuleEntity
@@ -28,7 +29,7 @@ internal fun RecurrenceFields(draft: EditorDraft, enabled: Boolean) {
             }
             DropdownMenu(expanded, onDismissRequest = { expanded = false }) {
                 options.forEach { (value, label) -> DropdownMenuItem(text = { Text(label) }, onClick = {
-                    draft.recurrenceFrequency = value
+                    if (value == "NONE") draft.toggleRecurrence(false) else { draft.recurrenceFrequency = value; draft.latentFrequency = value }
                     if (value != "NONE" && draft.recurrenceStart.isBlank()) draft.recurrenceStart = RecurrenceSchedule.format(
                         RecurrenceSchedule.localDay(draft.dueAt ?: System.currentTimeMillis(), java.util.TimeZone.getDefault().id))
                     expanded = false
@@ -70,8 +71,9 @@ internal fun RecurrenceManager(repository: RecurrenceRepository, projectId: Stri
             if (current.isEmpty()) Text("Crea una regla desde Nuevo elemento → Tarea → Recurrencia.")
             current.forEach { rule -> TextButton(onClick = { selected = rule.id }) { Text("${rule.title} · ${statusLabel(rule.status)}") } }
         } }, confirmButton = { TextButton(onClick = { open = false }) { Text("Cerrar") } })
+    val editorStates = rememberSaveableStateHolder()
     val rule = rules.firstOrNull { it.id == selected }
-    if (open && rule != null) RecurrenceRuleDialog(rule, repository, nodes, people, peopleLoaded, operation) { selected = null }
+    if (open && rule != null) editorStates.SaveableStateProvider(rule.id) { RecurrenceRuleDialog(rule, repository, nodes, people, peopleLoaded, operation, onClearDraft = { editorStates.removeState(rule.id); selected = null }) { selected = null } }
     OperationErrorDialog(operation)
     LoadErrorDialog(projectsLoad)
     LoadErrorDialog(rulesLoad)
@@ -81,7 +83,8 @@ private fun statusLabel(status: String) = when (status) { "ACTIVE" -> "Activa"; 
 
 @Composable
 private fun RecurrenceRuleDialog(rule: RecurrenceRuleEntity, repository: RecurrenceRepository, nodes: List<Node>,
-    people: List<Person>, peopleLoaded: Boolean, operation: OperationState, onDismiss: () -> Unit) {
+    people: List<Person>, peopleLoaded: Boolean, operation: OperationState, onClearDraft: () -> Unit, onDismiss: () -> Unit) {
+    var discard by rememberSaveable(rule.id) { mutableStateOf(false) }
     var edit by rememberSaveable(rule.id) { mutableStateOf(false) }
     var confirmRemoval by rememberSaveable(rule.id) { mutableStateOf(false) }
     var finish by rememberSaveable(rule.id) { mutableStateOf(false) }
@@ -107,7 +110,7 @@ private fun RecurrenceRuleDialog(rule: RecurrenceRuleEntity, repository: Recurre
     val saveTemplate: () -> Unit = {
         operation.submit("No se pudo editar la regla. Revisa el destino y los datos.", {
             repository.editTemplate(rule.id, destinationProject, destination, editor.title, editor.description, editor.obligation(), editor.responsibleIds.toSet(), editor.tagIds.toSet(), editor.priority); true
-        }, { edit = false; confirmRemoval = false })
+        }, { onClearDraft() })
     }
     AlertDialog(containerColor = Arachn0deColors.Surface,
         onDismissRequest = { if (!operation.busy) onDismiss() }, title = { Text("Regla recurrente") },
@@ -115,15 +118,20 @@ private fun RecurrenceRuleDialog(rule: RecurrenceRuleEntity, repository: Recurre
             Text("${rule.title} · ${statusLabel(rule.status)}")
             Text("${rule.frequency} · cada ${rule.interval}\nInicio: ${RecurrenceSchedule.format(rule.startDay)}\nFin: ${rule.endDay?.let(RecurrenceSchedule::format) ?: "Sin fecha final"}")
             Text("Las ocurrencias anteriores se conservan sin cambios. Primero se recuperan los vencimientos activos pendientes. Pausar omite los periodos de la pausa; finalizar es definitivo.", style = MaterialTheme.typography.bodySmall)
+            if (edit) TextButton(enabled = !operation.busy, onClick = { discard = true }) { Text("Descartar cambios de plantilla") }
             if (rule.status != "FINISHED") {
                 TextButton(enabled = !operation.busy, onClick = { edit = !edit }) { Text("Editar futuras ocurrencias") }
                 if (edit) {
-                    PrioritySelector(editor.priority, { editor.priority = checkNotNull(it) }, enabled = !operation.busy)
-                    val tagState by remember(repository) { repository.tags.observe() }.collectAsState(initial = TagState())
-                    TagSelector(tagState.tags, editor.tagIds.toSet(), { editor.tagIds = it.toList() }, repository = repository.tags)
+                    FormSection("General")
                     OutlinedTextField(editor.title, { editor.title = it }, enabled = !operation.busy, label = { Text("Título futuro") })
                     OutlinedTextField(editor.description, { editor.description = it }, enabled = !operation.busy, label = { Text("Descripción futura") })
+                    FormSection("Pago")
                     ObligationFields(editor, !operation.busy)
+                    FormSection("Organización")
+                    PrioritySelector(editor.priority, { editor.priority = checkNotNull(it) }, enabled = !operation.busy)
+                    val tagState by remember(repository) { repository.tags.observe() }.collectAsState(initial = TagState())
+                    TagSelector(tagState.tags, editor.tagIds.toSet(), { editor.tagIds = it.toList() }, repository = repository.tags, enabled = !operation.busy)
+                    FormSection("Destino")
                     var projectsOpen by remember { mutableStateOf(false) }
                     Box {
                         OutlinedButton(enabled = !operation.busy, onClick = { projectsOpen = true }) { Text("Proyecto: ${projects.firstOrNull { it.id == destinationProject }?.name ?: "Ausente"}") }
@@ -142,7 +150,7 @@ private fun RecurrenceRuleDialog(rule: RecurrenceRuleEntity, repository: Recurre
                         }
                     }
                     OutlinedButton(enabled = peopleLoaded && assignmentsLoaded && !operation.busy, onClick = { editor.showResponsible = true }) { Text("Responsables (${editor.responsibleIds.size})") }
-                    TextButton(enabled = !operation.busy && peopleLoaded && assignmentsLoaded, onClick = {
+                    Button(enabled = !operation.busy && peopleLoaded && assignmentsLoaded, onClick = {
                         if (editor.hadObligation && !editor.financialEnabled && !editor.financialRemovalConfirmed) confirmRemoval = true
                         else saveTemplate()
                     }) { Text("Guardar cambios futuros") }
@@ -160,6 +168,10 @@ private fun RecurrenceRuleDialog(rule: RecurrenceRuleEntity, repository: Recurre
     LoadErrorDialog(assignmentLoad)
     if (editor.showResponsible && peopleLoaded && assignmentsLoaded) ResponsibleDialog(rule.id, people, people.filter { it.id in editor.responsibleIds }, operation.busy,
         onDismiss = { editor.showResponsible = false }, onSave = { editor.responsibleIds = it.toList(); editor.showResponsible = false })
+    if (discard) AlertDialog(onDismissRequest = { discard = false }, title = { Text("¿Descartar cambios de plantilla?") },
+        text = { Text("La regla guardada y sus ocurrencias se conservarán.") },
+        confirmButton = { TextButton(onClick = onClearDraft) { Text("Descartar cambios") } },
+        dismissButton = { TextButton(onClick = { discard = false }) { Text("Continuar editando") } })
     if (confirmRemoval) RemoveObligationDialog(operation.busy, false, onDismiss = { confirmRemoval = false }, onConfirm = {
         editor.financialRemovalConfirmed = true; saveTemplate()
     })

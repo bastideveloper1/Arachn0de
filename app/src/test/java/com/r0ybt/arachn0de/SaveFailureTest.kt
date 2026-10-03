@@ -28,7 +28,7 @@ class SaveFailureTest {
     }).around(compose)
 
     private fun awaitText(text: String) {
-        compose.waitUntil(10_000) { compose.onAllNodesWithText(text).fetchSemanticsNodes().isNotEmpty() }
+        compose.waitUntil(10_000) { compose.onAllNodes(if (text == "Guardar") hasText("Guardar") or hasText("Crear") else hasText(text)).fetchSemanticsNodes().isNotEmpty() }
     }
     private fun failWrites(table: String, operation: String) {
         app.database.openHelper.writableDatabase.execSQL(
@@ -47,15 +47,15 @@ class SaveFailureTest {
         compose.onNodeWithText("Nombre").performTextInput("Borrador conservado")
         compose.onNodeWithText("Descripción").performTextInput("Descripción conservada")
         failWrites("projects", "INSERT")
-        compose.onNodeWithText("Guardar").performClick()
+        compose.onNode(hasText("Guardar") or hasText("Crear")).performClick()
         dismissError()
         compose.activityRule.scenario.recreate()
         awaitText("Guardar")
         compose.onNodeWithText("Borrador conservado").assertExists()
         compose.onNodeWithText("Descripción conservada").assertExists()
         allowWrites()
-        compose.onNodeWithText("Guardar").performClick()
-        compose.waitUntil(10_000) { compose.onAllNodesWithText("Guardar").fetchSemanticsNodes().isEmpty() }
+        compose.onNode(hasText("Guardar") or hasText("Crear")).performClick()
+        compose.waitUntil(10_000) { compose.onAllNodes(hasText("Guardar") or hasText("Crear")).fetchSemanticsNodes().isEmpty() }
         runBlocking {
             check(app.projectRepository.getProject(projectId) != null)
             check(app.database.projectDao().observeAll().first().count { it.name == "Borrador conservado" } == 1)
@@ -69,14 +69,14 @@ class SaveFailureTest {
         compose.onNodeWithText("Nuevo elemento").performClick()
         compose.onNodeWithText("Título").performTextInput("Tarea conservada")
         failWrites("nodes", "INSERT")
-        compose.onNodeWithText("Guardar").performClick()
+        compose.onNode(hasText("Guardar") or hasText("Crear")).performClick()
         dismissError()
         compose.activityRule.scenario.recreate()
         awaitText("Guardar")
         compose.onNodeWithText("Tarea conservada").assertExists()
         allowWrites()
-        compose.onNodeWithText("Guardar").performClick()
-        compose.waitUntil(10_000) { compose.onAllNodesWithText("Guardar").fetchSemanticsNodes().isEmpty() }
+        compose.onNode(hasText("Guardar") or hasText("Crear")).performClick()
+        compose.waitUntil(10_000) { compose.onAllNodes(hasText("Guardar") or hasText("Crear")).fetchSemanticsNodes().isEmpty() }
         runBlocking { check(app.nodeRepository.getProjectNodes(projectId).single().title == "Tarea conservada") }
     }
 
@@ -101,13 +101,13 @@ class SaveFailureTest {
         compose.onNodeWithContentDescription("Editar proyecto").performClick()
         compose.onNodeWithText("Nombre").performTextReplacement("Nombre editado")
         failWrites("projects", "UPDATE")
-        compose.onNodeWithText("Guardar").performClick()
+        compose.onNode(hasText("Guardar") or hasText("Crear")).performClick()
         dismissError()
         compose.onNodeWithText("Nombre editado").assertExists()
         runBlocking { check(app.projectRepository.getProject(projectId)?.name == "Proyecto de prueba") }
         allowWrites()
-        compose.onNodeWithText("Guardar").performClick()
-        compose.waitUntil(10_000) { compose.onAllNodesWithText("Guardar").fetchSemanticsNodes().isEmpty() }
+        compose.onNode(hasText("Guardar") or hasText("Crear")).performClick()
+        compose.waitUntil(10_000) { compose.onAllNodes(hasText("Guardar") or hasText("Crear")).fetchSemanticsNodes().isEmpty() }
         runBlocking { check(app.projectRepository.getProject(projectId)?.name == "Nombre editado") }
     }
 
@@ -116,9 +116,9 @@ class SaveFailureTest {
         compose.onNodeWithContentDescription("Opciones del proyecto").performClick()
         compose.onNodeWithContentDescription("Editar proyecto").performClick()
         runBlocking { app.projectRepository.deleteProject(projectId) }
-        compose.onNodeWithText("Guardar").performClick()
+        compose.onNode(hasText("Guardar") or hasText("Crear")).performClick()
         dismissError()
-        compose.onNodeWithText("Guardar").assertExists()
+        compose.onNode(hasText("Guardar") or hasText("Crear")).assertExists()
         compose.onNodeWithText("Proyecto de prueba").assertExists()
     }
 

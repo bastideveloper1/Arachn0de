@@ -76,7 +76,7 @@ internal class TaskDatePickerDraft {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-internal fun TaskDatesEditor(draft: EditorDraft, enabled: Boolean, picker: TaskDatePickerDraft, includeStart: Boolean = true) {
+internal fun TaskDatesEditor(draft: EditorDraft, enabled: Boolean, picker: TaskDatePickerDraft, includeStart: Boolean = true, progressive: Boolean = false) {
     var field by picker::field
     var timeStage by picker::timeStage
     var selectedDay by picker::selectedDay
@@ -85,7 +85,12 @@ internal fun TaskDatesEditor(draft: EditorDraft, enabled: Boolean, picker: TaskD
     val context = LocalContext.current
     Column {
         (if (includeStart) listOf("Inicio" to draft.startAt, "Vencimiento" to draft.dueAt) else listOf("Vencimiento" to draft.dueAt)).forEach { (label, value) ->
-            Row(Modifier.fillMaxWidth()) {
+            val active = if (label == "Inicio") draft.startEnabled else draft.dueEnabled
+            if (progressive) FormToggle(if (label == "Inicio") "Fecha de inicio" else "Vencimiento", active, enabled) {
+                if (label == "Inicio") draft.startEnabled = it else draft.dueEnabled = it
+                if (!it && picker.field == label) picker.field = null
+            }
+            if (!progressive || active) Row(Modifier.fillMaxWidth()) {
                 TextButton(enabled = enabled, modifier = Modifier.weight(1f), onClick = {
                     initialInstant = value ?: System.currentTimeMillis()
                     val initial = Calendar.getInstance().apply { timeInMillis = initialInstant }
@@ -93,7 +98,7 @@ internal fun TaskDatesEditor(draft: EditorDraft, enabled: Boolean, picker: TaskD
                     timeStage = false; selectedDay = null; invalidLocalTime = false; field = label
                 }) { Text("$label: ${value?.let(::formatTaskDate) ?: "Sin fecha"}") }
                 if (value != null) TextButton(enabled = enabled, onClick = {
-                    if (label == "Inicio") draft.startAt = null else draft.dueAt = null
+                    if (label == "Inicio") { draft.startAt = null; if (progressive) draft.startEnabled = false } else { draft.dueAt = null; if (progressive) draft.dueEnabled = false }
                 }) { Text("Quitar $label") }
             }
         }

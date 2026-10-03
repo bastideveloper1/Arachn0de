@@ -7,11 +7,25 @@ import java.util.UUID
 
 internal class NodeActions(private val repository: NodeRepository, scope: CoroutineScope) {
     val operation = OperationState(scope)
-    fun save(projectId: String, parentId: String?, id: String?, title: String, description: String, creationId: String = UUID.randomUUID().toString(), startAt: Long? = null, dueAt: Long? = null, editDates: Boolean = true, purpose: com.r0ybt.arachn0de.domain.model.NodePurpose = com.r0ybt.arachn0de.domain.model.NodePurpose.ACTION, obligation: com.r0ybt.arachn0de.domain.model.Obligation? = null, removeObligation: Boolean = false, responsibleIds: Set<String> = emptySet(), tagIds: Set<String> = emptySet(), priority: com.r0ybt.arachn0de.domain.model.Priority = com.r0ybt.arachn0de.domain.model.Priority.NONE, onSuccess: () -> Unit) =
+    fun save(projectId: String, parentId: String?, id: String?, title: String, description: String, creationId: String = UUID.randomUUID().toString(), startAt: Long? = null, dueAt: Long? = null, editDates: Boolean = true, purpose: com.r0ybt.arachn0de.domain.model.NodePurpose = com.r0ybt.arachn0de.domain.model.NodePurpose.ACTION, obligation: com.r0ybt.arachn0de.domain.model.Obligation? = null, removeObligation: Boolean = false, responsibleIds: Set<String> = emptySet(), tagIds: Set<String> = emptySet(), priority: com.r0ybt.arachn0de.domain.model.Priority = com.r0ybt.arachn0de.domain.model.Priority.NONE, editResponsible: Boolean = false, onSuccess: () -> Unit) =
         operation.submit("No se pudo guardar el elemento. Tus cambios siguen en el formulario.", {
             if (id == null) { repository.createNode(projectId, parentId, title, description, creationId, startAt, dueAt, purpose, obligation, responsibleIds, tagIds, if (purpose == com.r0ybt.arachn0de.domain.model.NodePurpose.ACTION) priority else com.r0ybt.arachn0de.domain.model.Priority.NONE); true }
-            else repository.updateEditor(id, title, description, startAt, dueAt, obligation, removeObligation, editDates, tagIds, if (editDates) priority else null)
+            else repository.updateEditor(id, title, description, startAt, dueAt, obligation, removeObligation, editDates, tagIds, if (editDates) priority else null, if (editResponsible) responsibleIds else null)
         }, onSuccess)
+
+    fun saveDraft(projectId: String, draft: EditorDraft, editDates: Boolean, onSuccess: () -> Unit) {
+        when {
+            draft.id == null && draft.batchEnabled -> {
+                val batch = draft.batchDraft()
+                val specs = com.r0ybt.arachn0de.domain.model.NodeBatchGenerator.generate(batch.parameters(), java.util.TimeZone.getDefault())
+                createBatch(projectId, batch, specs, batch.responsibleIds.toSet(), onSuccess)
+            }
+            draft.id == null && draft.recurrenceFrequency != "NONE" && draft.purpose == com.r0ybt.arachn0de.domain.model.NodePurpose.ACTION -> createRecurrence(projectId, draft, onSuccess)
+            else -> save(projectId, draft.parentId, draft.id, draft.title.trim(), draft.description.trim(), draft.creationId,
+                draft.activeStart, draft.activeDue, editDates, draft.purpose, draft.obligation(), draft.financialRemovalConfirmed,
+                draft.responsibleIds.toSet(), draft.tagIds.toSet(), draft.priority, editResponsible = true, onSuccess = onSuccess)
+        }
+    }
 
     fun createRecurrence(projectId: String, draft: EditorDraft, onSuccess: () -> Unit) =
         operation.submit("No se pudo guardar la recurrencia. Revisa fechas, destino y responsables.", {

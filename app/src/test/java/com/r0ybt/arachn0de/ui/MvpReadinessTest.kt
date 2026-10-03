@@ -66,7 +66,7 @@ class MvpReadinessTest {
             assertTrue(button.bottom <= viewport.bottom - 24 * pixelsPerDp)
             create.performClick()
             compose.onNodeWithText("Título").performTextInput("Tarea accesible")
-            compose.onNodeWithText("Guardar").assertIsDisplayed().assertIsEnabled()
+            compose.onNode(hasText("Guardar") or hasText("Crear")).assertIsDisplayed().assertIsEnabled()
         } finally {
             compose.runOnIdle { mounted.value = false }
             compose.waitForIdle()

@@ -268,13 +268,18 @@ class NodeRepository(
     }
 
     suspend fun updateEditor(id: String, title: String, description: String, startAt: Long?, dueAt: Long?,
-        obligation: Obligation?, removeObligation: Boolean, editDates: Boolean, tagIds: Set<String>, priority: Priority? = null): Boolean = database.withTransaction {
+        obligation: Obligation?, removeObligation: Boolean, editDates: Boolean, tagIds: Set<String>, priority: Priority? = null, responsibleIds: Set<String>? = null): Boolean = database.withTransaction {
         tags.validate(tagIds)
         val updated = if (editDates) updateLeaf(id, title, description, startAt, dueAt, obligation, removeObligation)
             else updateNode(id, title, description)
         if (updated) {
             priority?.let { check(setPriority(id, it)) { "Este elemento ya no admite prioridad." } }
             tags.assignNode(id, tagIds)
+            responsibleIds?.let { ids ->
+                ids.forEach { requireNotNull(database.personDao().get(it)) { "Person not found" } }
+                database.personDao().clearAssignments(id)
+                if (ids.isNotEmpty()) database.personDao().assign(ids.map { NodePersonEntity(id, it) })
+            }
         }
         updated
     }

@@ -51,8 +51,8 @@ class TaskDatesIntegrationTest {
         compose.onNodeWithText("Quitar Inicio").performScrollTo().performClick()
         compose.activityRule.scenario.recreate()
         await("Guardar")
-        compose.onNodeWithText("Inicio: Sin fecha").assertExists()
-        compose.onNodeWithText("Guardar").performClick()
+        compose.onNodeWithText("Inicio: Sin fecha").assertDoesNotExist()
+        compose.onNode(hasText("Guardar") or hasText("Crear")).performClick()
         compose.waitUntil(10_000) { runBlocking { app.nodeRepository.getNode(task)!!.startAt == null } }
         runBlocking {
             assertEquals(due, app.nodeRepository.getNode(task)!!.dueAt)
@@ -65,7 +65,7 @@ class TaskDatesIntegrationTest {
         await("Guardar")
         compose.onNodeWithText("Vencimiento: ${formatTaskDate(due)}").assertDoesNotExist()
         compose.onNodeWithText("Título").performTextReplacement("Layer renamed")
-        compose.onNodeWithText("Guardar").performClick()
+        compose.onNode(hasText("Guardar") or hasText("Crear")).performClick()
         compose.waitUntil(10_000) { runBlocking { app.nodeRepository.getNode(task)!!.title == "Layer renamed" } }
         runBlocking {
             assertEquals(due, app.nodeRepository.getNode(task)!!.dueAt)

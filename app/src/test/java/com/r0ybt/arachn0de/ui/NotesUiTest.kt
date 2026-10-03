@@ -56,7 +56,7 @@ class NotesUiTest {
         scroll("Editar"); compose.onNodeWithText("Editar").performClick()
         compose.onNodeWithText("Inicio").assertDoesNotExist()
         compose.onNodeWithText("Descripción").performTextReplacement("Information")
-        compose.onNodeWithText("Guardar").performClick()
+        compose.onNode(hasText("Guardar") or hasText("Crear")).performClick()
         compose.waitUntil(10_000) { runBlocking { app.nodeRepository.getNode(task)!!.description == "Information" } }
         assertEquals(20L, runBlocking { app.nodeRepository.getNode(task)!!.dueAt })
         scroll("Convertir en tarea"); compose.onNodeWithText("Convertir en tarea").performClick()
@@ -75,7 +75,7 @@ class NotesUiTest {
         await("Nuevo elemento")
         await("Nota")
         compose.onNodeWithText("Nota").assertIsSelected()
-        compose.onNodeWithText("Guardar").performClick()
+        compose.onNode(hasText("Guardar") or hasText("Crear")).performClick()
         compose.waitUntil(10_000) { runBlocking { app.nodeRepository.getProjectNodes(project).any { it.title == "New note" } } }
         compose.onNodeWithTag("nodes-list").performScrollToNode(hasText("New note"))
         compose.onNodeWithText("New note").assertExists()

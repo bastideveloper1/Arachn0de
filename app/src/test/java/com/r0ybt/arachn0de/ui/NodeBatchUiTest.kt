@@ -49,18 +49,18 @@ class NodeBatchUiTest {
         restore.setContent { Arachn0deTheme { AppSafeArea { AppRoot(app.projectRepository, app.nodeRepository) { fixed } } } }
         await("Project"); compose.onNodeWithText("Project").performClick()
         await("Parent"); compose.onNodeWithText("Parent").performClick()
-        await("Crear varios"); compose.onNodeWithText("Crear varios").performClick()
-        input("Nombre base", "Episode"); input("Cantidad", "3")
+        await("Nuevo elemento"); compose.onNodeWithText("Nuevo elemento").performClick(); compose.onNodeWithTag("option:Crear varios").performScrollTo().performClick()
+        input("Título", "Episode"); input("Cantidad", "3")
         click("Al final"); input("Número inicial", "4"); click("Nota")
-        input("Descripción común", "Information")
-        click("Responsables comunes (0)")
+        input("Descripción", "Information")
+        click("Responsables (0)")
         await("Roy"); compose.onNodeWithText("Roy").performClick(); compose.onNodeWithText("Guardar").performClick()
         restore.emulateSavedInstanceStateRestore()
-        await("Crear lote")
+        await("Crear")
         click("Nota"); compose.onNodeWithText("Diaria").assertDoesNotExist()
         click("Vista previa · 3 elementos")
         compose.onNodeWithText("Episode 4").assertExists(); compose.onNodeWithText("Episode 6").assertExists()
-        compose.onNodeWithText("Crear lote").performClick()
+        compose.onNodeWithText("Crear").performClick()
         compose.waitUntil(10_000) { runBlocking { app.nodeRepository.getProjectNodes(project).size == 4 } }
         val notes = runBlocking { app.nodeRepository.observeProjectState(project).first().childrenOf(parent) }
         assertEquals(listOf("Episode 4", "Episode 5", "Episode 6"), notes.map { it.title })
@@ -70,7 +70,7 @@ class NodeBatchUiTest {
         compose.onNodeWithTag("nodes-list").performScrollToNode(hasText("Episode 4"))
         compose.onNodeWithText("Episode 4").performClick()
         await("Nota · Convierte en tarea para añadir hijos")
-        compose.onNodeWithText("Crear varios").assertIsNotEnabled()
+        compose.onNodeWithText("Crear varios").assertDoesNotExist()
     }
 
     @Test fun temporalPickerAndCompleteDraftRestorePreviewThenFailureAndRetryUseSameSpecs() {

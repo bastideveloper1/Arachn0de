@@ -19,12 +19,12 @@ import kotlinx.coroutines.launch
     }
 }
 @Composable internal fun TagSelector(tags: List<Tag>, selected: Set<String>, onChange: (Set<String>) -> Unit,
-    single: Boolean = false, repository: TagRepository? = null) {
+    single: Boolean = false, repository: TagRepository? = null, enabled: Boolean = true) {
     var open by rememberSaveable { mutableStateOf(false) }
     var search by rememberSaveable { mutableStateOf("") }
     var error by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
-    OutlinedButton(onClick = { open = true }) { Text("Etiquetas: " + (tags.filter { it.id in selected }.let { picked -> picked.take(2).joinToString { it.name } + if (picked.size > 2) " +${picked.size - 2}" else "" }.ifEmpty { if (single) "Todas" else "Ninguna" }), maxLines = 2, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis) }
+    OutlinedButton(enabled = enabled, onClick = { open = true }) { Text("Etiquetas: " + (tags.filter { it.id in selected }.let { picked -> picked.take(2).joinToString { it.name } + if (picked.size > 2) " +${picked.size - 2}" else "" }.ifEmpty { if (single) "Todas" else "Ninguna" }), maxLines = 2, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis) }
     if (open) AlertDialog(onDismissRequest = { open = false }, title = { Text("Etiquetas") }, text = {
         Column {
             OutlinedTextField(search, { search = it }, label = { Text("Buscar o crear etiqueta") }, singleLine = true)

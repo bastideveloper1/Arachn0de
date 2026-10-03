@@ -55,7 +55,7 @@ class TaskDatesUiTest {
         compose.runOnIdle { assertEquals(localTaskInstant(utc, 9, 30), draft.startAt); assertEquals(0, saved) }
         compose.onNodeWithText("Quitar Inicio").performScrollTo().performClick()
         compose.runOnIdle { assertNull(draft.startAt) }
-        compose.onNodeWithText("Guardar").performClick()
+        compose.onNode(hasText("Guardar") or hasText("Crear")).performClick()
         compose.runOnIdle { assertEquals(1, saved) }
     }
 
@@ -63,11 +63,11 @@ class TaskDatesUiTest {
         val draft = EditorDraft("id", null, "Task", "Details", startAt = fixed, dueAt = fixed - 1)
         var saved = false
         compose.setContent { Arachn0deTheme { NodeDialog(draft, false, {}, { _, _ -> saved = true }) } }
-        compose.onNodeWithText("Guardar").assertIsNotEnabled()
+        compose.onNode(hasText("Guardar") or hasText("Crear")).assertIsNotEnabled()
         compose.onNodeWithText("El vencimiento no puede ser anterior al inicio. Corrige las fechas para guardar.").assertExists()
         compose.runOnIdle { assertEquals(fixed, draft.startAt); assertEquals(fixed - 1, draft.dueAt); assertFalse(saved) }
         compose.onNodeWithText("Quitar Vencimiento").performScrollTo().performClick()
-        compose.onNodeWithText("Guardar").assertIsEnabled().performClick()
+        compose.onNode(hasText("Guardar") or hasText("Crear")).assertIsEnabled().performClick()
         compose.runOnIdle { assertNull(draft.dueAt); assertTrue(saved) }
     }
 

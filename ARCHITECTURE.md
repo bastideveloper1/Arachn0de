@@ -1872,3 +1872,164 @@ No se observaron regresiones nuevas ni errores por memoria. Robolectric emitió
 una advertencia de decoder sin fallo nuevo asociado. No se repitió la suite ni
 se ejecutó lint completo o se modificaron los fallos históricos. Versión conservada
 0.2.2 / código 4; sin commit, push, tag o Release.
+
+## Creación / Edición 2.0 — revisión UX, bloque 1
+
+La puerta principal es **Nuevo elemento** en el destino actual. No había un botón
+«Crear recurrente» independiente en este checkout: el problema era que Recurrencia
+se presentaba como otro selector entre campos dispersos. Ahora se activa mediante
+un Switch dentro de Planificación. Se retira el botón aislado «Crear varios» del
+Proyecto/Capa; Batch se configura dentro del mismo formulario. Recurrencias sigue
+siendo el gestor de reglas existentes, incluidas reglas sin ocurrencias, no otra
+puerta para crear Nodes. Node y RecurrenceRule mantienen dominios separados.
+
+El formulario usa bloques verticales ligeros: **General** (título, descripción,
+tipo), **Pago**, **Planificación**, **Organización** y **Creación**. No hay tabs ni
+tarjetas grandes por sección. Título conserva autofocus al comenzar vacío.
+Crear/Guardar es un botón primario fijo; Cerrar es secundario. El contenido admite
+scroll con estado guardable y controles dinámicos; la acción de descarte está al
+final del contenido. Los selectores finitos de tipo/numeración/fechas de lote
+usan chips que se ajustan en varias filas, y las modalidades usan Switch con
+semántica explícita, sin depender exclusivamente del color.
+
+Obligación reutiliza el Checkbox y Money existentes: apagada oculta importe/moneda,
+encendida los muestra. Inicio/Vencimiento tienen Switch; encender muestra el
+selector fecha/hora existente y exige elegir una fecha antes de guardar. Apagar
+conserva el instante latente; «Quitar» elimina explícitamente el valor y desactiva
+la opción. Recurrencia muestra frecuencia DAILY/WEEKLY/MONTHLY/YEARLY, intervalo,
+inicio civil y fin opcional solo al activarse. La primera frecuencia seleccionada
+es Diaria; después se recupera la última frecuencia. La inicialización del inicio
+civil al activar conserva el comportamiento previo del selector de recurrencia;
+no hay nuevos defaults globales, por Capa ni horas predeterminadas.
+
+La organización reutiliza Priority, TagSelector y ResponsibleDialog. Responsables
+está disponible también para tareas ordinarias y Notes, y dentro de la edición.
+La edición inicial espera las asignaciones cargadas para no sustituirlas por una
+lista vacía de carga. updateEditor permite guardar responsables, contenido, fechas,
+obligación, prioridad y tags en la misma transacción; el parámetro opcional preserva
+la compatibilidad de callers anteriores. Un fallo en cualquier relación revierte
+los demás campos. No cambia Finance, monedas, pagos ni historial.
+
+Cambiar ACTION→NOTE→ACTION dentro de creación conserva opciones/valores latentes:
+obligación, dinero, prioridad, fechas y recurrencia se ocultan para NOTE y vuelven
+al regresar. Notes se guardan sin obligación ni prioridad operativa y Batch NOTE
+no genera fechas. No se cambia el propósito de un Node existente desde el editor:
+las conversiones conservan sus operaciones y confirmaciones actuales. Editar una
+ocurrencia es editar únicamente ese Node; no cambia la regla. El editor específico
+de plantilla se organiza en General/Pago/Organización/Destino, conserva entrada
+al cerrar mediante SaveableStateHolder por regla y tiene descarte confirmado.
+Guardar plantilla limpia ese estado y vuelve al listado de reglas.
+
+Crear varios activa cantidad 1–500, numeración y número inicial, regla temporal
+finita y preview acotada. El título del editor es el nombre base y todos los campos
+comunes proceden del mismo EditorDraft: no se copian al cambiar modalidad.
+EditorDraft.batchDraft() adapta esos campos al NodeBatchDraft/NodeBatchGenerator
+existentes únicamente para validar/generar/persistir. No hay un segundo borrador
+activo de lote en ProjectScreen. NodeBatchDialog permanece como componente legado
+sin entrada de producción, ejercitado por sus regresiones anteriores. El lote
+mantiene la semántica existente: genera solo dueAt, nunca startAt. Inicio queda
+latente mientras Batch está activo y una explicación lo comunica. Sin fechas
+significa BatchTemporalRule.NONE; el resto necesita primer vencimiento.
+
+Batch y recurrencia persistente no se combinan: al activar una se bloquea activar
+la otra y aparece una explicación. Si se vuelve de NOTE con ambas opciones
+latentes, Guardar se bloquea y se permite apagar cualquiera; no se borran parámetros
+para resolver el conflicto. No se inventan reglas para N recurrencias o cuotas.
+
+EditorDraft sigue siendo el único modelo de entrada de Nodes. Su Saver versionado
+incluye opciones activadas, valores latentes, recurrencia, campos Batch, contenido,
+fechas, dinero/Locale, prioridad, tags, responsables y UUID de reintento. Lee el
+formato anterior. EditorDraftStore organiza esos mismos borradores por Proyecto
+(en el SaveableStateProvider existente) y claves distintas `new:<parentId>` / raíz
+y `edit:<nodeId>`. Abrir otro Node o destino nunca reutiliza entrada ajena.
+
+**Cerrar ≠ descartar**: tap fuera, Atrás del diálogo y Cerrar quitan únicamente la
+apertura, sin borrar entrada. Volver a Nuevo elemento en el mismo destino, o a
+Editar del mismo Node, recupera automáticamente el borrador. No hay confirmaciones
+para cerrar. Un formulario vacío no ofrece descarte; con entrada significativa,
+Descartar pide confirmación y elimina únicamente el borrador activo. Guardado
+confirmado elimina ese borrador; ante error se conserva completo y se permite
+reintentar. El destino e identidad originales no se redirigen por cambios de
+navegación. La restauración nunca dispara escrituras.
+
+NodeActions.saveDraft decide modalidad y reutiliza NodeRepository, Batch y
+RecurrenceRepository. OperationState mantiene bloqueo síncrono de doble submit,
+campos deshabilitados durante escritura, errores y cierre solo tras éxito.
+Normal y Batch conservan sus transacciones e identidades estables; Recurrence
+conserva la creación de regla y materialización/cursor/recibos por bloques existentes.
+No promete convertir todo el catch-up de una regla en una sola transacción:
+un fallo posterior puede dejar bloques anteriores confirmados, cuyo reintento
+reconoce las identidades existentes. Cambiar opciones/cerrar/restaurar borradores
+no genera NodeEvents; CREATED sigue perteneciendo solo a creación real.
+
+Room sigue **v12**, backup lógico **v5**, contenedor v1, sin migraciones, columnas,
+DAO o formato de backup nuevos. Borradores no pertenecen a Room ni al backup.
+SavedState guarda solo inputs/IDs, no entidades, repositorios ni operaciones.
+Sobrevive recomposición, cierre/reapertura y recreación de Activity (también con
+borrador cerrado). Puede recuperarse tras muerte del proceso si Android devuelve
+el Bundle; no garantiza force-stop, borrar tarea de recientes, salida voluntaria
+o reinicio. No se añadió almacenamiento permanente de borradores. Texto y número
+de borradores comparten los límites reales del Bundle. Desaparecer un proyecto
+elimina su acceso de navegación; no hay navegador de borradores huérfanos.
+
+Fuera de este bloque: Undo, selección múltiple, edición del lote como unidad,
+batchId/creationGroupId persistidos, defaults globales/Capa, Templates, orden
+automático, rediseño global de botones, drawer, redes sociales y Copy Project.
+VersionName/versionCode permanecen 0.2.2/4; sin commit, push, tag o Release.
+Pendiente dogfooding físico de teclado/IME, TalkBack, fuente ampliada, rotación y
+muerte real de proceso. Robolectric verifica estado/geometría y no sustituye esas
+pruebas. No se afirma revisión visual global ni persistencia ilimitada.
+
+Archivos de Creación/Edición 2.0 (inventario):
+
+- `ARCHITECTURE.md`
+- `app/src/main/java/com/r0ybt/arachn0de/data/repository/NodeRepository.kt`
+- `app/src/main/java/com/r0ybt/arachn0de/ui/EditDialogs.kt`
+- `app/src/main/java/com/r0ybt/arachn0de/ui/ProjectScreen.kt`
+- `app/src/main/java/com/r0ybt/arachn0de/ui/RecurrenceUi.kt`
+- `app/src/main/java/com/r0ybt/arachn0de/ui/TagUi.kt`
+- `app/src/main/java/com/r0ybt/arachn0de/ui/TaskDates.kt`
+- `app/src/main/java/com/r0ybt/arachn0de/ui/state/EditorDraft.kt`
+- `app/src/main/java/com/r0ybt/arachn0de/ui/state/NodeActions.kt`
+- `app/src/test/java/com/r0ybt/arachn0de/DraftRestorationTest.kt`
+- `app/src/test/java/com/r0ybt/arachn0de/PeopleUiTest.kt`
+- `app/src/test/java/com/r0ybt/arachn0de/SaveFailureTest.kt`
+- `app/src/test/java/com/r0ybt/arachn0de/TaskDatesIntegrationTest.kt`
+- `app/src/test/java/com/r0ybt/arachn0de/ui/MvpReadinessTest.kt`
+- `app/src/test/java/com/r0ybt/arachn0de/ui/NodeBatchUiTest.kt`
+- `app/src/test/java/com/r0ybt/arachn0de/ui/NotesUiTest.kt`
+- `app/src/test/java/com/r0ybt/arachn0de/ui/ObligationUiTest.kt`
+- `app/src/test/java/com/r0ybt/arachn0de/ui/RecurrenceUiTest.kt`
+- `app/src/test/java/com/r0ybt/arachn0de/ui/TaskDatesUiTest.kt`
+- `app/src/main/java/com/r0ybt/arachn0de/ui/CreationFields.kt`
+- `app/src/main/java/com/r0ybt/arachn0de/ui/state/EditorDraftStore.kt`
+- `app/src/test/java/com/r0ybt/arachn0de/CreationDraftRestorationTest.kt`
+- `app/src/test/java/com/r0ybt/arachn0de/data/CreationEditorRepositoryTest.kt`
+- `app/src/test/java/com/r0ybt/arachn0de/ui/CreationDraftStateTest.kt`
+- `app/src/test/java/com/r0ybt/arachn0de/ui/CreationUxTest.kt`
+
+Pruebas nuevas: CreationUxTest (4 Compose), CreationDraftRestorationTest (2 con
+ActivityScenario.recreate), CreationDraftStateTest (3 de estado/Saver) y
+CreationEditorRepositoryTest (2 × API 24/28 = 4). RecurrenceUiTest añade un caso
+de recuperación/descarte/guardado de plantilla. Total: 14 ejecuciones nuevas.
+Las pruebas existentes de formularios se adaptan a Crear/Guardar y a Batch dentro
+de Nuevo elemento; mantienen las verificaciones de persistencia/error/idempotencia.
+No se corrigen fallos históricos de scroll/drag/dashboard. La prueba estrecha
+verifica 320×480 dp y fuente 1,6× con campos dinámicos y acción primaria accesible.
+Validación dirigida final: 359/359 pasaron; assembleDebug pasó.
+
+La suite completa se ejecutó **una sola vez**: 571 casos, 565 correctos, 6 fallidos,
+0 errores y 0 omitidos. Las 14 ejecuciones nuevas pasaron. Frente al baseline
+552/557, conserva los cinco fallos conocidos de ScrollRestorationTest (2),
+LargeListsTest (2) y MvpReadinessTest (1). El sexto es
+ObligationPngRendererTest.longTextWrapsWithinPanelsAndHeightIncludesAllRows,
+con ReportMemoryException por presupuesto de heap disponible. El renderer y su
+prueba no se modificaron; ese mismo fallo por recursos ya está documentado en
+#34 y recurrencia. Se repitió **solo** ObligationPngRendererTest de forma aislada:
+4/4 pasaron. Es evidencia de sensibilidad a recursos, no una suite general verde
+ni una nueva ejecución de baseline. No se volvió a ejecutar toda la suite ni
+se arreglaron fallos históricos. Informe completo conservado en
+`/tmp/arachnode-creation-ux-full-report/index.html` y XML en
+`/tmp/arachnode-creation-ux-full-results`.
+assembleDebug final y git diff --check correctos. Sin lint completo, Release,
+cambios de versión, commit, push o tag.

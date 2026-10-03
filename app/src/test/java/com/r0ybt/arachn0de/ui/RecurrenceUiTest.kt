@@ -42,12 +42,12 @@ class RecurrenceUiTest {
                 Arachn0deTheme { NodeDialog(current, actions.operation.busy, {}, { _, _ -> actions.createRecurrence(project, current) { saved = true; draft = null } }) }
             }
         }
-        click("Recurrencia: Ninguna"); compose.onNodeWithText("Mensual").performClick()
+        compose.onNodeWithTag("option:Recurrente").performScrollTo().performClick(); click("Recurrencia: Diaria"); compose.onNodeWithText("Mensual").performClick()
         compose.onNodeWithText("Inicio · AAAA-MM-DD").performScrollTo().performTextReplacement("2090-01-31")
         compose.onNodeWithText("Cada cuántos periodos (1–10000)").performScrollTo().performTextReplacement("3")
         restoration.emulateSavedInstanceStateRestore()
         compose.runOnIdle { assertEquals("MONTHLY", editor.recurrenceFrequency); assertEquals("3", editor.recurrenceInterval); assertEquals("2090-01-31", editor.recurrenceStart) }
-        compose.onNodeWithText("Guardar").performClick()
+        compose.onNode(hasText("Guardar") or hasText("Crear")).performClick()
         compose.waitUntil(10_000) { saved }
         val rule = runBlocking { app.database.recurrenceDao().rules().single() }
         assertEquals("MONTHLY", rule.frequency); assertEquals(3, rule.interval); assertNull(rule.endDay)
@@ -55,11 +55,11 @@ class RecurrenceUiTest {
     }
     @Test fun notesHaveNoRecurrenceAndInvalidIntervalCannotSave() {
         compose.setContent { Arachn0deTheme { NodeDialog(remember { EditorDraft(null, null, "Tarea", "") }, false, {}, { _, _ -> }) } }
-        click("Recurrencia: Ninguna"); compose.onNodeWithText("Diaria").performClick()
+        compose.onNodeWithTag("option:Recurrente").performScrollTo().performClick(); click("Recurrencia: Diaria"); compose.onNodeWithText("Diaria").performClick()
         compose.onNodeWithText("Cada cuántos periodos (1–10000)").performScrollTo().performTextReplacement("0")
-        compose.onNodeWithText("Guardar").assertIsNotEnabled()
+        compose.onNode(hasText("Guardar") or hasText("Crear")).assertIsNotEnabled()
         click("Nota"); compose.onNodeWithText("Recurrencia: Diaria").assertDoesNotExist()
-        compose.onNodeWithText("Guardar").assertIsEnabled()
+        compose.onNode(hasText("Guardar") or hasText("Crear")).assertIsEnabled()
     }
     @Test fun managerPausesResumesAndFinishesWithExplicitConfirmationAndKeepsNodes() {
         val repo = app.nodeRepository.recurrence
@@ -80,4 +80,27 @@ class RecurrenceUiTest {
         compose.waitUntil(10_000) { runBlocking { app.database.recurrenceDao().rules().single().status == "FINISHED" } }
         assertEquals(initial, runBlocking { app.nodeRepository.getProjectNodes(project) })
     }
+    @Test fun templateDraftSurvivesClosingAndCanBeDiscardedOrSavedWithoutEditingOccurrences() {
+        val repo=app.nodeRepository.recurrence
+        val draft=EditorDraft(null,null,"Plan","").apply { recurrenceFrequency="MONTHLY";recurrenceStart="2090-01-31" }
+        runBlocking { repo.create(draft.recurrenceRule(project)!!) }
+        compose.setContent { Arachn0deTheme { RecurrenceManager(repo,project,emptyList(),emptyList(),true) } }
+        compose.onNodeWithText("Recurrencias").performClick()
+        compose.waitUntil(10000) { compose.onAllNodesWithText("Plan · Activa").fetchSemanticsNodes().isNotEmpty() }
+        compose.onNodeWithText("Plan · Activa").performClick();click("Editar futuras ocurrencias")
+        compose.onNodeWithText("Título futuro").performScrollTo().performTextReplacement("Pending")
+        compose.onNodeWithText("Cerrar").performClick();compose.onNodeWithText("Plan · Activa").performClick()
+        compose.onNodeWithText("Título futuro").performScrollTo().assert(hasText("Pending"))
+        click("Descartar cambios de plantilla");compose.onNodeWithText("Descartar cambios").performClick()
+        compose.onNodeWithText("Plan · Activa").performClick();click("Editar futuras ocurrencias")
+        compose.onNodeWithText("Título futuro").performScrollTo().assert(hasText("Plan"))
+        compose.onNodeWithText("Título futuro").performTextReplacement("Saved")
+        click("Guardar cambios futuros")
+        compose.waitUntil(10000) { compose.onAllNodesWithText("Saved · Activa").fetchSemanticsNodes().isNotEmpty() }
+        compose.onNodeWithText("Saved · Activa").performClick();click("Editar futuras ocurrencias")
+        compose.onNodeWithText("Título futuro").performScrollTo().assert(hasText("Saved"))
+        assertTrue(runBlocking { app.nodeRepository.getProjectNodes(project).isEmpty() })
+        assertTrue(runBlocking { app.database.nodeEventDao().all().isEmpty() })
+    }
+
 }

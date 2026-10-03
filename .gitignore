@@ -1,5 +1,6 @@
 *.iml
 .gradle
+.kotlin/
 /local.properties
 /.idea/caches
 /.idea/libraries
@@ -13,3 +14,16 @@
 .externalNativeBuild
 .cxx
 local.properties
+
+# Local signing material and manually prepared release assets
+*.jks
+*.keystore
+/keystore.properties
+/signing.properties
+/.env
+/.env.local
+/release-assets/
+
+# Release artifacts
+/Arachn0de-v*.apk
+/SHA256SUMS.txt

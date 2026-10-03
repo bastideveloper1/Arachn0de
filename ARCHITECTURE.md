@@ -10,9 +10,7 @@ Es una fuente de verdad viva: cada cambio arquitectónico o regla importante deb
 
 El objetivo es mantener una arquitectura coherente, evitar implementaciones innecesarias y permitir que el proyecto crezca progresivamente sin tener que reconstruir su núcleo.
 
-La versión actual corresponde al primer MVP de Arachn0de: **v0.1.0**.
-
-La configuración Android debe declarar `versionName = "0.1.0"`.
+La versión preparada es **v0.2.0 Beta**, con `versionName = "0.2.0"` y `versionCode = 2`; la base MVP histórica fue v0.1.0 / 1. La preparación no acredita publicación.
 
 ---
 
@@ -1066,21 +1064,25 @@ Se prevé una pantalla **Acerca de Arachn0de** con nombre, versión instalada, d
 
 ### 13. Releases y actualizaciones DE Arachn0de
 
-Debe formalizarse la transición del flujo actual de APK debug compartido manualmente hacia:
+**#30–32 — IMPLEMENTADOS como preparación local; publicación manual pendiente.** Repositorio oficial verificado mediante Git: `https://github.com/bastideveloper1/Arachn0de.git`. Canal oficial: GitHub Releases de **bastideveloper1/Arachn0de**.
 
-```text
-build de release → versión formal → APK firmado → publicación de release
-→ comprobación de una versión posterior → descarga elegida por el usuario
-→ instalación gestionada y autorizada por Android
-```
+Versionado MAJOR.MINOR.PATCH: PATCH para correcciones, MINOR para funcionalidades compatibles y MAJOR para cambios importantes/incompatibles. `versionName` es humano; `versionCode` es un entero Android estrictamente creciente que nunca se reutiliza ni disminuye. Se prepara `0.2.0 / 2`; el menú usa `BuildConfig.VERSION_NAME`.
 
-La estrategia concreta de distribución, firma y actualización se diseñará antes de implementarse, preservando los datos existentes. La comprobación de versiones será una capacidad de distribución compatible con el núcleo offline-first; no hará obligatorio un backend o una cuenta para usar la aplicación. La app no intentará eludir las protecciones de instalación de Android.
+Debug conserva su firma habitual y no requiere credenciales Release. `assembleRelease` exige las cuatro credenciales locales `ARACHNODE_KEYSTORE_PATH`, `ARACHNODE_KEYSTORE_PASSWORD`, `ARACHNODE_KEY_ALIAS`, `ARACHNODE_KEY_PASSWORD`, desde entorno o propiedades Gradle del usuario fuera del checkout. La ruta debe ser absoluta, externa y legible; nunca se sustituye por debug key. La clave definitiva no se crea automáticamente, debe conservarse con seguridad y mantener la misma identidad en futuras actualizaciones. No se versionan claves ni secretos. Room permanece v8.
+
+El asset distribuible es el APK **Release firmado**, preparado como `Arachn0de-v0.2.0.apk`, con SHA-256 opcional en `SHA256SUMS.txt`. [RELEASING.md](RELEASING.md) documenta creación manual de clave, build, verificación oficial con apksigner, commit/push, tag del commit exacto y publicación manual. [CHANGELOG.md](CHANGELOG.md) registra capacidades reales. Esta preparación no crea commits, tags ni Releases.
+
+**#33–34 — PENDIENTES.** No existe código de comprobación, descarga o instalación desde la app. La futura implementación consultará solo Releases oficiales para versión, tag, notas, APK, URL del asset y eventualmente hash. **ARACHN0DE NUNCA REALIZA UNA ACTUALIZACIÓN SILENCIOSA.** Flujo obligatorio: nueva Release → detección → informar versión/cambios → usuario elige Descargar/Ahora no → descarga autorizada → usuario decide instalar → Android controla/autoriza instalación. Sin actualización obligatoria ni updater en background sin conocimiento del usuario.
+
+Privacidad: solo metadatos necesarios de Releases; nunca enviar Projects, Nodes, Notes, Personas, responsables, obligaciones, montos, estadísticas, contenido exportado o información personal. Sin analytics ni telemetría. El núcleo sigue offline-first, sin backend o cuenta obligatoria.
+
+Validación #30–32: `assembleDebug` correcto; `assembleRelease` sin credenciales falla claramente en `validateReleaseSigning`. Build Release con clave temporal externa y credenciales efímeras correcto, incluida lintVital; apksigner verificó la firma y aapt confirmó package, versión 0.2.0/código 2 y ausencia de debuggable. Se calculó SHA-256; APK y clave temporales fueron eliminados. No se creó clave definitiva ni asset para publicación. Sin prueba de instalación física. `git diff --check` correcto y revisión tracked/staged sin secretos detectados.
 
 Se distinguen dos conceptos: **Release DE Arachn0de** actualiza/distribuye la aplicación; **Release DENTRO de un Proyecto** será una futura función para gestionar versiones de proyectos administrados por Arachn0de. Una no implementa ni presupone la otra.
 
 ### Secuencia tentativa de implementación
 
-Este orden es una propuesta revisable, no una obligación irreversible. Los primeros doce pasos y el Calendario derivado ya están implementados; los restantes siguen pendientes:
+Este orden es una propuesta revisable, no una obligación irreversible. Los primeros doce pasos y el Calendario derivado ya están implementados; releases tiene preparación parcial #30–32. Los demás pasos siguen pendientes:
 
 1. Mover Node a otra Capa — IMPLEMENTADO.
 2. Personas — IMPLEMENTADO.
@@ -1098,7 +1100,7 @@ Este orden es una propuesta revisable, no una obligación irreversible. Los prim
 14. Favoritos.
 15. Menú lateral cuando sus destinos sean reales.
 16. Acerca de y redes.
-17. Sistema formal de releases/actualizaciones de Arachn0de.
+17. Sistema formal de releases: #30–32 IMPLEMENTADOS como preparación; #33–34 pendientes.
 
 El Calendario mensual derivado se implementó después de las reglas temporales finitas, antes del diseño financiero.
 
@@ -1124,7 +1126,7 @@ Desktop y sincronización local constituyen una etapa avanzada/final de esta lí
 - **Capas explícitamente vacías:** decidir si deben existir en el futuro. Actualmente perder el último hijo convierte el nodo en tarea; esta documentación no cambia esa regla ni elige una alternativa futura.
 - **Notas avanzadas:** formato y adjuntos se diseñarán en otra etapa; el propósito NOTE y la conversión de hojas ya están implementados. No se definen Notas contenedoras.
 - **Atención avanzada y generación temporal:** la propagación básica y generación temporal finita ya están implementadas; diseñar futuras reglas adicionales y recurrencia persistente antes de desarrollar esos bloques.
-- **Distribución de la app:** definir firma, publicación y comprobación/descarga de actualizaciones antes de implementarlas.
+- **Distribución de la app:** versionado, firma local y procedimiento manual implementados en #30–32. Diseñar e implementar por separado comprobación/descarga #33–34, siempre bajo control del usuario y sin actualización silenciosa.
 
 ## Principios de evolución
 

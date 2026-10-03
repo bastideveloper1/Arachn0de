@@ -34,6 +34,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.r0ybt.arachn0de.ui.theme.Arachn0deColors
 import com.r0ybt.arachn0de.R
+import com.r0ybt.arachn0de.BuildConfig
 
 @Composable
 internal fun AppIdentityDrawer(onDismiss: () -> Unit, onPeople: (() -> Unit)? = null, onAttention: (() -> Unit)? = null, onCalendar: (() -> Unit)? = null, onObligations: (() -> Unit)? = null) {
@@ -94,7 +95,7 @@ internal fun AppIdentityDrawer(onDismiss: () -> Unit, onPeople: (() -> Unit)? = 
             androidx.compose.material3.TextButton(onClick = open) { Text("Atención") }
         }
         Text(
-            text = "v0.1.0",
+            text = "v${BuildConfig.VERSION_NAME}",
             color = Arachn0deColors.TextSecondary,
             fontSize = 12.sp,
             modifier = Modifier.padding(bottom = 4.dp),

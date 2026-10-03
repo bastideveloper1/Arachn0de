@@ -34,6 +34,17 @@ class FinancialRepositoryTest {
     private suspend fun financial(period: FinancialPeriod=FinancialPeriod.ALL,person: String?=null)=FinancialSnapshot(
         nodes.observeAllState().first(),people.observeAllAssignments().first(),FinancialSelection(period,person),CalendarMonth(2026,10),zone)
 
+    @Test fun individualCreationCommitsResponsibilitiesAtomicallyAndRetriesSafely() = runBlocking {
+        people.save("r", "Roy", null); people.save("s", "Scarlett", null)
+        val bill = nodes.createNode(p, null, "Bill", creationId = "bill", obligation = Obligation(50000, "CLP"), responsibleIds = setOf("r", "s"))
+        assertEquals(setOf("r", "s"), db.personDao().assignmentIds(bill.id).toSet())
+        assertEquals(bill, nodes.createNode(p, null, "Bill", creationId = "bill", obligation = bill.obligation, responsibleIds = setOf("r", "s")))
+        assertTrue(runCatching { nodes.createNode(p, null, "Bill", creationId = "bill", obligation = bill.obligation) }.isFailure)
+        assertTrue(runCatching { nodes.createNode(p, null, "Invalid", creationId = "invalid", obligation = bill.obligation, responsibleIds = setOf("missing")) }.isFailure)
+        assertNull(nodes.getNode("invalid"))
+        assertEquals(1, nodes.getProjectNodes(p).size)
+    }
+
     @Test fun existingFlowsUpdateMoneyCompletionResponsibilityDatesStructureAndDeletesWithoutProjectionWrites() = runBlocking {
         val root=nodes.createNode(p,null,"Root")
         val inner=nodes.createNode(p,root.id,"Inner")

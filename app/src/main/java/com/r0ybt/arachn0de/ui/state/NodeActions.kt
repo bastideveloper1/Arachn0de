@@ -7,9 +7,9 @@ import java.util.UUID
 
 internal class NodeActions(private val repository: NodeRepository, scope: CoroutineScope) {
     val operation = OperationState(scope)
-    fun save(projectId: String, parentId: String?, id: String?, title: String, description: String, creationId: String = UUID.randomUUID().toString(), startAt: Long? = null, dueAt: Long? = null, editDates: Boolean = true, purpose: com.r0ybt.arachn0de.domain.model.NodePurpose = com.r0ybt.arachn0de.domain.model.NodePurpose.ACTION, obligation: com.r0ybt.arachn0de.domain.model.Obligation? = null, removeObligation: Boolean = false, onSuccess: () -> Unit) =
+    fun save(projectId: String, parentId: String?, id: String?, title: String, description: String, creationId: String = UUID.randomUUID().toString(), startAt: Long? = null, dueAt: Long? = null, editDates: Boolean = true, purpose: com.r0ybt.arachn0de.domain.model.NodePurpose = com.r0ybt.arachn0de.domain.model.NodePurpose.ACTION, obligation: com.r0ybt.arachn0de.domain.model.Obligation? = null, removeObligation: Boolean = false, responsibleIds: Set<String> = emptySet(), onSuccess: () -> Unit) =
         operation.submit("No se pudo guardar el elemento. Tus cambios siguen en el formulario.", {
-            if (id == null) { repository.createNode(projectId, parentId, title, description, creationId, startAt, dueAt, purpose, obligation); true }
+            if (id == null) { repository.createNode(projectId, parentId, title, description, creationId, startAt, dueAt, purpose, obligation, responsibleIds); true }
             else if (editDates) repository.updateLeaf(id, title, description, startAt, dueAt, obligation, removeObligation)
             else repository.updateNode(id, title, description)
         }, onSuccess)

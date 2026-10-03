@@ -20,6 +20,8 @@ internal class EditorDraft(
     val moneyLocaleTag: String = java.util.Locale.getDefault().toLanguageTag(),
     val hadObligation: Boolean = obligation != null,
 ) {
+    var responsibleIds by mutableStateOf(emptyList<String>())
+    var showResponsible by mutableStateOf(false)
     var financialEnabled by mutableStateOf(obligation != null)
     var amountText by mutableStateOf(obligation?.let { com.r0ybt.arachn0de.domain.model.Money.input(it.amountMinor, it.currencyCode, java.util.Locale.forLanguageTag(moneyLocaleTag)) }.orEmpty())
     var currencyCode by mutableStateOf(obligation?.currencyCode ?: "CLP")
@@ -37,7 +39,7 @@ internal class EditorDraft(
         val Saver = listSaver<EditorDraft?, String>(
             save = {
                 if (it == null) emptyList()
-                else listOf(it.id.orEmpty(), it.parentId.orEmpty(), it.title, it.description, it.creationId, it.startAt?.toString().orEmpty(), it.dueAt?.toString().orEmpty(), it.purpose.name, it.financialEnabled.toString(), it.amountText, it.currencyCode, it.moneyLocaleTag, it.hadObligation.toString(), it.financialRemovalConfirmed.toString())
+                else listOf(it.id.orEmpty(), it.parentId.orEmpty(), it.title, it.description, it.creationId, it.startAt?.toString().orEmpty(), it.dueAt?.toString().orEmpty(), it.purpose.name, it.financialEnabled.toString(), it.amountText, it.currencyCode, it.moneyLocaleTag, it.hadObligation.toString(), it.financialRemovalConfirmed.toString(), it.showResponsible.toString()) + it.responsibleIds
             },
             restore = {
                 if (it.isEmpty()) null
@@ -46,6 +48,8 @@ internal class EditorDraft(
                     financialEnabled = it.getOrNull(8)?.toBoolean() ?: false
                     amountText = it.getOrNull(9).orEmpty(); currencyCode = it.getOrNull(10) ?: "CLP"
                     financialRemovalConfirmed = it.getOrNull(13)?.toBoolean() ?: false
+                    showResponsible = it.getOrNull(14)?.toBoolean() ?: false
+                    responsibleIds = it.drop(15)
                 }
             },
         )

@@ -385,15 +385,16 @@ internal fun ProjectNodeScreen(
                                     ObligationIndicator(currentNode)
                                     if (currentNode.obligation != null) Text("Convierte esta obligación en una tarea antes de usarla como capa.", color = Arachn0deColors.TextSecondary)
                                     TaskDateIndicator(currentNode, now)
+                                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                        androidx.compose.material3.OutlinedButton(
+                                            enabled = !isSubmittingNode && !personActions.operation.busy && peopleLoaded && assignmentsLoaded,
+                                            onClick = { responsibleNodeId = currentNode.id },
+                                        ) { Text("Responsables") }
+                                        androidx.compose.material3.OutlinedButton(
+                                            onClick = { movingNodeId = currentNode.id }, enabled = !isSubmittingNode,
+                                        ) { Text("Mover a…") }
+                                    }
                                     ResponsibleAvatars(responsibleByNode[currentNode.id].orEmpty())
-                                    TextButton(
-                                        enabled = !isSubmittingNode && !personActions.operation.busy && peopleLoaded && assignmentsLoaded,
-                                        onClick = { responsibleNodeId = currentNode.id },
-                                    ) { Text("Responsables") }
-                                    TextButton(
-                                        onClick = { movingNodeId = currentNode.id },
-                                        enabled = !isSubmittingNode,
-                                    ) { Text("Mover a…") }
                                     TextButton(enabled = !copyActions.busy, onClick = {
                                         copyActions.copy(projectState, currentNode.id, false)
                                     }) { Text("Copiar este elemento") }
@@ -468,7 +469,7 @@ internal fun ProjectNodeScreen(
                         }
                     }
                 }
-                TextButton(enabled = !isSubmittingNode && (currentNode?.purpose != NodePurpose.NOTE && currentNode?.obligation == null), onClick = { batchDraft = NodeBatchDraft(currentNodeId) }) { Text("Crear varios") }
+                androidx.compose.material3.OutlinedButton(enabled = !isSubmittingNode && (currentNode?.purpose != NodePurpose.NOTE && currentNode?.obligation == null), onClick = { batchDraft = NodeBatchDraft(currentNodeId) }) { Text("Crear varios") }
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -533,6 +534,7 @@ internal fun ProjectNodeScreen(
     draft?.let { editor ->
         NodeDialog(
             draft = editor,
+            people = people, peopleLoaded = peopleLoaded,
             isSubmitting = isSubmittingNode,
             editDates = editor.purpose == NodePurpose.ACTION && (editor.id == null || projectState.nodesById[editor.id]?.isCompletable == true),
             onDismiss = {
@@ -542,7 +544,7 @@ internal fun ProjectNodeScreen(
             },
             onSave = { title, description ->
                 actions.save(project.id, editor.parentId, editor.id, title, description, editor.creationId, editor.startAt, editor.dueAt,
-                    editDates = editor.purpose == NodePurpose.ACTION && (editor.id == null || projectState.nodesById[editor.id]?.isCompletable == true), purpose = editor.purpose, obligation = editor.obligation(), removeObligation = editor.financialRemovalConfirmed) {
+                    editDates = editor.purpose == NodePurpose.ACTION && (editor.id == null || projectState.nodesById[editor.id]?.isCompletable == true), purpose = editor.purpose, obligation = editor.obligation(), removeObligation = editor.financialRemovalConfirmed, responsibleIds = editor.responsibleIds.toSet()) {
                     draft = null
                 }
             },

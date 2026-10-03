@@ -21,6 +21,7 @@ import com.r0ybt.arachn0de.ui.theme.Arachn0deColors
 
 @Composable
 internal fun AboutScreen(onBack: () -> Unit, repository: UpdateRepository = remember { UpdateRepository() }, downloads: UpdateDownloads? = null) {
+    var linkError by remember { mutableStateOf(false) }
     val context = LocalContext.current
     val store = remember(context) { UpdateDownloadStore(File(context.cacheDir, "updates"), GitHubAssetFetcher(), AndroidApkValidator(context.applicationContext)) }
     val installer = remember(context) { AndroidUpdateInstaller(context) }
@@ -73,6 +74,32 @@ internal fun AboutScreen(onBack: () -> Unit, repository: UpdateRepository = reme
                     Button(onClick = actions::download, enabled = !actions.busy) { Text("Descargar actualización") }
                 }
             }
+            HorizontalDivider()
+            Text("Autor", style = MaterialTheme.typography.titleMedium)
+            Text("r0ybt")
+            for ((label, url) in listOf(
+                "Instagram · @itsbasti_an" to "https://www.instagram.com/itsbasti_an/",
+                "GitHub · bastideveloper1" to "https://github.com/bastideveloper1",
+                "Mastodon · @Yll@infosec.exchange" to "https://infosec.exchange/@Yll",
+                "Web · 27thdeer.com" to "https://27thdeer.com/",
+            )) {
+                OutlinedButton(onClick = { linkError = !openExternalLink(context, url) }) { Text(label) }
+            }
+            HorizontalDivider()
+            Text("Código fuente", style = MaterialTheme.typography.titleMedium)
+            OutlinedButton(onClick = { linkError = !openExternalLink(context, "https://github.com/bastideveloper1/Arachn0de") }) {
+                Text("github.com/bastideveloper1/Arachn0de")
+            }
+            if (linkError) Text("No se pudo abrir el enlace. No hay una aplicación disponible o Android impidió abrirlo.", color = MaterialTheme.colorScheme.error)
         }
     }
+}
+
+internal fun openExternalLink(context: android.content.Context, url: String): Boolean = try {
+    context.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(url)))
+    true
+} catch (_: android.content.ActivityNotFoundException) {
+    false
+} catch (_: SecurityException) {
+    false
 }

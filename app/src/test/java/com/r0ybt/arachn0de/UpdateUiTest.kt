@@ -20,12 +20,33 @@ class UpdateUiTest {
         var calls = 0
         val repo = UpdateRepository(ReleaseSource { calls++; emptyList() })
         compose.runOnUiThread { compose.activity.setContent { AboutScreen(onBack = {}, repository = repo) } }
-        compose.onNodeWithText("Versión instalada: 0.2.0").assertIsDisplayed()
+        compose.onNodeWithText("Versión instalada: ${BuildConfig.VERSION_NAME}").assertIsDisplayed()
         compose.runOnIdle { assertEquals(0, calls) }
         compose.onNodeWithText("Buscar actualizaciones").performClick()
         compose.onNodeWithText("Arachn0de está actualizado.").assertIsDisplayed()
         compose.runOnIdle { assertEquals(1, calls) }
     }
+    @Test fun authorLinksOpenExternallyAndMissingHandlerIsSafe() {
+        val repo = UpdateRepository(ReleaseSource { emptyList() })
+        compose.runOnUiThread { compose.activity.setContent { AboutScreen(onBack = {}, repository = repo) } }
+        for ((label, url) in listOf(
+            "Instagram · @itsbasti_an" to "https://www.instagram.com/itsbasti_an/",
+            "GitHub · bastideveloper1" to "https://github.com/bastideveloper1",
+            "Mastodon · @Yll@infosec.exchange" to "https://infosec.exchange/@Yll",
+            "Web · 27thdeer.com" to "https://27thdeer.com/",
+            "github.com/bastideveloper1/Arachn0de" to "https://github.com/bastideveloper1/Arachn0de",
+        )) {
+            compose.onNodeWithText(label).performScrollTo().performClick()
+            val intent = org.robolectric.Shadows.shadowOf(compose.activity).nextStartedActivity
+            assertEquals(android.content.Intent.ACTION_VIEW, intent.action)
+            assertEquals(url, intent.data.toString())
+        }
+        val unavailable = object : android.content.ContextWrapper(compose.activity) {
+            override fun startActivity(intent: android.content.Intent) { throw android.content.ActivityNotFoundException() }
+        }
+        org.junit.Assert.assertFalse(com.r0ybt.arachn0de.ui.openExternalLink(unavailable, "https://27thdeer.com/"))
+    }
+
     @Test fun failureCanBeRetriedWithoutLeavingScreen() {
         var fail = true
         val repo = UpdateRepository(ReleaseSource { if (fail) throw java.io.IOException(); emptyList() })

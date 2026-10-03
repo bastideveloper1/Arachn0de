@@ -45,18 +45,21 @@ class ObligationUiTest {
     private fun listTo(text: String) = compose.onNodeWithTag("nodes-list").performScrollToNode(hasText(text))
 
     @Test fun individualDraftValidatesRestoresCreatesAndConfirmsFinancialRemoval() {
+        runBlocking { app.personRepository.save("r", "Roy", null); app.personRepository.save("s", "Scarlett", null) }
         val restoration=StateRestorationTester(compose)
         restoration.setContent { Arachn0deTheme { AppSafeArea { AppRoot(app.projectRepository,app.nodeRepository) { fixed } } } }
         await("Project"); compose.onNodeWithText("Project").performClick(); await("Nuevo elemento")
         compose.onNodeWithText("Nuevo elemento").performClick()
         input("Título","Bill"); toggle(); click("USD"); input("Monto","0")
         compose.onNodeWithText("Guardar").assertIsNotEnabled()
+        click("Responsables (0)"); click("Roy"); click("Scarlett"); compose.onAllNodesWithText("Guardar").onLast().performClick()
         input("Monto","10.50"); restoration.emulateSavedInstanceStateRestore(); await("Monto")
         compose.onNodeWithText("Monto").performScrollTo().assert(hasText("10.50"))
         compose.onNodeWithText("Guardar").performClick()
         compose.waitUntil(10_000) { runBlocking { app.nodeRepository.getProjectNodes(project).size==1 } }
         val node=runBlocking { app.nodeRepository.getProjectNodes(project).single() }
         assertEquals(Obligation(1050,"USD"),node.obligation)
+        assertEquals(setOf("r", "s"), runBlocking { app.database.personDao().assignmentIds(node.id).toSet() })
         listTo("Bill"); compose.onNodeWithText("Bill").performClick(); await("CAPA 1")
         compose.onNodeWithText("Nuevo elemento").assertIsNotEnabled(); compose.onNodeWithText("Crear varios").assertIsNotEnabled()
         listTo("Editar"); compose.onNodeWithText("Editar").performClick(); toggle()

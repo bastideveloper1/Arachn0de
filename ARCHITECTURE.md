@@ -976,7 +976,7 @@ Room pasa **v7 → v8** mediante `ObligationMigration7To8`: añade `amountMinor 
 
 La UI ofrece CLP (default), USD y EUR, más la moneda existente si se edita una futura obligación de otro código válido. La representación no está limitada a esas tres: respeta monedas de cero, dos o tres decimales según Currency. Códigos sin unidades menores definidas no son operativos. Cambiar moneda requiere que el monto introducido sea compatible; no convierte tasas ni mezcla monedas.
 
-«Nuevo elemento» y «Editar elemento» conservan campos existentes y agregan una opción secundaria **Obligación** solo para tareas hoja; al activarla aparecen Monto y Moneda. Errores bloquean Guardar y conservan el formulario. Tarea normal ↔ Obligación actualiza contenido/fechas/capacidad en una transacción, sin recrear el Node: conserva identidad, padre, Proyecto, posición, createdAt, completado y responsables; actualiza updatedAt. Quitar la opción de una obligación existente requiere confirmar **Eliminar datos financieros** al guardar, indicando que se borrarán monto y moneda. Cancelar la confirmación no escribe. No se mantienen finanzas latentes.
+«Nuevo elemento» y «Editar elemento» conservan campos existentes y agregan una opción secundaria **Obligación** solo para tareas hoja; al activarla aparecen Monto y Moneda. La creación individual de una obligación permite seleccionar 0..N responsables con `ResponsibleDialog`; el borrador conserva selección y selector abierto. `createNode` valida Personas e inserta las asociaciones existentes en la misma transacción, incluyendo su comparación al reintentar. Errores bloquean Guardar y conservan el formulario. Tarea normal ↔ Obligación actualiza contenido/fechas/capacidad en una transacción, sin recrear el Node: conserva identidad, padre, Proyecto, posición, createdAt, completado y responsables; actualiza updatedAt. Quitar la opción de una obligación existente requiere confirmar **Eliminar datos financieros** al guardar, indicando que se borrarán monto y moneda. Cancelar la confirmación no escribe. No se mantienen finanzas latentes.
 
 Obligación ACTION → NOTE requiere la misma confirmación antes de convertir. Repository exige intención explícita de borrado; el DAO borra ambos campos en la escritura de propósito que ya normaliza completado. Fechas siguen latentes según la política existente de Notes. NOTE → ACTION vuelve a tarea normal pendiente, sin restaurar dinero eliminado. NOTE no muestra campos financieros ni permite activarlos.
 
@@ -1060,7 +1060,7 @@ El menú lateral recuperará progresivamente destinos cuando existan funcionalid
 
 ### 12. Acerca de e identidad
 
-La pantalla **Acerca de Arachn0de** está implementada en #33–34 con versión instalada y actualización manual. Descripción, autor, licencia/información pertinente y enlaces a GitHub, Mastodon e Instagram siguen pendientes de definir e implementar.
+La pantalla **Acerca de Arachn0de** está implementada en #33–34 con versión instalada y actualización manual. Incluye Autor (r0ybt), enlaces externos a Instagram, GitHub, Mastodon y Web, y Código fuente por separado. Usa ACTION_VIEW y muestra un error si Android no puede abrir el enlace; no usa WebView. Descripción y licencia/información pertinente siguen pendientes.
 
 ### 13. Releases y actualizaciones DE Arachn0de
 
@@ -1223,7 +1223,7 @@ Si este núcleo es sólido, las capacidades posteriores podrán construirse prog
 
 El motor único `DragReorderState` y el detector de long press pertenecen a la lista. Las tarjetas reciben solo el modificador visual y el indicador de arrastre. El dedo se mide en píxeles del viewport; el punto agarrado se conserva y la capa gráfica deriva `translationY = fingerY - grabOffsetY - item.offset` del layout actual, también durante scroll. La identidad del gesto no depende del índice transitorio ni de callbacks de cada tarjeta.
 
-El orden transitorio contiene únicamente proyectos o hermanos del mismo proyecto, padre y grupo de completado. Se intercambia el elemento con un vecino inmediato cuando su centro cruza el centro de ese vecino; se espera que el nuevo orden sea medido antes de otro cruce. Los vecinos utilizan `animateItem` con animación de placement; el elemento agarrado sigue al dedo sin esa animación.
+El orden transitorio contiene únicamente proyectos o hermanos del mismo proyecto, padre y grupo de completado. Se intercambia el elemento con un vecino inmediato cuando su centro cruza el centro de ese vecino; se espera que el nuevo orden sea medido antes de otro cruce. Cada intercambio conserva explícitamente índice y offset del viewport con `requestScrollToItem`, evitando que el anclaje por clave de LazyColumn oculte el nuevo primer elemento. Los vecinos utilizan `animateItem` con animación de placement; el elemento agarrado sigue al dedo sin esa animación.
 
 Un loop con `withFrameNanos` calcula tiempo real (limitado a 50 ms tras pausas), usa una zona de 96 dp y una curva cuadrática de hasta 700 dp/s, y ejecuta `scrollBy`. Reevalúa cruces en cada frame y al mover el dedo. En los extremos del grupo se detiene el scroll en esa dirección para no arrastrar la lista hacia otro grupo o controles auxiliares.
 

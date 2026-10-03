@@ -48,45 +48,54 @@ internal class DragReorderState(private val list: LazyListState, private val pre
     val gestureModifier: Modifier
         get() = Modifier.pointerInput(this) {
             detectDragGesturesAfterLongPress(
-                onDragStart = { position ->
-                    if (!busy && !pending) {
-                        val item = list.layoutInfo.visibleItemsInfo.firstOrNull {
-                            position.y >= it.offset && position.y < it.offset + it.size &&
-                                groups.values.any { ids -> it.key.toString().removePrefix(prefix) in ids }
-                        }
-                        if (item != null) {
-                            val id = item.key.toString().removePrefix(prefix)
-                            group = groups.entries.first { id in it.value }.key
-                            originalOrder = groups.getValue(group).toList()
-                            transientOrder = originalOrder
-                            fingerY = position.y
-                            grabOffsetY = position.y - item.offset
-                            draggedHeight = item.size
-                            draggedId = id
-                        }
-                    }
-                },
+                onDragStart = { position -> startDrag(position.y) },
                 onDrag = { change, _ ->
                     if (draggedId != null) {
                         change.consume()
-                        fingerY = change.position.y
-                        crossNeighbor()
+                        dragTo(change.position.y)
                     }
                 },
-                onDragEnd = {
-                    val id = draggedId
-                    if (id != null) {
-                        val target = finalTarget(originalOrder, transientOrder, id)
-                        draggedId = null // Stop the frame loop before submitting exactly once.
-                        if (target == null) cancel() else {
-                            pending = true
-                            commit(id, target, group)
-                        }
-                    }
-                },
+                onDragEnd = { finishDrag() },
                 onDragCancel = { if (draggedId != null) cancel() },
             )
         }
+
+    internal fun startDrag(y: Float) {
+        if (!busy && !pending) {
+            val item = list.layoutInfo.visibleItemsInfo.firstOrNull {
+                y >= it.offset && y < it.offset + it.size &&
+                    groups.values.any { ids -> it.key.toString().removePrefix(prefix) in ids }
+            }
+            if (item != null) {
+                val id = item.key.toString().removePrefix(prefix)
+                group = groups.entries.first { id in it.value }.key
+                originalOrder = groups.getValue(group).toList()
+                transientOrder = originalOrder
+                fingerY = y
+                grabOffsetY = y - item.offset
+                draggedHeight = item.size
+                draggedId = id
+            }
+        }
+    }
+
+    internal fun dragTo(y: Float) {
+        if (draggedId == null) return
+        fingerY = y
+        crossNeighbor()
+    }
+
+    internal fun finishDrag() {
+        val id = draggedId
+        if (id != null) {
+            val target = finalTarget(originalOrder, transientOrder, id)
+            draggedId = null // Stop the frame loop before submitting exactly once.
+            if (target == null) cancel() else {
+                pending = true
+                commit(id, target, group)
+            }
+        }
+    }
 
     fun cardModifier(id: String): Modifier = Modifier.graphicsLayer {
         if (draggedId == id) {
@@ -113,6 +122,8 @@ internal class DragReorderState(private val list: LazyListState, private val pre
             val item = visible.firstOrNull { it.key == "$prefix$neighbor" } ?: continue
             val crossed = if (direction < 0) center <= item.offset + item.size / 2f else center >= item.offset + item.size / 2f
             if (crossed) {
+                // Keep viewport coordinates instead of LazyColumn anchoring the old first key.
+                list.requestScrollToItem(list.firstVisibleItemIndex, list.firstVisibleItemScrollOffset)
                 transientOrder = transientOrder.moveDraggedToTarget(id, neighbor)
                 return // Adjacent swaps, then remeasure; repeated frames allow multiple crossings.
             }

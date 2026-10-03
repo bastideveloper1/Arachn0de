@@ -36,6 +36,8 @@ internal fun NodeDialog(
     onDismiss: () -> Unit,
     onSave: (String, String) -> Unit,
     editDates: Boolean = true,
+    people: List<com.r0ybt.arachn0de.domain.model.Person> = emptyList(),
+    peopleLoaded: Boolean = true,
 ) {
     var confirmFinancialRemoval by rememberSaveable(draft.creationId) { mutableStateOf(false) }
     val financialValid = !editDates || draft.purpose != NodePurpose.ACTION || runCatching { draft.obligation() }.isSuccess
@@ -95,6 +97,11 @@ internal fun NodeDialog(
                         Text("El vencimiento no puede ser anterior al inicio. Corrige las fechas para guardar.", color = Arachn0deColors.Destructive)
                     }
                 }
+                if (draft.id == null && draft.financialEnabled) {
+                    androidx.compose.material3.OutlinedButton(enabled = !isSubmitting && peopleLoaded, onClick = { draft.showResponsible = true }) {
+                        Text("Responsables (${draft.responsibleIds.size})")
+                    }
+                }
                 Text(
                     text = if (draft.purpose == NodePurpose.NOTE) "Una nota conserva información. Para añadir hijos, conviértela primero en tarea." else if (draft.financialEnabled) "Convierte esta obligación en una tarea antes de usarla como capa." else "Una tarea se convierte automáticamente en capa al añadir hijos.",
                     color = Arachn0deColors.TextSecondary,
@@ -104,7 +111,7 @@ internal fun NodeDialog(
         },
         confirmButton = {
             TextButton(
-                enabled = !isSubmitting && financialValid && title.trim().isNotEmpty() && TitleLimits.count(title) <= TitleLimits.NODE &&
+                enabled = !isSubmitting && (draft.id != null || !draft.financialEnabled || peopleLoaded) && financialValid && title.trim().isNotEmpty() && TitleLimits.count(title) <= TitleLimits.NODE &&
                     (!editDates || draft.purpose == NodePurpose.NOTE || draft.startAt == null || draft.dueAt == null || draft.dueAt!! >= draft.startAt!!),
                 onClick = {
                     val cleanTitle = title.trim()
@@ -122,6 +129,11 @@ internal fun NodeDialog(
                 Text("Cancelar")
             }
         },
+    )
+    if (draft.showResponsible && peopleLoaded) ResponsibleDialog(
+        nodeId = draft.creationId, people = people, assigned = people.filter { it.id in draft.responsibleIds }, busy = isSubmitting,
+        onDismiss = { draft.showResponsible = false },
+        onSave = { draft.responsibleIds = it.toList(); draft.showResponsible = false },
     )
     if (confirmFinancialRemoval) RemoveObligationDialog(isSubmitting, false,
         onDismiss = { confirmFinancialRemoval = false }, onConfirm = {

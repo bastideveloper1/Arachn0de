@@ -119,6 +119,7 @@ class NodeRepository(
         dueAt: Long? = null,
         purpose: NodePurpose = NodePurpose.ACTION,
         obligation: Obligation? = null,
+        responsibleIds: Set<String> = emptySet(),
     ): Node = database.withTransaction {
         com.r0ybt.arachn0de.domain.model.TaskTemporal.validateDates(startAt, dueAt)
         require(purpose == NodePurpose.ACTION || obligation == null) { "Una nota no puede ser obligación." }
@@ -128,13 +129,15 @@ class NodeRepository(
             check(existing.projectId == projectId && existing.parentId == parentId &&
                 existing.title == normalizedTitle && existing.description == description &&
                 existing.startAt == startAt && existing.dueAt == dueAt && existing.purpose == purpose.name &&
-                existing.amountMinor == obligation?.amountMinor && existing.currencyCode == obligation?.currencyCode) {
+                existing.amountMinor == obligation?.amountMinor && existing.currencyCode == obligation?.currencyCode &&
+                database.personDao().assignmentIds(existing.id).toSet() == responsibleIds) {
                 "Creation already committed with different content or destination"
             }
             return@withTransaction existing.toNode(nodeDao.hasChildren(projectId, creationId))
         }
         require(database.projectDao().getById(projectId) != null) { "Project not found" }
         validateParent(projectId, parentId)
+        responsibleIds.forEach { requireNotNull(database.personDao().get(it)) { "Person not found" } }
         val now = currentTimeMillis()
         val entity = NodeEntity(
             id = creationId, projectId = projectId, parentId = parentId,
@@ -144,6 +147,7 @@ class NodeRepository(
             amountMinor = obligation?.amountMinor, currencyCode = obligation?.currencyCode,
         )
         nodeDao.insert(entity)
+        if (responsibleIds.isNotEmpty()) database.personDao().assign(responsibleIds.map { NodePersonEntity(entity.id, it) })
         entity.toNode(hasChildren = false)
     }
 

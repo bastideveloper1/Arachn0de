@@ -1,21 +1,44 @@
 package com.r0ybt.arachn0de.domain.model
 
-enum class AttentionLevel { NONE, UPCOMING, OVERDUE }
+enum class AttentionLevel { NONE, PRIORITY, UPCOMING, OVERDUE }
+enum class AttentionReason { OVERDUE, DUE_TODAY, UPCOMING, HIGH_PRIORITY, MEDIUM_PRIORITY }
 
-data class AttentionSummary(val upcoming: Int = 0, val overdue: Int = 0) {
-    val total: Int get() = upcoming + overdue
+object AttentionPolicy {
+    fun reasons(node: Node, now: Long, zone: java.util.TimeZone): List<AttentionReason> {
+        if (!node.isCompletable || node.isCompleted) return emptyList()
+        val temporal = TaskTemporal.state(node, now)
+        val reason = when {
+            temporal == TaskTemporalState.OVERDUE -> AttentionReason.OVERDUE
+            temporal != TaskTemporalState.SCHEDULED && node.dueAt != null &&
+                CalendarDates.localDay(node.dueAt, zone) == CalendarDates.localDay(now, zone) -> AttentionReason.DUE_TODAY
+            temporal == TaskTemporalState.UPCOMING -> AttentionReason.UPCOMING
+            else -> null
+        }
+        return buildList {
+            reason?.let { add(it) }
+            if (node.effectivePriority == Priority.HIGH) add(AttentionReason.HIGH_PRIORITY)
+            else if (node.effectivePriority == Priority.MEDIUM && reason != null) add(AttentionReason.MEDIUM_PRIORITY)
+        }
+    }
+}
+
+
+data class AttentionSummary(val upcoming: Int = 0, val overdue: Int = 0, val priorityOnly: Int = 0) {
+    val total: Int get() = upcoming + overdue + priorityOnly
     val level: AttentionLevel get() = when {
         overdue > 0 -> AttentionLevel.OVERDUE
         upcoming > 0 -> AttentionLevel.UPCOMING
+        priorityOnly > 0 -> AttentionLevel.PRIORITY
         else -> AttentionLevel.NONE
     }
-    operator fun plus(other: AttentionSummary) = AttentionSummary(upcoming + other.upcoming, overdue + other.overdue)
+    operator fun plus(other: AttentionSummary) = AttentionSummary(upcoming + other.upcoming, overdue + other.overdue, priorityOnly + other.priorityOnly)
 }
 
 /** Reusable derived projection of a validated tree at one explicit instant; never persisted. */
-class AttentionSnapshot(val tree: NodeTreeSnapshot, val now: Long) {
+class AttentionSnapshot(val tree: NodeTreeSnapshot, val now: Long, val zone: java.util.TimeZone = java.util.TimeZone.getDefault()) {
     val byNodeId: Map<String, AttentionSummary>
     val byProjectId: Map<String, AttentionSummary>
+    val reasonsByNodeId: Map<String, List<AttentionReason>>
     val tasks: List<Node>
 
     init {
@@ -24,13 +47,17 @@ class AttentionSnapshot(val tree: NodeTreeSnapshot, val now: Long) {
         val queue = ArrayDeque<Node>()
         val counts = mutableMapOf<String, AttentionSummary>()
         val projects = mutableMapOf<String, AttentionSummary>()
+        val reasons = mutableMapOf<String, List<AttentionReason>>()
         val sources = mutableListOf<Node>()
         tree.nodes.forEach { node ->
             if (remaining.getValue(node.id) == 0) {
                 // Relationships, rather than a caller's cached type flag, define a leaf.
-                val summary = when (TaskTemporal.state(node.copy(hasChildren = false), now)) {
-                    TaskTemporalState.UPCOMING -> AttentionSummary(upcoming = 1)
-                    TaskTemporalState.OVERDUE -> AttentionSummary(overdue = 1)
+                val signals = AttentionPolicy.reasons(node.copy(hasChildren = false), now, zone)
+                reasons[node.id] = signals
+                val summary = when (signals.firstOrNull()) {
+                    AttentionReason.OVERDUE -> AttentionSummary(overdue = 1)
+                    AttentionReason.DUE_TODAY, AttentionReason.UPCOMING -> AttentionSummary(upcoming = 1)
+                    AttentionReason.HIGH_PRIORITY -> AttentionSummary(priorityOnly = 1)
                     else -> AttentionSummary()
                 }
                 counts[node.id] = summary
@@ -55,9 +82,10 @@ class AttentionSnapshot(val tree: NodeTreeSnapshot, val now: Long) {
         check(processed == tree.nodes.size) { "Invalid attention hierarchy" }
         byNodeId = counts.toMap()
         byProjectId = projects.toMap()
+        reasonsByNodeId = reasons.toMap()
         tasks = sources.sortedWith(
-            compareBy<Node> { if (counts.getValue(it.id).level == AttentionLevel.OVERDUE) 0 else 1 }
-                .thenBy { it.dueAt }.thenBy { it.createdAt }.thenBy { it.id },
+            compareBy<Node> { reasons.getValue(it.id).first().ordinal }
+                .thenBy { it.dueAt == null }.thenBy { it.dueAt }.thenByDescending { it.effectivePriority.ordinal }.thenBy { it.createdAt }.thenBy { it.id },
         )
     }
 

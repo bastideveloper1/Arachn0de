@@ -142,7 +142,7 @@ internal fun ProjectNodeScreen(
     val scopeFilters = scopeFilterStore.scope(currentNodeId ?: "project-root")
     val scopedFilter = com.r0ybt.arachn0de.domain.model.NodeFilter(
         com.r0ybt.arachn0de.domain.model.TemporalRanges.resolve(scopeFilters.time, now, java.util.TimeZone.getDefault(), java.util.Locale.getDefault()),
-        scopeFilters.person, scopeFilters.completion, scopeFilters.tag)
+        scopeFilters.person, scopeFilters.completion, scopeFilters.tag, scopeFilters.priority)
     val filteredRows by androidx.compose.runtime.produceState<List<com.r0ybt.arachn0de.domain.model.FilteredNodeRow>?>(null, projectState, currentNodeId, scopedFilter, tagState, responsibleByNode) {
         value = null
         if (!scopeFilters.active) { value = emptyList(); return@produceState }
@@ -356,7 +356,7 @@ internal fun ProjectNodeScreen(
                                         Button(
                                             onClick = {
                                                 if (!isSubmittingNode) {
-                                                    draft = EditorDraft(currentNode.id, currentNode.parentId, currentNode.title, currentNode.description, startAt = currentNode.startAt, dueAt = currentNode.dueAt, purpose = currentNode.purpose, obligation = currentNode.obligation).apply { tagIds = tagState.nodeIds[currentNode.id].orEmpty().toList() }
+                                                    draft = EditorDraft(currentNode.id, currentNode.parentId, currentNode.title, currentNode.description, startAt = currentNode.startAt, dueAt = currentNode.dueAt, purpose = currentNode.purpose, obligation = currentNode.obligation, priority = currentNode.priority).apply { tagIds = tagState.nodeIds[currentNode.id].orEmpty().toList() }
                                                 }
                                             },
                                             enabled = !isSubmittingNode,
@@ -411,6 +411,7 @@ internal fun ProjectNodeScreen(
                                         }) { Text(if (currentNode.purpose == NodePurpose.NOTE) "Convertir en tarea" else "Convertir en nota") }
                                     }
                                     if (currentNode.purpose == NodePurpose.NOTE) Text("Nota · Convierte en tarea para añadir hijos", color = Arachn0deColors.TextSecondary)
+                                    PriorityIndicator(currentNode)
                                     ObligationIndicator(currentNode)
                                     if (currentNode.obligation != null) Text("Convierte esta obligación en una tarea antes de usarla como capa.", color = Arachn0deColors.TextSecondary)
                                     TaskDateIndicator(currentNode, now)
@@ -445,9 +446,10 @@ internal fun ProjectNodeScreen(
                                     if (!row.isMatch) Text("Contexto · ${row.node.title}", color = Arachn0deColors.TextSecondary)
                                     else {
                                         TextButton(onClick = { actions.navigate(row.node.id) { path -> currentPath.clear(); currentPath.addAll(path) } }) { Text(row.node.title) }
+                                        PriorityIndicator(row.node)
                                         TagChips(tagState.forNode(row.node.id))
                                         TextButton(onClick = { historyNodeId = row.node.id }) { Text("Historial") }
-                                        TextButton(onClick = { draft = EditorDraft(row.node.id, row.node.parentId, row.node.title, row.node.description, startAt = row.node.startAt, dueAt = row.node.dueAt, purpose = row.node.purpose, obligation = row.node.obligation).apply { tagIds = tagState.nodeIds[row.node.id].orEmpty().toList() } }) { Text("Editar") }
+                                        TextButton(onClick = { draft = EditorDraft(row.node.id, row.node.parentId, row.node.title, row.node.description, startAt = row.node.startAt, dueAt = row.node.dueAt, purpose = row.node.purpose, obligation = row.node.obligation, priority = row.node.priority).apply { tagIds = tagState.nodeIds[row.node.id].orEmpty().toList() } }) { Text("Editar") }
                                     }
                                 }
                             }
@@ -494,7 +496,7 @@ internal fun ProjectNodeScreen(
                                     canCopy = !copyActions.busy,
                                     onCopy = { descendants -> copyActions.copy(projectState, node.id, descendants) },
                                     onEdit = {
-                                        draft = EditorDraft(node.id, node.parentId, node.title, node.description, startAt = node.startAt, dueAt = node.dueAt, purpose = node.purpose, obligation = node.obligation).apply { tagIds = tagState.nodeIds[node.id].orEmpty().toList() }
+                                        draft = EditorDraft(node.id, node.parentId, node.title, node.description, startAt = node.startAt, dueAt = node.dueAt, purpose = node.purpose, obligation = node.obligation, priority = node.priority).apply { tagIds = tagState.nodeIds[node.id].orEmpty().toList() }
                                     },
                                     canMoveUp = node.id != renderNodes.firstOrNull()?.id && !isSubmittingNode,
                                     canMoveDown = node.id != renderNodes.lastOrNull()?.id && !isSubmittingNode,
@@ -598,7 +600,7 @@ internal fun ProjectNodeScreen(
                 if (editor.recurrenceFrequency != "NONE" && editor.id == null && editor.purpose == NodePurpose.ACTION) {
                     actions.createRecurrence(project.id, editor) { draft = null }
                 } else actions.save(project.id, editor.parentId, editor.id, title, description, editor.creationId, editor.startAt, editor.dueAt,
-                    editDates = editor.purpose == NodePurpose.ACTION && (editor.id == null || projectState.nodesById[editor.id]?.isCompletable == true), purpose = editor.purpose, obligation = editor.obligation(), removeObligation = editor.financialRemovalConfirmed, responsibleIds = editor.responsibleIds.toSet(), tagIds = editor.tagIds.toSet()) {
+                    editDates = editor.purpose == NodePurpose.ACTION && (editor.id == null || projectState.nodesById[editor.id]?.isCompletable == true), purpose = editor.purpose, obligation = editor.obligation(), removeObligation = editor.financialRemovalConfirmed, responsibleIds = editor.responsibleIds.toSet(), tagIds = editor.tagIds.toSet(), priority = editor.priority) {
                     draft = null
                 }
             },

@@ -12,6 +12,7 @@ internal class CalendarFilterState(initialDay: CalendarDay) {
     var selected by mutableStateOf(initialDay)
     var view by mutableStateOf(CalendarView.MONTH)
     var timePreset by mutableStateOf("SELECTED")
+    var priority by mutableStateOf<Priority?>(null)
     var tagId by mutableStateOf<String?>(null)
     var personId by mutableStateOf<String?>(null)
     var completion by mutableStateOf(CompletionFilter.ALL)
@@ -63,9 +64,9 @@ internal class CalendarFilterState(initialDay: CalendarDay) {
     }
     companion object {
         val Saver = listSaver<CalendarFilterState, String>(
-            save = { listOf(it.selected.year.toString(), it.selected.month.toString(), it.selected.day.toString(), it.view.name, it.timePreset, it.personId.orEmpty(), it.completion.name, it.showFilters.toString(), it.tagId.orEmpty()) },
+            save = { listOf(it.selected.year.toString(), it.selected.month.toString(), it.selected.day.toString(), it.view.name, it.timePreset, it.personId.orEmpty(), it.completion.name, it.showFilters.toString(), it.tagId.orEmpty(), it.priority?.name.orEmpty()) },
             restore = { CalendarFilterState(CalendarDay(it[0].toInt(), it[1].toInt(), it[2].toInt())).apply {
-                view = CalendarView.valueOf(it[3]); timePreset = it[4]; personId = it[5].ifEmpty { null }; completion = CompletionFilter.valueOf(it[6]); showFilters = it[7].toBoolean(); tagId = it.getOrNull(8)?.ifEmpty { null }
+                view = CalendarView.valueOf(it[3]); timePreset = it[4]; personId = it[5].ifEmpty { null }; completion = CompletionFilter.valueOf(it[6]); showFilters = it[7].toBoolean(); tagId = it.getOrNull(8)?.ifEmpty { null }; priority = it.getOrNull(9)?.takeIf { it.isNotEmpty() }?.let(Priority::valueOf)
             } },
         )
     }

@@ -16,7 +16,9 @@ data class Node(
     val dueAt: Long? = null,
     val purpose: NodePurpose = NodePurpose.ACTION,
     val obligation: Obligation? = null,
+    val priority: Priority = Priority.NONE,
 ) {
+    val effectivePriority: Priority get() = if (isCompletable) priority else Priority.NONE
     val isStructural: Boolean get() = hasChildren
     val isCompletable: Boolean get() = !hasChildren && purpose == NodePurpose.ACTION
 }

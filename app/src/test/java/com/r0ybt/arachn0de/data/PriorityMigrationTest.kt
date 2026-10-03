@@ -14,17 +14,17 @@ import org.robolectric.annotation.Config
 
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [24,28])
-class TagMigrationTest {
-    @Test fun exportedV9PreservesRecordsTriggersAndAddsTagTables() = runBlocking {
+class PriorityMigrationTest {
+    @Test fun exportedV11PreservesAllFieldsRelationsEventsAndDefaultsPriorityNone() = runBlocking {
         val context = RuntimeEnvironment.getApplication(); context.deleteDatabase("arachn0de.db")
         val helper = androidx.sqlite.db.framework.FrameworkSQLiteOpenHelperFactory().create(
             androidx.sqlite.db.SupportSQLiteOpenHelper.Configuration.builder(context).name("arachn0de.db")
-                .callback(object : androidx.sqlite.db.SupportSQLiteOpenHelper.Callback(9) {
+                .callback(object : androidx.sqlite.db.SupportSQLiteOpenHelper.Callback(11) {
                     override fun onCreate(db: androidx.sqlite.db.SupportSQLiteDatabase) {}
                     override fun onUpgrade(db: androidx.sqlite.db.SupportSQLiteDatabase, oldVersion: Int, newVersion: Int) = error("Unexpected")
                 }).build())
         val sql = helper.writableDatabase
-        val schema = JSONObject(javaClass.classLoader!!.getResourceAsStream("com.r0ybt.arachn0de.data.local.Arachn0deDatabase/9.json")!!.bufferedReader().use { it.readText() }).getJSONObject("database")
+        val schema = JSONObject(javaClass.classLoader!!.getResourceAsStream("com.r0ybt.arachn0de.data.local.Arachn0deDatabase/11.json")!!.bufferedReader().use { it.readText() }).getJSONObject("database")
         val entities = schema.getJSONArray("entities")
         for (i in 0 until entities.length()) {
             val entity = entities.getJSONObject(i); val table = entity.getString("tableName")
@@ -42,6 +42,11 @@ class TagMigrationTest {
         sql.execSQL("INSERT INTO recurrence_rules VALUES ('rule','old',NULL,'Plan','',15000,'CLP',20736,'MONTHLY',1,NULL,0,'ACTIVE','UTC',0,NULL)")
         sql.execSQL("INSERT INTO recurrence_occurrences VALUES ('rule',20736,'receipt')")
         sql.execSQL("INSERT INTO recurrence_person VALUES ('rule','p')")
+        sql.execSQL("INSERT INTO tags VALUES ('t','Trabajo','trabajo')")
+        sql.execSQL("INSERT INTO tags VALUES ('unused','Unused','unused')")
+        sql.execSQL("INSERT INTO node_tag VALUES ('leaf','t')")
+        sql.execSQL("INSERT INTO recurrence_tag VALUES ('rule','t')")
+        sql.execSQL("INSERT INTO node_events VALUES ('event','leaf','COMPLETED',160)")
         helper.close()
         val db = Arachn0deDatabase.create(context)
         try {
@@ -57,10 +62,19 @@ class TagMigrationTest {
             assertEquals("Plan",db.recurrenceDao().rules().single().title)
             assertEquals("receipt",db.recurrenceDao().occurrences().single().nodeId)
             assertEquals("p",db.recurrenceDao().assignments().single().personId)
-            assertTrue(db.tagDao().tags().isEmpty())
+            assertEquals(setOf("t","unused"),db.tagDao().tags().map { it.id }.toSet())
+            assertEquals(listOf(NodeTagEntity("leaf","t")),db.tagDao().nodeTags())
+            assertEquals(listOf(RecurrenceTagEntity("rule","t")),db.tagDao().ruleTags())
+            assertEquals(NodeEventEntity("event","leaf","COMPLETED",160),db.nodeEventDao().all().single())
+            assertTrue(db.nodeDao().getProjectNodes("old").all { it.priority == "NONE" }); assertEquals("NONE",db.recurrenceDao().rules().single().priority)
+            db.openHelper.readableDatabase.query("EXPLAIN QUERY PLAN SELECT * FROM node_events WHERE nodeId='leaf' ORDER BY occurredAt DESC,rowid DESC").use { cursor ->
+                assertTrue(cursor.moveToFirst()); assertTrue(cursor.getString(3).contains("index_node_events_nodeId_occurredAt"))
+            }
             val nodes = NodeRepository(db)
             val bill = nodes.createNode("old",null,"Bill",obligation=com.r0ybt.arachn0de.domain.model.Obligation(50000,"CLP"))
             assertEquals(50000L,db.nodeDao().getById(bill.id)!!.amountMinor)
+            assertEquals("CREATED",db.nodeEventDao().forNode(bill.id).single().type)
+            assertEquals("COMPLETED",db.nodeEventDao().forNode("leaf").single().type)
         } finally { db.close(); context.deleteDatabase("arachn0de.db") }
     }
 }

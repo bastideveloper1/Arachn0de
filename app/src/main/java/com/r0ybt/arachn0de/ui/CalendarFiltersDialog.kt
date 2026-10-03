@@ -32,9 +32,10 @@ internal fun CalendarFiltersDialog(state: CalendarFilterState, today: CalendarDa
             CalendarFilterMenu("Estado", completionLabel(state.completion), "calendar-status-filter") { close ->
                 CompletionFilter.entries.forEach { status -> DropdownMenuItem(text = { Text(completionLabel(status)) }, onClick = { state.completion = status; close() }) }
             }
+            PrioritySelector(state.priority, { state.priority = it }, filter = true)
             TagSelector(tags, setOfNotNull(state.tagId), { state.tagId = it.firstOrNull() }, single = true)
             Text("Los filtros se combinan: tiempo, persona y estado deben coincidir.", style = MaterialTheme.typography.bodySmall)
-            TextButton(onClick = { state.tagId = null; state.personId = null; state.completion = CompletionFilter.ALL }, modifier = Modifier.testTag("calendar-clear-filters")) { Text("Todas las personas · Todos los estados") }
+            TextButton(onClick = { state.priority = null; state.tagId = null; state.personId = null; state.completion = CompletionFilter.ALL }, modifier = Modifier.testTag("calendar-clear-filters")) { Text("Todas las personas · Todos los estados") }
         } }, confirmButton = { TextButton(onClick = { state.showFilters = false }) { Text("Listo") } })
 }
 

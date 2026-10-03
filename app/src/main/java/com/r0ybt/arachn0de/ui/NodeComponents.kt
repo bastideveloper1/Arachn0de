@@ -236,6 +236,7 @@ internal fun NodeCard(
             Column(
                 modifier = Modifier.weight(1f),
             ) {
+                PriorityIndicator(node)
                 TagChips(tags)
                 if (onRecurrence != null) TextButton(onClick = onRecurrence) { Text("↻ Recurrencia", color = Arachn0deColors.Primary, fontSize = 12.sp) }
                 Text(

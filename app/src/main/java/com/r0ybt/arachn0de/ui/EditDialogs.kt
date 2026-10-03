@@ -66,6 +66,7 @@ internal fun NodeDialog(
         title = { Text(if (draft.id == null) "Nuevo elemento" else "Editar elemento") },
         text = {
             Column(modifier = Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                if (editDates && draft.purpose == NodePurpose.ACTION) PrioritySelector(draft.priority, { draft.priority = checkNotNull(it) }, enabled = !isSubmitting)
                 tagRepository?.let { repo -> val state by remember(repo) { repo.observe() }.collectAsState(initial = com.r0ybt.arachn0de.domain.model.TagState())
                     TagSelector(state.tags, draft.tagIds.toSet(), { draft.tagIds = it.toList() }, repository = repo) }
                 if (draft.id == null) {

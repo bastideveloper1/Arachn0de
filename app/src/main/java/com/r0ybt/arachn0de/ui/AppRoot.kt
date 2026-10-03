@@ -78,8 +78,8 @@ private fun AppRootContent(projectRepository: ProjectRepository, nodeRepository:
             peopleLoad.collect(personRepository.observeAllAssignments()) { responsibleByNode = it; assignmentsLoaded = true }
         }
     }
-    LaunchedEffect(showObligations, showCalendar, selectedProjectId, personRepository, financialPeopleLoad.attempt) {
-        if (showObligations || showCalendar || selectedProjectId == null) {
+    LaunchedEffect(showAttention, showObligations, showCalendar, selectedProjectId, personRepository, financialPeopleLoad.attempt) {
+        if (showAttention || showObligations || showCalendar || selectedProjectId == null) {
             financialPeopleLoaded = false
             financialPeopleLoad.collect(personRepository.observePeople()) { people = it; financialPeopleLoaded = true }
         }
@@ -94,7 +94,7 @@ private fun AppRootContent(projectRepository: ProjectRepository, nodeRepository:
         snapshot
     } else null
     val attention = if (globalView && !showCalendar && !showObligations) {
-        val state by rememberAttention(allState, now)
+        val state by rememberAttention(allState, now, zoneId)
         state
     } else null
 
@@ -137,7 +137,7 @@ private fun AppRootContent(projectRepository: ProjectRepository, nodeRepository:
         }
     } else if (showAttention) {
         screenStates.SaveableStateProvider("attention") {
-            AttentionScreen(attention, projects.orEmpty(), responsibleByNode, nodesLoaded && projects != null && assignmentsLoaded,
+            AttentionScreen(attention, projects.orEmpty(), responsibleByNode, nodesLoaded && projects != null && assignmentsLoaded, tagState = tagState, people = people,
                 onOpen = { node ->
                     val real = allState.nodesById[node.id]
                     if (real != null && projects.orEmpty().any { it.id == real.projectId }) {
@@ -208,6 +208,6 @@ private fun AppRootContent(projectRepository: ProjectRepository, nodeRepository:
     }
     LoadErrorDialog(load)
     LoadErrorDialog(nodesLoad)
-    if (showObligations || showCalendar || selectedProjectId == null) LoadErrorDialog(financialPeopleLoad)
+    if (showAttention || showObligations || showCalendar || selectedProjectId == null) LoadErrorDialog(financialPeopleLoad)
     if (showAttention || showCalendar || showObligations) LoadErrorDialog(peopleLoad)
 }

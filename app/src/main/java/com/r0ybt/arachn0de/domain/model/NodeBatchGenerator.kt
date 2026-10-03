@@ -17,9 +17,10 @@ data class NodeBatchParameters(
     val temporalRule: BatchTemporalRule = BatchTemporalRule.NONE,
     val firstDueAt: Long? = null,
     val obligation: Obligation? = null,
+    val priority: Priority = Priority.NONE,
 )
 
-data class GeneratedNodeSpec(val title: String, val description: String, val purpose: NodePurpose, val dueAt: Long?, val obligation: Obligation? = null)
+data class GeneratedNodeSpec(val title: String, val description: String, val purpose: NodePurpose, val dueAt: Long?, val obligation: Obligation? = null, val priority: Priority = Priority.NONE)
 
 /** Finite, pure generation. The explicit zone belongs to this calculation, not persisted Nodes. */
 object NodeBatchGenerator {
@@ -48,15 +49,17 @@ object NodeBatchGenerator {
                 NumberingMode.SUFFIX -> "$base $number"
             }
             validateTitle(title)
-            GeneratedNodeSpec(title, p.description, p.purpose, anchor?.let { dueAt(it, p.temporalRule, index, zone) }, p.obligation)
+            GeneratedNodeSpec(title, p.description, p.purpose, anchor?.let { dueAt(it, p.temporalRule, index, zone) }, p.obligation, if (p.purpose == NodePurpose.ACTION) p.priority else Priority.NONE)
         }
     }
 
     fun validateSpecs(specs: List<GeneratedNodeSpec>) {
         require(specs.size in 1..MAX_BATCH_SIZE) { "La cantidad debe estar entre 1 y $MAX_BATCH_SIZE." }
+        require(specs.map { it.priority }.distinct().size == 1) { "El lote debe compartir prioridad." }
         require(specs.map { it.obligation }.distinct().size == 1) { "Todo el lote debe compartir la misma capacidad financiera, monto y moneda." }
         specs.forEach {
             require(it.purpose == NodePurpose.ACTION || it.obligation == null) { "Una nota no puede ser obligación." }
+            require(it.purpose == NodePurpose.ACTION || it.priority == Priority.NONE) { "Una nota no admite prioridad." }
             validateTitle(it.title)
             require(it.title == it.title.trim()) { "El título generado contiene espacios en sus extremos." }
             require(it.purpose != NodePurpose.NOTE || it.dueAt == null) { "Las notas no permiten generación temporal." }

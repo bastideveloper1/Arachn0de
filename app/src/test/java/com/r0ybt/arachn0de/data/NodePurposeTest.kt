@@ -115,7 +115,7 @@ class NodePurposeTest {
         NodeInvariants.install(sql)
         helper.close()
         open()
-        assertEquals(11, db.openHelper.readableDatabase.version)
+        assertEquals(12, db.openHelper.readableDatabase.version)
         assertEquals(NodeEntity("leaf","old","root","Task","Details",true,9,110,160,11,21), db.nodeDao().getById("leaf"))
         assertEquals(NodeEntity("root","old",null,"Layer","Content",false,7,100,150,10,20), db.nodeDao().getById("root"))
         assertEquals(8, db.projectDao().getById("old")!!.position)

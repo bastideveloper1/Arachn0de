@@ -10,7 +10,7 @@ import kotlinx.coroutines.withContext
 
 /** Recalculate once per persisted snapshot/clock emission, off the UI thread. */
 @Composable
-internal fun rememberAttention(tree: NodeTreeSnapshot, now: Long): State<AttentionSnapshot?> =
-    produceState<AttentionSnapshot?>(null, tree, now) {
-        value = withContext(Dispatchers.Default) { AttentionSnapshot(tree, now) }
+internal fun rememberAttention(tree: NodeTreeSnapshot, now: Long, zoneId: String = java.util.TimeZone.getDefault().id): State<AttentionSnapshot?> =
+    produceState<AttentionSnapshot?>(null, tree, now, zoneId) {
+        value = withContext(Dispatchers.Default) { AttentionSnapshot(tree, now, java.util.TimeZone.getTimeZone(zoneId)) }
     }

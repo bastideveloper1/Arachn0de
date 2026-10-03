@@ -41,10 +41,12 @@ data class NodeEntity(
     @ColumnInfo(defaultValue = "'ACTION'") val purpose: String = "ACTION",
     val amountMinor: Long? = null,
     val currencyCode: String? = null,
+    @ColumnInfo(defaultValue = "'NONE'") val priority: String = "NONE",
 )
 
 internal fun NodeEntity.toNode(hasChildren: Boolean) = Node(
     id, projectId, parentId, title, description, isCompleted,
     position, createdAt, updatedAt, hasChildren, startAt, dueAt, com.r0ybt.arachn0de.domain.model.NodePurpose.valueOf(purpose),
     amountMinor?.let { com.r0ybt.arachn0de.domain.model.Obligation(it, checkNotNull(currencyCode)) },
+    com.r0ybt.arachn0de.domain.model.Priority.valueOf(priority),
 )

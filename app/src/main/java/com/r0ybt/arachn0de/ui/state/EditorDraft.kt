@@ -19,7 +19,9 @@ internal class EditorDraft(
     obligation: com.r0ybt.arachn0de.domain.model.Obligation? = null,
     val moneyLocaleTag: String = java.util.Locale.getDefault().toLanguageTag(),
     val hadObligation: Boolean = obligation != null,
+    priority: com.r0ybt.arachn0de.domain.model.Priority = com.r0ybt.arachn0de.domain.model.Priority.NONE,
 ) {
+    var priority by mutableStateOf(priority)
     var tagIds by mutableStateOf(emptyList<String>())
     var responsibleIds by mutableStateOf(emptyList<String>())
     var showResponsible by mutableStateOf(false)
@@ -47,7 +49,7 @@ internal class EditorDraft(
         return com.r0ybt.arachn0de.data.local.RecurrenceRuleEntity(creationId, projectId, parentId, title.trim(), description.trim(),
             money?.amountMinor, money?.currencyCode, start, recurrenceFrequency, interval, end, 0, "ACTIVE", zone,
             time.get(java.util.Calendar.HOUR_OF_DAY) * 60 + time.get(java.util.Calendar.MINUTE),
-            if (startAt != null && dueAt != null) Math.subtractExact(dueAt!!, startAt!!) else null).also {
+            if (startAt != null && dueAt != null) Math.subtractExact(dueAt!!, startAt!!) else null, priority = priority.name).also {
                 com.r0ybt.arachn0de.data.repository.RecurrenceRepository.validate(it)
             }
     }
@@ -62,12 +64,15 @@ internal class EditorDraft(
         val Saver = listSaver<EditorDraft?, String>(
             save = {
                 if (it == null) emptyList()
-                else listOf(it.id.orEmpty(), it.parentId.orEmpty(), it.title, it.description, it.creationId, it.startAt?.toString().orEmpty(), it.dueAt?.toString().orEmpty(), it.purpose.name, it.financialEnabled.toString(), it.amountText, it.currencyCode, it.moneyLocaleTag, it.hadObligation.toString(), it.financialRemovalConfirmed.toString(), it.showResponsible.toString()) + listOf("__recurrence_v1", it.recurrenceFrequency, it.recurrenceInterval, it.recurrenceStart, it.recurrenceEnd) + listOf("__tags_v1", it.tagIds.size.toString()) + it.tagIds + it.responsibleIds
+                else listOf(it.id.orEmpty(), it.parentId.orEmpty(), it.title, it.description, it.creationId, it.startAt?.toString().orEmpty(), it.dueAt?.toString().orEmpty(), it.purpose.name, it.financialEnabled.toString(), it.amountText, it.currencyCode, it.moneyLocaleTag, it.hadObligation.toString(), it.financialRemovalConfirmed.toString(), it.showResponsible.toString()) + listOf("__recurrence_v1", it.recurrenceFrequency, it.recurrenceInterval, it.recurrenceStart, it.recurrenceEnd) + listOf("__priority_v1", it.priority.name) + listOf("__tags_v1", it.tagIds.size.toString()) + it.tagIds + it.responsibleIds
             },
-            restore = {
+            restore = { stored ->
+                val priority = if (stored.getOrNull(20) == "__priority_v1") com.r0ybt.arachn0de.domain.model.Priority.valueOf(stored[21]) else com.r0ybt.arachn0de.domain.model.Priority.NONE
+                val it = if (stored.getOrNull(20) == "__priority_v1") stored.take(20) + stored.drop(22) else stored
                 if (it.isEmpty()) null
                 else EditorDraft(it[0].ifEmpty { null }, it[1].ifEmpty { null }, it[2], it[3], it[4], it.getOrNull(5)?.toLongOrNull(), it.getOrNull(6)?.toLongOrNull(), it.getOrNull(7)?.let(com.r0ybt.arachn0de.domain.model.NodePurpose::valueOf) ?: com.r0ybt.arachn0de.domain.model.NodePurpose.ACTION,
                     moneyLocaleTag = it.getOrNull(11) ?: java.util.Locale.getDefault().toLanguageTag(), hadObligation = it.getOrNull(12)?.toBoolean() ?: false).apply {
+                    this.priority = priority
                     financialEnabled = it.getOrNull(8)?.toBoolean() ?: false
                     amountText = it.getOrNull(9).orEmpty(); currencyCode = it.getOrNull(10) ?: "CLP"
                     financialRemovalConfirmed = it.getOrNull(13)?.toBoolean() ?: false

@@ -1737,3 +1737,138 @@ ni se ejecutó lint completo ni se arreglaron esos fallos históricos.
 Queda validación manual de Historial desde tarjeta/detalle/Calendar/Attention/
 Obligaciones, recreación, fechas locales y teclado en un dispositivo real.
 Versión conservada: 0.2.2 / código 4; sin commit, push, tag o Release.
+
+
+## Priority y Attention 2.0
+
+Priority es una decisión explícita del usuario, independiente de la urgencia temporal:
+`NONE`, `LOW`, `MEDIUM`, `HIGH`; por defecto `NONE`. No hay URGENT, puntuaciones,
+métricas ni cambios de actor. Solo ACTION hoja tiene prioridad operativa, incluidas
+obligaciones y ocurrencias reales. Convertir a NOTE o añadir hijos conserva el valor
+latente, como las fechas; deja de mostrarse, filtrarse como prioridad o producir
+señales. Al volver a ACTION hoja recupera su valor. No se hereda a hijos.
+
+Room v12 añade `priority TEXT NOT NULL DEFAULT 'NONE'` a nodes y recurrence_rules
+mediante migración explícita 11→12. No reconstruye tablas ni cambia relaciones,
+triggers, índices o eventos. Cambiar prioridad actualiza updatedAt sin NodeEvent.
+El editor y Batch usan un selector compacto; los indicadores usan la paleta existente.
+Los borradores y filtros sobreviven a recreación de actividad.
+
+NodeFilter combina prioridad opcional mediante AND con tiempo, responsables,
+completado y etiquetas. null significa todas; NONE significa ACTION hoja sin
+prioridad. Proyecto/Capa conserva ámbito y ancestros de contexto. Calendar conserva
+su elegibilidad por fechas; una prioridad alta sin fecha no crea una entrada.
+Limpiar filtros también restablece prioridad. Attention reutiliza el mismo filtro.
+Recurrence guarda prioridad en la plantilla: editarla afecta solo ocurrencias futuras,
+resolviendo antes las vencidas pendientes; las materializadas conservan su snapshot.
+Batch asigna una misma prioridad a cada tarea dentro de la transacción existente.
+Backup JSON v5 guarda prioridad de Nodes y reglas, conserva NodeEvents sin cambios;
+lectura v1–v4 asigna NONE. Valores de enum inválidos se rechazan antes del restore.
+
+AttentionReason define OVERDUE, DUE_TODAY, UPCOMING, HIGH_PRIORITY y MEDIUM_PRIORITY.
+Solo entran ACTION hoja pendientes. OVERDUE mantiene la comparación estricta
+now > dueAt; UPCOMING mantiene el horizonte inclusivo de 24 horas de TaskTemporal.
+Una tarea todavía programada no obtiene razón temporal hasta su inicio. DUE_TODAY
+usa día civil local, siempre que no esté atrasada ni programada, y sustituye UPCOMING
+para evitar dos razones temporales del mismo vencimiento. HIGH incluye también
+sin fecha, fecha lejana y programadas. MEDIUM se añade solo cuando ya existe razón
+temporal; LOW/NONE no incluyen por sí solas. Cada tarea conserva varias razones
+explicables, pero aparece una vez y cuenta una vez. No entran reglas abstractas.
+
+Secciones en orden: atrasadas, vencen hoy, próximas, prioridad alta sin señal temporal.
+Dentro: vencimiento ascendente con null al final, prioridad descendente, createdAt,
+ID. No se usa puntuación compuesta. El resumen mantiene upcoming para hoy/próximas
+y agrega priorityOnly; total suma categorías disjuntas. La propagación de conteos es
+iterativa desde hojas, sin modificar prioridad de capas/proyectos. La ruta conserva
+el proyecto y sus ancestros; obligaciones mantienen sus importes individuales sin
+agregación monetaria ni mezcla de monedas. Se muestran responsables y etiquetas.
+
+La proyección usa el snapshot compartido, sin consultas por tarjeta; cálculo/filtro
+fuera del hilo principal, propagación O(n), orden O(k log k), caminos bajo demanda.
+Una identidad de snapshot y filtro evita mezclar tarjetas antiguas con razones nuevas
+al completar o editar. Se prueba una jerarquía de 10.000 niveles sin recursión.
+Limitaciones V1: no desempate por score, prioridades heredadas, métricas, sprints,
+planificación automática o snapshots históricos de prioridad. El reloj compartido
+revalida en primer plano cada minuto como máximo, además de cambios temporales,
+reanudación y broadcasts de zona/reloj; cambiar el día civil puede tardar hasta un
+minuto en reflejarse. Queda revisión visual y de teclado en dispositivo físico.
+
+Pruebas nuevas: PriorityAttentionTest, PriorityRepositoryTest, PriorityMigrationTest,
+PriorityBackupTest y PriorityUiTest (35 ejecuciones; persistencia/backup/migración
+incluyen API 24/28). Cubren política y orden, razones múltiples, exclusiones,
+propagación profunda, filtros combinados, prioridad latente, obligaciones/historial,
+atomicidad Batch/editor, recurrence futura, migración y backups v1–v5, recreación y
+actualización reactiva de Attention.
+
+Archivos de este bloque (inventario final):
+
+- `app/src/main/java/com/r0ybt/arachn0de/backup/BackupData.kt`
+- `app/src/main/java/com/r0ybt/arachn0de/backup/BackupJson.kt`
+- `app/src/main/java/com/r0ybt/arachn0de/data/local/Arachn0deDatabase.kt`
+- `app/src/main/java/com/r0ybt/arachn0de/data/local/NodeDao.kt`
+- `app/src/main/java/com/r0ybt/arachn0de/data/local/NodeEntity.kt`
+- `app/src/main/java/com/r0ybt/arachn0de/data/local/RecurrenceEntity.kt`
+- `app/src/main/java/com/r0ybt/arachn0de/data/repository/NodeRepository.kt`
+- `app/src/main/java/com/r0ybt/arachn0de/data/repository/RecurrenceRepository.kt`
+- `app/src/main/java/com/r0ybt/arachn0de/domain/model/AttentionSnapshot.kt`
+- `app/src/main/java/com/r0ybt/arachn0de/domain/model/Node.kt`
+- `app/src/main/java/com/r0ybt/arachn0de/domain/model/NodeBatchGenerator.kt`
+- `app/src/main/java/com/r0ybt/arachn0de/domain/model/NodeFilters.kt`
+- `app/src/main/java/com/r0ybt/arachn0de/ui/AppRoot.kt`
+- `app/src/main/java/com/r0ybt/arachn0de/ui/AttentionScreen.kt`
+- `app/src/main/java/com/r0ybt/arachn0de/ui/CalendarFiltersDialog.kt`
+- `app/src/main/java/com/r0ybt/arachn0de/ui/CalendarScreen.kt`
+- `app/src/main/java/com/r0ybt/arachn0de/ui/EditDialogs.kt`
+- `app/src/main/java/com/r0ybt/arachn0de/ui/NodeBatchDialog.kt`
+- `app/src/main/java/com/r0ybt/arachn0de/ui/NodeComponents.kt`
+- `app/src/main/java/com/r0ybt/arachn0de/ui/ProjectScreen.kt`
+- `app/src/main/java/com/r0ybt/arachn0de/ui/RecurrenceUi.kt`
+- `app/src/main/java/com/r0ybt/arachn0de/ui/ScopeFiltersDialog.kt`
+- `app/src/main/java/com/r0ybt/arachn0de/ui/state/AttentionState.kt`
+- `app/src/main/java/com/r0ybt/arachn0de/ui/state/CalendarFilterState.kt`
+- `app/src/main/java/com/r0ybt/arachn0de/ui/state/EditorDraft.kt`
+- `app/src/main/java/com/r0ybt/arachn0de/ui/state/NodeActions.kt`
+- `app/src/main/java/com/r0ybt/arachn0de/ui/state/NodeBatchDraft.kt`
+- `app/src/test/java/com/r0ybt/arachn0de/backup/BackupFormatTest.kt`
+- `app/src/test/java/com/r0ybt/arachn0de/backup/BackupRepositoryTest.kt`
+- `app/src/test/java/com/r0ybt/arachn0de/backup/NodeEventBackupTest.kt`
+- `app/src/test/java/com/r0ybt/arachn0de/backup/RecurrenceBackupTest.kt`
+- `app/src/test/java/com/r0ybt/arachn0de/backup/TagsBackupTest.kt`
+- `app/src/test/java/com/r0ybt/arachn0de/data/AttentionRepositoryTest.kt`
+- `app/src/test/java/com/r0ybt/arachn0de/data/CalendarFiltersRepositoryTest.kt`
+- `app/src/test/java/com/r0ybt/arachn0de/data/CalendarRepositoryTest.kt`
+- `app/src/test/java/com/r0ybt/arachn0de/data/FinancialRepositoryTest.kt`
+- `app/src/test/java/com/r0ybt/arachn0de/data/NodeBatchRepositoryTest.kt`
+- `app/src/test/java/com/r0ybt/arachn0de/data/NodeEventMigrationTest.kt`
+- `app/src/test/java/com/r0ybt/arachn0de/data/NodeMigrationTest.kt`
+- `app/src/test/java/com/r0ybt/arachn0de/data/NodePurposeTest.kt`
+- `app/src/test/java/com/r0ybt/arachn0de/data/ObligationMigrationTest.kt`
+- `app/src/test/java/com/r0ybt/arachn0de/data/ObligationRepositoryTest.kt`
+- `app/src/test/java/com/r0ybt/arachn0de/data/PersonRepositoryTest.kt`
+- `app/src/test/java/com/r0ybt/arachn0de/data/RecurrenceMigrationTest.kt`
+- `app/src/test/java/com/r0ybt/arachn0de/data/TagMigrationTest.kt`
+- `app/src/test/java/com/r0ybt/arachn0de/data/TaskDatesRepositoryTest.kt`
+- `app/src/test/java/com/r0ybt/arachn0de/export/NodeCopyUiTest.kt`
+- `app/src/test/java/com/r0ybt/arachn0de/report/ObligationReportUiTest.kt`
+- `app/schemas/com.r0ybt.arachn0de.data.local.Arachn0deDatabase/12.json`
+- `app/src/main/java/com/r0ybt/arachn0de/data/local/PriorityMigration11To12.kt`
+- `app/src/main/java/com/r0ybt/arachn0de/domain/model/Priority.kt`
+- `app/src/main/java/com/r0ybt/arachn0de/ui/PriorityUi.kt`
+- `app/src/test/java/com/r0ybt/arachn0de/backup/PriorityBackupTest.kt`
+- `app/src/test/java/com/r0ybt/arachn0de/data/PriorityMigrationTest.kt`
+- `app/src/test/java/com/r0ybt/arachn0de/data/PriorityRepositoryTest.kt`
+- `app/src/test/java/com/r0ybt/arachn0de/domain/PriorityAttentionTest.kt`
+- `app/src/test/java/com/r0ybt/arachn0de/ui/PriorityUiTest.kt`
+
+Validación de Priority/Attention 2.0: 384 pruebas dirigidas pasaron; assembleDebug
+pasó y git diff --check pasó. La suite completa se ejecutó una sola vez: 557 casos,
+552 pasaron, 5 fallaron (0 omitidos). Coinciden con los cinco fallos históricos:
+ScrollRestorationTest.dashboardRetainsScrollAcrossProjectVisitAndRecreation,
+ScrollRestorationTest.mapRetainsScrollWhileClosedAndAcrossRecreation,
+LargeListsTest.largeTaskLayerScrollsWithoutNavigatingIntoLeaf,
+LargeListsTest.projectListLongPressDragReordersByStableId y
+MvpReadinessTest.narrowDashboardAndDrawerExposeNoNonfunctionalFeatures.
+No se observaron regresiones nuevas ni errores por memoria. Robolectric emitió
+una advertencia de decoder sin fallo nuevo asociado. No se repitió la suite ni
+se ejecutó lint completo o se modificaron los fallos históricos. Versión conservada
+0.2.2 / código 4; sin commit, push, tag o Release.

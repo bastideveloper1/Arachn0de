@@ -7,10 +7,10 @@ import java.util.UUID
 
 internal class NodeActions(private val repository: NodeRepository, scope: CoroutineScope) {
     val operation = OperationState(scope)
-    fun save(projectId: String, parentId: String?, id: String?, title: String, description: String, creationId: String = UUID.randomUUID().toString(), startAt: Long? = null, dueAt: Long? = null, editDates: Boolean = true, purpose: com.r0ybt.arachn0de.domain.model.NodePurpose = com.r0ybt.arachn0de.domain.model.NodePurpose.ACTION, obligation: com.r0ybt.arachn0de.domain.model.Obligation? = null, removeObligation: Boolean = false, responsibleIds: Set<String> = emptySet(), tagIds: Set<String> = emptySet(), onSuccess: () -> Unit) =
+    fun save(projectId: String, parentId: String?, id: String?, title: String, description: String, creationId: String = UUID.randomUUID().toString(), startAt: Long? = null, dueAt: Long? = null, editDates: Boolean = true, purpose: com.r0ybt.arachn0de.domain.model.NodePurpose = com.r0ybt.arachn0de.domain.model.NodePurpose.ACTION, obligation: com.r0ybt.arachn0de.domain.model.Obligation? = null, removeObligation: Boolean = false, responsibleIds: Set<String> = emptySet(), tagIds: Set<String> = emptySet(), priority: com.r0ybt.arachn0de.domain.model.Priority = com.r0ybt.arachn0de.domain.model.Priority.NONE, onSuccess: () -> Unit) =
         operation.submit("No se pudo guardar el elemento. Tus cambios siguen en el formulario.", {
-            if (id == null) { repository.createNode(projectId, parentId, title, description, creationId, startAt, dueAt, purpose, obligation, responsibleIds, tagIds); true }
-            else repository.updateEditor(id, title, description, startAt, dueAt, obligation, removeObligation, editDates, tagIds)
+            if (id == null) { repository.createNode(projectId, parentId, title, description, creationId, startAt, dueAt, purpose, obligation, responsibleIds, tagIds, if (purpose == com.r0ybt.arachn0de.domain.model.NodePurpose.ACTION) priority else com.r0ybt.arachn0de.domain.model.Priority.NONE); true }
+            else repository.updateEditor(id, title, description, startAt, dueAt, obligation, removeObligation, editDates, tagIds, if (editDates) priority else null)
         }, onSuccess)
 
     fun createRecurrence(projectId: String, draft: EditorDraft, onSuccess: () -> Unit) =

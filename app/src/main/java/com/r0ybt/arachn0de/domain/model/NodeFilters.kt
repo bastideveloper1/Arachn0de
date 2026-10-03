@@ -15,8 +15,9 @@ enum class TimeFilter { TODAY, TOMORROW, THIS_WEEK, NEXT_WEEK, THIS_MONTH, PREVI
 enum class CompletionFilter { ALL, PENDING, COMPLETED }
 
 /** Membership only: each consuming view defines eligible Nodes and its temporal field. */
-data class NodeFilter(val range: TemporalRange? = null, val personId: String? = null, val completion: CompletionFilter = CompletionFilter.ALL, val tagId: String? = null) {
+data class NodeFilter(val range: TemporalRange? = null, val personId: String? = null, val completion: CompletionFilter = CompletionFilter.ALL, val tagId: String? = null, val priority: Priority? = null) {
     fun matches(node: Node, responsibleIds: Set<String>, temporalInstant: Long? = node.dueAt, tagIds: Set<String> = emptySet()): Boolean =
+        (priority == null || (node.isCompletable && node.effectivePriority == priority)) &&
         (tagId == null || tagId in tagIds) &&
         (range == null || (temporalInstant != null && temporalInstant in range)) &&
             (personId == null || personId in responsibleIds) &&

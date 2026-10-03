@@ -86,7 +86,7 @@ private fun RecurrenceRuleDialog(rule: RecurrenceRuleEntity, repository: Recurre
     var confirmRemoval by rememberSaveable(rule.id) { mutableStateOf(false) }
     var finish by rememberSaveable(rule.id) { mutableStateOf(false) }
     val editorState = rememberSaveable(rule.id, stateSaver = EditorDraft.Saver) { mutableStateOf<EditorDraft?>(EditorDraft(rule.id, rule.parentId, rule.title, rule.description,
-        obligation = rule.amountMinor?.let { Obligation(it, checkNotNull(rule.currencyCode)) })) }
+        priority = Priority.valueOf(rule.priority), obligation = rule.amountMinor?.let { Obligation(it, checkNotNull(rule.currencyCode)) })) }
     val editor = checkNotNull(editorState.value)
     var destinationProject by rememberSaveable(rule.id) { mutableStateOf(rule.projectId) }
     var projects by remember(repository) { mutableStateOf(emptyList<com.r0ybt.arachn0de.data.local.ProjectEntity>()) }
@@ -106,7 +106,7 @@ private fun RecurrenceRuleDialog(rule: RecurrenceRuleEntity, repository: Recurre
     } }
     val saveTemplate: () -> Unit = {
         operation.submit("No se pudo editar la regla. Revisa el destino y los datos.", {
-            repository.editTemplate(rule.id, destinationProject, destination, editor.title, editor.description, editor.obligation(), editor.responsibleIds.toSet(), editor.tagIds.toSet()); true
+            repository.editTemplate(rule.id, destinationProject, destination, editor.title, editor.description, editor.obligation(), editor.responsibleIds.toSet(), editor.tagIds.toSet(), editor.priority); true
         }, { edit = false; confirmRemoval = false })
     }
     AlertDialog(containerColor = Arachn0deColors.Surface,
@@ -118,6 +118,7 @@ private fun RecurrenceRuleDialog(rule: RecurrenceRuleEntity, repository: Recurre
             if (rule.status != "FINISHED") {
                 TextButton(enabled = !operation.busy, onClick = { edit = !edit }) { Text("Editar futuras ocurrencias") }
                 if (edit) {
+                    PrioritySelector(editor.priority, { editor.priority = checkNotNull(it) }, enabled = !operation.busy)
                     val tagState by remember(repository) { repository.tags.observe() }.collectAsState(initial = TagState())
                     TagSelector(tagState.tags, editor.tagIds.toSet(), { editor.tagIds = it.toList() }, repository = repository.tags)
                     OutlinedTextField(editor.title, { editor.title = it }, enabled = !operation.busy, label = { Text("Título futuro") })

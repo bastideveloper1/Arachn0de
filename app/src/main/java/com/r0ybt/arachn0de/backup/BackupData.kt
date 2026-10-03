@@ -51,6 +51,7 @@ internal fun BackupData.validate(): List<NodeEntity> {
             val parent = requireNotNull(byId[parentId]) { "Padre ausente." }
             require(parent.projectId == node.projectId && parent.id != node.id && parent.purpose == "ACTION" && parent.amountMinor == null) { "Jerarquía inválida." }
         }
+        com.r0ybt.arachn0de.domain.model.Priority.valueOf(node.priority)
         require(node.purpose == "ACTION" || node.purpose == "NOTE") { "Propósito desconocido." }
         require(!node.isCompleted || (node.purpose == "ACTION" && children[node.id].isNullOrEmpty())) { "Completado inválido." }
         require(node.purpose != "NOTE" || children[node.id].isNullOrEmpty()) { "Nota con hijos." }

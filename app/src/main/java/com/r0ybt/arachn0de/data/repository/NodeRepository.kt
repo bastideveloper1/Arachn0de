@@ -5,6 +5,7 @@ import com.r0ybt.arachn0de.data.local.Arachn0deDatabase
 import com.r0ybt.arachn0de.data.local.NodePersonEntity
 import com.r0ybt.arachn0de.data.local.NodeEventEntity
 import com.r0ybt.arachn0de.data.local.toEvent
+import com.r0ybt.arachn0de.domain.model.Priority
 import com.r0ybt.arachn0de.domain.model.NodeEventType
 import com.r0ybt.arachn0de.data.local.NodeEntity
 import com.r0ybt.arachn0de.data.local.toNode
@@ -142,16 +143,18 @@ class NodeRepository(
         obligation: Obligation? = null,
         responsibleIds: Set<String> = emptySet(),
         tagIds: Set<String> = emptySet(),
+        priority: Priority = Priority.NONE,
     ): Node = database.withTransaction {
         com.r0ybt.arachn0de.domain.model.TaskTemporal.validateDates(startAt, dueAt)
         require(purpose == NodePurpose.ACTION || obligation == null) { "Una nota no puede ser obligación." }
+        require(purpose == NodePurpose.ACTION || priority == Priority.NONE) { "Una nota no admite prioridad." }
         val normalizedTitle = validateTitle(title)
         require(creationId.isNotBlank())
         nodeDao.getById(creationId)?.let { existing ->
             check(existing.projectId == projectId && existing.parentId == parentId &&
                 existing.title == normalizedTitle && existing.description == description &&
                 existing.startAt == startAt && existing.dueAt == dueAt && existing.purpose == purpose.name &&
-                existing.amountMinor == obligation?.amountMinor && existing.currencyCode == obligation?.currencyCode &&
+                existing.amountMinor == obligation?.amountMinor && existing.currencyCode == obligation?.currencyCode && existing.priority == priority.name &&
                 database.personDao().assignmentIds(existing.id).toSet() == responsibleIds &&
                 database.tagDao().nodeIds(existing.id).toSet() == tagIds) {
                 "Creation already committed with different content or destination"
@@ -168,7 +171,7 @@ class NodeRepository(
             title = normalizedTitle, description = description, isCompleted = false,
             position = nextPosition(projectId, parentId), createdAt = now, updatedAt = now,
             startAt = startAt, dueAt = dueAt, purpose = purpose.name,
-            amountMinor = obligation?.amountMinor, currencyCode = obligation?.currencyCode,
+            amountMinor = obligation?.amountMinor, currencyCode = obligation?.currencyCode, priority = priority.name,
         )
         reopenBeforeConversion(parentId, now)
         nodeDao.insert(entity)
@@ -205,7 +208,7 @@ class NodeRepository(
                     check(node.projectId == projectId && node.parentId == parentId && node.title == spec.title &&
                         node.description == spec.description && node.purpose == spec.purpose.name &&
                         node.startAt == null && node.dueAt == spec.dueAt &&
-                        node.amountMinor == spec.obligation?.amountMinor && node.currencyCode == spec.obligation?.currencyCode &&
+                        node.amountMinor == spec.obligation?.amountMinor && node.currencyCode == spec.obligation?.currencyCode && node.priority == spec.priority.name &&
                         database.personDao().assignmentIds(node.id).toSet() == people && database.tagDao().nodeIds(node.id).toSet() == labels) {
                         "El lote ya fue creado con otros datos."
                     }
@@ -226,7 +229,7 @@ class NodeRepository(
                 specs.mapIndexed { index, spec ->
                     val entity = NodeEntity(ids[index], projectId, parentId, spec.title, spec.description,
                         false, maximum + 1 + index, now, now, startAt = null, dueAt = spec.dueAt, purpose = spec.purpose.name,
-                        amountMinor = spec.obligation?.amountMinor, currencyCode = spec.obligation?.currencyCode)
+                        amountMinor = spec.obligation?.amountMinor, currencyCode = spec.obligation?.currencyCode, priority = spec.priority.name)
                     reopenBeforeConversion(parentId, now)
                     nodeDao.insert(entity)
                     appendEvent(entity.id, NodeEventType.CREATED, now)
@@ -265,12 +268,22 @@ class NodeRepository(
     }
 
     suspend fun updateEditor(id: String, title: String, description: String, startAt: Long?, dueAt: Long?,
-        obligation: Obligation?, removeObligation: Boolean, editDates: Boolean, tagIds: Set<String>): Boolean = database.withTransaction {
+        obligation: Obligation?, removeObligation: Boolean, editDates: Boolean, tagIds: Set<String>, priority: Priority? = null): Boolean = database.withTransaction {
         tags.validate(tagIds)
         val updated = if (editDates) updateLeaf(id, title, description, startAt, dueAt, obligation, removeObligation)
             else updateNode(id, title, description)
-        if (updated) tags.assignNode(id, tagIds)
+        if (updated) {
+            priority?.let { check(setPriority(id, it)) { "Este elemento ya no admite prioridad." } }
+            tags.assignNode(id, tagIds)
+        }
         updated
+    }
+
+    suspend fun setPriority(id: String, priority: Priority): Boolean = database.withTransaction {
+        val current = nodeDao.getById(id) ?: return@withTransaction false
+        if (current.purpose != NodePurpose.ACTION.name || nodeDao.hasChildren(current.projectId, id)) return@withTransaction false
+        if (current.priority == priority.name) return@withTransaction true
+        nodeDao.updatePriority(id, priority.name, currentTimeMillis()) == 1
     }
 
     /** Conversion retains identity, content, dates, position and assignments; completion is cleared. */

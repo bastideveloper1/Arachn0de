@@ -26,7 +26,7 @@ internal fun NodeBatchDialog(
 ) {
     val zone = TimeZone.getDefault()
     val generated = remember(draft.baseName, draft.quantity, draft.numberingMode, draft.startNumber,
-        draft.purpose, draft.description, draft.dates.financialEnabled, draft.dates.amountText, draft.dates.currencyCode, draft.temporalRule, draft.dates.dueAt, zone.id) {
+        draft.purpose, draft.description, draft.dates.financialEnabled, draft.dates.amountText, draft.dates.currencyCode, draft.dates.priority, draft.temporalRule, draft.dates.dueAt, zone.id) {
         runCatching { NodeBatchGenerator.generate(draft.parameters(), zone) }
     }
     val specs = generated.getOrNull()
@@ -36,6 +36,7 @@ internal fun NodeBatchDialog(
         title = { Text("Crear varios") },
         text = {
             Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                if (draft.purpose == NodePurpose.ACTION) PrioritySelector(draft.dates.priority, { draft.dates.priority = checkNotNull(it) }, enabled = !busy)
                 tagRepository?.let { repo -> val state by remember(repo) { repo.observe() }.collectAsState(initial = com.r0ybt.arachn0de.domain.model.TagState())
                     TagSelector(state.tags, draft.dates.tagIds.toSet(), { draft.dates.tagIds = it.toList() }, repository = repo) }
                 OutlinedTextField(draft.baseName, { draft.baseName = it }, label = { Text("Nombre base") }, singleLine = true, enabled = !busy)

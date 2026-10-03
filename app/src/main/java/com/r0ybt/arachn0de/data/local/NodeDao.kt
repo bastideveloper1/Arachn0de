@@ -36,6 +36,9 @@ interface NodeDao {
     @Insert(onConflict = OnConflictStrategy.ABORT)
     suspend fun insert(node: NodeEntity)
 
+    @Query("UPDATE nodes SET priority = :priority, updatedAt = :at WHERE id = :id")
+    suspend fun updatePriority(id: String, priority: String, at: Long): Int
+
     @Query("UPDATE nodes SET title = :title, description = :description, updatedAt = :updatedAt WHERE id = :id")
     suspend fun updateContent(id: String, title: String, description: String, updatedAt: Long): Int
 

@@ -23,19 +23,22 @@ internal class NodeBatchDraft(val parentId: String?, val batchId: String = UUID.
         numberingMode,
         if (numberingMode == NumberingMode.NONE) 1 else startNumber.toIntOrNull()
             ?: throw IllegalArgumentException("El número inicial debe ser un entero de 0 o mayor."),
-        purpose, description.trim(), temporalRule, dates.dueAt, if (purpose == NodePurpose.ACTION) dates.obligation() else null,
+        purpose, description.trim(), temporalRule, dates.dueAt, if (purpose == NodePurpose.ACTION) dates.obligation() else null, if (purpose == NodePurpose.ACTION) dates.priority else Priority.NONE,
     )
 
     companion object {
         val Saver = listSaver<NodeBatchDraft?, String>(
             save = { draft -> if (draft == null) emptyList() else listOf(draft.parentId.orEmpty(), draft.batchId,
                 draft.baseName, draft.quantity, draft.numberingMode.name, draft.startNumber, draft.purpose.name,
-                draft.description, draft.temporalRule.name, draft.dates.dueAt?.toString().orEmpty(), draft.showResponsible.toString(), "financial-v1", draft.dates.financialEnabled.toString(), draft.dates.amountText, draft.dates.currencyCode, draft.dates.moneyLocaleTag) + listOf("tags-v1", draft.dates.tagIds.size.toString()) + draft.dates.tagIds + draft.responsibleIds },
-            restore = { values ->
+                draft.description, draft.temporalRule.name, draft.dates.dueAt?.toString().orEmpty(), draft.showResponsible.toString(), "financial-v1", draft.dates.financialEnabled.toString(), draft.dates.amountText, draft.dates.currencyCode, draft.dates.moneyLocaleTag) + listOf("priority-v1", draft.dates.priority.name) + listOf("tags-v1", draft.dates.tagIds.size.toString()) + draft.dates.tagIds + draft.responsibleIds },
+            restore = { stored ->
+                val priority = if (stored.getOrNull(16) == "priority-v1") Priority.valueOf(stored[17]) else Priority.NONE
+                val values = if (stored.getOrNull(16) == "priority-v1") stored.take(16) + stored.drop(18) else stored
                 if (values.isEmpty()) null else {
                     val financial = values.getOrNull(11) == "financial-v1"
                     NodeBatchDraft(values[0].ifEmpty { null }, values[1],
                         if (financial) values[15] else java.util.Locale.getDefault().toLanguageTag()).apply {
+                        dates.priority = priority
                         baseName = values[2]; quantity = values[3]; numberingMode = NumberingMode.valueOf(values[4])
                         startNumber = values[5]; purpose = NodePurpose.valueOf(values[6]); description = values[7]
                         temporalRule = BatchTemporalRule.valueOf(values[8]); dates.dueAt = values[9].toLongOrNull()

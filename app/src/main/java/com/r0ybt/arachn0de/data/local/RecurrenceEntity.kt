@@ -22,6 +22,7 @@ data class RecurrenceRuleEntity(
     val zoneId: String,
     val dueMinute: Int,
     val startOffsetMillis: Long?,
+    @ColumnInfo(defaultValue = "'NONE'") val priority: String = "NONE",
 )
 
 /** Never cascades from Nodes. A deleted Node leaves this durable materialization receipt. */

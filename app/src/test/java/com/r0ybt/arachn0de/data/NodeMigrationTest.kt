@@ -48,7 +48,7 @@ class NodeMigrationTest {
         val root = repo.createNode("project", null, "Root")
         repo.createNode("project", root.id, "Child")
         assertFalse(repo.setCompleted(root.id, true))
-        assertEquals(5, db.openHelper.readableDatabase.version)
+        assertEquals(6, db.openHelper.readableDatabase.version)
     }
 
     @Test

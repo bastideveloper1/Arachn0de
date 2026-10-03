@@ -12,6 +12,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
@@ -28,7 +29,9 @@ internal fun NodeDialog(
     isSubmitting: Boolean,
     onDismiss: () -> Unit,
     onSave: (String, String) -> Unit,
+    editDates: Boolean = true,
 ) {
+    val datePicker = rememberSaveable(draft.creationId, saver = TaskDatePickerDraft.Saver) { TaskDatePickerDraft() }
     var title by draft::title
     var description by draft::description
     val titleFocusRequester = remember { FocusRequester() }
@@ -69,6 +72,12 @@ internal fun NodeDialog(
                     modifier = Modifier.fillMaxWidth(),
                     enabled = !isSubmitting,
                 )
+                if (editDates) {
+                    TaskDatesEditor(draft, enabled = !isSubmitting, picker = datePicker)
+                    if (draft.startAt != null && draft.dueAt != null && draft.dueAt!! < draft.startAt!!) {
+                        Text("El vencimiento no puede ser anterior al inicio. Corrige las fechas para guardar.", color = Arachn0deColors.Destructive)
+                    }
+                }
                 Text(
                     text = "Un elemento sin hijos funciona como tarea. Si añade hijos, se convierte automáticamente en capa.",
                     color = Arachn0deColors.TextSecondary,
@@ -78,7 +87,8 @@ internal fun NodeDialog(
         },
         confirmButton = {
             TextButton(
-                enabled = !isSubmitting && title.trim().isNotEmpty() && TitleLimits.count(title) <= TitleLimits.NODE,
+                enabled = !isSubmitting && title.trim().isNotEmpty() && TitleLimits.count(title) <= TitleLimits.NODE &&
+                    (!editDates || draft.startAt == null || draft.dueAt == null || draft.dueAt!! >= draft.startAt!!),
                 onClick = {
                     val cleanTitle = title.trim()
                     if (!isSubmitting && cleanTitle.isNotEmpty() && TitleLimits.count(cleanTitle) <= TitleLimits.NODE) {

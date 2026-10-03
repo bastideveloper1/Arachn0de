@@ -111,6 +111,7 @@ internal fun ProjectNodeScreen(
     val currentNode = projectState.nodesById[currentNodeId]
     val currentNodes = projectState.childrenOf(currentNodeId)
     val currentProgress = projectState.progressById[currentNodeId]
+    val now = com.r0ybt.arachn0de.ui.state.rememberTaskScreenNow(currentNodes + listOfNotNull(currentNode))
     val pathNodes = currentPath.mapNotNull { projectState.nodesById[it] }
     val currentLayer = pathNodes.size
     val progressMap = projectState.progressById
@@ -292,7 +293,7 @@ internal fun ProjectNodeScreen(
                                         Button(
                                             onClick = {
                                                 if (!isSubmittingNode) {
-                                                    draft = EditorDraft(currentNode.id, currentNode.parentId, currentNode.title, currentNode.description)
+                                                    draft = EditorDraft(currentNode.id, currentNode.parentId, currentNode.title, currentNode.description, startAt = currentNode.startAt, dueAt = currentNode.dueAt)
                                                 }
                                             },
                                             enabled = !isSubmittingNode,
@@ -340,6 +341,7 @@ internal fun ProjectNodeScreen(
                                             }
                                         }
                                     }
+                                    TaskDateIndicator(currentNode, now)
                                     ResponsibleAvatars(responsibleByNode[currentNode.id].orEmpty())
                                     TextButton(
                                         enabled = !isSubmittingNode && !personActions.operation.busy && peopleLoaded && assignmentsLoaded,
@@ -385,10 +387,11 @@ internal fun ProjectNodeScreen(
                                         currentPath.add(node.id)
                                     },
                                     responsiblePeople = responsibleByNode[node.id].orEmpty(),
+                                    now = now,
                                     onResponsible = { if (!isSubmittingNode && !personActions.operation.busy && peopleLoaded && assignmentsLoaded) responsibleNodeId = node.id },
                                     onMove = { if (!isSubmittingNode) movingNodeId = node.id },
                                     onEdit = {
-                                        draft = EditorDraft(node.id, node.parentId, node.title, node.description)
+                                        draft = EditorDraft(node.id, node.parentId, node.title, node.description, startAt = node.startAt, dueAt = node.dueAt)
                                     },
                                     canMoveUp = node.id != renderNodes.firstOrNull()?.id && !isSubmittingNode,
                                     canMoveDown = node.id != renderNodes.lastOrNull()?.id && !isSubmittingNode,
@@ -465,13 +468,15 @@ internal fun ProjectNodeScreen(
         NodeDialog(
             draft = editor,
             isSubmitting = isSubmittingNode,
+            editDates = editor.id == null || projectState.nodesById[editor.id]?.hasChildren == false,
             onDismiss = {
                 if (!isSubmittingNode) {
                     draft = null
                 }
             },
             onSave = { title, description ->
-                actions.save(project.id, editor.parentId, editor.id, title, description, editor.creationId) {
+                actions.save(project.id, editor.parentId, editor.id, title, description, editor.creationId, editor.startAt, editor.dueAt,
+                    editDates = editor.id == null || projectState.nodesById[editor.id]?.hasChildren == false) {
                     draft = null
                 }
             },

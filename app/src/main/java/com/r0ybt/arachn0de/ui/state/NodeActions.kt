@@ -6,9 +6,10 @@ import java.util.UUID
 
 internal class NodeActions(private val repository: NodeRepository, scope: CoroutineScope) {
     val operation = OperationState(scope)
-    fun save(projectId: String, parentId: String?, id: String?, title: String, description: String, creationId: String = UUID.randomUUID().toString(), onSuccess: () -> Unit) =
+    fun save(projectId: String, parentId: String?, id: String?, title: String, description: String, creationId: String = UUID.randomUUID().toString(), startAt: Long? = null, dueAt: Long? = null, editDates: Boolean = true, onSuccess: () -> Unit) =
         operation.submit("No se pudo guardar el elemento. Tus cambios siguen en el formulario.", {
-            if (id == null) { repository.createNode(projectId, parentId, title, description, creationId); true }
+            if (id == null) { repository.createNode(projectId, parentId, title, description, creationId, startAt, dueAt); true }
+            else if (editDates) repository.updateNodeWithDates(id, title, description, startAt, dueAt)
             else repository.updateNode(id, title, description)
         }, onSuccess)
 

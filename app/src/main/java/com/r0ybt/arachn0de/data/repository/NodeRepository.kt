@@ -107,12 +107,16 @@ class NodeRepository(
         title: String,
         description: String = "",
         creationId: String = UUID.randomUUID().toString(),
+        startAt: Long? = null,
+        dueAt: Long? = null,
     ): Node = database.withTransaction {
+        com.r0ybt.arachn0de.domain.model.TaskTemporal.validateDates(startAt, dueAt)
         val normalizedTitle = validateTitle(title)
         require(creationId.isNotBlank())
         nodeDao.getById(creationId)?.let { existing ->
             check(existing.projectId == projectId && existing.parentId == parentId &&
-                existing.title == normalizedTitle && existing.description == description) {
+                existing.title == normalizedTitle && existing.description == description &&
+                existing.startAt == startAt && existing.dueAt == dueAt) {
                 "Creation already committed with different content or destination"
             }
             return@withTransaction existing.toNode(nodeDao.hasChildren(projectId, creationId))
@@ -124,6 +128,7 @@ class NodeRepository(
             id = creationId, projectId = projectId, parentId = parentId,
             title = normalizedTitle, description = description, isCompleted = false,
             position = nextPosition(projectId, parentId), createdAt = now, updatedAt = now,
+            startAt = startAt, dueAt = dueAt,
         )
         nodeDao.insert(entity)
         entity.toNode(hasChildren = false)
@@ -133,6 +138,15 @@ class NodeRepository(
     suspend fun updateNode(id: String, title: String, description: String = ""): Boolean =
         database.withTransaction {
             nodeDao.updateContent(id, validateTitle(title), description, currentTimeMillis()) == 1
+        }
+
+    /** Dates are operational only for leaves; content-only edits preserve dormant layer dates. */
+    suspend fun updateNodeWithDates(id: String, title: String, description: String, startAt: Long?, dueAt: Long?): Boolean =
+        database.withTransaction {
+            com.r0ybt.arachn0de.domain.model.TaskTemporal.validateDates(startAt, dueAt)
+            val current = nodeDao.getById(id) ?: return@withTransaction false
+            if (nodeDao.hasChildren(current.projectId, id)) return@withTransaction false
+            nodeDao.updateContentAndDates(id, validateTitle(title), description, startAt, dueAt, currentTimeMillis()) == 1
         }
 
     /** A null parent explicitly moves the node to the project root. */

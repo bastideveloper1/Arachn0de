@@ -13,19 +13,23 @@ internal class EditorDraft(
     title: String,
     description: String,
     val creationId: String = id ?: UUID.randomUUID().toString(),
+    startAt: Long? = null,
+    dueAt: Long? = null,
 ) {
     var title by mutableStateOf(title)
     var description by mutableStateOf(description)
+    var startAt by mutableStateOf(startAt)
+    var dueAt by mutableStateOf(dueAt)
 
     companion object {
         val Saver = listSaver<EditorDraft?, String>(
             save = {
                 if (it == null) emptyList()
-                else listOf(it.id.orEmpty(), it.parentId.orEmpty(), it.title, it.description, it.creationId)
+                else listOf(it.id.orEmpty(), it.parentId.orEmpty(), it.title, it.description, it.creationId, it.startAt?.toString().orEmpty(), it.dueAt?.toString().orEmpty())
             },
             restore = {
                 if (it.isEmpty()) null
-                else EditorDraft(it[0].ifEmpty { null }, it[1].ifEmpty { null }, it[2], it[3], it[4])
+                else EditorDraft(it[0].ifEmpty { null }, it[1].ifEmpty { null }, it[2], it[3], it[4], it.getOrNull(5)?.toLongOrNull(), it.getOrNull(6)?.toLongOrNull())
             },
         )
     }

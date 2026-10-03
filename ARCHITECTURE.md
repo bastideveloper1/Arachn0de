@@ -223,6 +223,8 @@ isCompleted
 position
 createdAt
 updatedAt
+startAt (opcional)
+dueAt (opcional)
 ```
 
 Desde el esquema Room 3, `isStructural` e `isCompletable` no son columnas persistidas ni parámetros de creación/edición. El dominio expone `hasChildren` derivado de las relaciones persistidas; `isStructural = hasChildren` e `isCompletable = !hasChildren` son propiedades calculadas de solo lectura.
@@ -388,7 +390,7 @@ Utilizar:
 
 Room debe proporcionar la capa de persistencia.
 
-El esquema actual es la versión 4, que incorpora el orden persistente de proyectos. Se conservan los esquemas históricos 1, 2 y 3 y sus rutas de migración; no se usa `fallbackToDestructiveMigration`.
+El esquema actual es la versión 6: v4 incorporó el orden persistente de proyectos, v5 Personas/Responsables y v6 las fechas opcionales de Nodes. Se conservan los esquemas históricos 1–5 y sus rutas de migración; no se usa `fallbackToDestructiveMigration`.
 
 ### Invariantes de nodos
 
@@ -696,7 +698,7 @@ El menú de nodo permite mover arriba/abajo un lugar entre hermanos, tanto en ra
 
 `reorderNode` lee el nodo y sus hermanos dentro de una transacción, valida el padre esperado para rechazar acciones sobre una ubicación obsoleta, intercambia vecinos y asigna posiciones contiguas 0..n−1. No se utiliza el índice visual como identidad. Un nodo ausente o con padre distinto devuelve false; mover más allá de un extremo es una operación idempotente que también puede normalizar el grupo. Se actualizan únicamente posición y fecha de modificación, nunca una entidad completa. La fecha cambia para los dos nodos intercambiados; la reparación de numeración conserva fechas históricas.
 
-La política para datos antiguos es conservar el orden visible por posición, fecha de creación e ID y compactar cada grupo de hermanos por separado. `observePreparedProjectState`, utilizado por la pantalla, normaliza todos los grupos del proyecto en una única transacción antes de emitir el contenido inicial. `observeProjectState` y los demás observadores generales siguen siendo de solo lectura. La pantalla espera la primera instantánea validada antes de mostrar una ruta restaurada. Las normalizaciones posteriores sin cambios no escriben filas. No se modifica otro proyecto ni se requiere una migración adicional para normalizar nodos. El esquema fue Room v4 por la incorporación de posiciones de proyectos; la etapa Personas + Responsables lo amplía a v5 sin cambiar ese orden.
+La política para datos antiguos es conservar el orden visible por posición, fecha de creación e ID y compactar cada grupo de hermanos por separado. `observePreparedProjectState`, utilizado por la pantalla, normaliza todos los grupos del proyecto en una única transacción antes de emitir el contenido inicial. `observeProjectState` y los demás observadores generales siguen siendo de solo lectura. La pantalla espera la primera instantánea validada antes de mostrar una ruta restaurada. Las normalizaciones posteriores sin cambios no escriben filas. No se modifica otro proyecto ni se requiere una migración adicional para normalizar nodos. El esquema fue Room v4 por la incorporación de posiciones de proyectos; Personas + Responsables lo amplió a v5 y la base temporal a v6, sin cambiar ese orden.
 
 Reordenar vuelve a normalizar el grupo dentro de la misma transacción, incluso si había posiciones duplicadas o huecos. Crear/trasladar continúa añadiendo al final mediante máximo+1; si se alcanzó `Int.MAX_VALUE`, primero compacta los hermanos dentro de esa transacción. Borrar puede dejar huecos válidos hasta la próxima preparación o reordenamiento. No se introduce un índice UNIQUE sobre posiciones: las garantías se aplican mediante Repository, y SQL externo podría volver a introducir duplicados.
 
@@ -824,7 +826,7 @@ Proyecto → Nodo → jerarquía arbitraria de Nodos → Capas de cebolla
 
 Las capas no se completan manualmente. El progreso existente se deriva de todas las tareas hoja descendientes, incluidas subcapas, sin contar los contenedores ni promediar sus porcentajes. `NodeTreeSnapshot` y los flujos del repositorio mantienen esta información reactiva. Actualmente no existe un tipo Nota ni una exclusión de hojas informativas del progreso.
 
-La base actual es local-first y offline-first, sin cuenta ni backend obligatorio: proyectos, nodos, navegación por Capas de cebolla, orden manual, drag/reorder y progreso derivado se apoyan en Room/SQLite v5, con Personas y responsables locales. Las secciones anteriores y los ajustes finales describen su implementación y las verificaciones físicas pendientes. Esta documentación no convierte esos pendientes en comprobaciones realizadas.
+La base actual es local-first y offline-first, sin cuenta ni backend obligatorio: proyectos, nodos, navegación por Capas de cebolla, orden manual, drag/reorder y progreso derivado se apoyan en Room/SQLite v6, con Personas, responsables y fechas locales. Las secciones anteriores y los ajustes finales describen su implementación y las verificaciones físicas pendientes. Esta documentación no convierte esos pendientes en comprobaciones realizadas.
 
 El repositorio ofrece `moveNode(id, parentId)` transaccional, valida el proyecto del padre y rechaza ciclos. La acción visible «Mover a…» está implementada y reutiliza esta operación. Reordenar entre hermanos y trasladar a otro padre son operaciones distintas.
 
@@ -854,13 +856,37 @@ Pruebas dirigidas: CRUD y persistencia, múltiples relaciones en ambos sentidos,
 
 Limitaciones reales: faltan comprobación física del selector Android y revisión visual en dispositivos pequeños. Un cierre abrupto del proceso durante un borrador de avatar puede dejar un archivo privado sin referencia; no hay recolector periódico de huérfanos. La restauración de borradores usa el Bundle de Android y conserva sus límites existentes. No se implementan roles, disponibilidad, contacto, autenticación, herencia ni sincronización.
 
+### Fechas de tareas y estado temporal — IMPLEMENTADO
+
+`Node` y `NodeEntity` añaden `startAt` y `dueAt` opcionales como `Long?`: instantes en epoch millis, coherentes con `createdAt`/`updatedAt`, sin guardar strings formateados ni estados temporales en Room. `TaskDatesMigration5To6` añade únicamente dos columnas INTEGER nullable a `nodes`. Se conservan proyectos, Nodes, Personas, responsables, posiciones, índices, constraints y triggers; las filas anteriores reciben fechas nulas. No hay migración destructiva.
+
+Crear/editar una tarea hoja permite seleccionar fecha mediante `DatePicker` Material, elegir hora con `TimeInput`, cambiar y quitar Inicio/Vencimiento. El día UTC del selector se combina con hora y zona local del dispositivo para obtener el instante persistido; la presentación vuelve a usar la zona local. No se guarda una zona fija por tarea: viajar/cambiar la zona modifica su representación, no el instante. Las horas inexistentes por un salto de horario se rechazan con un mensaje; ante horas repetidas Calendar elige su offset estándar, sin selector de ocurrencia en esta versión. Referencias: [selector de fecha Compose](https://developer.android.com/develop/ui/compose/components/datepickers) y [selectores de hora](https://developer.android.com/develop/ui/compose/components/time-pickers).
+
+`dueAt < startAt` es inválido cuando ambos existen; la UI muestra un error, bloquea guardar y conserva lo introducido. El repositorio vuelve a validar dentro de la transacción. `EditorDraft.Saver` incluye las fechas; `TaskDatePickerDraft` conserva campo, etapa y selección encima de las ventanas de diálogo para recuperar incluso el selector abierto. Una creación idempotente compara también fechas. Editar solo contenido de una capa conserva sus fechas dormidas; la escritura de contenido+fechas valida nuevamente que siga siendo hoja.
+
+`TaskTemporal.state(node, now)` recibe el instante explícito y aplica estas fronteras/prioridades:
+
+- Capa con hijos: sin estado temporal operativo, aunque conserve fechas.
+- Hoja completada: COMPLETADA, sin urgencia aunque haya vencido o tenga inicio futuro.
+- Hoja incompleta sin fechas: sin indicador temporal especial.
+- PROGRAMADA: `now < startAt`; sigue visible y conserva su posición. Al alcanzar `startAt` deja de estar programada.
+- VENCIDA: `now > dueAt`, después de descartar programada/completada.
+- PRÓXIMA: `now <= dueAt <= now + UPCOMING_WINDOW_MILLIS`; incluye el instante exacto de vencimiento y el límite de proximidad.
+- ACTIVA: hoja incompleta con fechas, disponible y fuera de los estados anteriores.
+
+`UPCOMING_WINDOW_MILLIS` centraliza **24 horas exactas** (duración, no días de calendario); cambiar el umbral no requiere migración. Si Inicio y Vencimiento coinciden, antes del instante es programada, en él es próxima y después vencida. `nextTransition` calcula el siguiente cambio, usando `dueAt + 1 ms` para pasar a vencida, con protección ante overflow.
+
+`rememberTaskScreenNow` es el único mecanismo temporal de la pantalla de proyecto, compartido por tarjetas y contexto abierto. Mientras está RESUMED espera la próxima frontera de las tareas del nivel actual, con una revisión de reloj como máximo cada minuto. Relee inmediatamente al reanudar y al recibir cambio de hora/zona del sistema. No existen timers por tarjeta ni trabajo temporal en background. El scheduler del dispositivo puede retrasar la actualización; el estado siempre se deriva del instante observado, sin prometer alarmas exactas.
+
+Las tarjetas y el contexto de una hoja muestran una línea compacta de estado y fecha/hora local. Próxima usa naranja existente y Vencida el color de error; no se recolorea toda la tarjeta. Completada usa texto discreto; sin fechas no aparece una sección vacía. Los responsables coexisten con esa línea y se siguen resolviendo por sus IDs/flujos.
+
+Hoja → Capa → hoja conserva ambas fechas: mientras hay hijos quedan sin indicador, edición operativa ni urgencia propia; al perder el último hijo vuelven a aplicarse a la hoja pendiente según los triggers existentes. No existe propagación hacia ancestros. Fechas no filtran tareas, no modifican orden manual, drag/reorder ni fórmula de progreso. Mover conserva fechas y responsables porque solo actualiza estructura/posición del mismo ID; editar responsables conserva fechas y editar fechas conserva responsables.
+
+Cobertura dirigida: estados y fronteras con `now` fijo, umbral y extremos Long; persistencia/edición/retirada/validación, idempotencia, progreso/orden/responsables y traslado; hoja → Capa → hoja; migración del schema real v5 en API 24/28 conservando tablas y triggers. Compose verifica selección de fecha/hora, restauración con selector abierto, error/corrección, reloj al reanudar/cambiar hora, presentación sin urgencia en completadas/Capas y edición real con recreación de Activity. Se verifican regresiones de Personas, traslado, borradores y rutas de migración anteriores.
+
+Limitaciones: selector Material con rango de años predeterminado 1900–2100, pendiente dogfooding en pantallas pequeñas, cambios reales de zona/horario y ciclos de foreground. No se afirma validación física ni muerte real de proceso. No hay notificaciones, alarmas, calendario, recurrencias ni Motor de Atención; Atención permanece como siguiente etapa.
+
 ## PRÓXIMA ETAPA — capacidades previstas, no implementadas
-
-### 3. Fechas opcionales
-
-Una tarea podrá tener fecha/hora de inicio y fecha/hora de vencimiento opcionales. Una fecha futura no ocultará la tarea ni la retirará de su estructura.
-
-Fechas y estado actual permitirán derivar condiciones como programada, activa, próxima, vencida o completada. Se evitará persistir estados temporales calculables. Las reglas exactas de clasificación y tratamiento temporal se diseñarán antes de implementar, sin crear ahora una segunda fuente de estado.
 
 ### 4. Atención básica y futuro Motor de Atención
 
@@ -938,12 +964,12 @@ Se distinguen dos conceptos: **Release DE Arachn0de** actualiza/distribuye la ap
 
 ### Secuencia tentativa de implementación
 
-Este orden es una propuesta revisable, no una obligación irreversible. Los primeros tres pasos ya están implementados; los restantes siguen pendientes:
+Este orden es una propuesta revisable, no una obligación irreversible. Los primeros cuatro pasos ya están implementados; los restantes siguen pendientes:
 
 1. Mover Node a otra Capa — IMPLEMENTADO.
 2. Personas — IMPLEMENTADO.
 3. Responsables — IMPLEMENTADO.
-4. Fechas.
+4. Fechas — IMPLEMENTADO.
 5. Atención básica.
 6. Notas y conversión Tarea ↔ Nota.
 7. Creación múltiple y numeración.
@@ -979,7 +1005,7 @@ Desktop y sincronización local constituyen una etapa avanzada/final de esta lí
 - **Obligación:** elegir entre A, B u otra composición mediante diseño específico; definir allí el alcance de agregación por Subcapas. No hay modelo ni schema aprobado.
 - **Capas explícitamente vacías:** decidir si deben existir en el futuro. Actualmente perder el último hijo convierte el nodo en tarea; esta documentación no cambia esa regla ni elige una alternativa futura.
 - **Notas:** representación del propósito informativo y reglas de conversión para hojas, incluyendo tratamiento del completado y exclusión del progreso. No se definen Notas contenedoras.
-- **Fechas, Atención y generación temporal:** precisar semántica temporal, urgencia y recurrencia antes de desarrollar cada bloque.
+- **Atención y generación temporal:** diseñar propagación de urgencia y recurrencia sobre la base temporal implementada antes de desarrollar cada bloque.
 - **Distribución de la app:** definir firma, publicación y comprobación/descarga de actualizaciones antes de implementarlas.
 
 ## Principios de evolución

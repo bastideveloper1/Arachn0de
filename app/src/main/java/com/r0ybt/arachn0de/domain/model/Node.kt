@@ -12,6 +12,8 @@ data class Node(
     val createdAt: Long,
     val updatedAt: Long,
     val hasChildren: Boolean,
+    val startAt: Long? = null,
+    val dueAt: Long? = null,
 ) {
     val isStructural: Boolean get() = hasChildren
     val isCompletable: Boolean get() = !hasChildren

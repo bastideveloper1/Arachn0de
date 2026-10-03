@@ -36,6 +36,9 @@ interface NodeDao {
     @Query("UPDATE nodes SET title = :title, description = :description, updatedAt = :updatedAt WHERE id = :id")
     suspend fun updateContent(id: String, title: String, description: String, updatedAt: Long): Int
 
+    @Query("UPDATE nodes SET title = :title, description = :description, startAt = :startAt, dueAt = :dueAt, updatedAt = :updatedAt WHERE id = :id")
+    suspend fun updateContentAndDates(id: String, title: String, description: String, startAt: Long?, dueAt: Long?, updatedAt: Long): Int
+
     @Query("UPDATE nodes SET parentId = :parentId, position = :position, updatedAt = :updatedAt WHERE id = :id")
     suspend fun move(id: String, parentId: String?, position: Int, updatedAt: Long): Int
 

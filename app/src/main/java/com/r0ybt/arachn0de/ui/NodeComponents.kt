@@ -162,6 +162,7 @@ internal fun NodeCard(
     onMove: () -> Unit = {},
     onResponsible: () -> Unit = {},
     responsiblePeople: List<com.r0ybt.arachn0de.domain.model.Person> = emptyList(),
+    now: Long = 0L,
 ) {
     var showContextMenu by remember { mutableStateOf(false) }
     val completedTint = if (node.isCompleted) Arachn0deColors.Completed else Arachn0deColors.Primary
@@ -238,6 +239,8 @@ internal fun NodeCard(
                     Text(node.description, color = Arachn0deColors.TextSecondary, fontSize = 12.sp,
                         maxLines = 2, overflow = TextOverflow.Ellipsis)
                 }
+
+                TaskDateIndicator(node, now)
 
                 if (responsiblePeople.isNotEmpty()) {
                     Spacer(modifier = Modifier.height(4.dp))

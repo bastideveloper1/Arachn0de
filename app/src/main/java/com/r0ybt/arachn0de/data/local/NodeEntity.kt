@@ -35,9 +35,11 @@ data class NodeEntity(
     val position: Int,
     val createdAt: Long,
     val updatedAt: Long,
+    val startAt: Long? = null,
+    val dueAt: Long? = null,
 )
 
 internal fun NodeEntity.toNode(hasChildren: Boolean) = Node(
     id, projectId, parentId, title, description, isCompleted,
-    position, createdAt, updatedAt, hasChildren,
+    position, createdAt, updatedAt, hasChildren, startAt, dueAt,
 )

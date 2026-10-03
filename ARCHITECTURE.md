@@ -1000,9 +1000,7 @@ Pruebas dirigidas nuevas: Money con Locale fijo para CLP/USD/EUR y tres decimale
 
 Validación del bloque: 114 ejecuciones dirigidas (15 nuevas y 99 regresiones). Tras ajustar expectativas de versión/cantidad de triggers y el selector modal de Cancelar, se repitieron las clases afectadas con resultado correcto. La restricción final de lote financiero homogéneo también pasó las pruebas de generación, repositorio y UI de lotes.
 
-Límites: sin totales por Capa/Proyecto/período/Persona, filtros ni dashboard financiero, informes PNG, historial/fecha de pagos, parcialidades, intereses, amortización, deudas, cuentas bancarias, presupuestos, tasas externas, recurrencia ni avisos. Estos límites describen el bloque base; los totales y filtros están implementados posteriormente en #19–22. No se acredita validación física, muerte real de proceso ni benchmark; las restauraciones usan el arnés de estado guardable existente y sus límites de Bundle.
-
-## PRÓXIMA ETAPA — capacidades previstas, no implementadas
+Límites: sin totales por Capa/Proyecto/período/Persona, filtros ni dashboard financiero, informes PNG, historial/fecha de pagos, parcialidades, intereses, amortización, deudas, cuentas bancarias, presupuestos, tasas externas, recurrencia ni avisos. Estos límites describen el bloque base; los totales y filtros están implementados posteriormente en #19–22 y el informe PNG en #23. No se acredita validación física, muerte real de proceso ni benchmark; las restauraciones usan el arnés de estado guardable existente y sus límites de Bundle.
 
 ### 7. Agregaciones de Obligaciones — #19–22 IMPLEMENTADAS
 
@@ -1020,13 +1018,35 @@ rememberFinancial calcula fuera del hilo principal por datos, responsables, sele
 
 Coste: N Nodes, M obligaciones seleccionadas, C monedas y A asociaciones. Recorrido iterativo con combinaciones que copian/ordenan mapas de monedas: cota O(N·C log C + M log M), memoria O(N·C + M + A). Las rutas visibles se resuelven en O(profundidad). Se prueban 10.000 niveles y sumas mayores que Long. Room permanece v8: sin cambios de esquema, DAO, entidades persistidas, triggers ni migraciones.
 
-Pruebas nuevas: cinco de dominio, cuatro ejecuciones de repositorio API 24/28 y tres Compose API 28. Cubren alcance, monedas, estados, períodos/zona, responsables múltiples sin herencia, overflow, lotes, reactividad, navegación y restauración de filtros. El arnés guardable no acredita muerte real del proceso. Pendientes: dogfooding físico, accesibilidad y benchmark. Sin períodos arbitrarios, historial de pagos ni pagos parciales. PNG, exportación, compartir, guardar y renderer no están implementados: #23 requiere una misión separada después de validar #19–22.
+Pruebas nuevas: cinco de dominio, cuatro ejecuciones de repositorio API 24/28 y tres Compose API 28. Cubren alcance, monedas, estados, períodos/zona, responsables múltiples sin herencia, overflow, lotes, reactividad, navegación y restauración de filtros. El arnés guardable no acredita muerte real del proceso. Pendientes: dogfooding físico, accesibilidad y benchmark. Sin períodos arbitrarios, historial de pagos ni pagos parciales. Este bloque no incluía PNG ni entrega de archivos; #23 los implementa en su misión separada descrita a continuación.
 
-### 8. Informe PNG de Obligaciones
+### 8. Informe PNG de Obligaciones — #23 IMPLEMENTADO
 
-Tras definir e implementar Obligaciones y sus agregaciones, se prevé generar una imagen PNG compartible. Podrá filtrarse por período/mes, Capa y Persona, e incluir Persona, avatar, concepto, importe, vencimiento y total.
+La vista Obligaciones ofrece **Generar informe** como acción secundaria. Captura la misma FinancialSnapshot visible, la lista vigente de Proyectos, el nombre seleccionado, Locale y el instante REAL de pulsación (System.currentTimeMillis). ObligationReportData transforma esa instantánea en datos de presentación inmutables: período, Persona opcional, secciones monetarias, counts, obligaciones y fecha de generación. Sus listas se publican sin posibilidad de mutación; no retiene entidades ni consulta Room. No filtra, agrega ni ordena nuevamente. Money.format reutiliza el formato exacto de importes y totales de #19–22, sin mezclar monedas.
 
-Permitirá preparar un resumen de cuentas para compartirlo con una Persona. La información histórica de pago podrá incorporarse más adelante. Esta capacidad no implica enviar informes automáticamente ni exigir una cuenta o backend.
+La cabecera refleja Este mes/Mes anterior/Próximo mes/Todo con el mes civil de la proyección. Persona mantiene la pertenencia por importe completo sin prorratear. Conserva el orden de FinancialSnapshot.tasks, incluye completadas y sin vencimiento cuando corresponden al filtro. Cada fila muestra título completo con wrap, monto, vencimiento local, estado textual, Proyecto y nombres propios de responsables; sin fotos, avatares ni recorrido completo de ancestros. Vencimientos y generación se formatean con la zona capturada de la proyección. El pie muestra Generado por Arachn0de y fecha/hora de generación; no datos técnicos.
+
+ObligationPngRenderer es independiente de Compose: mide StaticLayout y luego dibuja texto, superficies, separadores y logo sobre Canvas/Bitmap. No captura Activity, ComposeView, LazyColumn ni píxeles del teléfono. Ancho fijo **1440 px**, altura medida hasta **8000 px**, márgenes de 80 px, padding de 32 px y tipografía sans-serif consistente. Los montos de filas se alinean a la derecha y títulos/nombres/importes largos envuelven líneas sin superposición ni truncado. Fondo BackgroundEnd carbón, superficies Surface, texto claro/gris suave, violeta Accent y naranja PathHighlight de la paleta existente; sin colores globales nuevos, gráficos, glow ni degradados añadidos.
+
+Reutiliza exactamente drawable-nodpi/arachn0de_logo.png, idéntico por SHA-256 a design/arachn0de-logo.png. Original y copia permanecen intactos; no hay assets redundantes. Decodifica una versión reducida en memoria y escala conservando aspecto, sin tint; logo de hasta 64 px junto a ARACHN0DE en la esquina superior derecha.
+
+Antes de reservar el Bitmap valida altura y bytes con aritmética Long. El presupuesto es el mínimo de **48 MiB**, un cuarto del heap máximo y la mitad del heap disponible; se vuelve a comprobar inmediatamente antes de crear ARGB_8888. El techo 1440×8000 ocupa aproximadamente 44 MiB de píxeles, dejando margen para layout, logo y compresión. También rechaza más de 1000 filas antes de construir datos y campos mayores que 20.000 caracteres antes de StaticLayout, como límites de trabajo para datos históricos extremos. La altura/memoria suele limitar antes la cantidad de filas. No corta obligaciones silenciosamente: informa que debe reducir período/Persona. Captura OutOfMemoryError y recicla Bitmaps al finalizar o fallar. Estos límites son defensas, no garantía de memoria infinita ni benchmark físico.
+
+ObligationReportFiles genera localmente en cache/obligation-reports, publica el PNG completo mediante archivo .part y rename solo después de compresión/cierre correctos, y elimina staging ante fallos. Filename neutral: arachn0de-obligations-yyyy-MM-dd-HHmmss-SSS-<sufijo aleatorio>.png, sin nombres, títulos, montos ni IDs de entidades. Una nueva generación limpia informes de ese directorio con más de 24 horas; no elimina inmediatamente los recientes para permitir la lectura tras compartir. Android puede limpiar la cache antes y un cierre abrupto puede dejar un huérfano hasta una próxima limpieza. No hay historial de informes ni tabla de exportaciones.
+
+ReportFileProvider, no exportado, expone únicamente el subdirectorio dedicado mediante report_paths.xml y autoridad applicationId.reports. Sharesheet usa ACTION_SEND, image/png, content URI, ClipData y permiso temporal exclusivamente de lectura. Nunca file URI ni permisos generales de almacenamiento. Guardar usa ActivityResultContracts.CreateDocument(image/png), equivalente a ACTION_CREATE_DOCUMENT, con filename sugerido y selección de ubicación por el usuario; copia el PNG completo con buffer de 32 KiB. Cancelar el selector no es un error. No conserva permisos permanentes. Referencias: [FileProvider](https://developer.android.com/reference/androidx/core/content/FileProvider) y [Storage Access Framework](https://developer.android.com/training/data-storage/shared/documents-files).
+
+Construcción de ReportData en Dispatchers.Default; medición, render, compresión y archivos en Dispatchers.IO. La acción y su operación pertenecen a la pantalla, fuera de los ítems lazy: siguen disponibles aunque el listado esté desplazado. La UI muestra estado ocupado y bloquea duplicados durante generación/guardado. Al completar presenta Guardar PNG/Compartir; errores mantienen pantalla/filtros y permiten reintentar. Sin obligaciones, Generar informe queda deshabilitado. Estado guardable conserva únicamente nombres de cache para el diálogo listo y resultado pendiente de SAF, nunca Bitmap ni información financiera en Bundle. Recreación/navegación cancela operaciones ligadas a la composición; no hay worker, regeneración automática ni promesa de completar durante muerte del proceso. Un archivo completo huérfano puede quedar en cache si se pierde su resultado durante cancelación.
+
+Fallos de dimensiones/memoria, compresión, escritura, cache ausente, URI, selector o Sharesheet muestran mensajes comprensibles sin logs financieros. La escritura SAF depende del proveedor externo y no puede garantizar atomicidad: ante fallo/cancelación se intenta borrar el documento incompleto y no se anuncia éxito; si el proveedor rechaza borrarlo puede quedar un parcial que el usuario debe retirar. La app no envía datos a servidores; solamente entrega un archivo cuando el usuario elige guardar/compartir. El destino externo elegido puede tener su propia política de almacenamiento.
+
+Room permanece **v8**, sin esquema, entidades, DAO, triggers, tablas de informes ni migraciones nuevos. Sin PDF, multipágina, CSV, Excel, impresión, gráficos, historial, envío automático ni otras capacidades del roadmap.
+
+Validación dirigida: 20 ejecuciones nuevas (5 ReportData, 4 renderer nativo API 28, 8 archivos/contratos API 24 y 28, 3 Compose API 28) y 14 regresiones de FinancialSnapshot, FinancialRepository, FinancialUi y Money. Comprueban selección/orden/totales/monedas, responsables, inmutabilidad, fechas, vacío, wrapping, límites, PNG decodificable con contenido, logo/aspecto, filenames, MIME, URI y lectura del provider, escritura/errores, generación con listado desplazado, diálogo restaurable, cancelación SAF simulada, filtros y Room v8. Tras corregir dos expectativas de pruebas (retorno Unit para JUnit y categoría no garantizada por CreateDocument), se repitieron las clases afectadas con resultado correcto. Se inspeccionó visualmente un PNG sintético; no se automatizó Sharesheet externo ni se acredita validación física. La suite dirigida final pasó las 34 ejecuciones; después de mantener la acción fuera de los ítems lazy se repitieron las 6 pruebas UI afectadas, también correctas. compileDebugKotlin y git diff --check finalizaron correctamente.
+
+Dogfooding pendiente: CLP y múltiples monedas; los cuatro períodos; Persona y varios responsables; completadas; títulos/nombres largos; informe largo y rechazo por límite; logo y legibilidad; compartir, guardar/cancelar y abrir desde otra app. También recreación con selector SAF abierto, cache eliminada y proveedores de documentos reales.
+
+## PRÓXIMA ETAPA — capacidades previstas, no implementadas
 
 ### 9. Tags / Etiquetas
 
@@ -1060,7 +1080,7 @@ Se distinguen dos conceptos: **Release DE Arachn0de** actualiza/distribuye la ap
 
 ### Secuencia tentativa de implementación
 
-Este orden es una propuesta revisable, no una obligación irreversible. Los primeros once pasos y el Calendario derivado ya están implementados; los restantes siguen pendientes:
+Este orden es una propuesta revisable, no una obligación irreversible. Los primeros doce pasos y el Calendario derivado ya están implementados; los restantes siguen pendientes:
 
 1. Mover Node a otra Capa — IMPLEMENTADO.
 2. Personas — IMPLEMENTADO.
@@ -1073,7 +1093,7 @@ Este orden es una propuesta revisable, no una obligación irreversible. Los prim
 9. Definir Obligación como capacidad de ACTION hoja — RESUELTO en el bloque financiero.
 10. Implementar base de Obligaciones — IMPLEMENTADO.
 11. Agregaciones, totales y filtros financieros — IMPLEMENTADO en #19–22.
-12. Informe PNG.
+12. Informe PNG — IMPLEMENTADO en #23.
 13. Tags.
 14. Favoritos.
 15. Menú lateral cuando sus destinos sean reales.

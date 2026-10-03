@@ -50,6 +50,7 @@ internal fun ObligationsScreen(
                 Text("Obligaciones", style = MaterialTheme.typography.headlineSmall)
                 TextButton(onClick = onBack) { Text("Volver") }
             }
+            ObligationReportActions(if (ready) financial else null, projects, selectedPerson?.name, locale)
             LazyColumn(Modifier.weight(1f).testTag("obligations-list"), state = listState, verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 item(key = "filters") {
                     Column {

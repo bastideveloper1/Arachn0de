@@ -78,19 +78,12 @@ internal fun AboutScreen(onBack: () -> Unit, repository: UpdateRepository = reme
             HorizontalDivider()
             Text("Autor", style = MaterialTheme.typography.titleMedium)
             Text("r0ybt")
-            for ((label, url) in listOf(
-                "Instagram · @itsbasti_an" to "https://www.instagram.com/itsbasti_an/",
-                "GitHub · bastideveloper1" to "https://github.com/bastideveloper1",
-                "Mastodon · @Yll@infosec.exchange" to "https://infosec.exchange/@Yll",
-                "Web · 27thdeer.com" to "https://27thdeer.com/",
-            )) {
-                OutlinedButton(onClick = { linkError = !openExternalLink(context, url) }) { Text(label) }
+            for (link in AuthorLinks.profiles) {
+                SocialLinkRow(link, { linkError = !openExternalLink(context,link.url) })
             }
             HorizontalDivider()
             Text("Código fuente", style = MaterialTheme.typography.titleMedium)
-            OutlinedButton(onClick = { linkError = !openExternalLink(context, "https://github.com/bastideveloper1/Arachn0de") }) {
-                Text("github.com/bastideveloper1/Arachn0de")
-            }
+            SocialLinkRow(AuthorLinks.source, { linkError = !openExternalLink(context,AuthorLinks.source.url) },source=true)
             if (linkError) Text("No se pudo abrir el enlace. No hay una aplicación disponible o Android impidió abrirlo.", color = MaterialTheme.colorScheme.error)
         }
     }

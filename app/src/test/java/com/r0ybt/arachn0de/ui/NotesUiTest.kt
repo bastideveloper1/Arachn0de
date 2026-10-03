@@ -59,7 +59,7 @@ class NotesUiTest {
         compose.onNode(hasText("Guardar") or hasText("Crear")).performClick()
         compose.waitUntil(10_000) { runBlocking { app.nodeRepository.getNode(task)!!.description == "Information" } }
         assertEquals(20L, runBlocking { app.nodeRepository.getNode(task)!!.dueAt })
-        scroll("Convertir en tarea"); compose.onNodeWithText("Convertir en tarea").performClick()
+        compose.onNodeWithContentDescription("Opciones del elemento").performScrollTo().performClick(); compose.onNodeWithText("Convertir en tarea").performClick()
         await("Completar")
         compose.onNodeWithText("Nuevo elemento").assertIsEnabled()
         assertEquals(1, runBlocking { app.nodeRepository.calculateProjectProgress(project)!!.total })

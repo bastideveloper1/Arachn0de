@@ -84,14 +84,14 @@ class ObligationUiTest {
         compose.waitUntil(10_000) { compose.onAllNodesWithTag("attention-task:${node.id}").fetchSemanticsNodes().isNotEmpty() }
         compose.onNodeWithTag("attention-task:${node.id}").assert(hasText("CLP",substring=true))
         compose.onNodeWithTag("attention-task:${node.id}").performClick(); await("CAPA 1")
-        listTo("Convertir en nota"); compose.onNodeWithText("Convertir en nota").performClick(); await("Eliminar datos financieros")
+        compose.onNodeWithContentDescription("Opciones del elemento").performScrollTo().performClick(); compose.onNodeWithText("Convertir en nota").performClick(); await("Eliminar datos financieros")
         assertEquals(NodePurpose.ACTION,runBlocking { app.nodeRepository.getNode(node.id)!!.purpose })
         compose.onNodeWithTag("cancel-remove-obligation").performClick()
-        listTo("Convertir en nota"); compose.onNodeWithText("Convertir en nota").performClick()
+        compose.onNodeWithContentDescription("Opciones del elemento").performScrollTo().performClick(); compose.onNodeWithText("Convertir en nota").performClick()
         compose.onNodeWithText("Eliminar datos y continuar").performClick()
         compose.waitUntil(10_000) { runBlocking { app.nodeRepository.getNode(node.id)!!.purpose==NodePurpose.NOTE } }
         assertNull(runBlocking { app.nodeRepository.getNode(node.id)!!.obligation })
-        listTo("Convertir en tarea"); compose.onNodeWithText("Convertir en tarea").performClick()
+        compose.onNodeWithContentDescription("Opciones del elemento").performScrollTo().performClick(); compose.onNodeWithText("Convertir en tarea").performClick()
         compose.waitUntil(10_000) { runBlocking { app.nodeRepository.getNode(node.id)!!.purpose==NodePurpose.ACTION } }
         assertNull(runBlocking { app.nodeRepository.getNode(node.id)!!.obligation })
     }

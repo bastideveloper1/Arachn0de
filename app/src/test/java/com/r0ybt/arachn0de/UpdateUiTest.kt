@@ -59,7 +59,7 @@ class UpdateUiTest {
     }
     @Test fun drawerAboutReturnsToHomeWithoutChecking() {
         compose.onNodeWithContentDescription("Abrir menú").performClick()
-        compose.onNodeWithText("Acerca de").performClick()
+        compose.onNodeWithText("Acerca de").performScrollTo().performClick()
         compose.onNodeWithText("Acerca de Arachn0de").assertIsDisplayed()
         compose.onNodeWithText("Buscar actualizaciones").assertIsDisplayed()
         compose.onNodeWithText("Volver").performClick()

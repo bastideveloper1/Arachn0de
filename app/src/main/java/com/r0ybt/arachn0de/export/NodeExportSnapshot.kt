@@ -1,5 +1,6 @@
 package com.r0ybt.arachn0de.export
 
+import com.r0ybt.arachn0de.domain.model.Project
 import com.r0ybt.arachn0de.domain.model.NodePurpose
 import com.r0ybt.arachn0de.domain.model.NodeTreeSnapshot
 import java.util.Collections
@@ -14,6 +15,23 @@ class NodeExportSnapshot private constructor(val entries: List<ExportEntry>) {
     companion object {
         // About 400 KiB of UTF-16, leaving headroom below Android's shared Binder transaction budget.
         const val MAX_TEXT_CHARS = 200_000
+        fun captureProject(project: Project, tree: NodeTreeSnapshot, descendants: Boolean,
+            checkCancelled: () -> Unit = {}): NodeExportSnapshot {
+            checkCancelled()
+            val result = mutableListOf(ExportEntry(project.name,project.description,0,ExportKind.LAYER,false))
+            var size = project.name.length.toLong() + project.description.length + 8
+            if (size > MAX_TEXT_CHARS) throw ContextTooLargeException()
+            if (descendants) tree.childrenOf(null).filter { it.projectId == project.id }.forEach { root ->
+                val branch = capture(tree,root.id,true,checkCancelled)
+                branch.entries.forEach { entry ->
+                    checkCancelled()
+                    size += entry.title.length.toLong() + entry.description.length + 8
+                    if(size > MAX_TEXT_CHARS) throw ContextTooLargeException()
+                    result.add(entry.copy(depth=entry.depth+1))
+                }
+            }
+            return NodeExportSnapshot(Collections.unmodifiableList(result))
+        }
         fun capture(tree: NodeTreeSnapshot, rootId: String, descendants: Boolean,
             checkCancelled: () -> Unit = {}): NodeExportSnapshot {
             require(rootId in tree.nodesById) { "El elemento ya no existe." }

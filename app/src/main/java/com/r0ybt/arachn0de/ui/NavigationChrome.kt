@@ -1,142 +1,98 @@
 package com.r0ybt.arachn0de.ui
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxHeight
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Menu
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.foundation.layout.widthIn
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.*
+import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.semantics.paneTitle
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.r0ybt.arachn0de.ui.theme.Arachn0deColors
 import com.r0ybt.arachn0de.R
 import com.r0ybt.arachn0de.BuildConfig
 
+internal object DrawerWidthPolicy {
+    fun fullWidth(available: Dp) = available < 600.dp
+    fun width(available: Dp) = if(fullWidth(available)) available else 360.dp
+}
+
+/** Lives inside AppSafeArea: available constraints already exclude safe drawing insets. */
 @Composable
-internal fun AppIdentityDrawer(onDismiss: () -> Unit, onPeople: (() -> Unit)? = null, onAttention: (() -> Unit)? = null, onCalendar: (() -> Unit)? = null, onObligations: (() -> Unit)? = null, onAbout: (() -> Unit)? = null) {
-    Column(
-        modifier = Modifier
-            .fillMaxHeight()
-            .widthIn(max = 320.dp)
-            .fillMaxWidth()
-            .verticalScroll(rememberScrollState())
-            .background(Arachn0deColors.SurfaceRaised.copy(alpha = 0.98f))
-            .padding(start = 18.dp, end = 12.dp, top = 18.dp, bottom = 14.dp),
-    ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween,
-        ) {
-            Row(modifier = Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
-                Box(
-                    modifier = Modifier.size(36.dp),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Image(
-                        painter = painterResource(id = R.drawable.arachn0de_logo),
-                        contentDescription = null,
-                        modifier = Modifier.fillMaxSize(),
-                        contentScale = ContentScale.Fit,
-                    )
+internal fun AppIdentityDrawer(onDismiss: () -> Unit, onPeople: (() -> Unit)? = null,
+    onAttention: (() -> Unit)? = null, onCalendar: (() -> Unit)? = null,
+    onObligations: (() -> Unit)? = null, onAbout: (() -> Unit)? = null,
+    onProjects: (() -> Unit)? = null, projectsSelected: Boolean = false) {
+    BackHandler(onBack = onDismiss)
+    BoxWithConstraints(Modifier.fillMaxSize()) {
+        val compact = DrawerWidthPolicy.fullWidth(maxWidth)
+        Column(Modifier.fillMaxHeight().width(DrawerWidthPolicy.width(maxWidth))
+            .testTag("navigation-drawer").semantics {
+                paneTitle = "Menú principal"
+                stateDescription = if(compact) "Menú a ancho completo" else "Menú lateral"
+            }
+            .background(Arachn0deColors.SurfaceRaised)
+            // Blank parts of the sheet never activate the caller's outside scrim.
+            .pointerInput(Unit) { detectTapGestures(onTap = {}) }
+            .verticalScroll(rememberScrollState()).padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                IconButton(onClick = onDismiss, modifier = Modifier.size(48.dp)) {
+                    Icon(Icons.Default.Close, contentDescription = "Cerrar menú")
                 }
-                Spacer(modifier = Modifier.width(8.dp))
-                Text(
-                    text = "Arachn0de",
-                    color = Arachn0deColors.Accent,
-                    fontSize = 22.sp,
-                    fontWeight = FontWeight.Bold,
-                    modifier = Modifier.weight(1f),
-                )
             }
-            IconButton(onClick = onDismiss) {
-                Icon(
-                    painter = painterResource(id = android.R.drawable.ic_menu_close_clear_cancel),
-                    contentDescription = "Cerrar menú",
-                    tint = Arachn0deColors.Accent,
-                )
+            Column(Modifier.fillMaxWidth().padding(bottom = 16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                Image(painterResource(R.drawable.arachn0de_logo), "Logo de Arachn0de",
+                    Modifier.size(112.dp).testTag("drawer-logo"), contentScale = ContentScale.Fit)
+                Text("Arachn0de", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold,
+                    color = Arachn0deColors.Accent)
             }
+            Text("Principal", style = MaterialTheme.typography.labelLarge, color = Arachn0deColors.TextSecondary)
+            fun navigate(action: () -> Unit) { onDismiss(); action() }
+            onProjects?.let { NavigationDrawerItem(label = { Text("Proyectos") }, selected = projectsSelected,
+                icon = { Icon(Icons.Default.Folder, null) }, onClick = { navigate(it) }, modifier = Modifier.heightIn(min = 48.dp)) }
+            onAttention?.let { NavigationDrawerItem(label = { Text("Atención") }, selected = false,
+                icon = { Icon(Icons.Default.NotificationsActive, null) }, onClick = { navigate(it) }, modifier = Modifier.heightIn(min = 48.dp)) }
+            onCalendar?.let { NavigationDrawerItem(label = { Text("Calendario") }, selected = false,
+                icon = { Icon(Icons.Default.CalendarMonth, null) }, onClick = { navigate(it) }, modifier = Modifier.heightIn(min = 48.dp)) }
+            onObligations?.let { NavigationDrawerItem(label = { Text("Obligaciones") }, selected = false,
+                icon = { Icon(Icons.Default.Payments, null) }, onClick = { navigate(it) }, modifier = Modifier.heightIn(min = 48.dp)) }
+            onPeople?.let { NavigationDrawerItem(label = { Text("Personas") }, selected = false,
+                icon = { Icon(Icons.Default.People, null) }, onClick = { navigate(it) }, modifier = Modifier.heightIn(min = 48.dp)) }
+            HorizontalDivider(Modifier.padding(vertical = 8.dp))
+            Text("Aplicación", style = MaterialTheme.typography.labelLarge, color = Arachn0deColors.TextSecondary)
+            onAbout?.let { NavigationDrawerItem(label = { Text("Acerca de") }, selected = false,
+                icon = { Icon(Icons.Default.Info, null) }, onClick = { navigate(it) }, modifier = Modifier.heightIn(min = 48.dp)) }
+            Text("v${BuildConfig.VERSION_NAME}", style = MaterialTheme.typography.bodySmall, color = Arachn0deColors.TextSecondary)
         }
-
-        Spacer(modifier = Modifier.height(18.dp))
-
-        onObligations?.let { open -> TextButton(onClick = open) { Text("Obligaciones") } }
-        onPeople?.let { open ->
-            androidx.compose.material3.TextButton(onClick = open) { Text("Personas") }
-        }
-        onCalendar?.let { open ->
-            TextButton(onClick = open) { Text("Calendario") }
-        }
-        onAttention?.let { open ->
-            androidx.compose.material3.TextButton(onClick = open) { Text("Atención") }
-        }
-        onAbout?.let { open -> TextButton(onClick = open) { Text("Acerca de") } }
-        Text(
-            text = "v${BuildConfig.VERSION_NAME}",
-            color = Arachn0deColors.TextSecondary,
-            fontSize = 12.sp,
-            modifier = Modifier.padding(bottom = 4.dp),
-        )
     }
 }
 
 @Composable
 internal fun HeaderBar(onMenuClick: () -> Unit) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        IconButton(
-            onClick = onMenuClick,
-            modifier = Modifier
-                .size(48.dp)
-                .background(Arachn0deColors.SurfaceRaised, RoundedCornerShape(12.dp)),
-        ) {
-            Icon(
-                imageVector = Icons.Default.Menu,
-                contentDescription = "Abrir menú",
-                tint = Arachn0deColors.Accent,
-            )
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        IconButton(onClick = onMenuClick, modifier = Modifier.size(48.dp)
+            .background(Arachn0deColors.SurfaceRaised, androidx.compose.foundation.shape.RoundedCornerShape(12.dp))) {
+            Icon(Icons.Default.Menu, "Abrir menú", tint = Arachn0deColors.Accent)
         }
-
-        Spacer(modifier = Modifier.width(10.dp))
-
-        Row(
-            modifier = Modifier.weight(1f),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text(
-                text = "Arachn0de",
-                color = Arachn0deColors.TextSecondary,
-                fontSize = 16.sp,
-                fontWeight = FontWeight.Normal,
-                letterSpacing = 0.2.sp,
-            )
-        }
-
+        Spacer(Modifier.width(10.dp))
+        Text("Arachn0de", color = Arachn0deColors.TextSecondary, fontSize = 16.sp,
+            modifier = Modifier.weight(1f))
     }
 }

@@ -31,6 +31,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import com.r0ybt.arachn0de.domain.model.NodeProgress
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Brush
@@ -56,8 +57,12 @@ internal fun ProjectDashboardScreen(
     onOpenAbout: () -> Unit = {},
     recurrenceContent: @Composable () -> Unit = {},
     projectAttentionById: Map<String, com.r0ybt.arachn0de.domain.model.AttentionSummary> = emptyMap(),
+    exportTree: com.r0ybt.arachn0de.domain.model.NodeTreeSnapshot = com.r0ybt.arachn0de.domain.model.NodeTreeSnapshot(emptyList()),
+    copyDescendantsReady: Boolean = false,
 ) {
     val scope = rememberCoroutineScope()
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val copyActions = remember(context,scope) { com.r0ybt.arachn0de.ui.state.NodeCopyActions(context,scope) }
     val actions = remember(repository, scope) { ProjectActions(repository, scope) }
     var draft by rememberSaveable(stateSaver = EditorDraft.Saver) { mutableStateOf<EditorDraft?>(null) }
     var deletingProjectId by rememberSaveable { mutableStateOf<String?>(null) }
@@ -86,6 +91,7 @@ internal fun ProjectDashboardScreen(
             Column(
                 modifier = Modifier
                     .fillMaxSize()
+                    .then(if(showDrawer) Modifier.clearAndSetSemantics {} else Modifier)
                     .padding(horizontal = 12.dp, vertical = 10.dp)
                     .padding(horizontal = 2.dp),
             ) {
@@ -112,6 +118,9 @@ internal fun ProjectDashboardScreen(
                 } else {
                     ProjectList(
                         projects = projects,
+                        onCopy = { project, descendants -> copyActions.copyProject(project,exportTree,descendants) },
+                        canCopy = !copyActions.busy,
+                        canCopyDescendants = copyDescendantsReady,
                         projectProgressById = projectProgressById,
                         projectAttentionById = projectAttentionById,
                         reorderBusy = actions.operation.busy,
@@ -136,12 +145,13 @@ internal fun ProjectDashboardScreen(
             if (showDrawer) {
                 Box(
                     modifier = Modifier
-                        .fillMaxSize()
-                        .background(Arachn0deColors.Scrim.copy(alpha = 0.45f))
-                        .clickable { showDrawer = false },
+                        .fillMaxSize(),
                 ) {
+                    Box(Modifier.fillMaxSize().background(Arachn0deColors.Scrim.copy(alpha = 0.45f)).clickable { showDrawer = false }.clearAndSetSemantics {})
                     AppIdentityDrawer(
                         onDismiss = { showDrawer = false },
+                        onProjects = {},
+                        projectsSelected = true,
                         onPeople = { showDrawer = false; onOpenPeople() },
                         onAttention = { showDrawer = false; onOpenAttention() },
                         onCalendar = { showDrawer = false; onOpenCalendar() },
@@ -177,14 +187,13 @@ internal fun ProjectDashboardScreen(
             title = { Text("Eliminar proyecto") },
             text = { Text("¿Seguro que quieres eliminar “${deletingProjectName}”? Esta acción no se puede deshacer.") },
             confirmButton = {
-                TextButton(
+                DestructiveAction(
+                    label = "Eliminar",
                     enabled = !actions.operation.busy,
                     onClick = {
                         actions.delete(deletingId) { deletingProjectId = null }
                     },
-                ) {
-                    Text("Eliminar")
-                }
+                )
             },
             dismissButton = {
                 TextButton(enabled = !actions.operation.busy, onClick = { deletingProjectId = null }) {

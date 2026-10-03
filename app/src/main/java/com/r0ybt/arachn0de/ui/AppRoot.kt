@@ -154,6 +154,8 @@ private fun AppRootContent(projectRepository: ProjectRepository, nodeRepository:
         }
     } else if (selectedProjectId == null) {
         ProjectDashboardScreen(
+            exportTree = allState,
+            copyDescendantsReady = nodesLoaded,
             recurrenceContent = { TagManager(nodeRepository.tags, tagState); RecurrenceManager(nodeRepository.recurrence, "", emptyList(), people, financialPeopleLoaded) },
             repository = projectRepository,
             listState = projectsListState,
@@ -171,6 +173,7 @@ private fun AppRootContent(projectRepository: ProjectRepository, nodeRepository:
         screenStates.SaveableStateProvider("project:${selectedProject.id}") {
             ProjectNodeScreen(
                 project = selectedProject,
+                onOpenProjects = { selectedProjectId = null; openNodeId = null; returnToCalendar = false; returnToAttention = false; returnToObligations = false },
                 nodeRepository = nodeRepository,
                 personRepository = personRepository,
                 clock = clock,

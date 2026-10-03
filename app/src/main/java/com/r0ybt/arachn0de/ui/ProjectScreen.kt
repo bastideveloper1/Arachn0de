@@ -28,6 +28,10 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.FilterList
+import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.SwapHoriz
+import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.filled.AccountTree
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -58,6 +62,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Brush
@@ -88,6 +93,7 @@ internal fun ProjectNodeScreen(
     openNodeId: String? = null,
     onOpenNodeHandled: () -> Unit = {},
     clock: () -> Long = System::currentTimeMillis,
+    onOpenProjects: () -> Unit = onBackToProjects,
 ) {
     val pendingOpenNode by rememberUpdatedState(openNodeId)
     val handleOpenNode by rememberUpdatedState(onOpenNodeHandled)
@@ -136,6 +142,7 @@ internal fun ProjectNodeScreen(
     val copyActions = remember(copyContext, scope) { com.r0ybt.arachn0de.ui.state.NodeCopyActions(copyContext, scope) }
     val isSubmittingNode = actions.operation.busy
     val currentNodeId = currentPath.lastOrNull()
+    var showContextActions by remember(currentNodeId) { mutableStateOf(false) }
     val currentNode = projectState.nodesById[currentNodeId]
     var historyNodeId by rememberSaveable { mutableStateOf<String?>(null) }
     historyNodeId?.let { id -> projectState.nodesById[id]?.let { node -> NodeHistoryDialog(node, nodeRepository) { historyNodeId = null } } }
@@ -245,14 +252,17 @@ internal fun ProjectNodeScreen(
             Column(
                 modifier = Modifier
                     .fillMaxSize()
+                    .then(if(showDrawer) Modifier.clearAndSetSemantics {} else Modifier)
                     .padding(horizontal = 12.dp, vertical = 10.dp),
             ) {
                 HeaderBar(onMenuClick = { showDrawer = true })
-                if(selection.ids.isNotEmpty()) Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text("${selection.ids.size} seleccionados", Modifier.weight(1f))
-                    TextButton(enabled = !isSubmittingNode, onClick = { bulkMove = true }) { Text("Mover") }
-                    TextButton(enabled = !isSubmittingNode, onClick = { bulkDelete = true }) { Text("Eliminar") }
-                    TextButton(enabled = !isSubmittingNode, onClick = { selection.clear() }) { Text("Salir") }
+                if(selection.ids.isNotEmpty()) Column(Modifier.fillMaxWidth()) {
+                    Text("${selection.ids.size} seleccionados", style = androidx.compose.material3.MaterialTheme.typography.titleMedium)
+                    androidx.compose.foundation.layout.FlowRow(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        SecondaryAction("Mover", { bulkMove = true }, enabled = !isSubmittingNode)
+                        DestructiveAction("Eliminar", { bulkDelete = true }, enabled = !isSubmittingNode)
+                        TextButton(onClick = { selection.clear() }) { Text("Salir") }
+                    }
                 }
 
                 layerScrollStates.SaveableStateProvider(currentNodeId?.let { "node:$it" } ?: "project-root") {
@@ -298,7 +308,11 @@ internal fun ProjectNodeScreen(
                                         fontWeight = FontWeight.SemiBold,
                                         modifier = Modifier.weight(1f),
                                     )
-                                    androidx.compose.material3.IconButton(onClick = { scopeFilters.open = true }, modifier = Modifier.size(32.dp)) {
+                                    IconButton(onClick = { showContextActions = true }, modifier = Modifier.size(48.dp)) {
+                                        Icon(androidx.compose.material.icons.Icons.Default.MoreVert,
+                                            contentDescription = if(currentNode == null) "Opciones del proyecto" else "Opciones del elemento")
+                                    }
+                                    androidx.compose.material3.IconButton(onClick = { scopeFilters.open = true }, modifier = Modifier.size(48.dp)) {
                                         androidx.compose.material3.Icon(androidx.compose.material.icons.Icons.Default.FilterList,
                                             contentDescription = if (scopeFilters.active) "Filtros activos" else "Filtros",
                                             tint = if (scopeFilters.active) Arachn0deColors.Accent else Arachn0deColors.TextSecondary)
@@ -368,73 +382,24 @@ internal fun ProjectNodeScreen(
                                 }
 
                                 if (currentNode != null) {
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                    ) {
-                                        Button(
-                                            onClick = {
-                                                if (!isSubmittingNode) {
-                                                    if (assignmentsLoaded && peopleLoaded) drafts.open(currentNode.parentId, currentNode.id) { EditorDraft(currentNode.id, currentNode.parentId, currentNode.title, currentNode.description, startAt = currentNode.startAt, dueAt = currentNode.dueAt, purpose = currentNode.purpose, obligation = currentNode.obligation, priority = currentNode.priority).apply { tagIds = tagState.nodeIds[currentNode.id].orEmpty().toList(); responsibleIds = responsibleByNode[currentNode.id].orEmpty().map { it.id }; creationGroupId = currentNode.creationGroupId; captureSharedBaseline() } }
+                                    androidx.compose.foundation.layout.FlowRow(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                        SecondaryAction("Editar", {
+                                            if(assignmentsLoaded && peopleLoaded) drafts.open(currentNode.parentId,currentNode.id) {
+                                                EditorDraft(currentNode.id,currentNode.parentId,currentNode.title,currentNode.description,startAt=currentNode.startAt,dueAt=currentNode.dueAt,purpose=currentNode.purpose,obligation=currentNode.obligation,priority=currentNode.priority).apply {
+                                                    tagIds=tagState.nodeIds[currentNode.id].orEmpty().toList();responsibleIds=responsibleByNode[currentNode.id].orEmpty().map { it.id };creationGroupId=currentNode.creationGroupId;captureSharedBaseline()
                                                 }
-                                            },
-                                            enabled = !isSubmittingNode,
-                                            modifier = Modifier.weight(1f).heightIn(min = 36.dp),
-                                            colors = ButtonDefaults.buttonColors(
-                                                containerColor = Arachn0deColors.ControlSurface,
-                                                contentColor = Arachn0deColors.TextPrimary,
-                                            ),
-                                            shape = RoundedCornerShape(10.dp),
-                                        ) {
-                                            Text("Editar")
-                                        }
-
-                                        Button(
-                                            onClick = {
-                                                if (!isSubmittingNode) {
-                                                    deletingNodeId = currentNode.id
-                                                    deletingNodeName = currentNode.title
-                                                }
-                                            },
-                                            enabled = !isSubmittingNode,
-                                            modifier = Modifier.weight(1f).heightIn(min = 36.dp),
-                                            colors = ButtonDefaults.buttonColors(
-                                                containerColor = Arachn0deColors.ControlSurface,
-                                                contentColor = Arachn0deColors.Destructive,
-                                            ),
-                                            shape = RoundedCornerShape(10.dp),
-                                        ) {
-                                            Text("Eliminar")
-                                        }
-
-                                        if (currentNode.isCompletable) {
-                                            Button(
-                                                onClick = {
-                                                    if (!isSubmittingNode) {
-                                                        actions.setCompleted(currentNode.id, !currentNode.isCompleted)
-                                                    }
-                                                },
-                                                enabled = !isSubmittingNode,
-                                                modifier = Modifier.weight(1f).heightIn(min = 36.dp),
-                                                colors = ButtonDefaults.buttonColors(containerColor = Arachn0deColors.Primary),
-                                                shape = RoundedCornerShape(10.dp),
-                                            ) {
-                                                Text(if (currentNode.isCompleted) "Reabrir" else "Completar")
                                             }
-                                        }
-                                    }
-                                    if (!currentNode.hasChildren) {
-                                        TextButton(enabled = !isSubmittingNode, onClick = {
-                                            if (currentNode.obligation != null) convertingObligationId = currentNode.id
-                                            else actions.convert(currentNode.id, if (currentNode.purpose == NodePurpose.NOTE) NodePurpose.ACTION else NodePurpose.NOTE)
-                                        }) { Text(if (currentNode.purpose == NodePurpose.NOTE) "Convertir en tarea" else "Convertir en nota") }
+                                        },enabled = !isSubmittingNode && assignmentsLoaded && peopleLoaded)
+                                        DestructiveAction("Eliminar", { deletingNodeId=currentNode.id;deletingNodeName=currentNode.title },enabled = !isSubmittingNode)
+                                        if(currentNode.isCompletable) SecondaryAction(if(currentNode.isCompleted) "Reabrir" else "Completar",
+                                            { actions.setCompleted(currentNode.id,!currentNode.isCompleted) },enabled = !isSubmittingNode)
                                     }
                                     if (currentNode.purpose == NodePurpose.NOTE) Text("Nota · Convierte en tarea para añadir hijos", color = Arachn0deColors.TextSecondary)
                                     PriorityIndicator(currentNode)
                                     ObligationIndicator(currentNode)
                                     if (currentNode.obligation != null) Text("Convierte esta obligación en una tarea antes de usarla como capa.", color = Arachn0deColors.TextSecondary)
                                     TaskDateIndicator(currentNode, now)
-                                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    androidx.compose.foundation.layout.FlowRow(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                         androidx.compose.material3.OutlinedButton(
                                             enabled = !isSubmittingNode && !personActions.operation.busy && peopleLoaded && assignmentsLoaded,
                                             onClick = { responsibleNodeId = currentNode.id },
@@ -446,12 +411,6 @@ internal fun ProjectNodeScreen(
                                     }
                                     TagChips(tagState.forNode(currentNode.id))
                                     ResponsibleAvatars(responsibleByNode[currentNode.id].orEmpty())
-                                    TextButton(enabled = !copyActions.busy, onClick = {
-                                        copyActions.copy(projectState, currentNode.id, false)
-                                    }) { Text("Copiar este elemento") }
-                                    if (currentNode.hasChildren) TextButton(enabled = !copyActions.busy, onClick = {
-                                        copyActions.copy(projectState, currentNode.id, true)
-                                    }) { Text("Copiar con descendientes") }
                                     Spacer(modifier = Modifier.height(12.dp))
                                 }
 
@@ -462,7 +421,7 @@ internal fun ProjectNodeScreen(
                             else if (filteredRows!!.none { it.isMatch }) item { Text("Sin coincidencias") }
                             items(filteredRows.orEmpty(), key = { "filtered:${it.node.id}" }) { row ->
                                 Column(Modifier.padding(start = minOf(row.depth, 6).times(12).dp).semantics { selected = row.node.id in selection.ids; stateDescription = if(row.node.id in selection.ids) "Seleccionado" else "Sin seleccionar" }) {
-                                    TextButton(enabled = !isSubmittingNode, onClick = { selection.toggle(row.node.id) }) { Text(if(row.node.id in selection.ids) "✓ Seleccionado" else "Seleccionar") }
+                                    SecondaryAction(if(row.node.id in selection.ids) "✓ Seleccionado" else "Seleccionar", { selection.toggle(row.node.id) }, enabled = !isSubmittingNode)
                                     if (!row.isMatch) Text("Contexto · ${row.node.title}", color = Arachn0deColors.TextSecondary)
                                     else {
                                         TextButton(onClick = { if(selection.ids.isNotEmpty()) selection.toggle(row.node.id) else actions.navigate(row.node.id) { path -> currentPath.clear(); currentPath.addAll(path) } }) { Text(row.node.title) }
@@ -585,11 +544,10 @@ internal fun ProjectNodeScreen(
             if (showDrawer) {
                 Box(
                     modifier = Modifier
-                        .fillMaxSize()
-                        .background(Arachn0deColors.Scrim.copy(alpha = 0.45f))
-                        .clickable { showDrawer = false },
+                        .fillMaxSize(),
                 ) {
-                    AppIdentityDrawer(onDismiss = { showDrawer = false }, onPeople = { showDrawer = false; onOpenPeople() }, onAttention = { showDrawer = false; onOpenAttention() }, onCalendar = { showDrawer = false; onOpenCalendar() }, onObligations = { showDrawer = false; onOpenObligations() }, onAbout = { showDrawer = false; onOpenAbout() })
+                    Box(Modifier.fillMaxSize().background(Arachn0deColors.Scrim.copy(alpha = 0.45f)).clickable { showDrawer = false }.clearAndSetSemantics {})
+                    AppIdentityDrawer(onDismiss = { showDrawer = false }, onProjects = onOpenProjects, projectsSelected = true, onPeople = { showDrawer = false; onOpenPeople() }, onAttention = { showDrawer = false; onOpenAttention() }, onCalendar = { showDrawer = false; onOpenCalendar() }, onObligations = { showDrawer = false; onOpenObligations() }, onAbout = { showDrawer = false; onOpenAbout() })
                 }
             }
         }
@@ -623,6 +581,23 @@ internal fun ProjectNodeScreen(
         )
     }
 
+    if(showContextActions) ActionMenu(currentNode?.title ?: project.name,{ showContextActions = false }) {
+        if(currentNode != null && !currentNode.hasChildren) ActionMenuItem(
+            if(currentNode.purpose == NodePurpose.NOTE) "Convertir en tarea" else "Convertir en nota",
+            androidx.compose.material.icons.Icons.Default.SwapHoriz, {
+                if(currentNode.obligation != null) { showContextActions = false; convertingObligationId = currentNode.id }
+                else actions.convert(currentNode.id,if(currentNode.purpose == NodePurpose.NOTE) NodePurpose.ACTION else NodePurpose.NOTE) { showContextActions = false }
+            },enabled = !isSubmittingNode)
+        ActionMenuItem(if(currentNode == null) "Copiar" else "Copiar este elemento", androidx.compose.material.icons.Icons.Default.ContentCopy, {
+            showContextActions = false
+            if(currentNode == null) copyActions.copyProject(project,projectState,false) else copyActions.copy(projectState,currentNode.id,false)
+        },enabled = !copyActions.busy)
+        if(currentNode == null || currentNode.hasChildren) ActionMenuItem("Copiar con descendientes", androidx.compose.material.icons.Icons.Default.AccountTree, {
+            showContextActions = false
+            if(currentNode == null) copyActions.copyProject(project,projectState,true) else copyActions.copy(projectState,currentNode.id,true)
+        },enabled = !copyActions.busy)
+    }
+
     groupReview?.let { members -> draft?.let { editor ->
         val dates = editor.purpose == NodePurpose.ACTION && projectState.nodesById[editor.id]?.isCompletable == true
         AlertDialog(onDismissRequest = { if(!isSubmittingNode) groupReview = null }, title = { Text("Aplicar cambios compartidos") },
@@ -635,7 +610,7 @@ internal fun ProjectNodeScreen(
     } }
     if(bulkDelete && selection.ids.isNotEmpty()) AlertDialog(onDismissRequest = { if(!isSubmittingNode) bulkDelete = false },
         title = { Text("¿Eliminar ${selection.ids.size} elementos?") }, text = { Text("Las capas seleccionadas también eliminarán todos sus descendientes, relaciones e historial. Esta operación no tiene Deshacer.") },
-        confirmButton = { Button(enabled = !isSubmittingNode, onClick = { actions.deleteSelected(project.id,selection.ids) { bulkDelete = false; selection.clear() } }) { Text("Eliminar seleccionados") } },
+        confirmButton = { DestructiveAction("Eliminar seleccionados", { actions.deleteSelected(project.id,selection.ids) { bulkDelete = false; selection.clear() } }, enabled = !isSubmittingNode) },
         dismissButton = { TextButton(enabled = !isSubmittingNode, onClick = { bulkDelete = false }) { Text("Cancelar") } })
     if(bulkMove && selection.ids.isNotEmpty()) {
         var expanded by remember { mutableStateOf(currentPath.toList()) }
@@ -738,7 +713,8 @@ internal fun ProjectNodeScreen(
             title = { Text("Eliminar nodo") },
             text = { Text("¿Seguro que quieres eliminar “${deletingNodeName}”? Esta acción también eliminará cualquier hijo.") },
             confirmButton = {
-                TextButton(
+                DestructiveAction(
+                    label = "Eliminar",
                     enabled = !actions.operation.busy,
                     onClick = {
                         actions.delete(deletingId) {
@@ -752,9 +728,7 @@ internal fun ProjectNodeScreen(
                             }
                         }
                     },
-                ) {
-                    Text("Eliminar")
-                }
+                )
             },
             dismissButton = {
                 TextButton(enabled = !actions.operation.busy, onClick = { deletingNodeId = null }) {

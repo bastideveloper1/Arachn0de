@@ -121,7 +121,7 @@ internal fun NodeDialog(
                     if (draft.purpose == NodePurpose.ACTION && draft.recurrenceFrequency != "NONE") Text("Una regla recurrente y un lote finito son modalidades distintas. Desactiva Recurrente para crear varios.", style = androidx.compose.material3.MaterialTheme.typography.bodySmall)
                     if (draft.batchEnabled) CreationBatchFields(draft, !isSubmitting)
                 }
-                if (draft.hasWork) TextButton(onClick = { confirmDiscard = true }, enabled = !isSubmitting) { Text("Descartar") }
+                if (draft.hasWork) DestructiveAction("Descartar", { confirmDiscard = true }, enabled = !isSubmitting)
                 Text(
                     text = if (draft.purpose == NodePurpose.NOTE) "Una nota conserva información. Para añadir hijos, conviértela primero en tarea." else if (draft.financialEnabled) "Convierte esta obligación en una tarea antes de usarla como capa." else "Una tarea se convierte automáticamente en capa al añadir hijos.",
                     color = Arachn0deColors.TextSecondary,
@@ -152,7 +152,7 @@ internal fun NodeDialog(
     )
     if (confirmDiscard) AlertDialog(onDismissRequest = { confirmDiscard = false }, title = { Text("¿Descartar borrador?") },
         text = { Text("Se eliminarán los cambios de este formulario.") },
-        confirmButton = { TextButton(onClick = onDiscard) { Text("Descartar borrador") } },
+        confirmButton = { DestructiveAction("Descartar borrador", onDiscard) },
         dismissButton = { TextButton(onClick = { confirmDiscard = false }) { Text("Continuar editando") } })
     if (draft.showResponsible && peopleLoaded) ResponsibleDialog(
         nodeId = draft.creationId, people = people, assigned = people.filter { it.id in draft.responsibleIds }, busy = isSubmitting,

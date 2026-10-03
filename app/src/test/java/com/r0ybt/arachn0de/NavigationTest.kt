@@ -95,6 +95,18 @@ class NavigationTest {
         compose.onNodeWithContentDescription("Cerrar menú").assertDoesNotExist()
         compose.onNodeWithText("Nivel uno").assertExists()
     }
+    @Test fun drawerProjectsFromNestedLayerReturnsToDashboardAndCloses() {
+        openProject()
+        compose.onNodeWithText("Nivel uno").performTouchInput { click() }
+        awaitText("Nivel dos")
+        compose.onNodeWithContentDescription("Abrir menú").performClick()
+        compose.onNodeWithText("Proyectos").assertIsSelected().performScrollTo().performClick()
+        awaitText("Proyectos")
+        compose.onNodeWithTag("navigation-drawer").assertDoesNotExist()
+        compose.onNodeWithText("Proyecto navegación").assertExists()
+        compose.onNodeWithTag("nodes-list").assertDoesNotExist()
+    }
+
     @Test fun deletedLayerRestoresToNearestExistingAncestor() {
         openProject()
         compose.onNodeWithText("Nivel uno").performTouchInput { click() }

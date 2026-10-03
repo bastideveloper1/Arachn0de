@@ -32,6 +32,7 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.TextButton
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.*
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -173,6 +174,9 @@ internal fun ProjectList(
     reorderError: String? = null,
     listState: LazyListState = rememberLazyListState(),
     projectAttentionById: Map<String, com.r0ybt.arachn0de.domain.model.AttentionSummary> = emptyMap(),
+    onCopy: (Project, Boolean) -> Unit = { _, _ -> },
+    canCopy: Boolean = true,
+    canCopyDescendants: Boolean = true,
 ) {
     val order = projects.map { it.id }
     val drag = rememberDragReorderState(listState, "project:", mapOf(false to order), reorderBusy, reorderError) { source, target, _ ->
@@ -190,6 +194,9 @@ internal fun ProjectList(
             val dragging = drag.isDragging(project.id)
             ProjectCard(
                 project = project,
+                onCopy = { descendants -> onCopy(project,descendants) },
+                canCopy = canCopy,
+                canCopyDescendants = canCopyDescendants,
                 progress = projectProgressById[project.id],
                 attention = projectAttentionById[project.id],
                 onOpen = { onOpenProject(project) },
@@ -230,6 +237,9 @@ internal fun ProjectCard(
     modifier: Modifier = Modifier,
     dragging: Boolean = false,
     attention: com.r0ybt.arachn0de.domain.model.AttentionSummary? = null,
+    onCopy: (Boolean) -> Unit = {},
+    canCopy: Boolean = true,
+    canCopyDescendants: Boolean = true,
 ) {
     var showActions by remember { mutableStateOf(false) }
     Card(
@@ -328,27 +338,16 @@ internal fun ProjectCard(
         }
     }
     if (showActions) {
-        AlertDialog(
-            onDismissRequest = { showActions = false },
-            containerColor = Arachn0deColors.Surface,
-            titleContentColor = Arachn0deColors.TextPrimary,
-            title = { Text(project.name, maxLines = 2, overflow = TextOverflow.Ellipsis) },
-            text = {
-                Column(Modifier.verticalScroll(rememberScrollState())) {
-                    TextButton(
-                        onClick = { showActions = false; onEdit() },
-                        modifier = Modifier.fillMaxWidth().semantics { contentDescription = "Editar proyecto" },
-                    ) { Text("Editar", modifier = Modifier.fillMaxWidth()) }
-                    TextButton(
-                        onClick = { showActions = false; onDelete() },
-                        modifier = Modifier.fillMaxWidth().semantics { contentDescription = "Eliminar proyecto" },
-                    ) { Text("Eliminar", color = Arachn0deColors.Destructive, modifier = Modifier.fillMaxWidth()) }
-                }
-            },
-            confirmButton = { TextButton(onClick = { showActions = false }) { Text("Cancelar") } },
-        )
+        ActionMenu(project.name,{ showActions = false }) {
+            ActionMenuItem("Editar",Icons.Default.Edit,{ showActions = false; onEdit() },
+                Modifier.semantics { contentDescription = "Editar proyecto" })
+            ActionMenuItem("Copiar",Icons.Default.ContentCopy,{ showActions = false; onCopy(false) },enabled=canCopy)
+            ActionMenuItem("Copiar con descendientes",Icons.Default.AccountTree,{ showActions = false; onCopy(true) },enabled=canCopy && canCopyDescendants)
+            androidx.compose.material3.HorizontalDivider()
+            ActionMenuItem("Eliminar",Icons.Default.Delete,{ showActions = false; onDelete() },
+                Modifier.semantics { contentDescription = "Eliminar proyecto" },destructive=true)
+        }
     }
-
 }
 
 internal fun formatProjectDate(timestamp: Long): String {

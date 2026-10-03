@@ -77,8 +77,8 @@ class NodeCopyUiTest {
     }
     @Test fun openNodeContextCopiesFromItsOwnRoot(){
         mount();compose.onNodeWithText("Bugs").performClick();await("CAPA 1")
-        compose.onNodeWithTag("nodes-list").performScrollToNode(hasText("Copiar con descendientes"))
-        compose.onNodeWithText("Copiar con descendientes").performClick()
+        compose.onNodeWithContentDescription("Opciones del elemento").performScrollTo().performClick()
+        compose.onNodeWithText("Copiar con descendientes").performScrollTo().performClick()
         copied(expected(root,true))
         compose.onNodeWithText("CAPA 1").assertExists()
     }

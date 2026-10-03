@@ -1237,7 +1237,7 @@ Las tarjetas de proyectos y capas con trabajo, y la cabecera de la capa abierta,
 
 Capacidad añadida posteriormente, **fuera de las 54 funcionalidades originales**; no modifica su contador ni implementa otras etapas. Antes de iniciar se confirmó la presencia de #23 en este checkout. No modifica el informe PNG, su renderer, proyección ni lógica financiera.
 
-El menú existente de cada tarjeta y las acciones del Node abierto ofrecen **Copiar este elemento** y, solo para contenedores con hijos, **Copiar con descendientes**. El primer alcance conserva únicamente título, descripción y semántica del seleccionado; el segundo recorre su subárbol completo. No exporta Proyectos ni necesita pantalla nueva.
+El menú existente de cada tarjeta y las acciones del Node abierto ofrecen **Copiar este elemento** y, solo para contenedores con hijos, **Copiar con descendientes**. El primer alcance conserva únicamente título, descripción y semántica del seleccionado; el segundo recorre su subárbol completo. La extensión a Proyectos se documenta en VISUAL ACTION LANGUAGE; no necesita pantalla nueva.
 
 NodeExportSnapshot.capture parte del NodeTreeSnapshot cargado y utiliza childrenOf para hijos y orden existente: disponibles/completadas, posición y desempates vigentes. DFS iterativo conserva ese orden sin recursión ni consultas Room por Node; la raíz seleccionada tiene profundidad relativa cero. La lista inmutable de ExportEntry contiene solo título, descripción, profundidad relativa, clasificación derivada y completado. La clasificación viene de hijos reales y propósito ACTION/NOTE; no hay campo persistido nuevo ni segunda implementación del árbol. Los cambios posteriores de Room no alteran el contenido capturado.
 
@@ -2173,3 +2173,42 @@ nuevos fallos en la suite completa. Reporte completo preservado en
 `/tmp/arachnode-recovery-full-report` y XML en
 `/tmp/arachnode-recovery-full-results`. `git diff --check` pasa. No se ejecutó lint
 completo ni se realizaron commit/push/tag/Release ni cambios de versión de app.
+
+
+## VISUAL ACTION LANGUAGE — UX bloque 3
+
+La gramática distingue la función antes de elegir el control. No se sustituyen indiscriminadamente textos interactivos:
+
+| Función | Representación y regla |
+| --- | --- |
+| Primaria | `Button`: Crear/Guardar y operación principal del formulario. |
+| Secundaria | `SecondaryAction` (`OutlinedButton`): Editar, Mover, Seleccionar, Completar/Reabrir. |
+| Terciaria | `TextButton` para Cancelar, Cerrar, Salir y acciones menores inequívocas. |
+| Compacta | `IconButton`, icono comprensible, `contentDescription` y target de 48 dp. |
+| Overflow | `ActionMenu` modal desplazable y `ActionMenuItem` con icono, label y rol Button. Conserva el patrón contextual existente y admite listas largas. |
+| Destructiva | `DestructiveAction` / item de menú con icono Eliminar, color error y descripción de estado «Acción destructiva»; conserva confirmaciones existentes. |
+| Estado / selector | Switch, Checkbox, Radio o chips según su semántica; un cambio de estado no es texto informativo. |
+| Navegación | Cards/títulos navegables y `NavigationDrawerItem`, con selección semántica; no se convierten en acciones de formulario. |
+| Información | Text sin callback; los iconos decorativos de una acción no duplican su anuncio. |
+
+Los componentes comunes están en `ActionComponents.kt`; se reutilizan los controles Material 3 existentes para primaria, terciaria y estado. Convertir Nota/Tarea y la copia del Node abierto pasan al overflow del contexto; las tarjetas de Node y Proyecto comparten la presentación del menú. Convertir mantiene ACTION/NOTE, History y confirmación de quitar pago. La barra de selección conserva su contador, muestra Mover secundario, Eliminar destructivo y Salir terciario en una fila que puede envolver. En resultados filtrados Seleccionar es una acción secundaria explícita. Descartar borrador adquiere tratamiento destructivo, sin alterar las secciones de Creación/Edición 2.0, Crear varios, recurrencia, borradores, creación grupal ni Snackbar/Deshacer.
+
+### Drawer adaptable
+
+`DrawerWidthPolicy` usa las restricciones Compose del ancho disponible, dentro de `AppSafeArea`, sin dependencia nueva: menos de **600 dp** ocupa todo el ancho y alto disponibles; desde **600 dp** conserva un panel lateral de **360 dp**. La política depende de la ventana actual (incluidos rotación/multiventana), no del nombre del dispositivo. `AppSafeArea` sigue consumiendo una sola vez `safeDrawing` (barras, cutouts e IME); no hay medidas estimadas de barras.
+
+El logo oficial `arachn0de_logo` se muestra a 112 dp con `ContentScale.Fit`, sin alterar su archivo o colores; «Arachn0de» conserva identidad y tipografía Material existente. Principal agrupa Proyectos, Atención, Calendario, Obligaciones y Personas; Aplicación contiene Acerca de, con un único separador entre grupos. No se inventa Configuración ni una ruta Finanzas distinta de Obligaciones. Proyectos representa tanto dashboard como el proyecto abierto. Elegir una opción cierra y navega; Proyectos regresa explícitamente al dashboard aunque el proyecto haya sido abierto desde una vista transversal. Back y «Cerrar menú» cierran el panel; en ventanas grandes también cierra el fondo externo.
+
+El panel completo se desplaza cuando no cabe (incluida fuente grande); sus controles usan mínimos de 48 dp y texto sin truncado impuesto. Mientras está abierto, se ocultan de accesibilidad las acciones de la pantalla subyacente. El fondo externo es un hermano del panel, evitando mezclar sus semánticas/paneTitle.
+
+### Redes sociales
+
+`SocialLinkRow` usa un botón outlined adaptable: icono local, red + identificador y affordance de enlace externo. GitHub, Instagram y Mastodon usan vectores locales de Simple Icons 13.21.0; Web usa Material Language. Origen y licencia CC0 están en `THIRD_PARTY_NOTICES.md` y `design/licenses/simple-icons-CC0.md`. No existe descarga de iconos en runtime. `AuthorLinks` conserva exactamente autor, labels y URLs anteriores; Código fuente sigue separado del GitHub personal. Se mantienen ACTION_VIEW y el manejo de ActivityNotFoundException/SecurityException con error visible. Iconos decorativos no añaden anuncios; el botón anuncia red, identificador y apertura externa.
+
+### Copy Project
+
+`NodeExportSnapshot.captureProject` añade una raíz de presentación con nombre y descripción del Proyecto; «Copiar» exporta solo esa raíz y «Copiar con descendientes» recorre las raíces del proyecto y sus subárboles con el orden del `NodeTreeSnapshot`. Se reutilizan la captura de Node, `NodeMarkdownRenderer` y `NodeCopyActions`, sin formato paralelo ni consultas nuevas. El Proyecto se representa como contenedor, conserva NOTE/ACTION y añade un nivel a sus descendientes. El árbol vacío sigue exportando el Proyecto.
+
+La copia vive en las opciones de la tarjeta del Proyecto y del contexto raíz, nunca como botones permanentes. En dashboard la copia completa espera la carga del árbol coherente existente; las acciones se deshabilitan durante la copia. El snapshot es inmutable, el trabajo corre en Default con cancelación y el portapapeles se escribe en Main. Se conservan el límite de 200 000 unidades UTF-16 tanto del contenido agregado como del resultado escapado, el indentado/encabezados acotados, las exclusiones de IDs, fechas, dinero y asociaciones privadas, los mensajes de error y el feedback Toast previo a Android 13 / confirmación nativa desde Android 13. Si se supera el límite no se sustituye el portapapeles anterior.
+
+Fuera del bloque: Room v13, Backup v6, Repository, dominio, paleta/tipografía global, logo original, reglas de selección/Undo, orden automático, defaults, Templates, Sprints, Kanban, Gantt, Undo de eliminación y refactor general de navegación. Se mantiene versión 0.2.2 / versionCode 4.

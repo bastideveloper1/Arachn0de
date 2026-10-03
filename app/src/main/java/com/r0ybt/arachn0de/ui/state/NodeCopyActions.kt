@@ -6,6 +6,7 @@ import android.widget.Toast
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import com.r0ybt.arachn0de.domain.model.Project
 import com.r0ybt.arachn0de.domain.model.NodeTreeSnapshot
 import com.r0ybt.arachn0de.export.*
 import kotlinx.coroutines.*
@@ -16,14 +17,20 @@ internal class NodeCopyActions(context: Context, private val scope: CoroutineSco
     private val clipboard = ContextClipboard(appContext)
     var busy by mutableStateOf(false)
         private set
-    fun copy(tree: NodeTreeSnapshot, id: String, descendants: Boolean) {
+    fun copy(tree: NodeTreeSnapshot, id: String, descendants: Boolean) = copySnapshot { check ->
+        NodeExportSnapshot.capture(tree,id,descendants,check)
+    }
+    fun copyProject(project: Project, tree: NodeTreeSnapshot, descendants: Boolean) = copySnapshot { check ->
+        NodeExportSnapshot.captureProject(project,tree,descendants,check)
+    }
+    private fun copySnapshot(capture: (() -> Unit) -> NodeExportSnapshot) {
         if (busy) return
         busy = true
         scope.launch(Dispatchers.Main.immediate) {
             try {
                 val text = withContext(Dispatchers.Default) {
                     val job = currentCoroutineContext()
-                    val snapshot = NodeExportSnapshot.capture(tree, id, descendants) { job.ensureActive() }
+                    val snapshot = capture { job.ensureActive() }
                     NodeMarkdownRenderer.render(snapshot) { job.ensureActive() }
                 }
                 clipboard.copy(text)

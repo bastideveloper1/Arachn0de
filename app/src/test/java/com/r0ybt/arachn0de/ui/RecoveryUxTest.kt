@@ -25,7 +25,13 @@ class RecoveryUxTest {
         override fun after() { app.database.close() }
     }).around(compose)
     private fun await(label:String) { try { compose.waitUntil(10000) { compose.onAllNodesWithText(label).fetchSemanticsNodes().isNotEmpty() } } catch(e:Throwable) { throw AssertionError("RECOVERY-$label\n"+compose.onRoot().printToString(),e) } }
-    private fun click(label:String) { await(label); compose.waitUntil(10000) { compose.onAllNodes(hasText(label) and isEnabled()).fetchSemanticsNodes().isNotEmpty() }; compose.onNodeWithText(label).performClick() }
+    private fun click(label:String) {
+        if (label in setOf("First", "Second", "Destination") && compose.onAllNodesWithText(label).fetchSemanticsNodes().isEmpty()) {
+            compose.onNodeWithTag("nodes-list").performScrollToNode(hasText(label))
+        }
+        await(label); compose.waitUntil(10000) { compose.onAllNodes(hasText(label) and isEnabled()).fetchSemanticsNodes().isNotEmpty() }; val node = compose.onNodeWithText(label)
+        if (label in setOf("First", "Second", "Destination")) node.performScrollTo()
+        node.performClick() }
     private fun input(label:String,value:String)=compose.onNodeWithText(label).performScrollTo().performTextReplacement(value)
     private fun open() { compose.setContent { Arachn0deTheme { AppSafeArea { AppRoot(app.projectRepository,app.nodeRepository) } } };await("Project");click("Project");await("Nuevo elemento") }
     private fun menu(id:String) {
@@ -60,7 +66,7 @@ class RecoveryUxTest {
         val rows=runBlocking { listOf(app.nodeRepository.createNode(project,null,"First"),app.nodeRepository.createNode(project,null,"Second"),app.nodeRepository.createNode(project,null,"Destination")) }
         open();await("First")
         compose.onAllNodesWithContentDescription("Más opciones")[0].performTouchInput { longClick() };await("1 seleccionados");click("Second");click("Mover");await("Mover 2 elementos")
-        compose.onNodeWithText("Destination").performClick();await("2 elementos movidos")
+        compose.onNodeWithTag("navigator-node:${rows[2].id}").performScrollTo().performClick();await("2 elementos movidos")
         compose.onNodeWithText("2 seleccionados").assertDoesNotExist()
         runBlocking { assertEquals(rows[2].id,app.nodeRepository.getNode(rows[0].id)!!.parentId);assertEquals(rows[2].id,app.nodeRepository.getNode(rows[1].id)!!.parentId) }
         click("Destination");compose.waitUntil(10000) { compose.onAllNodesWithContentDescription("Volver a la capa anterior").fetchSemanticsNodes().isNotEmpty() };compose.onNodeWithTag("nodes-list").performScrollToNode(hasText("First"));await("First")

@@ -21,8 +21,10 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.filled.Description
 import com.r0ybt.arachn0de.domain.model.NodePurpose
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -333,69 +335,18 @@ internal fun NodeCard(
     }
 
     if (showContextMenu) {
-        AlertDialog(
-            containerColor = Arachn0deColors.Surface,
-            titleContentColor = Arachn0deColors.TextPrimary,
-            textContentColor = Arachn0deColors.TextSecondary,
-            onDismissRequest = { showContextMenu = false },
-            title = { Text(node.title, maxLines = 2, overflow = TextOverflow.Ellipsis) },
-            text = {
-                Column(modifier = Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    onSelect?.let { select -> TextButton(onClick = { showContextMenu = false; select() }) { Text("Seleccionar") } }
-                    TextButton(
-                        onClick = {
-                            showContextMenu = false
-                            onEdit()
-                        },
-                        modifier = Modifier.fillMaxWidth(),
-                    ) {
-                        Text("Editar", textAlign = TextAlign.Start, modifier = Modifier.fillMaxWidth())
-                    }
-                    onHistory?.let { openHistory -> TextButton(onClick = { showContextMenu = false; openHistory() }, modifier = Modifier.fillMaxWidth()) {
-                        Text("Historial", modifier = Modifier.fillMaxWidth())
-                    } }
-                    if (!hasChildren) {
-                        TextButton(onClick = { onConvert { showContextMenu = false } }, modifier = Modifier.fillMaxWidth()) {
-                            Text(if (node.purpose == NodePurpose.NOTE) "Convertir en tarea" else "Convertir en nota", modifier = Modifier.fillMaxWidth())
-                        }
-                    }
-                    TextButton(
-                        onClick = { showContextMenu = false; onResponsible() },
-                        modifier = Modifier.fillMaxWidth(),
-                    ) { Text("Responsables", modifier = Modifier.fillMaxWidth()) }
-                    TextButton(
-                        onClick = { showContextMenu = false; onMove() },
-                        modifier = Modifier.fillMaxWidth(),
-                    ) {
-                        Text("Mover a…", textAlign = TextAlign.Start, modifier = Modifier.fillMaxWidth())
-                    }
-                    TextButton(
-                        onClick = {
-                            showContextMenu = false
-                            onDelete()
-                        },
-                        modifier = Modifier.fillMaxWidth(),
-                    ) {
-                        Text("Eliminar", color = Arachn0deColors.Destructive, textAlign = TextAlign.Start, modifier = Modifier.fillMaxWidth())
-                    }
-                    TextButton(enabled = canCopy, onClick = { showContextMenu = false; onCopy(false) },
-                        modifier = Modifier.fillMaxWidth()) {
-                        Text("Copiar este elemento", modifier = Modifier.fillMaxWidth())
-                    }
-                    if (hasChildren) TextButton(enabled = canCopy, onClick = { showContextMenu = false; onCopy(true) },
-                        modifier = Modifier.fillMaxWidth()) {
-                        Text("Copiar con descendientes", modifier = Modifier.fillMaxWidth())
-                    }
-                    TextButton(
-                        onClick = { showContextMenu = false },
-                        modifier = Modifier.fillMaxWidth(),
-                    ) {
-                        Text("Cancelar", textAlign = TextAlign.Start, modifier = Modifier.fillMaxWidth())
-                    }
-                }
-            },
-            confirmButton = {},
-        )
+        ActionMenu(node.title, { showContextMenu = false }) {
+            onSelect?.let { select -> ActionMenuItem("Seleccionar", Icons.Default.CheckBox, { showContextMenu = false; select() }) }
+            ActionMenuItem("Editar",Icons.Default.Edit,{ showContextMenu = false; onEdit() })
+            onHistory?.let { history -> ActionMenuItem("Historial",Icons.Default.History,{ showContextMenu = false; history() }) }
+            if (!hasChildren) ActionMenuItem(if(node.purpose == NodePurpose.NOTE) "Convertir en tarea" else "Convertir en nota",
+                Icons.Default.SwapHoriz,{ onConvert { showContextMenu = false } })
+            ActionMenuItem("Responsables",Icons.Default.People,{ showContextMenu = false; onResponsible() })
+            ActionMenuItem("Mover a…",Icons.Default.DriveFileMove,{ showContextMenu = false; onMove() })
+            ActionMenuItem("Copiar este elemento",Icons.Default.ContentCopy,{ showContextMenu = false; onCopy(false) },enabled=canCopy)
+            if(hasChildren) ActionMenuItem("Copiar con descendientes",Icons.Default.AccountTree,{ showContextMenu = false; onCopy(true) },enabled=canCopy)
+            HorizontalDivider()
+            ActionMenuItem("Eliminar",Icons.Default.Delete,{ showContextMenu = false; onDelete() },destructive=true)
+        }
     }
 }
-

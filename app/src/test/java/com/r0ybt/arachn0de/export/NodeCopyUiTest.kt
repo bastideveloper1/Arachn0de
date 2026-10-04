@@ -55,7 +55,8 @@ class NodeCopyUiTest {
         assertEquals("Contexto copiado",ShadowToast.getTextOfLatestToast())
     }
     private fun expected(id:String,descendants:Boolean)=runBlocking{
-        NodeMarkdownRenderer.render(NodeExportSnapshot.capture(NodeTreeSnapshot(app.nodeRepository.getProjectNodes(project)),id,descendants))
+        if(descendants) PendingChatRenderer.render(NodeTreeSnapshot(app.nodeRepository.getProjectNodes(project)),id)
+        else NodeMarkdownRenderer.render(NodeExportSnapshot.capture(NodeTreeSnapshot(app.nodeRepository.getProjectNodes(project)),id,false))
     }
     @Test fun cardMenuCopiesBothScopesWithoutWritesOrNavigationAndLeafHasNoRedundantScope(){
         mount()
@@ -78,6 +79,9 @@ class NodeCopyUiTest {
     }
     @Test fun openNodeContextCopiesFromItsOwnRoot(){
         mount();compose.onNodeWithText("Bugs").performClick();await("CAPA 1")
+        compose.onNodeWithText("Editar").assertDoesNotExist()
+        compose.onNodeWithText("Responsables").assertDoesNotExist()
+        compose.onNodeWithText("Recurrencias").assertDoesNotExist()
         compose.onNodeWithContentDescription("Opciones del elemento").performScrollTo().performClick()
         compose.onNodeWithText("Copiar con descendientes").performScrollTo().performClick()
         copied(expected(root,true))

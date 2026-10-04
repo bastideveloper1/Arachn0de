@@ -18,6 +18,8 @@ data class NodeProgress(
     val percentage: Int,
     val state: NodeProgressState,
 ) {
+    val hasPending: Boolean get() = completed < total
+
     val isComplete: Boolean
         get() = state == NodeProgressState.COMPLETE
 }

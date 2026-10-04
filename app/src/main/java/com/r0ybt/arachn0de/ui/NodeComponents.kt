@@ -186,7 +186,8 @@ internal fun NodeCard(
     var showContextMenu by remember { mutableStateOf(false) }
     val completedTint = if (node.isCompleted) Arachn0deColors.Completed else Arachn0deColors.Primary
     val displayTextColor = if (node.isCompleted) Arachn0deColors.TextCompleted else Arachn0deColors.TextPrimary
-    val rowAlpha = if (node.isCompleted) 0.92f else 1f
+    val noPending = hasChildren && progress != null && !progress.hasPending
+    val rowAlpha = if (node.isCompleted || noPending) 0.92f else 1f
 
     Card(
         modifier = modifier
@@ -250,6 +251,7 @@ internal fun NodeCard(
             ) {
                 PriorityIndicator(node)
                 TagChips(tags)
+                if (noPending) Text("Sin pendientes", color = Arachn0deColors.TextSecondary, fontSize = 12.sp)
                 if (onRecurrence != null) TextButton(onClick = onRecurrence) { Text("↻ Recurrencia", color = Arachn0deColors.Primary, fontSize = 12.sp) }
                 Text(
                     text = node.title,

@@ -37,13 +37,18 @@ internal fun RecurrenceFields(draft: EditorDraft, enabled: Boolean) {
             }
         }
         if (draft.recurrenceFrequency != "NONE") {
+            val frequency = RecurrenceFrequency.valueOf(draft.recurrenceFrequency)
+            val unit = when(frequency) { RecurrenceFrequency.DAILY -> "día"; RecurrenceFrequency.WEEKLY -> "semana"; RecurrenceFrequency.MONTHLY -> "mes"; RecurrenceFrequency.YEARLY -> "año" }
             OutlinedTextField(draft.recurrenceInterval, { draft.recurrenceInterval = it }, enabled = enabled,
-                label = { Text("Cada cuántos periodos (1–10000)") }, singleLine = true)
-            OutlinedTextField(draft.recurrenceStart, { draft.recurrenceStart = it }, enabled = enabled,
-                label = { Text("Inicio · AAAA-MM-DD") }, singleLine = true)
-            OutlinedTextField(draft.recurrenceEnd, { draft.recurrenceEnd = it }, enabled = enabled,
-                label = { Text("Hasta fecha · AAAA-MM-DD") }, supportingText = { Text("Vacío: sin fecha final") }, singleLine = true)
-            Text("Se crea una regla. Solo aparecerán las ocurrencias que correspondan. El inicio de la regla fija las fechas; Vence fija la hora y la distancia hasta Inicio de cada tarea.", style = MaterialTheme.typography.bodySmall)
+                label = { Text("Cada (cantidad de ${if(unit=="mes") "meses" else unit+"s"})") }, singleLine = true,
+                keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Number))
+            RecurrenceDateButton("Comienza", draft.recurrenceStart, enabled) { draft.recurrenceStart=it }
+            RecurrenceDateButton("Termina", draft.recurrenceEnd, enabled) { draft.recurrenceEnd=it }
+            if(draft.recurrenceEnd.isNotBlank()) TextButton(enabled=enabled,onClick={ draft.recurrenceEnd="" }) { Text("Sin fecha final") }
+            val day = runCatching { RecurrenceSchedule.parse(draft.recurrenceStart) }.getOrNull()
+            if(day != null) Text(recurrenceSummary(frequency,draft.recurrenceInterval,day),style=MaterialTheme.typography.bodySmall)
+            if(frequency==RecurrenceFrequency.MONTHLY) Text("En meses más cortos se usa el último día. Cambia Comienza para elegir el día mensual.",style=MaterialTheme.typography.bodySmall)
+            Text("Vence define la hora (24 h) de las tareas; Inicio conserva su distancia respecto de Vence.",style=MaterialTheme.typography.bodySmall)
             if (draft.startAt != null && draft.dueAt == null) Text("Para repetir una fecha de inicio, configura también Vence.", color = Arachn0deColors.Destructive)
         }
     }
@@ -51,10 +56,10 @@ internal fun RecurrenceFields(draft: EditorDraft, enabled: Boolean) {
 
 /** Rules remain reachable even before the first occurrence or after deleting every Node. */
 @Composable
-internal fun RecurrenceManager(repository: RecurrenceRepository, projectId: String, nodes: List<Node>, people: List<Person>, peopleLoaded: Boolean, externalRule: String? = null, onConsumed: () -> Unit = {}) {
+internal fun RecurrenceManager(repository: RecurrenceRepository, projectId: String, nodes: List<Node>, people: List<Person>, peopleLoaded: Boolean, externalRule: String? = null, showLauncher: Boolean = true, onConsumed: () -> Unit = {}) {
     var open by rememberSaveable(projectId) { mutableStateOf(false) }
     var selected by rememberSaveable(projectId) { mutableStateOf<String?>(null) }
-    LaunchedEffect(externalRule) { if (externalRule != null) { open = true; selected = externalRule; onConsumed() } }
+    LaunchedEffect(externalRule) { if (externalRule != null) { open = true; selected = externalRule.takeIf { it.isNotEmpty() }; onConsumed() } }
     var projects by remember(repository) { mutableStateOf(emptyList<com.r0ybt.arachn0de.data.local.ProjectEntity>()) }
     var rules by remember(repository) { mutableStateOf(emptyList<RecurrenceRuleEntity>()) }
     val projectsLoad = remember(repository) { LoadState() }
@@ -63,7 +68,8 @@ internal fun RecurrenceManager(repository: RecurrenceRepository, projectId: Stri
     LaunchedEffect(repository, rulesLoad.attempt) { rulesLoad.collect(repository.rules) { rules = it } }
     val scope = rememberCoroutineScope()
     val operation = remember(repository, scope) { OperationState(scope) }
-    OutlinedButton(onClick = { open = true }) { Text("Recurrencias") }
+
+    if(showLauncher) OutlinedButton(onClick={ open=true }) { Text("Recurrencias") }
     if (open && selected == null) AlertDialog(
         containerColor = Arachn0deColors.Surface, onDismissRequest = { open = false }, title = { Text("Recurrencias") },
         text = { Column(Modifier.verticalScroll(rememberScrollState())) {
@@ -116,7 +122,7 @@ private fun RecurrenceRuleDialog(rule: RecurrenceRuleEntity, repository: Recurre
         onDismissRequest = { if (!operation.busy) onDismiss() }, title = { Text("Regla recurrente") },
         text = { Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             Text("${rule.title} · ${statusLabel(rule.status)}")
-            Text("${rule.frequency} · cada ${rule.interval}\nInicio: ${RecurrenceSchedule.format(rule.startDay)}\nFin: ${rule.endDay?.let(RecurrenceSchedule::format) ?: "Sin fecha final"}")
+            Text("${recurrenceSummary(RecurrenceFrequency.valueOf(rule.frequency), rule.interval.toString(), rule.startDay)}\nComienza: ${humanRecurrenceDay(rule.startDay)}\nTermina: ${rule.endDay?.let(::humanRecurrenceDay) ?: "Sin fecha final"}")
             Text("Las ocurrencias anteriores se conservan sin cambios. Primero se recuperan los vencimientos activos pendientes. Pausar omite los periodos de la pausa; finalizar es definitivo.", style = MaterialTheme.typography.bodySmall)
             if (edit) TextButton(enabled = !operation.busy, onClick = { discard = true }) { Text("Descartar cambios de plantilla") }
             if (rule.status != "FINISHED") {
@@ -180,4 +186,23 @@ private fun RecurrenceRuleDialog(rule: RecurrenceRuleEntity, repository: Recurre
         confirmButton = { TextButton(enabled = !operation.busy, onClick = { operation.submit("No se pudo finalizar la recurrencia.", {
             repository.setStatus(rule.id, RecurrenceStatus.FINISHED); true
         }, { finish = false }) }) { Text("Finalizar") } }, dismissButton = { TextButton(enabled = !operation.busy, onClick = { finish = false }) { Text("Cancelar") } })
+}
+
+internal fun humanRecurrenceDay(day: Long): String = java.text.DateFormat.getDateInstance(java.text.DateFormat.MEDIUM).apply { timeZone=java.util.TimeZone.getTimeZone("UTC") }.format(java.util.Date(day*86400000L))
+
+internal fun recurrenceSummary(frequency: RecurrenceFrequency, interval: String, day: Long): String {
+    val cal=java.util.Calendar.getInstance(java.util.TimeZone.getTimeZone("UTC")).apply { timeInMillis=day*86400000L }
+    val unit=when(frequency) { RecurrenceFrequency.DAILY->if(interval=="1") "día" else "días"; RecurrenceFrequency.WEEKLY->if(interval=="1") "semana" else "semanas"; RecurrenceFrequency.MONTHLY->if(interval=="1") "mes" else "meses"; RecurrenceFrequency.YEARLY->if(interval=="1") "año" else "años" }
+    val anchor=when(frequency) { RecurrenceFrequency.DAILY->"";RecurrenceFrequency.WEEKLY->", el ${java.text.SimpleDateFormat("EEEE",java.util.Locale.getDefault()).apply { timeZone=cal.timeZone }.format(cal.time)}";RecurrenceFrequency.MONTHLY->", el día ${cal.get(java.util.Calendar.DAY_OF_MONTH)}";RecurrenceFrequency.YEARLY->", el ${java.text.SimpleDateFormat("d MMMM",java.util.Locale.getDefault()).apply { timeZone=cal.timeZone }.format(cal.time)}" }
+    return "Cada $interval $unit$anchor"
+}
+
+@Composable
+private fun RecurrenceDateButton(label:String, value:String, enabled:Boolean, onSelect:(String)->Unit) {
+    val context=androidx.compose.ui.platform.LocalContext.current
+    val day=runCatching { RecurrenceSchedule.parse(value) }.getOrNull()
+    OutlinedButton(enabled=enabled,onClick={
+        val cal=java.util.Calendar.getInstance(java.util.TimeZone.getTimeZone("UTC")).apply { timeInMillis=(day ?: RecurrenceSchedule.localDay(System.currentTimeMillis(),java.util.TimeZone.getDefault().id))*86400000L }
+        android.app.DatePickerDialog(context,{ _,year,month,date -> onSelect(RecurrenceSchedule.format(RecurrenceSchedule.parse(String.format(java.util.Locale.ROOT,"%04d-%02d-%02d",year,month+1,date)))) },cal.get(java.util.Calendar.YEAR),cal.get(java.util.Calendar.MONTH),cal.get(java.util.Calendar.DAY_OF_MONTH)).show()
+    }) { Text("$label: ${day?.let(::humanRecurrenceDay) ?: "Sin fecha final"}") }
 }

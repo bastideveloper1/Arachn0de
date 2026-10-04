@@ -1,5 +1,7 @@
 package com.r0ybt.arachn0de.ui
 
+import kotlinx.coroutines.flow.first
+
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -63,7 +65,7 @@ internal fun ProjectDashboardScreen(
 ) {
     val scope = rememberCoroutineScope()
     val context = androidx.compose.ui.platform.LocalContext.current
-    val copyActions = remember(context,scope) { com.r0ybt.arachn0de.ui.state.NodeCopyActions(context,scope) }
+    val copyActions = remember(context,scope) { com.r0ybt.arachn0de.ui.state.NodeCopyActions(context,scope) { (context.applicationContext as com.r0ybt.arachn0de.Arachn0deApplication).personRepository.observeAllAssignments().first() } }
     val actions = remember(repository, scope) { ProjectActions(repository, scope) }
     var draft by rememberSaveable(stateSaver = EditorDraft.Saver) { mutableStateOf<EditorDraft?>(null) }
     var deletingProjectId by rememberSaveable { mutableStateOf<String?>(null) }

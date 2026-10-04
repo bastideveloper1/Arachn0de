@@ -118,13 +118,13 @@ internal fun TaskDatesEditor(draft: EditorDraft, enabled: Boolean, picker: TaskD
                 dismissButton = { TextButton(onClick = { field = null }) { Text("Cancelar") } },
             ) { DatePicker(state, title = { Text("Fecha de $field") }) }
         } else {
-            val state = rememberTimePickerState(initialHour = picker.hour, initialMinute = picker.minute, is24Hour = android.text.format.DateFormat.is24HourFormat(context))
+            val state = rememberTimePickerState(initialHour = picker.hour, initialMinute = picker.minute, is24Hour = true)
             val pickedHour = state.hour
             val pickedMinute = state.minute
             SideEffect { picker.hour = pickedHour; picker.minute = pickedMinute }
             AlertDialog(
                 onDismissRequest = { field = null }, containerColor = Arachn0deColors.Surface,
-                title = { Text("Hora de $field") },
+                title = { Text("Hora de $field (24 h)") },
                 text = {
                     Column {
                         TimeInput(state, modifier = Modifier.testTag("task-time-input"))

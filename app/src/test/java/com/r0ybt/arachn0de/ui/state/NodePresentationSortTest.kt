@@ -8,6 +8,11 @@ class NodePresentationSortTest {
     private fun node(id: String, position: Int = 0, due: Long? = null, priority: Priority = Priority.NONE, created: Long = 100) =
         Node(id,"p",null,id,"",false,position,created,200,false,dueAt=due,priority=priority)
     private fun ids(nodes: List<Node>, mode: NodeSortMode) = NodePresentationSort.children(nodes,mode).map { it.id }
+    @Test fun dueAndPriorityUsesDatesThenRankThenStableTies() {
+        val input=listOf(node("none",due=null,priority=Priority.HIGH),node("low",due=5,priority=Priority.LOW),node("high",due=5,priority=Priority.HIGH),node("early",due=1),node("tie",position=1,due=5,priority=Priority.HIGH))
+        assertEquals(listOf("early","high","tie","low","none"),ids(input,NodeSortMode.DUE_PRIORITY))
+        assertEquals(ids(input,NodeSortMode.DUE_PRIORITY),ids(input.reversed(),NodeSortMode.DUE_PRIORITY))
+    }
     @Test fun manualAndAutomaticModesNeverMutatePositionsOrInput() {
         val input=listOf(node("A",0,15),node("B",1),node("C",2,5),node("D",3,20))
         val original=input.map { it.copy() }

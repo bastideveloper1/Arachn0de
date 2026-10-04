@@ -40,10 +40,14 @@ class NodeSortUiTest {
     }).around(compose)
     private fun await(label:String) { try { compose.waitUntil(10000) { compose.onAllNodesWithText(label).fetchSemanticsNodes().isNotEmpty() } } catch(e:Throwable) { throw AssertionError("SORT-$label\n"+compose.onRoot().printToString(),e) } }
     private fun open() { await(project.name);compose.onNodeWithText(project.name).performClick();await("A") }
+    private fun order():SemanticsNodeInteraction {
+        compose.onNodeWithTag("nodes-list").performScrollToIndex(0)
+        return compose.onNodeWithContentDescription("Ordenar")
+    }
     private fun sort(mode:NodeSortMode) {
-        compose.onNodeWithContentDescription("Ordenar").performClick()
+        order().performClick()
         compose.onNodeWithText(mode.label).performScrollTo().performClick()
-        compose.onNodeWithContentDescription("Ordenar").assert(hasStateDescription("Orden: ${mode.label}" + if(mode!=NodeSortMode.MANUAL) "; arrastre deshabilitado" else ""))
+        order().assert(hasStateDescription("Orden: ${mode.label}" + if(mode!=NodeSortMode.MANUAL) "; arrastre deshabilitado" else ""))
     }
     private fun node(label:String):SemanticsNodeInteraction {
         compose.onNodeWithTag("nodes-list").performScrollToNode(hasText(label))
@@ -69,7 +73,7 @@ class NodeSortUiTest {
             sort(mode)
             val expected=NodePresentationSort.children(original.filter { it.parentId==null },mode).first().title
             first(expected)
-            compose.onNodeWithContentDescription("Ordenar").performClick()
+            order().performClick()
             compose.onNodeWithText(mode.label).performScrollTo().assertIsSelected()
             compose.onNodeWithText("Cancelar").performClick()
             assertEquals(original,persisted())
@@ -78,7 +82,7 @@ class NodeSortUiTest {
         compose.onNodeWithTag("nodes-list").performScrollToIndex(0)
         compose.onNodeWithContentDescription("Opciones del proyecto").performScrollTo().performClick()
         compose.onNodeWithText("Copiar con descendientes").performScrollTo().performClick()
-        val expected=NodeMarkdownRenderer.render(NodeExportSnapshot.captureProject(project,NodeTreeSnapshot(original),true))
+        val expected=PendingChatRenderer.render(NodeTreeSnapshot(original),null,project)
         val clipboard=app.getSystemService(ClipboardManager::class.java)
         compose.waitUntil(10000) { org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle();clipboard.primaryClip?.getItemAt(0)?.text?.toString()==expected }
         sort(NodeSortMode.MANUAL);first("A")
@@ -87,18 +91,18 @@ class NodeSortUiTest {
     @Test fun activityRecreationRestoresIndependentProjectAndLayerModes() {
         open();sort(NodeSortMode.DUE_ASC);first("C")
         node("Cuentas").performClick();node("Idea").assertExists()
-        compose.onNodeWithContentDescription("Ordenar").assert(hasStateDescription("Orden: Manual"))
+        order().assert(hasStateDescription("Orden: Manual"))
         sort(NodeSortMode.CREATED_OLDEST)
         compose.activityRule.scenario.recreate();await("Nuevo elemento");node("Idea").assertExists()
-        compose.onNodeWithContentDescription("Ordenar").assert(hasStateDescription("Orden: Más antiguos; arrastre deshabilitado"))
+        order().assert(hasStateDescription("Orden: Más antiguos; arrastre deshabilitado"))
         compose.runOnUiThread { compose.activity.onBackPressedDispatcher.onBackPressed() };await("Nuevo elemento")
-        compose.onNodeWithContentDescription("Ordenar").assert(hasStateDescription("Orden: Vencimiento próximo; arrastre deshabilitado"))
+        order().assert(hasStateDescription("Orden: Vencimiento próximo; arrastre deshabilitado"))
         node("Cuentas").performClick();node("Idea").assertExists()
-        compose.onNodeWithContentDescription("Ordenar").assert(hasStateDescription("Orden: Más antiguos; arrastre deshabilitado"))
+        order().assert(hasStateDescription("Orden: Más antiguos; arrastre deshabilitado"))
         compose.runOnUiThread { compose.activity.onBackPressedDispatcher.onBackPressed() }
         compose.runOnUiThread { compose.activity.onBackPressedDispatcher.onBackPressed() }
         await("Proyectos");compose.onNodeWithText(project.name).performClick();await("Nuevo elemento")
-        compose.onNodeWithContentDescription("Ordenar").assert(hasStateDescription("Orden: Vencimiento próximo; arrastre deshabilitado"))
+        order().assert(hasStateDescription("Orden: Vencimiento próximo; arrastre deshabilitado"))
     }
     @Test fun differentProjectsKeepIndependentRootPreferencesAndDashboardHasNoSelector() {
         runBlocking {
@@ -110,12 +114,12 @@ class NodeSortUiTest {
         compose.onNodeWithText("Proyectos").performScrollTo().performClick();await("Proyectos")
         compose.onNodeWithContentDescription("Ordenar").assertDoesNotExist()
         compose.onNodeWithText("Other project").performClick();await("Other task")
-        compose.onNodeWithContentDescription("Ordenar").assert(hasStateDescription("Orden: Manual"))
+        order().assert(hasStateDescription("Orden: Manual"))
         sort(NodeSortMode.PRIORITY)
         compose.onNodeWithContentDescription("Abrir menú").performClick()
         compose.onNodeWithText("Proyectos").performScrollTo().performClick();await("Proyectos")
         compose.onNodeWithText(project.name).performClick();await("Nuevo elemento")
-        compose.onNodeWithContentDescription("Ordenar").assert(hasStateDescription("Orden: Vencimiento próximo; arrastre deshabilitado"))
+        order().assert(hasStateDescription("Orden: Vencimiento próximo; arrastre deshabilitado"))
     }
     @Test fun automaticDragCannotWriteAndManualDragWorksAgain() {
         runBlocking {
@@ -154,7 +158,7 @@ class NodeSortUiTest {
         assertFalse(retained.any { it.id in setOf(a.id,d.id) })
         assertTrue(retained.any { it.title=="C" });assertTrue(retained.any { it.title=="B" })
         compose.onNodeWithText("2 seleccionados").assertDoesNotExist()
-        compose.onNodeWithContentDescription("Ordenar").assert(hasStateDescription("Orden: Vencimiento próximo; arrastre deshabilitado"))
+        order().assert(hasStateDescription("Orden: Vencimiento próximo; arrastre deshabilitado"))
     }
     @Test fun automaticBulkMoveKeepsGroupAndRelationsAndDestinationSort() {
         val tag=runBlocking { app.nodeRepository.tags.create("Test") }
@@ -176,7 +180,7 @@ class NodeSortUiTest {
         moved.forEach { assertEquals(listOf(personId),runBlocking { app.database.personDao().assignmentIds(it.id) }) }
         assertEquals(rows.map { it.id }.toSet(),runBlocking { app.database.tagDao().nodeTags() }.filter { it.tagId==tag.id }.map { it.nodeId }.toSet())
         node("Cuentas").performClick();node("Moved early").assertExists()
-        compose.onNodeWithContentDescription("Ordenar").assert(hasStateDescription("Orden: Vencimiento próximo; arrastre deshabilitado"))
+        order().assert(hasStateDescription("Orden: Vencimiento próximo; arrastre deshabilitado"))
         compose.onNodeWithTag("nodes-list").performScrollToNode(hasText("Moved early"))
         first("Moved early",setOf("Moved early","Moved late","Idea"))
         val tree=NodeTreeSnapshot(persisted())
@@ -184,12 +188,12 @@ class NodeSortUiTest {
     }
     @Test fun creationAndBatchUndoRefreshAutomaticViewWithoutChangingOldPositions() {
         open();sort(NodeSortMode.DUE_ASC);val original=persisted()
-        compose.onNodeWithText("Nuevo elemento").performClick()
+        compose.onNodeWithText("Nuevo elemento").performClick();await("Título")
         compose.onNodeWithText("Título").performScrollTo().performTextReplacement("New")
         compose.onNodeWithText("Crear").performClick();await("Deshacer")
         node("New").assertExists();compose.onNodeWithText("Deshacer").performClick();await("Creación deshecha")
         assertEquals(original,persisted())
-        compose.onNodeWithText("Nuevo elemento").performClick()
+        compose.onNodeWithText("Nuevo elemento").performClick();await("Título")
         compose.onNodeWithText("Título").performScrollTo().performTextReplacement("Batch")
         compose.onNodeWithTag("option:Crear varios").performScrollTo().performClick()
         compose.onNodeWithText("Cantidad").performScrollTo().performTextReplacement("3")
@@ -197,6 +201,6 @@ class NodeSortUiTest {
         assertEquals(original.size+3,persisted().size)
         compose.onNodeWithText("Deshacer").performClick();await("Creación deshecha")
         assertEquals(original,persisted())
-        compose.onNodeWithContentDescription("Ordenar").assert(hasStateDescription("Orden: Vencimiento próximo; arrastre deshabilitado"))
+        order().assert(hasStateDescription("Orden: Vencimiento próximo; arrastre deshabilitado"))
     }
 }

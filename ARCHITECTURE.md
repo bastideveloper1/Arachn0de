@@ -2514,3 +2514,56 @@ no se copió ni renombró como v0.2.3. No se generaron APK oficial ni checksum;
 Quedan pendientes firma/certificado, checksum, instalación física 0.2.2→0.2.3,
 restore en dispositivo, navegación/drag, calendario/recurrencia, exportación PNG
 y updater. Notas en RELEASE_NOTES_v0.2.3.md. Sin commit, push, tag ni publicación.
+
+## Correcciones UX de dogfooding v0.2.3
+
+La recurrencia conserva el motor, el ancla civil, zona, estados y materialización
+progresiva existentes. El editor usa DatePicker Android para Comienza/Termina,
+fechas localizadas y resumen «Cada 2 meses, el día 15». El día semanal/mensual/anual
+se deriva de Comienza; no se agrega otro campo persistido. Los meses cortos siguen
+ajustándose al último día. Sin fecha final queda explícito; Vence mantiene la hora
+y la relación temporal con Inicio. Los selectores de hora muestran 24 h.
+
+Auditoría de controles: HeaderBar contenía Ordenar; la cabecera del contexto
+contenía filtros de alcance, responsables, etiquetas y prioridad. Son operaciones
+complementarias, sin criterios duplicados. Ordenar se coloca junto a Filtros y ⋮
+en la cabecera contextual, eliminando la fila explicativa permanente de orden.
+Recurrencias pasa al overflow del contexto; la gestión global conserva su acceso.
+Editar, Eliminar, Responsables, Mover e Historial del elemento abierto pasan a ⋮;
+Completar/Reabrir permanece directo.
+
+DUE_PRIORITY es presentación: vencimiento no nulo primero, instante ascendente,
+prioridad efectiva HIGH/MEDIUM/LOW/NONE y posición/createdAt/id como desempate.
+Conserva las secciones pendiente/completado y la jerarquía filtrada. No escribe
+posiciones y mantiene desactivado el arrastre automático.
+
+Copiar con descendientes usa PendingChatRenderer sobre la instantánea del árbol,
+con responsables leídos mediante PersonRepository. Omite completadas, notas y
+ramas sin tareas pendientes; conserva ancestros necesarios, títulos, responsables,
+vencimiento localizado y prioridad textual. Usa texto sencillo e indentación
+acotada, con el presupuesto existente de 200000 caracteres y cancelación.
+Copiar un elemento sin descendientes conserva el exportador anterior.
+
+NodeProgress.hasPending deriva de completed < total, sin persistencia adicional.
+Las tarjetas de capas sin pendientes tienen opacidad 0.92 y texto «Sin pendientes»;
+conservan navegación y recuperan énfasis al reaparecer pendientes.
+Configuración explica los ámbitos y Heredar en lenguaje cotidiano. Guardar y
+Restablecer permanecen en el editor, confirman discretamente y actualizan la
+referencia guardada para que Atrás no solicite descartar cambios ya persistidos.
+Se conservan precedencia, overrides, errores y bloqueo de doble envío.
+Sin migraciones, cambios de Room/Backup v7 ni versionado de aplicación.
+
+Validación dirigida del estado final: **52/52 casos en 10 clases**, ejecutados en
+tandas: NodePresentationSortTest (13), PendingChatRendererTest (3), PendingLayerTest
+(1), RecurrencePresentationTest (1), RecurrenceScheduleTest (12),
+CreationDefaultsUiTest (5), NodeCopyUiTest (2), ProjectCopyUiTest (3),
+NodeSortUiTest (7) y RecurrenceUiTest (5). Las pruebas existentes de copia se
+adaptan al nuevo formato; las de orden desplazan la lista a la cabecera y esperan
+la apertura asíncrona del editor. Una ejecución intermedia de NodeSortUiTest falló
+por esas expectativas de interacción, corregidas y revalidadas 7/7. RecurrenceUiTest
+cubre DatePicker de inicio/fin, eliminación del fin, conservación civil, borrador,
+intervalo inválido y ACTIVE/PAUSED/FINISHED. `assembleDebug` y `git diff --check`
+correctos. Logs `/tmp/ux-verified.log`, `/tmp/ux-sort.log`, `/tmp/ux-dates.log`.
+No se ejecutó suite completa, lint ni Release. Pendiente únicamente validación
+física de accesibilidad, selectores y actualización instalada desde v0.2.3;
+las pruebas locales no acreditan esos escenarios. Sin commit ni push.

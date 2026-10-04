@@ -7,7 +7,7 @@ import com.r0ybt.arachn0de.domain.model.Priority
 /** Presentation only: never writes positions or changes the source tree used by export. */
 internal enum class NodeSortMode(val label: String) {
     MANUAL("Manual"), DUE_ASC("Vencimiento próximo"), DUE_DESC("Vencimiento lejano"),
-    PRIORITY("Prioridad"), CREATED_NEWEST("Más recientes"), CREATED_OLDEST("Más antiguos")
+    DUE_PRIORITY("Vencimiento y prioridad"), PRIORITY("Prioridad"), CREATED_NEWEST("Más recientes"), CREATED_OLDEST("Más antiguos")
 }
 
 internal object NodePresentationSort {
@@ -19,6 +19,7 @@ internal object NodePresentationSort {
     fun comparator(mode: NodeSortMode): Comparator<Node> {
         val criterion = when (mode) {
             NodeSortMode.MANUAL -> manual
+            NodeSortMode.DUE_PRIORITY -> dueAscending.thenByDescending { priority(it) }.then(manual)
             NodeSortMode.DUE_ASC -> dueAscending.then(manual)
             NodeSortMode.DUE_DESC -> compareBy<Node> { it.dueAt == null }.thenByDescending { it.dueAt }.then(manual)
             NodeSortMode.PRIORITY -> compareByDescending<Node> { priority(it) }.then(dueAscending).then(manual)

@@ -12,26 +12,30 @@ import com.r0ybt.arachn0de.export.*
 import kotlinx.coroutines.*
 
 /** Screen-owned operation: scrolling a card out of composition cannot cancel copying. */
-internal class NodeCopyActions(context: Context, private val scope: CoroutineScope) {
+internal class NodeCopyActions(context: Context, private val scope: CoroutineScope, private val people: suspend () -> Map<String,List<com.r0ybt.arachn0de.domain.model.Person>> = { emptyMap() }) {
     private val appContext = context.applicationContext
     private val clipboard = ContextClipboard(appContext)
     var busy by mutableStateOf(false)
         private set
-    fun copy(tree: NodeTreeSnapshot, id: String, descendants: Boolean) = copySnapshot { check ->
-        NodeExportSnapshot.capture(tree,id,descendants,check)
+    fun copy(tree: NodeTreeSnapshot, id: String, descendants: Boolean) {
+        if(descendants) copyText { check -> PendingChatRenderer.render(tree,id,people=people(),checkCancelled=check) }
+        else copySnapshot { check -> NodeExportSnapshot.capture(tree,id,false,check) }
     }
-    fun copyProject(project: Project, tree: NodeTreeSnapshot, descendants: Boolean) = copySnapshot { check ->
-        NodeExportSnapshot.captureProject(project,tree,descendants,check)
+    fun copyProject(project: Project, tree: NodeTreeSnapshot, descendants: Boolean) {
+        if(descendants) copyText { check -> PendingChatRenderer.render(tree,null,project,people(),check) }
+        else copySnapshot { check -> NodeExportSnapshot.captureProject(project,tree,false,check) }
     }
     private fun copySnapshot(capture: (() -> Unit) -> NodeExportSnapshot) {
+        copyText { check -> NodeMarkdownRenderer.render(capture(check),check) }
+    }
+    private fun copyText(render: suspend (() -> Unit) -> String) {
         if (busy) return
         busy = true
         scope.launch(Dispatchers.Main.immediate) {
             try {
                 val text = withContext(Dispatchers.Default) {
                     val job = currentCoroutineContext()
-                    val snapshot = capture { job.ensureActive() }
-                    NodeMarkdownRenderer.render(snapshot) { job.ensureActive() }
+                    render { job.ensureActive() }
                 }
                 clipboard.copy(text)
                 // Android 13+ supplies its own clipboard confirmation.

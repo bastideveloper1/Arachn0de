@@ -34,7 +34,7 @@ class ProjectCopyUiTest {
     }).around(compose)
     private fun await(label:String)=compose.waitUntil(10000) { compose.onAllNodesWithText(label).fetchSemanticsNodes().isNotEmpty() }
     private fun mount() { compose.setContent { Arachn0deTheme { AppSafeArea { AppRoot(app.projectRepository,app.nodeRepository) } } };await(project.name) }
-    private fun expected(descendants:Boolean)=runBlocking { NodeMarkdownRenderer.render(NodeExportSnapshot.captureProject(project,NodeTreeSnapshot(app.nodeRepository.getProjectNodes(project.id)),descendants)) }
+    private fun expected(descendants:Boolean)=runBlocking { if(descendants) PendingChatRenderer.render(NodeTreeSnapshot(app.nodeRepository.getProjectNodes(project.id)),null,project) else NodeMarkdownRenderer.render(NodeExportSnapshot.captureProject(project,NodeTreeSnapshot(app.nodeRepository.getProjectNodes(project.id)),false)) }
     private fun copied(text:String) {
         val clipboard=app.getSystemService(ClipboardManager::class.java)
         compose.waitUntil(10000) { org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle();clipboard.primaryClip?.getItemAt(0)?.text?.toString()==text }

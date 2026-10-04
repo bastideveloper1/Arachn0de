@@ -66,13 +66,16 @@ internal fun CreationDefaultsScreen(repository:CreationDefaultsRepository, scope
 private fun DefaultsEditor(repository:CreationDefaultsRepository, scope:DefaultsScope, contextName:String,
     configuration:CreationDefaultsConfiguration,tags:List<Tag>,people:List<Person>,onBack:()->Unit) {
     var own by rememberSaveable(stateSaver=CreationDefaultsSaver) { mutableStateOf(configuration.own) }
+    var saved by rememberSaveable(stateSaver=CreationDefaultsSaver) { mutableStateOf(configuration.own) }
+    var success by rememberSaveable { mutableStateOf(false) }
     var reset by rememberSaveable { mutableStateOf(false) }
     var discard by rememberSaveable { mutableStateOf(false) }
     val coroutineScope=rememberCoroutineScope()
     val operation=remember(repository,coroutineScope) { OperationState(coroutineScope) }
     val validInputs=remember { mutableStateMapOf<String,Boolean>() }
+    LaunchedEffect(own,saved) { if(own!=saved) success=false }
     val inherited=configuration.inherited
-    fun leave() { if(!operation.busy) { if(own!=configuration.own) discard=true else onBack() } }
+    fun leave() { if(!operation.busy) { if(own!=saved) discard=true else onBack() } }
     BackHandler { leave() }
     Column(Modifier.fillMaxSize().padding(14.dp)) {
         Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween) {
@@ -81,33 +84,34 @@ private fun DefaultsEditor(repository:CreationDefaultsRepository, scope:Defaults
         }
         Column(Modifier.weight(1f).verticalScroll(rememberScrollState()),verticalArrangement=Arrangement.spacedBy(10.dp)) {
             Text("Valores predeterminados de creación",style=MaterialTheme.typography.titleMedium)
-            Text(contextName)
-            Text("Solo inicializan nuevos elementos creados en este contexto. Puedes modificarlos en el formulario. Los elementos existentes y los borradores guardados se conservan.")
-            Text(if(scope==DefaultsScope.Global) "Heredar usa el comportamiento inicial de la aplicación." else "Heredar usa Global → Proyecto → capas anteriores. Cada valor propio reemplaza solo esa propiedad.")
+            Text((when(scope) { DefaultsScope.Global -> "Todos los proyectos";is DefaultsScope.Project -> "Proyecto";is DefaultsScope.Layer -> "Capa" }) + ": " + contextName)
+            Text("Se aplican a las nuevas tareas y notas que crees aquí. Puedes cambiarlos al crear. No modifican tareas existentes ni borradores guardados.")
+            Text(if(scope==DefaultsScope.Global) "Heredar usa el comportamiento inicial de la aplicación." else "Heredar usa la configuración general, después la del proyecto y luego la de las capas superiores. Elegir un valor aquí cambia solo esa opción.")
             DefaultsChoice("Tipo",own.purpose,inherited.purpose,listOf(NodePurpose.ACTION,NodePurpose.NOTE),{ if(it==NodePurpose.ACTION) "Tarea" else "Nota" },!operation.busy) { own=own.copy(purpose=it) }
             DefaultsChoice("Obligación",own.obligation,inherited.obligation,listOf(false,true),{ if(it) "Activada" else "Desactivada" },!operation.busy) { own=own.copy(obligation=it) }
             DefaultsChoice("Moneda",own.currency,inherited.currency,listOf("CLP","USD","EUR"),{ it },!operation.busy) { own=own.copy(currency=it) }
             DefaultsChoice("Prioridad",own.priority,inherited.priority,Priority.entries,{ when(it) { Priority.NONE->"Ninguna";Priority.LOW->"Baja";Priority.MEDIUM->"Media";Priority.HIGH->"Alta" } },!operation.busy) { own=own.copy(priority=it) }
-            Text("Una Nota conserva Pago, Prioridad y fechas como valores latentes del formulario, disponibles si cambias a Tarea.")
+            Text("Las opciones de pago, prioridad y fechas se aplican a tareas. Si cambias una nota a tarea durante la creación, estarán disponibles.")
             DefaultsSet("Etiquetas",own.tags,inherited.tags,tags.map { it.id to it.name },!operation.busy) { own=own.copy(tags=it) }
             DefaultsSet("Responsables",own.people,inherited.people,people.map { it.id to it.name },!operation.busy) { own=own.copy(people=it) }
             DefaultsDate("Inicio",own.start,inherited.start,!operation.busy,{ validInputs["inicio"]=it }) { own=own.copy(start=it) }
             DefaultsHour("Hora de inicio",own.startTime,inherited.startTime,!operation.busy,{ validInputs["hora-inicio"]=it }) { own=own.copy(startTime=it) }
             DefaultsDate("Vencimiento",own.due,inherited.due,!operation.busy,{ validInputs["vencimiento"]=it }) { own=own.copy(due=it) }
             DefaultsHour("Hora de vencimiento",own.dueTime,inherited.dueTime,!operation.busy,{ validInputs["hora-vencimiento"]=it }) { own=own.copy(dueTime=it) }
-            Text("Día N se ajusta al último día del mes. Para vencimiento, día N y primer lunes ya pasados pasan al mes siguiente. Sin hora se usa el inicio del día local; una hora sin fecha queda latente.")
+            Text("Día N se ajusta al último día del mes. Para vencimiento, día N y primer lunes ya pasados pasan al mes siguiente. Sin hora se usa medianoche. La hora solo se aplica cuando hay fecha.")
             TextButton(enabled=!operation.busy,onClick={ reset=true }) { Text(if(scope==DefaultsScope.Global) "Restablecer valores globales" else "Restablecer herencia") }
         }
+        if(success) Text("Configuración guardada",modifier=Modifier.testTag("defaults-saved"))
         Button(enabled=!operation.busy && validInputs.values.all { it },onClick={
             operation.submit("No se pudo guardar la configuración. Revisa las etiquetas y responsables seleccionados.",{
                 repository.save(scope,own);true
-            },onBack)
+            },{ saved=own;success=true })
         },modifier=Modifier.fillMaxWidth()) { Text("Guardar valores predeterminados") }
     }
     OperationErrorDialog(operation)
     if(reset) AlertDialog(onDismissRequest={ if(!operation.busy) reset=false },title={ Text("¿Restablecer valores predeterminados?") },
-        text={ Text(if(scope==DefaultsScope.Global) "Se eliminará la configuración global. No cambia elementos existentes ni overrides de otros contextos." else "Este contexto volverá a heredar todas las propiedades. No cambia elementos existentes ni otras capas.") },
-        confirmButton={ TextButton(enabled=!operation.busy,onClick={ operation.submit("No se pudo restablecer la configuración.",{ repository.reset(scope);true },onBack) }) { Text("Restablecer") } },
+        text={ Text(if(scope==DefaultsScope.Global) "Se eliminará la configuración global. No cambia tareas existentes ni la configuración de proyectos o capas." else "Este contexto volverá a heredar todas las propiedades. No cambia elementos existentes ni otras capas.") },
+        confirmButton={ TextButton(enabled=!operation.busy,onClick={ operation.submit("No se pudo restablecer la configuración.",{ repository.reset(scope);true },{ own=CreationDefaults();saved=own;reset=false;success=true }) }) { Text("Restablecer") } },
         dismissButton={ TextButton(enabled=!operation.busy,onClick={ reset=false }) { Text("Cancelar") } })
     if(discard) AlertDialog(onDismissRequest={ discard=false },title={ Text("¿Descartar cambios de configuración?") },
         confirmButton={ TextButton(onClick=onBack) { Text("Descartar cambios") } },dismissButton={ TextButton(onClick={ discard=false }) { Text("Seguir editando") } })
@@ -118,9 +122,9 @@ private fun <T> DefaultsChoice(label:String,own:DefaultValue<T>,inherited:T,valu
     var expanded by remember { mutableStateOf(false) }
     Column {
         Text(label,style=MaterialTheme.typography.titleSmall)
-        Text("Heredado: ${display(inherited)}",style=MaterialTheme.typography.bodySmall)
+        Text("Si eliges Heredar: ${display(inherited)}",style=MaterialTheme.typography.bodySmall)
         Box {
-            OutlinedButton(enabled=enabled,onClick={ expanded=true },modifier=Modifier.fillMaxWidth().testTag("defaults-choice:$label")) { Text(when(own) { DefaultValue.Inherit->"Heredar · ${display(inherited)}";is DefaultValue.Own->"Propio · ${display(own.value)}" }) }
+            OutlinedButton(enabled=enabled,onClick={ expanded=true },modifier=Modifier.fillMaxWidth().testTag("defaults-choice:$label")) { Text(when(own) { DefaultValue.Inherit->"Heredar · ${display(inherited)}";is DefaultValue.Own->"Elegido aquí · ${display(own.value)}" }) }
             DropdownMenu(expanded,onDismissRequest={ expanded=false }) {
                 DropdownMenuItem(text={ Text("Heredar") },onClick={ expanded=false;onChange(DefaultValue.Inherit) })
                 values.forEach { value -> DropdownMenuItem(text={ Text(display(value)) },onClick={ expanded=false;onChange(DefaultValue.Own(value)) }) }
@@ -136,7 +140,7 @@ private fun DefaultsSet(label:String,own:DefaultValue<Set<String>>,inherited:Set
     fun names(ids:Set<String>)=items.filter { it.first in ids }.take(3).joinToString { it.second }.ifEmpty { "Ninguno" } + if(ids.size>3) " (+${ids.size-3})" else ""
     Column {
         DefaultsChoice(label,own,inherited,listOf(emptySet()),::names,enabled,onChange)
-        Text("Un conjunto propio reemplaza completamente al heredado.",style=MaterialTheme.typography.bodySmall)
+        Text("La selección de aquí sustituye la anterior; puedes elegir ninguno.",style=MaterialTheme.typography.bodySmall)
         if(own is DefaultValue.Own) {
             OutlinedButton(enabled=enabled,onClick={ selecting=true }) { Text("Seleccionar $label (${own.value.size})") }
             if(items.isEmpty()) Text("Aún no hay $label disponibles.")
@@ -195,6 +199,6 @@ private fun DefaultsHour(label:String,own:DefaultValue<DefaultTime>,inherited:De
             text=value
             val p=value.split(":");val h=p.getOrNull(0)?.toIntOrNull();val m=p.getOrNull(1)?.toIntOrNull()
             if(p.size==2 && h!=null && h in 0..23 && m!=null && m in 0..59) onChange(DefaultValue.Own(DefaultTime.Minute(h*60+m)))
-        },label={ Text("$label (HH:mm)") },isError=!valid,enabled=enabled,singleLine=true)
+        },label={ Text("$label (24 h · HH:mm)") },isError=!valid,enabled=enabled,singleLine=true)
     } else LaunchedEffect(minute) { onValidity(true) }
 }

@@ -43,8 +43,14 @@ class RecurrenceUiTest {
             }
         }
         compose.onNodeWithTag("option:Recurrente").performScrollTo().performClick(); click("Recurrencia: Diaria"); compose.onNodeWithText("Mensual").performClick()
-        compose.onNodeWithText("Inicio · AAAA-MM-DD").performScrollTo().performTextReplacement("2090-01-31")
-        compose.onNodeWithText("Cada cuántos periodos (1–10000)").performScrollTo().performTextReplacement("3")
+        compose.onNodeWithText("Comienza:",substring=true).performScrollTo().performClick()
+        compose.runOnUiThread {
+            val dialog=org.robolectric.shadows.ShadowDialog.getLatestDialog() as android.app.DatePickerDialog
+            dialog.datePicker.updateDate(2090,0,31)
+            dialog.getButton(android.content.DialogInterface.BUTTON_POSITIVE).performClick()
+        }
+        compose.onNodeWithText("Termina: Sin fecha final").performScrollTo().assertExists()
+        compose.onNodeWithText("Cada (cantidad de meses)").performScrollTo().performTextReplacement("3")
         restoration.emulateSavedInstanceStateRestore()
         compose.runOnIdle { assertEquals("MONTHLY", editor.recurrenceFrequency); assertEquals("3", editor.recurrenceInterval); assertEquals("2090-01-31", editor.recurrenceStart) }
         compose.onNode(hasText("Guardar") or hasText("Crear")).performClick()
@@ -53,10 +59,29 @@ class RecurrenceUiTest {
         assertEquals("MONTHLY", rule.frequency); assertEquals(3, rule.interval); assertNull(rule.endDay)
         assertTrue(runBlocking { app.nodeRepository.getProjectNodes(project).isEmpty() })
     }
+    @Test fun visualEndDatePreservesCivilDateAndCanReturnToNoEnd() {
+        val draft=EditorDraft(null,null,"Plan","").apply { recurrenceFrequency="MONTHLY";recurrenceStart="2026-10-15";recurrenceInterval="2" }
+        compose.setContent { Arachn0deTheme { RecurrenceFields(draft,true) } }
+        compose.onNodeWithText("Cada 2 meses, el día 15").assertExists()
+        compose.onNodeWithText("Termina: Sin fecha final").performClick()
+        compose.runOnUiThread {
+            val dialog=org.robolectric.shadows.ShadowDialog.getLatestDialog() as android.app.DatePickerDialog
+            dialog.datePicker.updateDate(2026,11,15)
+            dialog.getButton(android.content.DialogInterface.BUTTON_POSITIVE).performClick()
+        }
+        compose.runOnIdle {
+            assertEquals("2026-12-15",draft.recurrenceEnd)
+            val rule=draft.recurrenceRule(project)!!
+            assertEquals(RecurrenceSchedule.parse("2026-10-15"),rule.startDay)
+            assertEquals(RecurrenceSchedule.parse("2026-12-15"),rule.endDay)
+        }
+        compose.onNodeWithText("Sin fecha final").performClick()
+        compose.runOnIdle { assertNull(draft.recurrenceRule(project)!!.endDay) }
+    }
     @Test fun notesHaveNoRecurrenceAndInvalidIntervalCannotSave() {
         compose.setContent { Arachn0deTheme { NodeDialog(remember { EditorDraft(null, null, "Tarea", "") }, false, {}, { _, _ -> }) } }
         compose.onNodeWithTag("option:Recurrente").performScrollTo().performClick(); click("Recurrencia: Diaria"); compose.onNodeWithText("Diaria").performClick()
-        compose.onNodeWithText("Cada cuántos periodos (1–10000)").performScrollTo().performTextReplacement("0")
+        compose.onNodeWithText("Cada (cantidad de días)").performScrollTo().performTextReplacement("0")
         compose.onNode(hasText("Guardar") or hasText("Crear")).assertIsNotEnabled()
         click("Nota"); compose.onNodeWithText("Recurrencia: Diaria").assertDoesNotExist()
         compose.onNode(hasText("Guardar") or hasText("Crear")).assertIsEnabled()

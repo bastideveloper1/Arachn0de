@@ -1,5 +1,12 @@
 package com.r0ybt.arachn0de.ui
 
+import kotlinx.coroutines.flow.first
+import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.People
+import androidx.compose.material.icons.filled.History
+
 import androidx.compose.material.icons.filled.Settings
 import androidx.activity.compose.BackHandler
 import androidx.compose.ui.semantics.semantics
@@ -146,7 +153,7 @@ internal fun ProjectNodeScreen(
     val recurrenceByNode = remember(recurrenceReceipts) { recurrenceReceipts.associate { it.nodeId to it.ruleId } }
     val actions = remember(nodeRepository, scope) { NodeActions(nodeRepository, scope) }
     val copyContext = androidx.compose.ui.platform.LocalContext.current
-    val copyActions = remember(copyContext, scope) { com.r0ybt.arachn0de.ui.state.NodeCopyActions(copyContext, scope) }
+    val copyActions = remember(copyContext, scope) { com.r0ybt.arachn0de.ui.state.NodeCopyActions(copyContext, scope) { personRepository.observeAssignments(project.id).first() } }
     val defaultsOperation = remember(scope) { com.r0ybt.arachn0de.ui.state.OperationState(scope) }
     val isSubmittingNode = actions.operation.busy || defaultsOperation.busy
     val currentNodeId = currentPath.lastOrNull()
@@ -281,13 +288,7 @@ internal fun ProjectNodeScreen(
                     .then(if(showDrawer) Modifier.clearAndSetSemantics {} else Modifier)
                     .padding(horizontal = 12.dp, vertical = 10.dp),
             ) {
-                HeaderBar(onMenuClick = { showDrawer = true }, trailingAction = {
-                    IconButton(onClick = { showSortMenu = true }, modifier = Modifier.size(48.dp).semantics {
-                        stateDescription = "Orden: ${sortMode.label}" + if (sortMode != NodeSortMode.MANUAL) "; arrastre deshabilitado" else ""
-                    }) { Icon(Icons.AutoMirrored.Filled.Sort, "Ordenar", tint = Arachn0deColors.Accent) }
-                })
-                if (sortMode != NodeSortMode.MANUAL) Text("${sortMode.label} · Arrastre deshabilitado",
-                    style = androidx.compose.material3.MaterialTheme.typography.bodySmall)
+                HeaderBar(onMenuClick = { showDrawer = true })
                 if(selection.ids.isNotEmpty()) Column(Modifier.fillMaxWidth()) {
                     Text("${selection.ids.size} seleccionados", style = androidx.compose.material3.MaterialTheme.typography.titleMedium)
                     androidx.compose.foundation.layout.FlowRow(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -340,6 +341,9 @@ internal fun ProjectNodeScreen(
                                         fontWeight = FontWeight.SemiBold,
                                         modifier = Modifier.weight(1f),
                                     )
+                                    IconButton(onClick = { showSortMenu = true }, modifier = Modifier.size(48.dp).semantics { stateDescription="Orden: ${sortMode.label}" + if(sortMode!=NodeSortMode.MANUAL) "; arrastre deshabilitado" else "" }) {
+                                        Icon(Icons.AutoMirrored.Filled.Sort, "Ordenar")
+                                    }
                                     IconButton(onClick = { showContextActions = true }, modifier = Modifier.size(48.dp)) {
                                         Icon(androidx.compose.material.icons.Icons.Default.MoreVert,
                                             contentDescription = if(currentNode == null) "Opciones del proyecto" else "Opciones del elemento")
@@ -415,14 +419,6 @@ internal fun ProjectNodeScreen(
 
                                 if (currentNode != null) {
                                     androidx.compose.foundation.layout.FlowRow(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                        SecondaryAction("Editar", {
-                                            if(assignmentsLoaded && peopleLoaded) drafts.open(currentNode.parentId,currentNode.id) {
-                                                EditorDraft(currentNode.id,currentNode.parentId,currentNode.title,currentNode.description,startAt=currentNode.startAt,dueAt=currentNode.dueAt,purpose=currentNode.purpose,obligation=currentNode.obligation,priority=currentNode.priority).apply {
-                                                    tagIds=tagState.nodeIds[currentNode.id].orEmpty().toList();responsibleIds=responsibleByNode[currentNode.id].orEmpty().map { it.id };creationGroupId=currentNode.creationGroupId;captureSharedBaseline()
-                                                }
-                                            }
-                                        },enabled = !isSubmittingNode && assignmentsLoaded && peopleLoaded)
-                                        DestructiveAction("Eliminar", { deletingNodeId=currentNode.id;deletingNodeName=currentNode.title },enabled = !isSubmittingNode)
                                         if(currentNode.isCompletable) SecondaryAction(if(currentNode.isCompleted) "Reabrir" else "Completar",
                                             { actions.setCompleted(currentNode.id,!currentNode.isCompleted) },enabled = !isSubmittingNode)
                                     }
@@ -431,16 +427,6 @@ internal fun ProjectNodeScreen(
                                     ObligationIndicator(currentNode)
                                     if (currentNode.obligation != null) Text("Convierte esta obligación en una tarea antes de usarla como capa.", color = Arachn0deColors.TextSecondary)
                                     TaskDateIndicator(currentNode, now)
-                                    androidx.compose.foundation.layout.FlowRow(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                        androidx.compose.material3.OutlinedButton(
-                                            enabled = !isSubmittingNode && !personActions.operation.busy && peopleLoaded && assignmentsLoaded,
-                                            onClick = { responsibleNodeId = currentNode.id },
-                                        ) { Text("Responsables") }
-                                        androidx.compose.material3.OutlinedButton(
-                                            onClick = { movingNodeId = currentNode.id }, enabled = !isSubmittingNode,
-                                        ) { Text("Mover a…") }
-                                        TextButton(onClick = { historyNodeId = currentNode.id }) { Text("Historial") }
-                                    }
                                     TagChips(tagState.forNode(currentNode.id))
                                     ResponsibleAvatars(responsibleByNode[currentNode.id].orEmpty())
                                     Spacer(modifier = Modifier.height(12.dp))
@@ -537,7 +523,7 @@ internal fun ProjectNodeScreen(
                     }
                 }
                 androidx.compose.material3.SnackbarHost(actions.snackbar, Modifier.fillMaxWidth())
-                RecurrenceManager(nodeRepository.recurrence, project.id, projectState.nodes, people, peopleLoaded, recurrenceSelected) { recurrenceSelected = null }
+                RecurrenceManager(nodeRepository.recurrence, project.id, projectState.nodes, people, peopleLoaded, recurrenceSelected, showLauncher = false) { recurrenceSelected = null }
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -632,6 +618,21 @@ internal fun ProjectNodeScreen(
     }
 
     if(showContextActions) ActionMenu(currentNode?.title ?: project.name,{ showContextActions = false }) {
+        ActionMenuItem("Recurrencias", androidx.compose.material.icons.Icons.Default.Refresh, { showContextActions=false; recurrenceSelected="" })
+        if(currentNode != null) {
+            ActionMenuItem("Editar", androidx.compose.material.icons.Icons.Default.Edit, {
+                showContextActions=false
+                drafts.open(currentNode.parentId,currentNode.id) {
+                    EditorDraft(currentNode.id,currentNode.parentId,currentNode.title,currentNode.description,startAt=currentNode.startAt,dueAt=currentNode.dueAt,purpose=currentNode.purpose,obligation=currentNode.obligation,priority=currentNode.priority).apply {
+                        tagIds=tagState.nodeIds[currentNode.id].orEmpty().toList();responsibleIds=responsibleByNode[currentNode.id].orEmpty().map { it.id };creationGroupId=currentNode.creationGroupId;captureSharedBaseline()
+                    }
+                }
+            }, enabled=!isSubmittingNode && assignmentsLoaded && peopleLoaded)
+            ActionMenuItem("Eliminar", androidx.compose.material.icons.Icons.Default.Delete, { showContextActions=false;deletingNodeId=currentNode.id;deletingNodeName=currentNode.title }, enabled=!isSubmittingNode)
+            ActionMenuItem("Responsables", androidx.compose.material.icons.Icons.Default.People, { showContextActions=false;responsibleNodeId=currentNode.id }, enabled=!isSubmittingNode && !personActions.operation.busy && peopleLoaded && assignmentsLoaded)
+            ActionMenuItem("Mover a…", androidx.compose.material.icons.Icons.Default.AccountTree, { showContextActions=false;movingNodeId=currentNode.id }, enabled=!isSubmittingNode)
+            ActionMenuItem("Historial", androidx.compose.material.icons.Icons.Default.History, { showContextActions=false;historyNodeId=currentNode.id })
+        }
         if(currentNode == null || (currentNode.purpose == NodePurpose.ACTION && currentNode.obligation == null)) ActionMenuItem("Valores predeterminados", androidx.compose.material.icons.Icons.Default.Settings, {
             showContextActions = false; showDefaults = true
         }, enabled = !isSubmittingNode)

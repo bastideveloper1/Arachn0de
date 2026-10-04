@@ -36,13 +36,13 @@ class CreationDefaultsUiTest {
     private fun open() { await("Defaults project");compose.onNodeWithText("Defaults project").performClick();await("Nuevo elemento") }
     private fun settings() { compose.onNodeWithContentDescription("Abrir menú").performClick();compose.onNodeWithText("Configuración").performScrollTo().performClick();await("Guardar valores predeterminados") }
     private fun choose(label:String,value:String) { compose.onNodeWithTag("defaults-choice:$label").performScrollTo().performClick();compose.onNodeWithText(value).performClick() }
-    private fun save() { compose.onNodeWithText("Guardar valores predeterminados").performClick();compose.waitUntil(10000) { compose.onAllNodesWithText("Guardar valores predeterminados").fetchSemanticsNodes().isEmpty() };await("Nuevo elemento") }
+    private fun save() { compose.onNodeWithText("Guardar valores predeterminados").performClick();await("Configuración guardada");compose.onNodeWithText("Guardar valores predeterminados").assertExists();compose.onNodeWithText("Volver").performClick();await("Nuevo elemento") }
     private fun fresh() { compose.onNodeWithText("Nuevo elemento").performClick();await("Título") }
     @Test fun globalSettingsPersistAndUnsavedSettingsSurviveActivityRecreation() {
         runBlocking { app.nodeRepository.creationDefaults.save(DefaultsScope.Global,CreationDefaults(obligation=DefaultValue.Own(true),priority=DefaultValue.Own(Priority.HIGH),start=DefaultValue.Own(DefaultDate(DefaultDateKind.TOMORROW)),due=DefaultValue.Own(DefaultDate(DefaultDateKind.TODAY)))) }
         open();settings();choose("Moneda","USD");choose("Tipo","Nota")
         compose.activityRule.scenario.recreate();await("Guardar valores predeterminados")
-        compose.onNodeWithTag("defaults-choice:Tipo").performScrollTo().assert(hasText("Propio · Nota"))
+        compose.onNodeWithTag("defaults-choice:Tipo").performScrollTo().assert(hasText("Elegido aquí · Nota"))
         save();assertEquals(NodePurpose.NOTE,runBlocking { app.nodeRepository.creationDefaults.configuration(DefaultsScope.Global).effective.purpose })
         fresh();compose.onNodeWithText("Título").performTextInput("Nueva nota");compose.onNodeWithText("Crear").performClick()
         compose.waitUntil(10000) { runBlocking { app.nodeRepository.getProjectNodes(project.id).any { it.title=="Nueva nota" } } }
@@ -65,7 +65,7 @@ class CreationDefaultsUiTest {
         compose.onNodeWithContentDescription("Opciones del elemento").performScrollTo().performClick();compose.onNodeWithText("Valores predeterminados").performScrollTo().performClick();await("Guardar valores predeterminados")
         compose.onNodeWithText("Restablecer herencia").performScrollTo().performClick();compose.onNodeWithText("Cancelar").performClick()
         assertEquals("CLP",runBlocking { app.nodeRepository.creationDefaults.resolve(project.id,layer.id).currency })
-        compose.onNodeWithText("Restablecer herencia").performScrollTo().performClick();compose.onNodeWithText("Restablecer").performClick();await("Nuevo elemento")
+        compose.onNodeWithText("Restablecer herencia").performScrollTo().performClick();compose.onNodeWithText("Restablecer").performClick();await("Configuración guardada");compose.onNodeWithText("Volver").performClick();await("Nuevo elemento")
         assertEquals("USD",runBlocking { app.nodeRepository.creationDefaults.resolve(project.id,layer.id).currency })
     }
     @Test fun existingClosedDraftKeepsTypeAcrossGlobalChangeAndDiscardUsesNewDefaults() {
@@ -81,9 +81,9 @@ class CreationDefaultsUiTest {
         compose.onNodeWithText("Guardar valores predeterminados").assertIsNotEnabled()
         compose.onNodeWithText("Día del mes").performTextReplacement("31")
         choose("Hora de vencimiento","09:00")
-        compose.onNodeWithText("Hora de vencimiento (HH:mm)").performScrollTo().performTextReplacement("25:88")
+        compose.onNodeWithText("Hora de vencimiento (24 h · HH:mm)").performScrollTo().performTextReplacement("25:88")
         compose.onNodeWithText("Guardar valores predeterminados").assertIsNotEnabled()
-        compose.onNodeWithText("Hora de vencimiento (HH:mm)").performTextReplacement("22:00")
+        compose.onNodeWithText("Hora de vencimiento (24 h · HH:mm)").performTextReplacement("22:00")
         compose.onNodeWithText("Guardar valores predeterminados").assertIsEnabled()
         save();val effective=runBlocking { app.nodeRepository.creationDefaults.configuration(DefaultsScope.Global).effective }
         assertEquals(DefaultDate(DefaultDateKind.DAY_OF_MONTH,31),effective.due);assertEquals(DefaultTime.Minute(1320),effective.dueTime)

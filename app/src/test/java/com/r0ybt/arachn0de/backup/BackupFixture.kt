@@ -19,8 +19,8 @@ internal object BackupFixture {
     fun complete() = BackupData("0.2.1", 1234,
         listOf(ProjectEntity("p", "Proyecto ☘", "Descripción\nUnicode", 7, 1, 9), ProjectEntity("q", "Otro", "", 2, 2, 10)),
         listOf(
-            NodeEntity("root", "p", null, "Capa", "Contenido", false, 17, 3, 11, 100, 200),
-            NodeEntity("inner", "p", "root", "Subcapa", "", false, 8, 4, 12),
+            NodeEntity("root", "p", null, "Capa", "Contenido", false, 17, 3, 11, 100, 200, purpose="LAYER"),
+            NodeEntity("inner", "p", "root", "Subcapa", "", false, 8, 4, 12, purpose="LAYER"),
             NodeEntity("bill", "p", "inner", "Obligación", "Dinero", true, 40, 5, 13, 100, 200, "ACTION", Long.MAX_VALUE, "USD"),
             NodeEntity("note", "p", "root", "Nota", "Texto completo\n👋", false, 8, 6, 14, 50, 60, "NOTE"),
             NodeEntity("task", "q", null, "Pendiente", "", false, 8, 7, 15),

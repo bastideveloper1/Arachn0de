@@ -66,6 +66,8 @@ internal fun ProjectDashboardScreen(
     val scope = rememberCoroutineScope()
     val context = androidx.compose.ui.platform.LocalContext.current
     val copyActions = remember(context,scope) { com.r0ybt.arachn0de.ui.state.NodeCopyActions(context,scope) { (context.applicationContext as com.r0ybt.arachn0de.Arachn0deApplication).personRepository.observeAllAssignments().first() } }
+    var moveProject by rememberSaveable { mutableStateOf<String?>(null) }
+    projects.firstOrNull { it.id==moveProject }?.let { moving -> ProjectMoveDialog(repository,moving,{ moveProject=null },{ moveProject=null }) }
     val actions = remember(repository, scope) { ProjectActions(repository, scope) }
     var draft by rememberSaveable(stateSaver = EditorDraft.Saver) { mutableStateOf<EditorDraft?>(null) }
     var deletingProjectId by rememberSaveable { mutableStateOf<String?>(null) }
@@ -121,6 +123,7 @@ internal fun ProjectDashboardScreen(
                 } else {
                     ProjectList(
                         projects = projects,
+                        onMoveInside = { moveProject=it.id },
                         onCopy = { project, descendants -> copyActions.copyProject(project,exportTree,descendants) },
                         canCopy = !copyActions.busy,
                         canCopyDescendants = copyDescendantsReady,

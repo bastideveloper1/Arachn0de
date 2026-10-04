@@ -27,7 +27,7 @@ class CreationDefaultsUiTest {
         override fun before() { app=ApplicationProvider.getApplicationContext();runBlocking {
             project=app.projectRepository.createProject("Defaults project")
             old=app.nodeRepository.createNode(project.id,null,"Old task")
-            layer=app.nodeRepository.createNode(project.id,null,"Cuentas")
+            layer=app.nodeRepository.createNode(project.id,null,"Cuentas",purpose=com.r0ybt.arachn0de.domain.model.NodePurpose.LAYER)
             app.nodeRepository.createNode(project.id,layer.id,"Child")
         } }
         override fun after() { app.database.close() }

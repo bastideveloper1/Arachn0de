@@ -46,7 +46,7 @@ class RecurrenceRepository(
         dao.rules().filter { it.status == "ACTIVE" }.forEach { initial ->
             validate(initial)
             var rule = initial
-            if (!destinationExists(rule)) {
+            if (!destinationExists(rule,allowLegacyAction=true)) {
                 dao.update(rule.copy(status = "PAUSED"))
                 return@forEach
             }
@@ -63,6 +63,12 @@ class RecurrenceRepository(
                 remaining--
                 if (dao.occurrence(rule.id, day) == null) {
                     val id = UUID.nameUUIDFromBytes("recurrence:${rule.id}:$day".toByteArray(Charsets.UTF_8)).toString()
+                    // Older rules could target a task before its first child existed. Preserve that
+                    // deferred conversion at the first due materialization, not during migration.
+                    rule.parentId?.let { parentId ->
+                        if(database.nodeDao().getById(parentId)?.purpose=="ACTION")
+                            check(NodeRepository(database,now).convertPurpose(parentId,NodePurpose.LAYER))
+                    }
                     NodeRepository(database, now).createNode(rule.projectId, rule.parentId, rule.title, rule.description,
                         creationId = id,
                         startAt = rule.startOffsetMillis?.let { Math.subtractExact(due, it) }, dueAt = due,
@@ -97,7 +103,7 @@ class RecurrenceRepository(
             val old = RecurrenceStatus.valueOf(rule.status)
             require(old != RecurrenceStatus.FINISHED || status == RecurrenceStatus.FINISHED) { "Una recurrencia finalizada no se puede reactivar." }
             require(status != RecurrenceStatus.ACTIVE || old == RecurrenceStatus.PAUSED) { "Solo se puede reanudar una regla pausada." }
-            if (status == RecurrenceStatus.ACTIVE) validateDestination(rule)
+            if (status == RecurrenceStatus.ACTIVE) require(destinationExists(rule,allowLegacyAction=true))
             val index = if (status == RecurrenceStatus.ACTIVE) maxOf(rule.nextIndex,
                 RecurrenceSchedule.indexOnOrAfter(rule.startDay, RecurrenceFrequency.valueOf(rule.frequency), rule.interval,
                     RecurrenceSchedule.localDay(at, rule.zoneId))) else rule.nextIndex
@@ -125,10 +131,10 @@ class RecurrenceRepository(
         }
     }
 
-    private suspend fun destinationExists(rule: RecurrenceRuleEntity): Boolean {
+    private suspend fun destinationExists(rule: RecurrenceRuleEntity,allowLegacyAction:Boolean=false): Boolean {
         if (database.projectDao().getById(rule.projectId) == null) return false
         val parent = rule.parentId?.let { database.nodeDao().getById(it) ?: return false }
-        return parent == null || (parent.projectId == rule.projectId && parent.purpose == "ACTION" && parent.amountMinor == null)
+        return parent == null || (parent.projectId == rule.projectId && (parent.purpose == "LAYER" || (allowLegacyAction && parent.purpose=="ACTION")) && parent.amountMinor == null)
     }
     private suspend fun validateDestination(rule: RecurrenceRuleEntity) {
         require(destinationExists(rule)) { "El destino ya no existe o no puede recibir tareas. Edita el destino antes de reanudar." }

@@ -19,7 +19,7 @@ class CreationDefaultsRepositoryTest {
     @Before fun setup()=runBlocking { val c=RuntimeEnvironment.getApplication();c.deleteDatabase("arachn0de.db");db=Arachn0deDatabase.create(c);nodes=NodeRepository(db);db.projectDao().insert(ProjectEntity("p","Project","",0,1,1)) }
     @After fun close() { db.close();RuntimeEnvironment.getApplication().deleteDatabase("arachn0de.db") }
     @Test fun reopeningPreservesLayerOverridesAndInheritedValuesIndependently()=runBlocking {
-        val layer=nodes.createNode("p",null,"Layer");val child=nodes.createNode("p",layer.id,"Child")
+        val layer=nodes.createNode("p",null,"Layer",purpose=com.r0ybt.arachn0de.domain.model.NodePurpose.LAYER);val child=nodes.createNode("p",layer.id,"Child",purpose=com.r0ybt.arachn0de.domain.model.NodePurpose.LAYER)
         val tag=nodes.tags.create("Tag");db.personDao().insert(PersonEntity("person","Ana",null))
         nodes.creationDefaults.save(DefaultsScope.Global,CreationDefaults(priority=DefaultValue.Own(Priority.MEDIUM),tags=DefaultValue.Own(setOf(tag.id))))
         nodes.creationDefaults.save(DefaultsScope.Project("p"),CreationDefaults(currency=DefaultValue.Own("EUR"),people=DefaultValue.Own(setOf("person"))))
@@ -37,11 +37,11 @@ class CreationDefaultsRepositoryTest {
             assertTrue(runCatching { nodes.creationDefaults.save(scope,bad) }.isFailure);assertEquals(before,nodes.creationDefaults.configuration(scope).own)
         }
         assertTrue(runCatching { nodes.creationDefaults.save(DefaultsScope.Project("missing"),before) }.isFailure)
-        val q=ProjectEntity("q","Other","",1,1,1);db.projectDao().insert(q);val node=nodes.createNode("q",null,"Other layer")
+        val q=ProjectEntity("q","Other","",1,1,1);db.projectDao().insert(q);val node=nodes.createNode("q",null,"Other layer",purpose=com.r0ybt.arachn0de.domain.model.NodePurpose.LAYER)
         assertTrue(runCatching { nodes.creationDefaults.save(DefaultsScope.Layer("p",node.id),before) }.isFailure)
     }
     @Test fun cascadesRemoveDeletedReferencesContextsAndDescendantsButKeepGlobal()=runBlocking {
-        val layer=nodes.createNode("p",null,"Layer");val child=nodes.createNode("p",layer.id,"Child");val tag=nodes.tags.create("Tag");db.personDao().insert(PersonEntity("person","Ana",null))
+        val layer=nodes.createNode("p",null,"Layer",purpose=com.r0ybt.arachn0de.domain.model.NodePurpose.LAYER);val child=nodes.createNode("p",layer.id,"Child",purpose=com.r0ybt.arachn0de.domain.model.NodePurpose.LAYER);val tag=nodes.tags.create("Tag");db.personDao().insert(PersonEntity("person","Ana",null))
         val config=CreationDefaults(tags=DefaultValue.Own(setOf(tag.id)),people=DefaultValue.Own(setOf("person")))
         for(scope in listOf(DefaultsScope.Global,DefaultsScope.Project("p"),DefaultsScope.Layer("p",layer.id),DefaultsScope.Layer("p",child.id))) nodes.creationDefaults.save(scope,config)
         nodes.tags.delete(tag.id);db.personDao().delete("person")
@@ -51,7 +51,7 @@ class CreationDefaultsRepositoryTest {
         assertTrue(db.creationDefaultsDao().tags().isEmpty());assertTrue(db.creationDefaultsDao().people().isEmpty())
     }
     @Test fun defaultsDoNotMutateExistingNodesOrEventsWhenEditedOrMoved()=runBlocking {
-        val layer=nodes.createNode("p",null,"Layer");val task=nodes.createNode("p",null,"Task")
+        val layer=nodes.createNode("p",null,"Layer",purpose=com.r0ybt.arachn0de.domain.model.NodePurpose.LAYER);val task=nodes.createNode("p",null,"Task")
         val before=db.nodeDao().getById(task.id)!!;val events=db.nodeEventDao().all()
         nodes.creationDefaults.save(DefaultsScope.Layer("p",layer.id),CreationDefaults(priority=DefaultValue.Own(Priority.HIGH),due=DefaultValue.Own(DefaultDate(DefaultDateKind.TODAY))))
         assertEquals(before,db.nodeDao().getById(task.id));assertEquals(events,db.nodeEventDao().all())

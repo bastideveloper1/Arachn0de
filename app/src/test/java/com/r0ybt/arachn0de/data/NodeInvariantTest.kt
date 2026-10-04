@@ -75,7 +75,7 @@ class NodeInvariantTest {
     }
 
     @Test
-    fun pendingLeafBecomesContainerAndReturnsToPendingLeaf() = runBlocking {
+    fun explicitConversionToLayerKeepsEmptyLayerAfterLastDeletion() = runBlocking {
         val root = create("Root")
         assertTrue(root.isCompletable)
         val child = create("Child", root.id)
@@ -84,8 +84,8 @@ class NodeInvariantTest {
         assertFalse(nodes.setCompleted(root.id, true))
         assertFalse(nodes.setCompleted(root.id, false))
         nodes.deleteNode(child.id)
-        assertEquals(root, nodes.getNode(root.id))
-        assertTrue(nodes.setCompleted(root.id, true))
+        assertEquals(root.copy(purpose=com.r0ybt.arachn0de.domain.model.NodePurpose.LAYER), nodes.getNode(root.id))
+        assertFalse(nodes.setCompleted(root.id, true))
     }
 
     @Test
@@ -98,8 +98,10 @@ class NodeInvariantTest {
         nodes.updateNode(root.id, "Renamed container")
         nodes.deleteNode(child.id)
         val leaf = nodes.getNode(root.id)!!
-        assertTrue(leaf.isCompletable)
+        assertFalse(leaf.isCompletable)
         assertFalse(leaf.isCompleted)
+        assertFalse(nodes.toggleCompleted(root.id))
+        assertTrue(nodes.convertPurpose(root.id,com.r0ybt.arachn0de.domain.model.NodePurpose.ACTION))
         assertTrue(nodes.toggleCompleted(root.id))
     }
 
@@ -124,14 +126,15 @@ class NodeInvariantTest {
         val newParent = create("New")
         val child = create("Child", oldParent.id)
         nodes.setCompleted(newParent.id, true)
+        nodes.convertPurpose(newParent.id,com.r0ybt.arachn0de.domain.model.NodePurpose.LAYER)
         assertTrue(nodes.moveNode(child.id, newParent.id))
-        assertTrue(nodes.getNode(oldParent.id)!!.isCompletable)
+        assertFalse(nodes.getNode(oldParent.id)!!.isCompletable)
         assertFalse(nodes.getNode(oldParent.id)!!.isCompleted)
         assertTrue(nodes.getNode(newParent.id)!!.isStructural)
         assertFalse(nodes.getNode(newParent.id)!!.isCompleted)
         assertTrue(nodes.moveNode(child.id, null))
         assertNull(nodes.getNode(child.id)!!.parentId)
-        assertTrue(nodes.getNode(newParent.id)!!.isCompletable)
+        assertFalse(nodes.getNode(newParent.id)!!.isCompletable)
     }
 
     @Test
@@ -200,10 +203,11 @@ class NodeInvariantTest {
     fun databaseTriggersNormalizeTransitionsEvenForDirectDaoWrites() = runBlocking {
         val root = create("Root")
         nodes.setCompleted(root.id, true)
+        nodes.convertPurpose(root.id,com.r0ybt.arachn0de.domain.model.NodePurpose.LAYER)
         db.nodeDao().insert(entity("direct", projectId, root.id))
         assertFalse(nodes.getNode(root.id)!!.isCompleted)
         db.nodeDao().delete("direct")
-        assertTrue(nodes.getNode(root.id)!!.isCompletable)
+        assertFalse(nodes.getNode(root.id)!!.isCompletable)
         assertFalse(nodes.getNode(root.id)!!.isCompleted)
     }
 
@@ -236,9 +240,9 @@ class NodeInvariantTest {
                 nodes.moveNode(sibling.id, null)
                 awaitState { it.nodesById[sibling.id]?.parentId == null && it.progressById[root.id]?.percentage == 100 }
                 nodes.deleteNode(child.id)
-                val state = awaitState { it.nodesById[root.id]?.isCompletable == true }
+                val state = awaitState { it.nodesById[root.id]?.isStructural == true && it.nodesById[root.id]?.hasChildren == false }
                 assertEquals(0, state.progressById[root.id]!!.percentage)
-                assertEquals(1, state.progressById[root.id]!!.total)
+                assertEquals(0, state.progressById[root.id]!!.total)
             } finally {
                 observer.cancel()
                 emissions.close()
@@ -286,6 +290,7 @@ class NodeInvariantTest {
         withTimeout(15_000) {
             val a = create("A")
             val b = create("B")
+            nodes.convertPurpose(a.id,com.r0ybt.arachn0de.domain.model.NodePurpose.LAYER);nodes.convertPurpose(b.id,com.r0ybt.arachn0de.domain.model.NodePurpose.LAYER)
             val results = listOf(
                 async(Dispatchers.Default) { runCatching { nodes.moveNode(a.id, b.id) } },
                 async(Dispatchers.Default) { runCatching { nodes.moveNode(b.id, a.id) } },
@@ -325,6 +330,7 @@ class NodeInvariantTest {
         val child = create("Child", root.id)
         // Simulate externally corrupted storage by explicitly removing the SQL guard.
         val sql = db.openHelper.writableDatabase
+        nodes.convertPurpose(child.id,com.r0ybt.arachn0de.domain.model.NodePurpose.LAYER)
         sql.execSQL("DROP TRIGGER nodes_no_cycle_move")
         sql.execSQL("UPDATE nodes SET parentId = ? WHERE id = ?", arrayOf(child.id, root.id))
         withTimeout(5_000) {
@@ -347,8 +353,11 @@ class NodeInvariantTest {
         assertEquals(25, progress.percentage)
     }
 
-    private suspend fun create(title: String, parentId: String? = null): Node =
-        nodes.createNode(projectId, parentId, title)
+    private suspend fun create(title: String, parentId: String? = null): Node {
+        // Explicit fixture setup, keeping the repository's rejection of ACTION parents intact.
+        parentId?.let { nodes.getNode(it)?.takeIf { parent -> parent.projectId==projectId && parent.purpose==com.r0ybt.arachn0de.domain.model.NodePurpose.ACTION }?.let { parent -> nodes.convertPurpose(parent.id,com.r0ybt.arachn0de.domain.model.NodePurpose.LAYER) } }
+        return nodes.createNode(projectId,parentId,title)
+    }
 
     private fun entity(id: String, projectId: String, parentId: String?) =
         NodeEntity(id, projectId, parentId, id, "", false, 0, 100, 100)

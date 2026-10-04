@@ -52,7 +52,7 @@ class RecurrenceBackupTest {
         val json = JSONObject(BackupJson.encode(legacy).toString(Charsets.UTF_8)).apply {
             for (i in 0 until getJSONArray("nodes").length()) getJSONArray("nodes").getJSONObject(i).apply { remove("priority"); remove("creationGroupId") }
             for (i in 0 until getJSONArray("recurrenceRules").length()) getJSONArray("recurrenceRules").getJSONObject(i).apply { remove("priority"); remove("creationGroupId") }
-            put("dataVersion", 1); remove("creationDefaults"); remove("defaultsTags"); remove("defaultsPeople"); remove("nodeEvents"); remove("tags"); remove("nodeTags"); remove("recurrenceTags"); remove("recurrenceRules"); remove("recurrenceOccurrences"); remove("recurrenceAssignments")
+            put("dataVersion", 1); for(i in 0 until getJSONArray("nodes").length()) { val row=getJSONArray("nodes").getJSONObject(i);if(row.getString("purpose")=="LAYER") row.put("purpose","ACTION") }; remove("creationDefaults"); remove("defaultsTags"); remove("defaultsPeople"); remove("nodeEvents"); remove("tags"); remove("nodeTags"); remove("recurrenceTags"); remove("recurrenceRules"); remove("recurrenceOccurrences"); remove("recurrenceAssignments")
         }.toString().toByteArray()
         val bytes = java.io.ByteArrayOutputStream().also { BackupContainer.write(json, it) }.toByteArray()
         nodes.recurrence.create(rule("current")); nodes.recurrence.materializeDue()

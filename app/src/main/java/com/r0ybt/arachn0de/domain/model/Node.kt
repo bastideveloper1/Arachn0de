@@ -1,6 +1,6 @@
 package com.r0ybt.arachn0de.domain.model
 
-/** Structure is derived from persisted children, never selected or stored as a type. */
+/** LAYER is an explicit container; child presence and progress remain derived. */
 data class Node(
     val id: String,
     val projectId: String,
@@ -20,6 +20,6 @@ data class Node(
     val creationGroupId: String? = null,
 ) {
     val effectivePriority: Priority get() = if (isCompletable) priority else Priority.NONE
-    val isStructural: Boolean get() = hasChildren
+    val isStructural: Boolean get() = purpose == NodePurpose.LAYER
     val isCompletable: Boolean get() = !hasChildren && purpose == NodePurpose.ACTION
 }

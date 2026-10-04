@@ -390,7 +390,7 @@ class NodeRepository(
         while (ancestor != null) {
             require(ancestor !in rootsSet && visited.add(ancestor)) { "Destino dentro de la selección." }
             val parent = requireNotNull(byId[ancestor]) { "Destino ausente." }
-            require(parent.purpose == NodePurpose.ACTION && parent.obligation == null) { "Destino incompatible." }
+            require(parent.purpose == NodePurpose.LAYER && parent.obligation == null) { "Destino incompatible." }
             ancestor = parent.parentId
         }
         val changing = roots.filter { byId.getValue(it).parentId != parentId }
@@ -510,7 +510,7 @@ class NodeRepository(
             val parent = nodeDao.getById(currentId)
             requireNotNull(parent) { "Parent node not found" }
             require(parent.amountMinor == null) { "Convierte esta obligación en una tarea antes de usarla como capa." }
-            require(parent.purpose == NodePurpose.ACTION.name) { "Notes cannot receive children" }
+            require(parent.purpose == NodePurpose.LAYER.name) { "Only layers can receive children" }
             require(parent.projectId == projectId) { "Parent node must belong to the same project" }
             currentId = parent.parentId
         }

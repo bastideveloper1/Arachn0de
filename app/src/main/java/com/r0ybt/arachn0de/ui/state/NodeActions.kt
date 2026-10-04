@@ -47,7 +47,7 @@ internal class NodeActions(private val repository: NodeRepository, private val s
 
     fun saveDraft(projectId: String, draft: EditorDraft, editDates: Boolean, onSuccess: () -> Unit) {
         when {
-            draft.id == null && draft.batchEnabled -> {
+            draft.id == null && draft.batchEnabled && draft.purpose != com.r0ybt.arachn0de.domain.model.NodePurpose.LAYER -> {
                 val batch = draft.batchDraft()
                 val specs = com.r0ybt.arachn0de.domain.model.NodeBatchGenerator.generate(batch.parameters(), java.util.TimeZone.getDefault())
                 createBatch(projectId, batch, specs, batch.responsibleIds.toSet(), onSuccess)

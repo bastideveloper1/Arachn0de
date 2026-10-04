@@ -26,7 +26,7 @@ class ProjectCopyUiTest {
     @get:Rule val rules:RuleChain=RuleChain.outerRule(object:ExternalResource() {
         override fun before() { app=ApplicationProvider.getApplicationContext();runBlocking {
             project=app.projectRepository.createProject("Proyecto exportable","Contenido del proyecto")
-            val layer=app.nodeRepository.createNode(project.id,null,"Android")
+            val layer=app.nodeRepository.createNode(project.id,null,"Android",purpose=com.r0ybt.arachn0de.domain.model.NodePurpose.LAYER)
             app.nodeRepository.createNode(project.id,layer.id,"Tarea A")
             app.nodeRepository.createNode(project.id,layer.id,"Nota B",purpose=NodePurpose.NOTE)
         } }

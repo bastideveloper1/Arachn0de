@@ -48,7 +48,7 @@ class NodePersistenceTest {
 
     @Test
     fun rootAndChildNodesFollowStableProjectAndParentRelations() = runBlocking {
-        val rootA = nodeRepository.createNode(project.id, null, "Root A")
+        val rootA = nodeRepository.createNode(project.id, null, "Root A",purpose=com.r0ybt.arachn0de.domain.model.NodePurpose.LAYER)
         val rootB = nodeRepository.createNode(project.id, null, "Root B")
         val childA1 = nodeRepository.createNode(project.id, rootA.id, "Child A1")
         val childA2 = nodeRepository.createNode(project.id, rootA.id, "Child A2")
@@ -61,8 +61,8 @@ class NodePersistenceTest {
 
     @Test
     fun deletingARootNodeRemovesItsEntireSubtreeAndKeepsSiblings() = runBlocking {
-        val root = nodeRepository.createNode(project.id, null, "Root")
-        val child = nodeRepository.createNode(project.id, root.id, "Child")
+        val root = nodeRepository.createNode(project.id, null, "Root",purpose=com.r0ybt.arachn0de.domain.model.NodePurpose.LAYER)
+        val child = nodeRepository.createNode(project.id, root.id, "Child",purpose=com.r0ybt.arachn0de.domain.model.NodePurpose.LAYER)
         val grandChild = nodeRepository.createNode(project.id, child.id, "Grandchild")
         val otherRoot = nodeRepository.createNode(project.id, null, "Other")
 
@@ -76,8 +76,8 @@ class NodePersistenceTest {
 
     @Test
     fun deepHierarchyPersistsAcrossDatabaseReopen() = runBlocking {
-        val root = nodeRepository.createNode(project.id, null, "Root")
-        val child = nodeRepository.createNode(project.id, root.id, "Child")
+        val root = nodeRepository.createNode(project.id, null, "Root",purpose=com.r0ybt.arachn0de.domain.model.NodePurpose.LAYER)
+        val child = nodeRepository.createNode(project.id, root.id, "Child",purpose=com.r0ybt.arachn0de.domain.model.NodePurpose.LAYER)
         val nested = nodeRepository.createNode(project.id, child.id, "Nested")
 
         database.close()
@@ -93,7 +93,7 @@ class NodePersistenceTest {
 
     @Test
     fun completableNodesCanToggleCompletionAndStructuralNodesIgnoreManualCompletion() = runBlocking {
-        val structural = nodeRepository.createNode(project.id, null, "Structural")
+        val structural = nodeRepository.createNode(project.id, null, "Structural",purpose=com.r0ybt.arachn0de.domain.model.NodePurpose.LAYER)
         val task = nodeRepository.createNode(
             projectId = project.id,
             parentId = structural.id,
@@ -110,7 +110,7 @@ class NodePersistenceTest {
 
     @Test
     fun progressIsDerivedFromCompletableDescendantsAcrossMultipleLevels() = runBlocking {
-        val root = nodeRepository.createNode(project.id, null, "MVP")
+        val root = nodeRepository.createNode(project.id, null, "MVP",purpose=com.r0ybt.arachn0de.domain.model.NodePurpose.LAYER)
         val data = nodeRepository.createNode(project.id, root.id, "Database")
         val layers = nodeRepository.createNode(project.id, root.id, "Capas")
         val progress = nodeRepository.createNode(project.id, root.id, "Progreso")
@@ -135,9 +135,9 @@ class NodePersistenceTest {
 
     @Test
     fun projectProgressIsDerivedOnlyFromLeafTasksAcrossAllDepths() = runBlocking {
-        val root = nodeRepository.createNode(project.id, null, "Proyecto")
-        val layerA = nodeRepository.createNode(project.id, root.id, "Capa A")
-        val layerB = nodeRepository.createNode(project.id, layerA.id, "Capa B")
+        val root = nodeRepository.createNode(project.id, null, "Proyecto",purpose=com.r0ybt.arachn0de.domain.model.NodePurpose.LAYER)
+        val layerA = nodeRepository.createNode(project.id, root.id, "Capa A",purpose=com.r0ybt.arachn0de.domain.model.NodePurpose.LAYER)
+        val layerB = nodeRepository.createNode(project.id, layerA.id, "Capa B",purpose=com.r0ybt.arachn0de.domain.model.NodePurpose.LAYER)
         val taskOne = nodeRepository.createNode(project.id, layerB.id, "Tarea 1")
         val taskTwo = nodeRepository.createNode(project.id, layerA.id, "Tarea 2")
         val topTask = nodeRepository.createNode(project.id, root.id, "Tarea raíz")
@@ -167,8 +167,8 @@ class NodePersistenceTest {
 
     @Test
     fun depthAndAncestorsAreDerivedFromParentRelations() = runBlocking {
-        val root = nodeRepository.createNode(project.id, null, "Root")
-        val child = nodeRepository.createNode(project.id, root.id, "Child")
+        val root = nodeRepository.createNode(project.id, null, "Root",purpose=com.r0ybt.arachn0de.domain.model.NodePurpose.LAYER)
+        val child = nodeRepository.createNode(project.id, root.id, "Child",purpose=com.r0ybt.arachn0de.domain.model.NodePurpose.LAYER)
         val grandChild = nodeRepository.createNode(project.id, child.id, "Grandchild")
 
         assertEquals(1, nodeRepository.getNodeDepth(root.id))
@@ -179,7 +179,7 @@ class NodePersistenceTest {
 
     @Test
     fun nodesWithChildrenCannotBeCompletedManuallyAndProgressDerivesFromDescendants() = runBlocking {
-        val parent = nodeRepository.createNode(project.id, null, "Parent task")
+        val parent = nodeRepository.createNode(project.id, null, "Parent task",purpose=com.r0ybt.arachn0de.domain.model.NodePurpose.LAYER)
         val child = nodeRepository.createNode(project.id, parent.id, "Child task")
 
         assertFalse(nodeRepository.setCompleted(parent.id, true))

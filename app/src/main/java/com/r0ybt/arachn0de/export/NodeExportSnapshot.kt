@@ -47,7 +47,7 @@ class NodeExportSnapshot private constructor(val entries: List<ExportEntry>) {
                 contentSize += node.title.length.toLong() + node.description.length + 8
                 if (contentSize > MAX_TEXT_CHARS) throw ContextTooLargeException()
                 result.add(ExportEntry(node.title, node.description, depth,
-                    if (children.isNotEmpty()) ExportKind.LAYER else if (node.purpose == NodePurpose.NOTE) ExportKind.NOTE else ExportKind.ACTION,
+                    if (node.isStructural) ExportKind.LAYER else if (node.purpose == NodePurpose.NOTE) ExportKind.NOTE else ExportKind.ACTION,
                     node.isCompleted))
                 if (descendants) children.asReversed().forEach { pending.addLast(it.id to depth + 1) }
             }

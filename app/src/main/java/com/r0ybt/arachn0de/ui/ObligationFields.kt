@@ -50,10 +50,10 @@ internal fun ObligationIndicator(node: Node) {
 }
 
 @Composable
-internal fun RemoveObligationDialog(busy: Boolean, toNote: Boolean, onDismiss: () -> Unit, onConfirm: () -> Unit) {
+internal fun RemoveObligationDialog(busy: Boolean, toNote: Boolean, resultLabel: String? = null, onDismiss: () -> Unit, onConfirm: () -> Unit) {
     AlertDialog(onDismissRequest = { if (!busy) onDismiss() }, containerColor = Arachn0deColors.Surface,
         title = { Text("Eliminar datos financieros") },
-        text = { Text("Se eliminarán el monto y la moneda. El elemento se conservará como ${if (toNote) "nota" else "tarea normal"}. Esta acción no se puede deshacer.") },
+        text = { Text("Se eliminarán el monto y la moneda. El elemento se conservará como ${resultLabel ?: if (toNote) "nota" else "tarea normal"}. Esta acción no se puede deshacer.") },
         confirmButton = { TextButton(enabled = !busy, onClick = onConfirm) { Text("Eliminar datos y continuar") } },
         dismissButton = { TextButton(enabled = !busy, onClick = onDismiss, modifier = Modifier.testTag("cancel-remove-obligation")) { Text("Cancelar") } })
 }

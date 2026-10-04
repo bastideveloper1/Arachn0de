@@ -32,7 +32,7 @@ class NodeCopyUiTest {
             app=ApplicationProvider.getApplicationContext()
             runBlocking{
                 project=app.projectRepository.createProject("Proyecto").id
-                root=app.nodeRepository.createNode(project,null,"Bugs","Descripción raíz").id
+                root=app.nodeRepository.createNode(project,null,"Bugs","Descripción raíz",purpose=NodePurpose.LAYER).id
                 val task=app.nodeRepository.createNode(project,root,"Pendiente",obligation=Obligation(25000,"CLP")).id
                 app.nodeRepository.setCompleted(task,true)
                 note=app.nodeRepository.createNode(project,root,"Investigación","Texto informativo",purpose=NodePurpose.NOTE).id
@@ -75,7 +75,7 @@ class NodeCopyUiTest {
         compose.onNode(hasText("Copiar este elemento") and hasAnyAncestor(isDialog())).performScrollTo().performClick()
         copied(expected(note,false))
         assertEquals(before,runBlocking{app.nodeRepository.getProjectNodes(project)})
-        assertEquals(14, app.database.openHelper.writableDatabase.version)
+        assertEquals(15, app.database.openHelper.writableDatabase.version)
     }
     @Test fun openNodeContextCopiesFromItsOwnRoot(){
         mount();compose.onNodeWithText("Bugs").performClick();await("CAPA 1")

@@ -150,7 +150,7 @@ private fun RecurrenceRuleDialog(rule: RecurrenceRuleEntity, repository: Recurre
                         OutlinedButton(enabled = !operation.busy, onClick = { destinationsOpen = true }) { Text("Destino: ${destinationNodes.firstOrNull { it.id == destination }?.title ?: if (destination == null) "Raíz" else "Ausente"}") }
                         DropdownMenu(destinationsOpen, { destinationsOpen = false }) {
                             DropdownMenuItem(text = { Text("Raíz") }, onClick = { destination = null; destinationsOpen = false })
-                            destinationNodes.filter { it.purpose == NodePurpose.ACTION && it.obligation == null }.forEach { node ->
+                            destinationNodes.filter { it.purpose == NodePurpose.LAYER && it.obligation == null }.forEach { node ->
                                 DropdownMenuItem(text = { Text(node.title) }, onClick = { destination = node.id; destinationsOpen = false })
                             }
                         }

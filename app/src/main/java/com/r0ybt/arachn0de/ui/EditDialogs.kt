@@ -43,9 +43,9 @@ internal fun NodeDialog(
     onDiscard: () -> Unit = onDismiss,
 ) {
     var confirmDiscard by rememberSaveable(draft.creationId) { mutableStateOf(false) }
-    val datesValid = !editDates || draft.purpose == NodePurpose.NOTE ||
+    val datesValid = !editDates || draft.purpose != NodePurpose.ACTION ||
         ((!draft.startEnabled || draft.batchEnabled || draft.startAt != null) && (!draft.dueEnabled || draft.dueAt != null))
-    val batchValid = !draft.batchEnabled || runCatching { com.r0ybt.arachn0de.domain.model.NodeBatchGenerator.generate(draft.batchDraft().parameters(), java.util.TimeZone.getDefault()) }.isSuccess
+    val batchValid = draft.purpose == NodePurpose.LAYER || !draft.batchEnabled || runCatching { com.r0ybt.arachn0de.domain.model.NodeBatchGenerator.generate(draft.batchDraft().parameters(), java.util.TimeZone.getDefault()) }.isSuccess
     var confirmFinancialRemoval by rememberSaveable(draft.creationId) { mutableStateOf(false) }
     val financialValid = !editDates || draft.purpose != NodePurpose.ACTION || runCatching { draft.obligation() }.isSuccess
     val recurrenceValid = draft.recurrenceFrequency == "NONE" || draft.purpose != NodePurpose.ACTION || runCatching { draft.recurrenceRule("validation") }.isSuccess
@@ -91,8 +91,8 @@ internal fun NodeDialog(
                     modifier = Modifier.fillMaxWidth(),
                     enabled = !isSubmitting,
                 )
-                if (draft.id == null) FormChoices(listOf(NodePurpose.ACTION to "Tarea", NodePurpose.NOTE to "Nota"), draft.purpose, !isSubmitting) { draft.purpose = it }
-                else Text("Tipo: ${if (draft.purpose == NodePurpose.NOTE) "Nota" else "Tarea"}")
+                if (draft.id == null) FormChoices(listOf(NodePurpose.ACTION to "Tarea", NodePurpose.NOTE to "Nota", NodePurpose.LAYER to "Capa"), draft.purpose, !isSubmitting) { draft.purpose = it }
+                else Text("Tipo: ${when(draft.purpose) { NodePurpose.NOTE -> "Nota";NodePurpose.ACTION -> "Tarea";NodePurpose.LAYER -> "Capa" }}")
                 if (editDates && draft.purpose == NodePurpose.ACTION) {
                     FormSection("Pago")
                     ObligationFields(draft, enabled = !isSubmitting)
@@ -115,15 +115,15 @@ internal fun NodeDialog(
                 androidx.compose.material3.OutlinedButton(enabled = !isSubmitting && peopleLoaded, onClick = { draft.showResponsible = true }) {
                     Text("Responsables (${draft.responsibleIds.size})")
                 }
-                if (draft.id == null) {
+                if (draft.id == null && draft.purpose != NodePurpose.LAYER) {
                     FormSection("Creación")
-                    FormToggle("Crear varios", draft.batchEnabled, !isSubmitting && (draft.batchEnabled || draft.purpose == NodePurpose.NOTE || draft.recurrenceFrequency == "NONE")) { draft.batchEnabled = it }
+                    FormToggle("Crear varios", draft.batchEnabled, !isSubmitting && (draft.batchEnabled || draft.purpose != NodePurpose.ACTION || draft.recurrenceFrequency == "NONE")) { draft.batchEnabled = it }
                     if (draft.purpose == NodePurpose.ACTION && draft.recurrenceFrequency != "NONE") Text("Una regla recurrente y un lote finito son modalidades distintas. Desactiva Recurrente para crear varios.", style = androidx.compose.material3.MaterialTheme.typography.bodySmall)
                     if (draft.batchEnabled) CreationBatchFields(draft, !isSubmitting)
                 }
                 if (draft.hasWork) DestructiveAction("Descartar", { confirmDiscard = true }, enabled = !isSubmitting)
                 Text(
-                    text = if (draft.purpose == NodePurpose.NOTE) "Una nota conserva información. Para añadir hijos, conviértela primero en tarea." else if (draft.financialEnabled) "Convierte esta obligación en una tarea antes de usarla como capa." else "Una tarea se convierte automáticamente en capa al añadir hijos.",
+                    text = if(draft.purpose==NodePurpose.LAYER) "Una capa admite elementos y permanece como capa aunque esté vacía." else if (draft.purpose == NodePurpose.NOTE) "Una nota conserva información. Para añadir hijos, conviértela primero en capa." else if (draft.financialEnabled) "Para convertir en capa, confirma primero quitar los datos de pago." else "Para añadir elementos, convierte la tarea en capa desde ⋮.",
                     color = Arachn0deColors.TextSecondary,
                     fontSize = 12.sp,
                 )
@@ -132,7 +132,7 @@ internal fun NodeDialog(
         confirmButton = {
             androidx.compose.material3.Button(
                 enabled = !isSubmitting && !(draft.batchEnabled && draft.purpose == NodePurpose.ACTION && draft.recurrenceFrequency != "NONE") && batchValid && datesValid && peopleLoaded && financialValid && recurrenceValid && title.trim().isNotEmpty() && TitleLimits.count(title) <= TitleLimits.NODE &&
-                    (!editDates || draft.purpose == NodePurpose.NOTE || draft.batchEnabled || draft.activeStart == null || draft.activeDue == null || draft.activeDue!! >= draft.activeStart!!),
+                    (!editDates || draft.purpose != NodePurpose.ACTION || draft.batchEnabled || draft.activeStart == null || draft.activeDue == null || draft.activeDue!! >= draft.activeStart!!),
                 onClick = {
                     val cleanTitle = title.trim()
                     if (!isSubmitting && cleanTitle.isNotEmpty() && TitleLimits.count(cleanTitle) <= TitleLimits.NODE) {

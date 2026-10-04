@@ -227,9 +227,12 @@ purpose (ACTION / NOTE, persistido)
 amountMinor / currencyCode (capacidad de Obligación opcional)
 ```
 
-Desde el esquema Room 3, `isStructural` e `isCompletable` no son columnas persistidas ni parámetros de creación/edición. El dominio expone `hasChildren` derivado de las relaciones persistidas; `isStructural = hasChildren` e `isCompletable = !hasChildren && purpose == ACTION` son propiedades calculadas de solo lectura.
-
-`isCompleted` conserva exclusivamente el completado manual de una hoja. Para una capa siempre es `false`; no equivale a su progreso derivado.
+Desde Room 15, `purpose` representa explícitamente ACTION (tarea), NOTE (nota) o
+LAYER (contenedor estructural). `hasChildren` se deriva de las relaciones;
+`isStructural = purpose == LAYER` e `isCompletable = purpose == ACTION` para
+las hojas válidas. Una LAYER admite 0..N hijos y nunca se completa manualmente.
+Eliminar el último hijo conserva LAYER. `isCompleted` guarda solo el completado
+de ACTION; NOTE y LAYER lo mantienen en false. El progreso nunca se persiste.
 
 `parentId` puede ser nulo.
 
@@ -269,24 +272,19 @@ No obstante, evitar implementar esas especializaciones durante el MVP.
 
 ## Fuente de verdad del dominio
 
-Las relaciones persistidas definen la estructura; el propósito persistido define el comportamiento de hoja:
-
-- Node sin hijos = hoja: ACTION es tarea completable; NOTE es información no completable.
-- Node con uno o más hijos = capa/contenedor, nunca completable manualmente.
-- El usuario elige propósito Tarea/Nota; hoja/Capa sigue derivándose de los hijos.
-- NOTE es una hoja informativa no completable; no existe una bandera estructural independiente.
-
-Se descarta mantener `isStructural` e `isCompletable` almacenados como fuentes independientes de la estructura.
-
-## Transiciones estabilizadas en Sprint 5.5, bloque 1
-
-- Hoja pendiente + primer hijo: pasa a capa y conserva `isCompleted = false`.
-- Hoja completada + primer hijo: pasa a capa y se borra su antiguo completado manual (`isCompleted = false`). Su progreso depende desde ese momento de las hojas descendientes.
-- Capa pierde su último hijo, por eliminación o traslado: vuelve a ser una hoja pendiente y completable. Nunca recupera un completado manual histórico.
-- Crear, trasladar o eliminar hijos aplica estas reglas en la misma operación atómica.
-- Editar título/descripción no modifica estructura, posición ni completado.
-- Completar/descompletar una capa se rechaza; nunca hay completado automático en cascada, ni hacia hijos ni hacia padres.
-- Completar una hoja no la elimina ni la oculta. Tampoco elimina su relación de parentesco: completar un hijo no convierte a su padre en hoja; perder el último hijo por eliminación o traslado sí lo hace.
+- ACTION es una tarea accionable sin hijos, completable manualmente.
+- NOTE es una nota sin hijos, no completable.
+- LAYER es un contenedor explícito con cero o más hijos, no completable.
+- Solo LAYER puede recibir hijos. No hay contenedores paralelos ni hijos ficticios.
+- Los editores permiten crear una Capa y los menús convertir una tarea/nota en
+  Capa. Convertir LAYER a tarea exige que esté vacía y una acción explícita.
+- Quitar o mover el último hijo no cambia el propósito ni recupera completados.
+- Convertir una tarea completada en nota/capa la reabre con el evento REOPENED
+  existente; no hay completado automático de contenedores.
+- Crear/mover/eliminar siguen siendo operaciones transaccionales. Editar contenido
+  no cambia estructura ni propósito.
+- La migración 14→15 identifica contenedores existentes mediante parentId antes
+  de instalar las restricciones; ACTION hojas y NOTE permanecen sin cambios.
 
 ## Cálculo exacto de progreso
 
@@ -302,7 +300,7 @@ Temporada 1
 Progreso: 2 / 4 = 50 %
 ```
 
-El porcentaje entero se trunca: `completed * 100 / total`. Los estados son `NOT_STARTED`, `PARTIAL` y `COMPLETE`. Una hoja ACTION tiene total 1. Una hoja NOTE, una Capa con solo Notes o un proyecto sin hojas ACTION tiene total 0 y estado NO_WORK. Un proyecto sin nodos tiene una instantánea vacía.
+El porcentaje entero se trunca: `completed * 100 / total`. Los estados son `NOT_STARTED`, `PARTIAL` y `COMPLETE`. Una ACTION tiene total 1. Una NOTE, una LAYER vacía, una Capa con solo Notes o un proyecto sin hojas ACTION tiene total 0 y estado NO_WORK. Un proyecto sin nodos tiene una instantánea vacía.
 
 Los porcentajes y contadores no se guardan en SQLite. `NodeTreeSnapshot` calcula todos los progresos de una instantánea con un recorrido iterativo de hojas a raíz, sin profundidad fija. Un ciclo o relación inválida produce un error de integridad controlado, no recursión infinita.
 
@@ -390,7 +388,7 @@ Utilizar:
 
 Room debe proporcionar la capa de persistencia.
 
-El esquema actual es la **versión 14** (valores predeterminados de creación; véase la sección final). v4 incorporó el orden persistente de proyectos, v5 Personas/Responsables, v6 fechas opcionales, v7 ACTION/NOTE, v8 obligaciones, v9 recurrencia, v10 etiquetas, v11 eventos, v12 Priority, v13 creation groups y v14 CreationDefaults. Se conservan los esquemas históricos **1–14** y todas sus rutas de migración; no se usa `fallbackToDestructiveMigration`.
+El esquema actual es la **versión 15** (valores predeterminados de creación; véase la sección final). v4 incorporó el orden persistente de proyectos, v5 Personas/Responsables, v6 fechas opcionales, v7 ACTION/NOTE, v8 obligaciones, v9 recurrencia, v10 etiquetas, v11 eventos, v12 Priority, v13 creation groups y v14 CreationDefaults y v15 LAYER explícito. Se conservan los esquemas históricos **1–15** y todas sus rutas de migración; no se usa `fallbackToDestructiveMigration`.
 
 ### Invariantes de nodos
 
@@ -564,7 +562,7 @@ Proyecto
 - El usuario debe poder volver al nivel anterior con un gesto claro o botón explícito.
 - La ruta actual debe permitir comprender la posición dentro de la jerarquía sin mostrar el árbol completo.
 - El diseño debe priorizar claridad sobre densidad visual.
-- Al entrar en un nodo sin hijos se muestra un estado vacío con opción de añadir un hijo; en el dominio ese nodo sigue siendo una hoja hasta que tenga hijos.
+- Al entrar en una LAYER sin hijos se muestra un estado vacío con opción de añadir un hijo; conserva su propósito LAYER. ACTION y NOTE requieren conversión explícita a Capa antes de recibir hijos.
 
 ## Reglas de implementación
 
@@ -620,7 +618,7 @@ Las pruebas existentes de nodos se conservan adaptadas a la nueva regla: ya no s
 
 ## Bloque 2: eliminación de árboles profundos
 
-`NodeDao.delete` captura los IDs del subárbol mediante una CTE con `UNION` (sin repetir IDs), desconecta sus relaciones y elimina los nodos en lotes de 500 IDs para respetar el límite de parámetros de SQLite en API 24. Todos los lotes se desconectan antes de comenzar a borrar. El padre externo y las ramas hermanas se conservan; los triggers existentes dejan al padre como hoja pendiente si pierde su último hijo.
+`NodeDao.delete` captura los IDs del subárbol mediante una CTE con `UNION` (sin repetir IDs), desconecta sus relaciones y elimina los nodos en lotes de 500 IDs para respetar el límite de parámetros de SQLite en API 24. Todos los lotes se desconectan antes de comenzar a borrar. El padre externo y las ramas hermanas se conservan; el padre conserva su propósito LAYER aunque pierda su último hijo.
 
 `ProjectDao.delete` desconecta todos los nodos del proyecto antes de borrar el proyecto; CASCADE elimina entonces nodos sin cadenas de descendencia. Ambas operaciones son transaccionales: los observadores no reciben estados intermedios y un fallo restaura relaciones, nodos y proyecto. Borrar un elemento ausente sigue devolviendo `false` en Repository.
 
@@ -630,7 +628,7 @@ Validación del bloque 2 (2026-10-01): `testDebugUnitTest --rerun-tasks` complet
 
 ## Bloque 3: sistema visual
 
-La identidad de la aplicación es la araña: `arachn0de_logo.png` se conserva intacto y se usa en el inicio y el launcher. La cebolla identifica nodos con hijos (capas), nunca sustituye al logo de la aplicación. Los nodos hoja conservan el control de completado.
+La identidad de la aplicación es la araña: `arachn0de_logo.png` se conserva intacto y se usa en el inicio y el launcher. La cebolla identifica Nodes LAYER, incluidas las Capas vacías, y nunca sustituye al logo de la aplicación. Solo ACTION conserva el control de completado.
 
 Por indicación del usuario se sustituye el antiguo recurso circular `cebolla_icon.png` por el archivo proporcionado `cebollaicon.png` (1254 × 1254, RGBA), copiado sin modificar sus bytes. Se mantiene el nombre interno `cebolla_icon`. Las vistas conservan sus colores, sin tintes ni recorte; la tarjeta usa un espacio de 36 dp y `ContentScale.Fit` para mostrar su silueta completa. Ambos PNG están en `drawable-nodpi`; Compose controla su tamaño en dp.
 
@@ -822,11 +820,11 @@ Proyecto → Nodo → jerarquía arbitraria de Nodos → Capas de cebolla
 
 ## IMPLEMENTADO — base que se conserva
 
-`Node` es la unidad estructural universal. Actualmente una hoja ACTION es una tarea completable y una hoja NOTE es información; un nodo con hijos es una Capa/contenedor. La profundidad práctica no tiene un límite artificial. Una tarea que recibe hijos pasa a Capa; una Capa que pierde todos sus hijos por eliminación o traslado vuelve a hoja pendiente. Completar un hijo mantiene la relación estructural y la condición de Capa de su padre, aunque todos los hijos estén completados.
+`Node` es la unidad estructural universal: ACTION es una tarea completable sin hijos, NOTE es información sin hijos y LAYER es un contenedor explícito con 0..N hijos. La profundidad práctica no tiene un límite artificial. Recibir hijos requiere LAYER; eliminar o trasladar todos sus hijos conserva una LAYER vacía. Las conversiones de propósito son explícitas. Completar todos los hijos mantiene la relación estructural y el propósito LAYER del padre.
 
 Las capas no se completan manualmente. El progreso existente se deriva de todas las tareas hoja descendientes, incluidas subcapas, sin contar los contenedores ni promediar sus porcentajes. `NodeTreeSnapshot` y los flujos del repositorio mantienen esta información reactiva. Las hojas NOTE quedan excluidas del trabajo medible.
 
-La base actual es local-first y offline-first, sin cuenta ni backend obligatorio: proyectos, nodos, navegación por Capas de cebolla, orden manual, drag/reorder y progreso derivado se apoyan en Room/SQLite v8, con Personas, responsables, fechas locales, propósito de hoja y capacidad financiera opcional. Las secciones anteriores y los ajustes finales describen su implementación y las verificaciones físicas pendientes. Esta documentación no convierte esos pendientes en comprobaciones realizadas.
+La base actual es local-first y offline-first, sin cuenta ni backend obligatorio: proyectos, nodos, navegación por Capas de cebolla, orden manual, drag/reorder y progreso derivado se apoyan en Room/SQLite v15, con Personas, responsables, fechas locales, propósito de hoja y capacidad financiera opcional. Las secciones anteriores y los ajustes finales describen su implementación y las verificaciones físicas pendientes. Esta documentación no convierte esos pendientes en comprobaciones realizadas.
 
 El repositorio ofrece `moveNode(id, parentId)` transaccional, valida el proyecto del padre y rechaza ciclos. La acción visible «Mover a…» está implementada y reutiliza esta operación. Reordenar entre hermanos y trasladar a otro padre son operaciones distintas.
 
@@ -866,7 +864,7 @@ Crear/editar una tarea hoja permite seleccionar fecha mediante `DatePicker` Mate
 
 `TaskTemporal.state(node, now)` recibe el instante explícito y aplica estas fronteras/prioridades:
 
-- Capa con hijos: sin estado temporal operativo, aunque conserve fechas.
+- LAYER con o sin hijos: sin estado temporal operativo, aunque conserve fechas.
 - Hoja completada: COMPLETADA, sin urgencia aunque haya vencido o tenga inicio futuro.
 - Hoja incompleta sin fechas: sin indicador temporal especial.
 - PROGRAMADA: `now < startAt`; sigue visible y conserva su posición. Al alcanzar `startAt` deja de estar programada.
@@ -880,7 +878,7 @@ Crear/editar una tarea hoja permite seleccionar fecha mediante `DatePicker` Mate
 
 Las tarjetas y el contexto de una hoja muestran una línea compacta de estado y fecha/hora local. Próxima usa naranja existente y Vencida el color de error; no se recolorea toda la tarjeta. Completada usa texto discreto; sin fechas no aparece una sección vacía. Los responsables coexisten con esa línea y se siguen resolviendo por sus IDs/flujos.
 
-Hoja → Capa → hoja conserva ambas fechas: mientras hay hijos quedan sin indicador, edición operativa ni urgencia propia; al perder el último hijo vuelven a aplicarse a la hoja pendiente según los triggers existentes. El estado temporal propio no se propaga hacia ancestros; Atención agrega sus señales por separado, como se describe a continuación. Fechas no filtran tareas, no modifican orden manual, drag/reorder ni fórmula de progreso. Mover conserva fechas y responsables porque solo actualiza estructura/posición del mismo ID; editar responsables conserva fechas y editar fechas conserva responsables.
+La conversión explícita ACTION → LAYER conserva ambas fechas, latentes mientras el propósito sea LAYER. Solo una conversión explícita de LAYER vacía → ACTION reactiva su uso operativo. Eliminar el último hijo no cambia propósito ni reactiva fechas. El estado temporal propio no se propaga hacia ancestros; Atención agrega sus señales por separado, como se describe a continuación. Fechas no filtran tareas, no modifican orden manual, drag/reorder ni fórmula de progreso. Mover conserva fechas y responsables porque solo actualiza estructura/posición del mismo ID; editar responsables conserva fechas y editar fechas conserva responsables.
 
 Cobertura dirigida: estados y fronteras con `now` fijo, umbral y extremos Long; persistencia/edición/retirada/validación, idempotencia, progreso/orden/responsables y traslado; hoja → Capa → hoja; migración del schema real v5 en API 24/28 conservando tablas y triggers. Compose verifica selección de fecha/hora, restauración con selector abierto, error/corrección, reloj al reanudar/cambiar hora, presentación sin urgencia en completadas/Capas y edición real con recreación de Activity. Se verifican regresiones de Personas, traslado, borradores y rutas de migración anteriores.
 
@@ -904,21 +902,21 @@ Validación dirigida: seis pruebas del modelo (reglas, fronteras, orden, conteos
 
 ```text
 Node
-├── estructura: hoja / Capa (derivada de hijos)
-└── propósito: ACTION / NOTE (persistido)
+├── propósito persistido: ACTION / NOTE / LAYER
+└── presencia de hijos y progreso: derivados de relaciones
 ```
 
-`NodePurpose` distingue ACTION (trabajo) y NOTE (información). Una Nota sigue siendo un Node, con título y descripción de texto plano, ubicación, posición e identidad normales; no hay entidad ni tabla Note. ACTION es el default para creaciones y datos históricos. Room pasa de **v6 a v7**: `NodePurposeMigration6To7` añade únicamente `nodes.purpose TEXT NOT NULL DEFAULT 'ACTION'`. Conserva proyectos, jerarquía, posiciones, fechas, Personas, asociaciones, foreign keys y los siete triggers anteriores. Cuatro triggers adicionales rechazan propósito inválido, Notas completadas/con hijos y destinos NOTE al insertar o trasladar. Repository aplica las mismas restricciones transaccionalmente; no hay migración destructiva.
+`NodePurpose` distingue ACTION (trabajo), NOTE (información) y LAYER (contenedor explícito). La introducción histórica de NOTE se describe a continuación; Room 15 amplía sus guards para LAYER. Una Nota sigue siendo un Node, con título y descripción de texto plano, ubicación, posición e identidad normales; no hay entidad ni tabla Note. ACTION es el default para creaciones y datos históricos. Room pasa de **v6 a v7**: `NodePurposeMigration6To7` añade únicamente `nodes.purpose TEXT NOT NULL DEFAULT 'ACTION'`. Conserva proyectos, jerarquía, posiciones, fechas, Personas, asociaciones, foreign keys y los siete triggers anteriores. Cuatro triggers adicionales rechazan propósito inválido, Notas completadas/con hijos y destinos NOTE al insertar o trasladar. Repository aplica las mismas restricciones transaccionalmente; no hay migración destructiva.
 
 Solo hojas pueden convertirse. «Convertir en nota» y «Convertir en tarea» usan el mismo ID; actualizan propósito, `isCompleted = false` y `updatedAt`, conservando padre, proyecto, título, descripción, posición, creación, responsables y `startAt`/`dueAt`. ACTION completada → NOTE pierde el completado operativo; NOTE → ACTION vuelve pendiente, sin recuperar un completado histórico. Repetir el propósito actual es un no-op. Fechas quedan latentes en NOTE: no se muestran ni editan operativamente, pero no se borran y vuelven a actuar al convertir a ACTION.
 
 `NodeTreeSnapshot` mantiene su suma iterativa y porcentaje truncado; solo hojas ACTION aportan trabajo. Notes aportan 0/0 y no se cuentan como pendientes. Capas con solo Notes y proyectos sin hojas ACTION quedan NO_WORK. `TaskTemporal.state` y `nextTransition` ignoran hojas NOTE, de modo que el mismo `AttentionSnapshot` las excluye de la vista y señales ancestras sin una segunda política temporal. Los flujos actualizan progreso, Atención, acciones, fechas e iconografía sin reiniciar.
 
-«Nuevo elemento» conserva Tarea por defecto y añade selector compacto Tarea/Nota; el propósito forma parte del borrador guardable y de la comprobación de reintentos idempotentes. Una tarjeta Nota usa un icono discreto de documento, sin checkbox, progreso ni urgencia; conserva vista previa y responsables. Al abrir sigue la navegación existente, permite editar texto, convertir, mover, gestionar responsables y eliminar. «Nuevo elemento» está deshabilitado con explicación: debe convertirse primero en tarea para recibir hijos. El selector de traslado excluye Notes como destinos; la operación también lo valida.
+«Nuevo elemento» conserva Tarea por defecto y añade selector compacto Tarea/Nota/Capa; el propósito forma parte del borrador guardable y de la comprobación de reintentos idempotentes. Una tarjeta Nota usa un icono discreto de documento, sin checkbox, progreso ni urgencia; conserva vista previa y responsables. Al abrir sigue la navegación existente, permite editar texto, convertir, mover, gestionar responsables y eliminar. «Nuevo elemento» está deshabilitado con explicación: debe convertirse primero en Capa para recibir hijos. El selector de traslado admite solo LAYER como destino Node; la operación también lo valida.
 
-Las Notes permanecen en Disponibles (`isCompleted = false`) y se reordenan entre hermanos de ese grupo junto con tareas pendientes y Capas. No cambia `DragReorder`, sus gestos ni su política de posiciones. Mover conserva propósito, fechas y responsables; eliminar usa el borrado seguro de Nodes, limpia asociaciones y conserva Personas. ACTION que recibe hijos sigue pasando a Capa y al perderlos vuelve a tarea pendiente.
+Las Notes permanecen en Disponibles (`isCompleted = false`) y se reordenan entre hermanos de ese grupo junto con tareas pendientes y Capas. No cambia `DragReorder`, sus gestos ni su política de posiciones. Mover conserva propósito, fechas y responsables; eliminar usa el borrado seguro de Nodes, limpia asociaciones y conserva Personas. ACTION no admite hijos; una LAYER que pierde todos sus hijos conserva su propósito.
 
-Pruebas dirigidas incluyen migración real v6 en API 24/28 con todos los datos existentes, creación/reintentos por propósito, conversión y normalización, fechas latentes, progreso mixto/NO_WORK, Atención, defensas de hijos/completado, traslado/reorder y borrado con responsables. Compose cubre creación con borrador restaurado, conversión/edición, iconografía, restricción de hijos y actualizaciones de Proyecto/vista Atención. Se mantienen regresiones afectadas de migraciones históricas, Personas, fechas, Atención, borradores, traslado y orden. No se afirma instalación física sobre una APK previa ni validación de drag en dispositivo para esta etapa. Texto plano únicamente: sin Markdown, formato enriquecido, imágenes ni adjuntos. Movimiento entre proyectos sigue fuera del alcance.
+Pruebas dirigidas incluyen migración real v6 en API 24/28 con todos los datos existentes, creación/reintentos por propósito, conversión y normalización, fechas latentes, progreso mixto/NO_WORK, Atención, defensas de hijos/completado, traslado/reorder y borrado con responsables. Compose cubre creación con borrador restaurado, conversión/edición, iconografía, restricción de hijos y actualizaciones de Proyecto/vista Atención. Se mantienen regresiones afectadas de migraciones históricas, Personas, fechas, Atención, borradores, traslado y orden. No se afirma instalación física sobre una APK previa ni validación de drag en dispositivo para esta etapa. Texto plano únicamente: sin Markdown, formato enriquecido, imágenes ni adjuntos. Project → Layer permite trasladar el árbol completo entre proyectos; el traslado individual entre proyectos sigue fuera del alcance.
 
 ### Creación múltiple + numeración + generación temporal finita — IMPLEMENTADO
 
@@ -1231,7 +1229,7 @@ Al soltar, el ID ubicado en el índice final dentro del orden original es el tar
 
 ## Visualización del progreso en proyectos y capas
 
-Las tarjetas de proyectos y capas con trabajo, y la cabecera de la capa abierta, muestran `percentage% · pending de total pendientes` y una barra fina de 4 dp con relleno naranja `PathHighlight` y track `ControlSurface`. Consumen el `NodeProgress` derivado existente; `pending = total - completed`. Las capas reciben `progressById[node.id]` de `NodeTreeSnapshot`, incluyendo todas las hojas de subcapas sin contar los contenedores. Las hojas ACTION y NOTE no muestran progreso; solo ACTION participa en el cálculo. El estado `NO_WORK` muestra solo «Contenedor vacío», sin métricas ni barra. La regla del dominio se conserva: un nodo sin hijos es una hoja ACTION o NOTE, no un tipo persistido de capa vacía.
+Las tarjetas de proyectos y capas con trabajo, y la cabecera de la capa abierta, muestran `percentage% · pending de total pendientes` y una barra fina de 4 dp con relleno naranja `PathHighlight` y track `ControlSurface`. Consumen el `NodeProgress` derivado existente; `pending = total - completed`. Las capas reciben `progressById[node.id]` de `NodeTreeSnapshot`, incluyendo todas las hojas de subcapas sin contar los contenedores. Las hojas ACTION y NOTE no muestran progreso; solo ACTION participa en el cálculo. El estado `NO_WORK` muestra solo «Contenedor vacío», sin métricas ni barra. La regla actual admite LAYER persistida sin hijos con NO_WORK; ACTION y NOTE permanecen hojas.
 
 ## #55A — Copiar contexto estructurado de Nodes — IMPLEMENTADO
 
@@ -1239,9 +1237,9 @@ Capacidad añadida posteriormente, **fuera de las 54 funcionalidades originales*
 
 El menú existente de cada tarjeta y las acciones del Node abierto ofrecen **Copiar este elemento** y, solo para contenedores con hijos, **Copiar con descendientes**. El primer alcance conserva únicamente título, descripción y semántica del seleccionado; el segundo recorre su subárbol completo. La extensión a Proyectos se documenta en VISUAL ACTION LANGUAGE; no necesita pantalla nueva.
 
-NodeExportSnapshot.capture parte del NodeTreeSnapshot cargado y utiliza childrenOf para hijos y orden existente: disponibles/completadas, posición y desempates vigentes. DFS iterativo conserva ese orden sin recursión ni consultas Room por Node; la raíz seleccionada tiene profundidad relativa cero. La lista inmutable de ExportEntry contiene solo título, descripción, profundidad relativa, clasificación derivada y completado. La clasificación viene de hijos reales y propósito ACTION/NOTE; no hay campo persistido nuevo ni segunda implementación del árbol. Los cambios posteriores de Room no alteran el contenido capturado.
+NodeExportSnapshot.capture parte del NodeTreeSnapshot cargado y utiliza childrenOf para hijos y orden existente: disponibles/completadas, posición y desempates vigentes. DFS iterativo conserva ese orden sin recursión ni consultas Room por Node; la raíz seleccionada tiene profundidad relativa cero. La lista inmutable de ExportEntry contiene solo título, descripción, profundidad relativa, clasificación por propósito y completado. La clasificación usa ACTION/NOTE/LAYER, incluidas Capas vacías, sin una segunda implementación del árbol. Los cambios posteriores de Room no alteran el contenido capturado.
 
-NodeMarkdownRenderer es puro: no depende de Compose, Android Clipboard ni Room. Capa raíz usa encabezado #; otras capas hasta nivel seis usan encabezados dentro de ítems de listas anidadas, preservando también el retorno entre hermanos de distinta semántica. ACTION hoja produce - [ ] o - [x]. NOTE produce encabezado informativo Nota en raíz o título informativo en lista, nunca checkbox. Una Capa sigue siendo sección incluso al copiar solo ese elemento. No existe tipo persistido de Capa vacía: un Node sin hijos vuelve a hoja ACTION/NOTE según las reglas vigentes.
+NodeMarkdownRenderer es puro: no depende de Compose, Android Clipboard ni Room. Capa raíz usa encabezado #; otras capas hasta nivel seis usan encabezados dentro de ítems de listas anidadas, preservando también el retorno entre hermanos de distinta semántica. ACTION hoja produce - [ ] o - [x]. NOTE produce encabezado informativo Nota en raíz o título informativo en lista, nunca checkbox. Una Capa sigue siendo sección incluso al copiar solo ese elemento. Una LAYER vacía conserva su clasificación y se exporta como sección.
 
 Más allá de seis niveles, la indentación queda acotada y cada entrada lleva su nivel relativo explícito; el preorden y esos niveles permiten identificar inequívocamente el parentesco sin encabezados mayores que h6 ni salida cuadrática por profundidad. Descripciones no vacías conservan Unicode, emojis, párrafos y líneas, como cuerpo del ítem correspondiente; sin etiquetas, placeholders ni campos vacíos. Se normalizan CRLF/CR, espacios finales y una única nueva línea final. Se escapan delimitadores Markdown y comienzos estructurales de texto literal para que el contenido no se convierta accidentalmente en otra sección.
 
@@ -1608,14 +1606,15 @@ navegan al Node real y usan esas mismas acciones; no escriben completado por otr
 ruta. No se registran eventos desde collectors, recomposición o presentación.
 
 La revisión de todas las escrituras encontró dos reinicios implícitos adicionales:
-convertir una ACTION completada en NOTE y añadir/mover el primer hijo a una ACTION
-completada. Antes de perder su capacidad de hoja se reabre mediante la misma
+convertir una ACTION completada en NOTE o LAYER. Las reglas históricas de
+recurrencia con destino ACTION convierten ese destino a LAYER al materializar
+su primer hijo, dentro de la misma transacción. Antes de perder su capacidad de hoja se reabre mediante la misma
 operación atómica; conserva su historia anterior. No se registra un evento de
 conversión o traslado: únicamente la transición real true→false. Las fechas del
 padre se conservan como antes al volverse capa; el evento sí usa el instante real.
 Los triggers de defensa estructural continúan instalados. NOTE/capas existentes
 rechazan completar/reabrir, incluso si se pide false→false. Perder el último hijo
-no crea una reapertura porque la capa ya estaba pendiente. El historial no es
+no crea una reapertura: mantiene LAYER y no es completable. El historial no es
 un trigger global de SQL: los writes funcionales usan Repository; los DAOs de
 snapshot se reservan para migración/restore y los tests de defensa de SQLite.
 
@@ -2567,3 +2566,185 @@ correctos. Logs `/tmp/ux-verified.log`, `/tmp/ux-sort.log`, `/tmp/ux-dates.log`.
 No se ejecutó suite completa, lint ni Release. Pendiente únicamente validación
 física de accesibilidad, selectores y actualización instalada desde v0.2.3;
 las pruebas locales no acreditan esos escenarios. Sin commit ni push.
+
+## Auditoría previa Project root → Layer when nested (resuelta por Room 15)
+
+**Registro histórico de la auditoría previa; sus bloqueos quedan resueltos por la implementación documentada debajo.** Project existe únicamente como
+raíz; anidarlo debe convertir su representación a la jerarquía Node existente,
+sin introducir Subproject. La solicitud incluye Project vacío → Capa vacía. Ese
+caso contradecía la semántica anterior (Room 14): sin hijos, ACTION es una tarea pendiente
+(0/1), NOTE es una nota (NO_WORK) que no puede recibir hijos. `hasChildren` y
+`isStructural` se derivan de relaciones; no existe un contenedor vacío persistido.
+No se añadieron hijos artificiales, flags UI, cambios de triggers ni migraciones.
+Se detuvo la implementación según el requisito de consultar antes de modificar
+el esquema si no puede satisfacerse una conversión segura con el actual.
+
+### Preservación propuesta para proyectos no vacíos
+
+ProjectEntity contiene exclusivamente id, name, description, position, createdAt
+y updatedAt. Name/description y timestamps tienen equivalentes en la nueva fila
+Node; su posición raíz se sustituye explícitamente por la posición final del
+destino. El ID del Project se retira con la raíz; el envoltorio tendría un nuevo
+Node ID comprobado contra IDs existentes, sin asumir namespaces disjuntos.
+Los descendientes conservarían sus IDs, timestamps, posiciones y parentescos;
+solo cambiarían projectId y el parentId de sus antiguas raíces.
+
+`nodes_identity_immutable` impide actualizar projectId. La alternativa compatible
+con Room 14 es capturar el árbol y todas sus asociaciones, desconectar y eliminar
+sus filas en lotes y reinsertarlas padre primero con los mismos IDs dentro de UNA
+transacción Room. Es reinserción física necesaria por el trigger, sin recreación
+de identidades ni llamada a createNode que fabrique eventos CREATED. No se debe
+retirar temporalmente el trigger ni desactivar foreign keys. Hay que capturar antes
+las asociaciones con CASCADE: node_person, node_tag, node_events y defaults de
+capas con sus tags/personas. Eventos conservarían IDs y orden de inserción; el
+modelo actual no contiene evento MOVED y no se ampliaría para esta operación.
+Personas, avatares y etiquetas son globales y no requieren duplicación.
+
+Defaults `P:<origen>` pasarían a `N:<nuevoEnvoltorio>`, con projectId del destino y
+nodeId del envoltorio, copiando exactamente overrides y asociaciones. Defaults
+de descendientes conservarían sus IDs `N:<nodeId>` y cambiarían projectId. Global
+se conserva; no se materializan valores heredados como propios. La precedencia
+sería Global → Project destino → ancestros del destino, si existen → nueva Capa
+→ capas descendientes. Los valores que antes heredaban del Global podrán heredar
+los del nuevo destino, según el contrato solicitado.
+
+Reglas recurrentes cuyo projectId sea el origen cambiarían al destino; parentId
+nulo pasaría al envoltorio y los padres existentes conservarían su ID. Calendario,
+zoneId, nextIndex, estados, IDs, personas/tags y recibos no se alterarían ni se
+materializarían durante la conversión. Padres ausentes históricos de reglas
+pausadas/finalizadas requieren conservar su situación, sin reasignarlos a la raíz
+silenciosamente. CreationGroupId se conserva trasladando todo el proyecto;
+Backup v7 exige que un grupo no abarque varios proyectos.
+
+Destino: otro Project o una Capa ACTION sin obligación con ancestros válidos.
+Origen y destino deben existir y ser distintos al revalidarlos dentro de la
+transacción; no se admitirían destinos del origen. Se asignaría max(position)+1
+con el tratamiento existente de agotamiento de Int, sin ordenar otros contextos.
+El Project origen se eliminaría al final, cuando todas las relaciones estuvieran
+restauradas. Error/cancelación antes del commit debería revertir toda la operación.
+Progreso, Attention, Calendar y obligaciones se derivarían de las mismas tareas;
+Backup v7 no necesita cambiar para esta variante con Nodes ACTION existentes.
+Este diseño aún debe implementarse y verificarse con fallos inyectados, árboles
+profundos, referencias completas, restore y pruebas de navegación.
+
+### Decisión necesaria para el caso vacío
+
+Alternativa sin migración: impedir mover proyectos sin Nodes, dejando el caso
+vacío explícitamente fuera del alcance, en vez de inventar una tarea o nota.
+Requiere aceptación de ese ajuste al requisito A antes de implementar.
+
+Para una Capa vacía real, propuesta a evaluar: ampliar purpose de Node con un
+propósito de contenedor (LAYER), no completable aunque no tenga hijos, que use
+la misma jerarquía Node. No implica Subproject ni otra tabla de jerarquía.
+El campo TEXT existente puede almacenarlo, pero Room debería migrar 14→15 para
+actualizar triggers de propósito y padres, y el dominio/progreso/editores deben
+reconocerlo. Las filas existentes permanecerían ACTION/NOTE; las nuevas filas
+convertidas tendrían LAYER. Backup v7 rechaza propósitos diferentes de ACTION/NOTE,
+por lo que exigiría diseñar la compatibilidad/versionado de ese nuevo valor;
+no se promete conservar v7 sin revisar su contrato. No se implementó esta
+migración ni se modificó el formato de backup.
+
+Validación de la auditoría sobre el código actual: NodePurposeTest 6/6 y
+NodeInvariantTest 17/17, total 23/23; assembleDebug y git diff --check correctos.
+Log `/tmp/arachnode-project-layer-audit.log`. Son verificaciones de las invariantes
+existentes, no pruebas de una conversión implementada. Único archivo modificado:
+ARCHITECTURE.md. Sin cambios de producción, migraciones, commit ni push.
+
+
+## LAYER explícito y Project root → Layer when nested — implementación actual
+
+Un Project existe solo como raíz. Moverlo dentro de otro Project o de una Capa lo
+convierte en un Node LAYER. No existe Subproject. ACTION/NOTE son hojas; LAYER
+admite 0..N hijos, conserva identidad estructural al quedar vacía, tiene NO_WORK
+sin tareas y progreso derivado con tareas. No hay checkbox para LAYER vacía.
+Crear hijos requiere LAYER; la UI ofrece Capa al crear y Convertir en capa en ⋮.
+LAYER vacía puede convertirse explícitamente en tarea. El resto de las secciones
+históricas que describen conversión implícita al añadir/quitar hijos documenta el
+comportamiento anterior a este cambio, no el contrato actual.
+
+### Room 15 y compatibilidad
+
+Migración explícita 14→15 sin columnas/tablas nuevas ni borrado destructivo.
+Mientras las relaciones antiguas siguen intactas, identifica Nodes con hijos y
+actualiza únicamente purpose a LAYER e isCompleted a false. Sus IDs, metadatos,
+fechas/prioridad latentes, jerarquía y asociaciones permanecen. Reemplaza guards
+de propósito/padres: solo LAYER recibe hijos; NOTE/LAYER no completables;
+ACTION/NOTE sin hijos. Mantiene triggers de identidad, ciclos y obligaciones.
+Bases nuevas instalan los mismos guards. Se conserva la cadena 1→15 y schema 15.
+
+Recurrencias nuevas solo admiten raíz o LAYER como destino. Las reglas antiguas
+podían apuntar a una ACTION aún sin hijos; se conserva esa ACTION al migrar.
+Su primera ocurrencia debida convierte ese destino a LAYER dentro de la misma
+transacción, antes de insertar el hijo, reproduciendo la transición diferida que
+el usuario ya había configurado. No la convierte antes de la fecha debida ni
+pausa la regla por ese caso. Si estaba completada, registra la reapertura normal.
+No cambia ancla, zona, intervalo, estado, cursor ni recibos. Notes/obligaciones o
+padres ausentes siguen sujetos a las validaciones existentes.
+
+### Backup lógico v8
+
+El campo purpose admite LAYER explícito. v7 rechazaba ese valor y no podía
+representar una Capa vacía, por lo que la nueva semántica se identifica con
+**dataVersion 8**, sin cambiar contenedor externo v1. Se leen v1–v8. Decodificar
+v1–v7 valida los propósitos originales ACTION/NOTE e infiere LAYER de los Nodes
+con hijos antes de validar/restaurar; no inventa capas para hojas. Un padre NOTE,
+completado u obligación antiguo se rechaza en vez de normalizar datos inválidos.
+v8 conserva LAYER vacía y rechaza ACTION/NOTE con hijos. La restauración utiliza
+la misma transacción, presupuesto, orden padre primero y rollback existentes.
+Backups v8 no son legibles por versiones antiguas; no se promete downgrade.
+
+### Movimiento de Proyecto
+
+ProjectNestingRepository revalida origen, destino y ancestros en UNA transacción
+Room. El destino es otro Project o una LAYER válida de ese Project; origen propio,
+Nodes ACTION/NOTE, referencias ausentes y ciclos se rechazan. Nombres duplicados
+son válidos. El selector lazy ofrece proyectos y rutas acotadas de Capas; una
+confirmación explica pérdida de raíz independiente y efecto sobre la herencia.
+No hay botón permanente en tarjetas. Tras commit el listado raíz y las vistas
+reactivas se actualizan sin reiniciar.
+
+Se crea un envoltorio LAYER con un nuevo Node ID comprobado contra Nodes
+existentes, sin reutilizar deliberadamente el Project ID. Name/description y
+createdAt/updatedAt se conservan como título/descripción/timestamps del
+contenedor. La posición de Project en el listado raíz deja de aplicar; se asigna
+la siguiente posición del destino, con normalización solo ante agotamiento de
+Int. No se renumeran proyectos ajenos ni hermanos por orden automático.
+
+El trigger de identidad prohíbe UPDATE projectId. Por eso se capturan filas y
+relaciones, se desconecta el árbol en lotes y se reinsertan los Nodes padre primero
+con sus mismos IDs: solo projectId y parentId de las antiguas raíces cambian.
+No se deshabilitan foreign keys/triggers ni se usa createNode para reconstruir
+historial. Se restauran node_person, node_tag y NodeEvents, conservando IDs,
+valores y orden relativo de eventos de cada Node con timestamp igual. Purpose, completitud,
+fechas, Priority, montos/monedas, positions y creationGroupId se conservan.
+Progreso, Attention, Calendar y Obligaciones derivan de esas mismas tareas.
+
+Defaults P:origen pasan a N:envoltorio, con overrides y asociaciones exactos;
+defaults N:descendiente conservan su clave y usan projectId del destino. Global
+no cambia ni se materializan valores heredados como propios. Precedencia:
+Global → Project destino → ancestros del destino → envoltorio → descendientes.
+Reglas del proyecto cambian projectId y padres raíz al envoltorio, sin modificar
+IDs, calendario, estados/cursor, personas/tags ni recibos. Padres históricos
+ausentes de reglas se conservan como ausentes. No hay materialización en Move.
+
+Se elimina la fila Project origen al final. Error/cancelación antes de commit
+revierte envoltorio, Nodes, asociaciones, defaults, reglas y eliminación de raíz.
+El resultado es un árbol normal representable en Backup v8, sin referencias de
+defaults al proyecto eliminado. No se amplía NodeEvent con MOVED ni se fabrican
+CREATED para los descendientes o el envoltorio histórico.
+
+### Validación del cambio LAYER / Project → Layer
+
+La ejecución conjunta dirigida terminó con **224 pruebas en 34 clases, cero
+fallos, errores u omisiones**, y `assembleDebug` correcto. Incluye las suites
+de migración y Backup relacionadas, invariantes/persistencia, defaults,
+recurrencia, exportación y flujos Compose; además verifica rollback por fallo y
+cancelación, un árbol de 1100 niveles y un destino de 600 elementos.
+Registro local: `/tmp/layer-final-validation2.log`; informes regenerables en
+`app/build/reports/tests/testDebugUnitTest` y resultados XML en
+`app/build/test-results/testDebugUnitTest`. `git diff --check` pasó.
+
+No se ejecutó toda la suite global, lint ni build release. Quedan pendientes
+la actualización de una instalación real y el dogfooding en dispositivo
+(incluidos accesibilidad y gestos); Robolectric/Compose no acreditan esas pruebas.
+No se realizó commit ni push.

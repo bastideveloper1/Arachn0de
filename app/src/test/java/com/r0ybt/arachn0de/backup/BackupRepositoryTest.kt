@@ -57,7 +57,7 @@ class BackupRepositoryTest {
         repo.restore(input)
         val restored = repo.snapshot()
         BackupFixture.assertData(stateA, restored)
-        assertEquals(14, db.openHelper.readableDatabase.version)
+        assertEquals(15, db.openHelper.readableDatabase.version)
         assertEquals(stateA.nodes.map { it.id }.toSet(), nodeRepo.observeAllState().first().nodesById.keys)
         assertEquals(restored.persons.first { it.id == "r" }.avatarFile, restored.persons.first { it.id == "s" }.avatarFile)
         assertFalse(File(context.filesDir, "avatars/${BackupFixture.avatar}").exists())
@@ -73,7 +73,7 @@ class BackupRepositoryTest {
         val person = java.util.UUID.randomUUID().toString()
         val data = BackupFixture.empty().copy(
             projects = listOf(ProjectEntity(project, "UUID", "", 9, 1, 2)),
-            nodes = listOf(NodeEntity(root, project, null, "Raíz", "", false, 7, 3, 4), NodeEntity(leaf, project, root, "Hoja", "", true, 8, 5, 6)),
+            nodes = listOf(NodeEntity(root, project, null, "Raíz", "", false, 7, 3, 4, purpose="LAYER"), NodeEntity(leaf, project, root, "Hoja", "", true, 8, 5, 6)),
             persons = listOf(PersonEntity(person, "Persona", null)), assignments = listOf(NodePersonEntity(leaf, person)),
         )
         val validated = repo.inspect(java.io.ByteArrayInputStream(BackupFixture.archive(data)))
@@ -147,7 +147,7 @@ class BackupRepositoryTest {
         assertTrue(File(context.cacheDir, "backups").listFiles().orEmpty().isEmpty())
     }
     @Test fun deeplyNestedStateRestoresAndReplacesWithoutRecursiveCascadeFailure() = runBlocking {
-        val nodes = (0 until 1100).map { NodeEntity("n$it", "p", if (it == 0) null else "n${it - 1}", "Nodo", "", false, it, it.toLong(), it.toLong()) }
+        val nodes = (0 until 1100).map { NodeEntity("n$it", "p", if (it == 0) null else "n${it - 1}", "Nodo", "", false, it, it.toLong(), it.toLong(),purpose=if(it<1099) "LAYER" else "ACTION") }
         val data = BackupFixture.empty().copy(projects = listOf(ProjectEntity("p", "Profundo", "", 0, 1, 2)), nodes = nodes)
         repo.restore(data)
         BackupFixture.assertData(data, repo.snapshot())

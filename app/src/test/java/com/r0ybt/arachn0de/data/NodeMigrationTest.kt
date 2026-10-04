@@ -45,10 +45,10 @@ class NodeMigrationTest {
         assertEquals(100L, project.createdAt)
         assertEquals(200L, project.updatedAt)
         val repo = NodeRepository(db)
-        val root = repo.createNode("project", null, "Root")
+        val root = repo.createNode("project", null, "Root",purpose=com.r0ybt.arachn0de.domain.model.NodePurpose.LAYER)
         repo.createNode("project", root.id, "Child")
         assertFalse(repo.setCompleted(root.id, true))
-        assertEquals(14, db.openHelper.readableDatabase.version)
+        assertEquals(15, db.openHelper.readableDatabase.version)
     }
 
     @Test
@@ -91,7 +91,8 @@ class NodeMigrationTest {
         assertEquals(container, reopened.getNode(container.id))
         assertEquals(child, reopened.getNode(child.id))
         assertTrue(reopened.deleteNode(child.id))
-        assertTrue(reopened.getNode(container.id)!!.isCompletable)
+        assertFalse(reopened.getNode(container.id)!!.isCompletable)
+        assertTrue(reopened.getNode(container.id)!!.isStructural)
         assertFalse(reopened.getNode(container.id)!!.isCompleted)
     }
 
@@ -159,6 +160,7 @@ class NodeMigrationTest {
         val repo = NodeRepository(db)
         val root = repo.createNode("project", null, "SQL guard root")
         repo.setCompleted(root.id, true)
+        repo.convertPurpose(root.id, com.r0ybt.arachn0de.domain.model.NodePurpose.LAYER)
         val child = repo.createNode("project", root.id, "SQL guard child")
         assertFalse(repo.getNode(root.id)!!.isCompleted)
         try {

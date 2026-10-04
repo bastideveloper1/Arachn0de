@@ -188,6 +188,7 @@ private fun AppRootContent(projectRepository: ProjectRepository, nodeRepository:
                 sortPreferences = sortPreferences,
                 onOpenProjects = { selectedProjectId = null; openNodeId = null; returnToCalendar = false; returnToAttention = false; returnToObligations = false },
                 nodeRepository = nodeRepository,
+                projectRepository = projectRepository,
                 personRepository = personRepository,
                 clock = clock,
                 openNodeId = openNodeId,

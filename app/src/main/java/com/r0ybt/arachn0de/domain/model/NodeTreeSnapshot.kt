@@ -20,7 +20,7 @@ class NodeTreeSnapshot(val nodes: List<Node>) {
         check(nodesById.size == nodes.size) { "Duplicate node identity" }
         nodes.forEach { node ->
             if (node.parentId != null) {
-                check(nodesById[node.parentId]?.projectId == node.projectId) { "Invalid parent relation" }
+                check(nodesById[node.parentId]?.projectId == node.projectId && nodesById[node.parentId]?.purpose == NodePurpose.LAYER) { "Invalid parent relation" }
             }
         }
         val remaining = nodes.associate { it.id to childrenOf(it.id).size }.toMutableMap()
@@ -34,7 +34,7 @@ class NodeTreeSnapshot(val nodes: List<Node>) {
             val node = queue.removeFirst()
             check(node.id !in result) { "Repeated node during traversal" }
             val leaf = childrenOf(node.id).isEmpty()
-            val count = if (leaf) { if (node.purpose == NodePurpose.ACTION) 1 else 0 } else total.getValue(node.id)
+            val count = if (node.purpose == NodePurpose.ACTION) 1 else if (leaf) 0 else total.getValue(node.id)
             val done = if (leaf) { if (count > 0 && node.isCompleted) 1 else 0 } else completed.getValue(node.id)
             result[node.id] = NodeProgress(
                 nodeId = node.id, completed = done, total = count,

@@ -55,6 +55,12 @@ class ProjectRepository(
         true
     }
 
+    suspend fun moveInside(sourceId:String,targetId:String,parentId:String?):String =
+        ProjectNestingRepository(requireNotNull(database)).move(sourceId,targetId,parentId)
+
+    suspend fun destinationLayers(projectId:String):List<com.r0ybt.arachn0de.domain.model.Node> =
+        NodeRepository(requireNotNull(database),currentTimeMillis).getProjectNodes(projectId).filter { it.isStructural }
+
     suspend fun getProject(id: String): Project? = projectDao.getById(id)?.toProject()
 
     suspend fun createProject(

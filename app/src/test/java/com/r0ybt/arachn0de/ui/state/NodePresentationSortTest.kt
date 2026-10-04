@@ -46,7 +46,7 @@ class NodePresentationSortTest {
         assertEquals(listOf("b","d","a","c"),ids(input,NodeSortMode.CREATED_OLDEST))
     }
     @Test fun notesAndLayersKeepMembershipAndUseEffectivePriorityWithoutDerivedDates() {
-        val layer=node("layer",1,priority=Priority.HIGH).copy(hasChildren=true)
+        val layer=node("layer",1,priority=Priority.HIGH).copy(hasChildren=true,purpose=NodePurpose.LAYER)
         val child=node("child",due=1).copy(parentId="layer")
         val note=node("note",2,priority=Priority.HIGH).copy(purpose=NodePurpose.NOTE)
         val task=node("task",3,20,Priority.LOW).copy(obligation=Obligation(100,"CLP"))
@@ -61,7 +61,7 @@ class NodePresentationSortTest {
         assertEquals(listOf("pending15","pending5","done20","done1"),ids(nodes,NodeSortMode.DUE_DESC))
     }
     @Test fun tagFilterThenSortRetainsMinimalAncestorsAndOnlyReordersSiblings() {
-        val nodes=listOf(node("L1",1).copy(hasChildren=true),node("L2",0).copy(hasChildren=true),
+        val nodes=listOf(node("L1",1).copy(hasChildren=true,purpose=NodePurpose.LAYER),node("L2",0).copy(hasChildren=true,purpose=NodePurpose.LAYER),
             node("late",0,15).copy(parentId="L1"),node("early",1,5).copy(parentId="L1"),
             node("middle",0,10).copy(parentId="L2"),node("excluded",2,1).copy(parentId="L1"))
         val filtered=ScopedNodeFilter.apply(NodeTreeSnapshot(nodes),"p",null,NodeFilter(tagId="tag"),emptyMap(),mapOf("late" to setOf("tag"),"early" to setOf("tag"),"middle" to setOf("tag")))
@@ -82,7 +82,7 @@ class NodePresentationSortTest {
         assertEquals(listOf("c"),rows(NodeFilter(completion=CompletionFilter.COMPLETED),NodeSortMode.CREATED_NEWEST))
     }
     @Test fun scopeExcludesOtherProjectsAndDoesNotSortAncestorsIntoCurrentLayer() {
-        val layer=node("layer").copy(hasChildren=true)
+        val layer=node("layer").copy(hasChildren=true,purpose=NodePurpose.LAYER)
         val nodes=listOf(layer,node("late",0,20).copy(parentId="layer"),node("early",1,5).copy(parentId="layer"),node("foreign").copy(projectId="q"))
         val rows=ScopedNodeFilter.apply(NodeTreeSnapshot(nodes),"p","layer",NodeFilter(),emptyMap(),emptyMap())
         assertEquals(listOf("early","late"),NodePresentationSort.filtered(rows,NodeSortMode.DUE_ASC).map { it.node.id })

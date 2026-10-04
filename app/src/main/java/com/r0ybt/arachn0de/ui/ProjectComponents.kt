@@ -174,6 +174,7 @@ internal fun ProjectList(
     reorderError: String? = null,
     listState: LazyListState = rememberLazyListState(),
     projectAttentionById: Map<String, com.r0ybt.arachn0de.domain.model.AttentionSummary> = emptyMap(),
+    onMoveInside: (Project) -> Unit = {},
     onCopy: (Project, Boolean) -> Unit = { _, _ -> },
     canCopy: Boolean = true,
     canCopyDescendants: Boolean = true,
@@ -194,6 +195,7 @@ internal fun ProjectList(
             val dragging = drag.isDragging(project.id)
             ProjectCard(
                 project = project,
+                onMoveInside = { onMoveInside(project) },
                 onCopy = { descendants -> onCopy(project,descendants) },
                 canCopy = canCopy,
                 canCopyDescendants = canCopyDescendants,
@@ -237,6 +239,7 @@ internal fun ProjectCard(
     modifier: Modifier = Modifier,
     dragging: Boolean = false,
     attention: com.r0ybt.arachn0de.domain.model.AttentionSummary? = null,
+    onMoveInside: () -> Unit = {},
     onCopy: (Boolean) -> Unit = {},
     canCopy: Boolean = true,
     canCopyDescendants: Boolean = true,
@@ -341,6 +344,7 @@ internal fun ProjectCard(
         ActionMenu(project.name,{ showActions = false }) {
             ActionMenuItem("Editar",Icons.Default.Edit,{ showActions = false; onEdit() },
                 Modifier.semantics { contentDescription = "Editar proyecto" })
+            ActionMenuItem("Mover dentro de…",Icons.Default.AccountTree,{ showActions=false;onMoveInside() })
             ActionMenuItem("Copiar",Icons.Default.ContentCopy,{ showActions = false; onCopy(false) },enabled=canCopy)
             ActionMenuItem("Copiar con descendientes",Icons.Default.AccountTree,{ showActions = false; onCopy(true) },enabled=canCopy && canCopyDescendants)
             androidx.compose.material3.HorizontalDivider()

@@ -71,7 +71,7 @@ internal fun LayerNavigator(
         if(selected.isEmpty()) emptySet() else com.r0ybt.arachn0de.domain.model.SelectionRoots.normalize(nodes,selected).flatMap { index.subtreeIds(it) }.toSet()
     }
     val rows = remember(index, expanded, excluded, moving) {
-        index.visibleRows(expanded).filter { it.node.id !in excluded && it.node.purpose == com.r0ybt.arachn0de.domain.model.NodePurpose.ACTION && (moving || it.hasChildren) && (!moving || it.node.obligation == null) }
+        index.visibleRows(expanded).filter { it.node.id !in excluded && it.node.isStructural && (!moving || it.node.obligation == null) }
     }
     LazyColumn(
         state = listState,
@@ -211,7 +211,7 @@ internal fun LayerDestination(
                         )
                         if (isCurrent) Text("ACTUAL", color = Arachn0deColors.PathHighlight, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                         Text(
-                            text = if (row.hasChildren) "Capa ${depth + 1}" else "Tarea",
+                            text = if (row.node.isStructural) "Capa ${depth + 1}" else "Tarea",
                             color = Arachn0deColors.TextSecondary,
                             fontSize = 11.sp,
                         )

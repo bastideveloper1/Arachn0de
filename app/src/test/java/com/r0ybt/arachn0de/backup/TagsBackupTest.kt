@@ -27,7 +27,7 @@ class TagsBackupTest {
                 val json = JSONObject(BackupJson.encode(data).toString(Charsets.UTF_8)).apply {
                     for (i in 0 until getJSONArray("nodes").length()) getJSONArray("nodes").getJSONObject(i).apply { remove("priority"); remove("creationGroupId") }
                 for (i in 0 until getJSONArray("recurrenceRules").length()) getJSONArray("recurrenceRules").getJSONObject(i).apply { remove("priority"); remove("creationGroupId") }
-                put("dataVersion",version); remove("creationDefaults"); remove("defaultsTags"); remove("defaultsPeople"); remove("nodeEvents"); remove("tags"); remove("nodeTags"); remove("recurrenceTags")
+                put("dataVersion",version); for(i in 0 until getJSONArray("nodes").length()) { val row=getJSONArray("nodes").getJSONObject(i);if(row.getString("purpose")=="LAYER") row.put("purpose","ACTION") }; remove("creationDefaults"); remove("defaultsTags"); remove("defaultsPeople"); remove("nodeEvents"); remove("tags"); remove("nodeTags"); remove("recurrenceTags")
                     if (version == 1) { remove("recurrenceRules"); remove("recurrenceOccurrences"); remove("recurrenceAssignments") }
                 }
                 val old = BackupJson.decode(json.toString().toByteArray()); assertTrue(old.tags.isEmpty())

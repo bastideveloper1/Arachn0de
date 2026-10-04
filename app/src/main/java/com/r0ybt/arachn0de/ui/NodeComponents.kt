@@ -173,6 +173,7 @@ internal fun NodeCard(
     responsiblePeople: List<com.r0ybt.arachn0de.domain.model.Person> = emptyList(),
     now: Long = 0L,
     attention: com.r0ybt.arachn0de.domain.model.AttentionSummary? = null,
+    onMakeLayer: () -> Unit = {},
     onConvert: (() -> Unit) -> Unit = { done -> done() },
     canCopy: Boolean = true,
     onCopy: (Boolean) -> Unit = {},
@@ -186,7 +187,7 @@ internal fun NodeCard(
     var showContextMenu by remember { mutableStateOf(false) }
     val completedTint = if (node.isCompleted) Arachn0deColors.Completed else Arachn0deColors.Primary
     val displayTextColor = if (node.isCompleted) Arachn0deColors.TextCompleted else Arachn0deColors.TextPrimary
-    val noPending = hasChildren && progress != null && !progress.hasPending
+    val noPending = node.isStructural && progress != null && !progress.hasPending
     val rowAlpha = if (node.isCompleted || noPending) 0.92f else 1f
 
     Card(
@@ -235,7 +236,7 @@ internal fun NodeCard(
                 }
             } else if (node.purpose == NodePurpose.NOTE) {
                 Icon(Icons.Default.Description, contentDescription = "Nota", tint = Arachn0deColors.TextSecondary, modifier = Modifier.size(36.dp))
-            } else if (hasChildren) {
+            } else if (node.isStructural) {
                 Image(
                     painter = painterResource(id = R.drawable.cebolla_icon),
                     contentDescription = "Capa",
@@ -270,13 +271,13 @@ internal fun NodeCard(
 
                 ObligationIndicator(node)
                 TaskDateIndicator(node, now)
-                if (hasChildren) AttentionIndicator(attention)
+                if (node.isStructural) AttentionIndicator(attention)
 
                 if (responsiblePeople.isNotEmpty()) {
                     Spacer(modifier = Modifier.height(4.dp))
                     ResponsibleAvatars(responsiblePeople)
                 }
-                if (hasChildren && progress != null) {
+                if (node.isStructural && progress != null) {
                     Spacer(modifier = Modifier.height(6.dp))
                     if (progress.state == NodeProgressState.NO_WORK) {
                         Text(
@@ -299,7 +300,7 @@ internal fun NodeCard(
                             trackColor = Arachn0deColors.ControlSurface,
                         )
                     }
-                } else if (hasChildren) {
+                } else if (node.isStructural) {
                     Spacer(modifier = Modifier.height(6.dp))
                     Text(
                         text = "Capa",
@@ -310,7 +311,7 @@ internal fun NodeCard(
             }
 
             Row(verticalAlignment = Alignment.CenterVertically) {
-                if (hasChildren) {
+                if (node.isStructural) {
                     Icon(
                         imageVector = Icons.Default.ChevronRight,
                         contentDescription = null,
@@ -341,12 +342,13 @@ internal fun NodeCard(
             onSelect?.let { select -> ActionMenuItem("Seleccionar", Icons.Default.CheckBox, { showContextMenu = false; select() }) }
             ActionMenuItem("Editar",Icons.Default.Edit,{ showContextMenu = false; onEdit() })
             onHistory?.let { history -> ActionMenuItem("Historial",Icons.Default.History,{ showContextMenu = false; history() }) }
-            if (!hasChildren) ActionMenuItem(if(node.purpose == NodePurpose.NOTE) "Convertir en tarea" else "Convertir en nota",
+            if (!hasChildren) ActionMenuItem(if(node.purpose != NodePurpose.ACTION) "Convertir en tarea" else "Convertir en nota",
                 Icons.Default.SwapHoriz,{ onConvert { showContextMenu = false } })
+            if(!node.isStructural) ActionMenuItem("Convertir en capa",Icons.Default.AccountTree,{ showContextMenu=false;onMakeLayer() })
             ActionMenuItem("Responsables",Icons.Default.People,{ showContextMenu = false; onResponsible() })
             ActionMenuItem("Mover a…",Icons.Default.DriveFileMove,{ showContextMenu = false; onMove() })
             ActionMenuItem("Copiar este elemento",Icons.Default.ContentCopy,{ showContextMenu = false; onCopy(false) },enabled=canCopy)
-            if(hasChildren) ActionMenuItem("Copiar con descendientes",Icons.Default.AccountTree,{ showContextMenu = false; onCopy(true) },enabled=canCopy)
+            if(node.isStructural) ActionMenuItem("Copiar con descendientes",Icons.Default.AccountTree,{ showContextMenu = false; onCopy(true) },enabled=canCopy)
             HorizontalDivider()
             ActionMenuItem("Eliminar",Icons.Default.Delete,{ showContextMenu = false; onDelete() },destructive=true)
         }

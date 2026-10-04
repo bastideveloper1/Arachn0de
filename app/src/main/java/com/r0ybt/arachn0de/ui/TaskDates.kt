@@ -23,7 +23,7 @@ internal fun formatTaskDate(millis: Long): String = DateFormat.getDateTimeInstan
 
 @Composable
 internal fun TaskDateIndicator(node: Node, now: Long) {
-    if (node.hasChildren || (node.startAt == null && node.dueAt == null)) return
+    if (node.isStructural || (node.startAt == null && node.dueAt == null)) return
     val state = TaskTemporal.state(node, now)
     val label = when (state) {
         TaskTemporalState.SCHEDULED -> "Programada"

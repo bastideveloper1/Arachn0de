@@ -52,13 +52,13 @@ internal fun BackupData.validate(): List<NodeEntity> {
         require(node.projectId in projectIds) { "Proyecto ausente." }
         node.parentId?.let { parentId ->
             val parent = requireNotNull(byId[parentId]) { "Padre ausente." }
-            require(parent.projectId == node.projectId && parent.id != node.id && parent.purpose == "ACTION" && parent.amountMinor == null) { "Jerarquía inválida." }
+            require(parent.projectId == node.projectId && parent.id != node.id && parent.purpose == "LAYER" && parent.amountMinor == null) { "Jerarquía inválida." }
         }
         require(node.creationGroupId == null || (node.creationGroupId.isNotBlank() && node.creationGroupId.length <= 200)) { "Grupo inválido." }
         com.r0ybt.arachn0de.domain.model.Priority.valueOf(node.priority)
-        require(node.purpose == "ACTION" || node.purpose == "NOTE") { "Propósito desconocido." }
+        require(node.purpose in listOf("ACTION","NOTE","LAYER")) { "Propósito desconocido." }
         require(!node.isCompleted || (node.purpose == "ACTION" && children[node.id].isNullOrEmpty())) { "Completado inválido." }
-        require(node.purpose != "NOTE" || children[node.id].isNullOrEmpty()) { "Nota con hijos." }
+        require(node.purpose == "LAYER" || children[node.id].isNullOrEmpty()) { "Nota con hijos." }
         TaskTemporal.validateDates(node.startAt, node.dueAt)
         require((node.amountMinor == null) == (node.currencyCode == null)) { "Obligación incompleta." }
         node.amountMinor?.let {

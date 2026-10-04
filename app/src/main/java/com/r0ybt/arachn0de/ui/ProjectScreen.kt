@@ -108,9 +108,12 @@ internal fun ProjectNodeScreen(
     clock: () -> Long = System::currentTimeMillis,
     onOpenProjects: () -> Unit = onBackToProjects,
     sortPreferences: NodeSortPreferences = rememberSaveable(project.id, saver = NodeSortPreferences.Saver) { NodeSortPreferences() },
+    projectRepository: com.r0ybt.arachn0de.data.repository.ProjectRepository = (androidx.compose.ui.platform.LocalContext.current.applicationContext as com.r0ybt.arachn0de.Arachn0deApplication).projectRepository,
 ) {
     val pendingOpenNode by rememberUpdatedState(openNodeId)
     val handleOpenNode by rememberUpdatedState(onOpenNodeHandled)
+    var moveProject by rememberSaveable(project.id) { mutableStateOf(false) }
+    if(moveProject) ProjectMoveDialog(projectRepository,project,{ moveProject=false },{ moveProject=false;onBackToProjects() })
     val scope = rememberCoroutineScope()
     val personActions = remember(personRepository, scope) { com.r0ybt.arachn0de.ui.state.PersonActions(personRepository, scope) }
     var people by remember { mutableStateOf(emptyList<com.r0ybt.arachn0de.domain.model.Person>()) }
@@ -136,6 +139,7 @@ internal fun ProjectNodeScreen(
     var projectState by remember(project.id) { mutableStateOf(NodeTreeSnapshot(emptyList())) }
     val drafts = rememberSaveable(project.id, saver = com.r0ybt.arachn0de.ui.state.EditorDraftStore.Saver) { com.r0ybt.arachn0de.ui.state.EditorDraftStore() }
     val draft = drafts.active
+    var convertingPurpose by remember { mutableStateOf(NodePurpose.NOTE) }
     var convertingObligationId by rememberSaveable(project.id) { mutableStateOf<String?>(null) }
     var deletingNodeId by rememberSaveable(project.id) { mutableStateOf<String?>(null) }
     var deletingNodeName by rememberSaveable(project.id) { mutableStateOf("") }
@@ -409,10 +413,10 @@ internal fun ProjectNodeScreen(
                                     }
                                 }
 
-                                AttentionIndicator(if (currentNode == null) attention?.byProjectId?.get(project.id) else if (currentNode.hasChildren) attention?.byNodeId?.get(currentNode.id) else null)
-                                if (currentNode == null || currentNode.hasChildren) FinancialSummaryCard(
+                                AttentionIndicator(if (currentNode == null) attention?.byProjectId?.get(project.id) else if (currentNode.isStructural) attention?.byNodeId?.get(currentNode.id) else null)
+                                if (currentNode == null || currentNode.isStructural) FinancialSummaryCard(
                                     if (currentNode == null) financial?.byProjectId?.get(project.id) else financial?.byNodeId?.get(currentNode.id), title = "Obligaciones · Todo el período")
-                                if (currentNode != null && currentNode.hasChildren && currentProgress != null) {
+                                if (currentNode != null && currentNode.isStructural && currentProgress != null) {
                                     NodeProgressCard(progress = currentProgress!!)
                                     Spacer(modifier = Modifier.height(12.dp))
                                 }
@@ -422,7 +426,8 @@ internal fun ProjectNodeScreen(
                                         if(currentNode.isCompletable) SecondaryAction(if(currentNode.isCompleted) "Reabrir" else "Completar",
                                             { actions.setCompleted(currentNode.id,!currentNode.isCompleted) },enabled = !isSubmittingNode)
                                     }
-                                    if (currentNode.purpose == NodePurpose.NOTE) Text("Nota · Convierte en tarea para añadir hijos", color = Arachn0deColors.TextSecondary)
+                                    if (currentNode.purpose == NodePurpose.ACTION) Text("Para añadir elementos, convierte esta tarea en capa desde ⋮.", color = Arachn0deColors.TextSecondary)
+                                    if (currentNode.purpose == NodePurpose.NOTE) Text("Nota · Convierte en capa para añadir hijos", color = Arachn0deColors.TextSecondary)
                                     PriorityIndicator(currentNode)
                                     ObligationIndicator(currentNode)
                                     if (currentNode.obligation != null) Text("Convierte esta obligación en una tarea antes de usarla como capa.", color = Arachn0deColors.TextSecondary)
@@ -453,7 +458,7 @@ internal fun ProjectNodeScreen(
                         } else {
                         if (currentNodes == null) item { Text("Cargando orden…") }
                         else if (currentNodes.orEmpty().isEmpty()) {
-                            item(key = "empty-layer", contentType = "empty") { if (currentNode?.purpose != NodePurpose.NOTE && currentNode?.obligation == null) EmptyLayerState() }
+                            item(key = "empty-layer", contentType = "empty") { if (currentNode == null || currentNode.isStructural) EmptyLayerState() }
                         }
                         for (completedGroup in listOf(false, true)) {
                             val groupNodes = currentNodes.orEmpty().filter { it.isCompleted == completedGroup }
@@ -481,7 +486,8 @@ internal fun ProjectNodeScreen(
                                     onRecurrence = recurrenceByNode[node.id]?.let { ruleId -> ({ recurrenceSelected = ruleId }) },
                                     progress = progressMap[node.id],
                                     hasChildren = node.hasChildren,
-                                    onConvert = { done -> if (node.obligation != null) { convertingObligationId = node.id; done() } else actions.convert(node.id, if (node.purpose == NodePurpose.NOTE) NodePurpose.ACTION else NodePurpose.NOTE, onSuccess = done) },
+                                    onMakeLayer = { if(node.obligation!=null) { convertingPurpose=NodePurpose.LAYER;convertingObligationId=node.id } else actions.convert(node.id,NodePurpose.LAYER) },
+                                    onConvert = { done -> if (node.obligation != null) { convertingPurpose=NodePurpose.NOTE;convertingObligationId = node.id; done() } else actions.convert(node.id, if (node.purpose != NodePurpose.ACTION) NodePurpose.ACTION else NodePurpose.NOTE, onSuccess = done) },
                                     canToggleComplete = node.isCompletable,
                                     onOpen = {
                                         currentPath.add(node.id)
@@ -530,7 +536,7 @@ internal fun ProjectNodeScreen(
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Button(
-                        onClick = { if (!isSubmittingNode && (currentNode?.purpose != NodePurpose.NOTE && currentNode?.obligation == null)) {
+                        onClick = { if (!isSubmittingNode && (currentNode == null || currentNode.isStructural)) {
                             val parent = currentNodeId
                             if(drafts.hasNew(parent)) drafts.open(parent) { error("Borrador existente") }
                             else {
@@ -545,7 +551,7 @@ internal fun ProjectNodeScreen(
                         modifier = Modifier.weight(1f).heightIn(min = 52.dp),
                         colors = ButtonDefaults.buttonColors(containerColor = Arachn0deColors.Primary),
                         shape = RoundedCornerShape(14.dp),
-                        enabled = !isSubmittingNode && (currentNode?.purpose != NodePurpose.NOTE && currentNode?.obligation == null),
+                        enabled = !isSubmittingNode && (currentNode == null || currentNode.isStructural),
                     ) {
                         Icon(imageVector = Icons.Default.Add, contentDescription = null)
                         Spacer(Modifier.width(8.dp))
@@ -584,9 +590,9 @@ internal fun ProjectNodeScreen(
     }
 
     convertingObligationId?.let { id ->
-        RemoveObligationDialog(isSubmittingNode, true,
+        RemoveObligationDialog(isSubmittingNode, true, resultLabel=if(convertingPurpose==NodePurpose.LAYER) "capa" else "nota",
             onDismiss = { convertingObligationId = null },
-            onConfirm = { actions.convert(id, NodePurpose.NOTE, removeObligation = true) { convertingObligationId = null } })
+            onConfirm = { actions.convert(id, convertingPurpose, removeObligation = true) { convertingObligationId = null } })
     }
 
     draft?.let { editor ->
@@ -633,20 +639,26 @@ internal fun ProjectNodeScreen(
             ActionMenuItem("Mover a…", androidx.compose.material.icons.Icons.Default.AccountTree, { showContextActions=false;movingNodeId=currentNode.id }, enabled=!isSubmittingNode)
             ActionMenuItem("Historial", androidx.compose.material.icons.Icons.Default.History, { showContextActions=false;historyNodeId=currentNode.id })
         }
-        if(currentNode == null || (currentNode.purpose == NodePurpose.ACTION && currentNode.obligation == null)) ActionMenuItem("Valores predeterminados", androidx.compose.material.icons.Icons.Default.Settings, {
+        if(currentNode == null || (currentNode.isStructural)) ActionMenuItem("Valores predeterminados", androidx.compose.material.icons.Icons.Default.Settings, {
             showContextActions = false; showDefaults = true
         }, enabled = !isSubmittingNode)
         if(currentNode != null && !currentNode.hasChildren) ActionMenuItem(
-            if(currentNode.purpose == NodePurpose.NOTE) "Convertir en tarea" else "Convertir en nota",
+            if(currentNode.purpose != NodePurpose.ACTION) "Convertir en tarea" else "Convertir en nota",
             androidx.compose.material.icons.Icons.Default.SwapHoriz, {
-                if(currentNode.obligation != null) { showContextActions = false; convertingObligationId = currentNode.id }
-                else actions.convert(currentNode.id,if(currentNode.purpose == NodePurpose.NOTE) NodePurpose.ACTION else NodePurpose.NOTE) { showContextActions = false }
+                if(currentNode.obligation != null) { showContextActions = false; convertingPurpose=NodePurpose.NOTE;convertingObligationId = currentNode.id }
+                else actions.convert(currentNode.id,if(currentNode.purpose != NodePurpose.ACTION) NodePurpose.ACTION else NodePurpose.NOTE) { showContextActions = false }
             },enabled = !isSubmittingNode)
+        if(currentNode!=null && !currentNode.isStructural) ActionMenuItem("Convertir en capa",androidx.compose.material.icons.Icons.Default.AccountTree,{
+            showContextActions=false
+            if(currentNode.obligation!=null) { convertingPurpose=NodePurpose.LAYER;convertingObligationId=currentNode.id }
+            else actions.convert(currentNode.id,NodePurpose.LAYER)
+        },enabled=!isSubmittingNode)
+        if(currentNode==null) ActionMenuItem("Mover dentro de…",androidx.compose.material.icons.Icons.Default.AccountTree,{ showContextActions=false;moveProject=true },enabled=!isSubmittingNode)
         ActionMenuItem(if(currentNode == null) "Copiar" else "Copiar este elemento", androidx.compose.material.icons.Icons.Default.ContentCopy, {
             showContextActions = false
             if(currentNode == null) copyActions.copyProject(project,projectState,false) else copyActions.copy(projectState,currentNode.id,false)
         },enabled = !copyActions.busy)
-        if(currentNode == null || currentNode.hasChildren) ActionMenuItem("Copiar con descendientes", androidx.compose.material.icons.Icons.Default.AccountTree, {
+        if(currentNode == null || currentNode.isStructural) ActionMenuItem("Copiar con descendientes", androidx.compose.material.icons.Icons.Default.AccountTree, {
             showContextActions = false
             if(currentNode == null) copyActions.copyProject(project,projectState,true) else copyActions.copy(projectState,currentNode.id,true)
         },enabled = !copyActions.busy)

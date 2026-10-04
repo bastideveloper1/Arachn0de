@@ -87,7 +87,7 @@ private fun DefaultsEditor(repository:CreationDefaultsRepository, scope:Defaults
             Text((when(scope) { DefaultsScope.Global -> "Todos los proyectos";is DefaultsScope.Project -> "Proyecto";is DefaultsScope.Layer -> "Capa" }) + ": " + contextName)
             Text("Se aplican a las nuevas tareas y notas que crees aquí. Puedes cambiarlos al crear. No modifican tareas existentes ni borradores guardados.")
             Text(if(scope==DefaultsScope.Global) "Heredar usa el comportamiento inicial de la aplicación." else "Heredar usa la configuración general, después la del proyecto y luego la de las capas superiores. Elegir un valor aquí cambia solo esa opción.")
-            DefaultsChoice("Tipo",own.purpose,inherited.purpose,listOf(NodePurpose.ACTION,NodePurpose.NOTE),{ if(it==NodePurpose.ACTION) "Tarea" else "Nota" },!operation.busy) { own=own.copy(purpose=it) }
+            DefaultsChoice("Tipo",own.purpose,inherited.purpose,NodePurpose.entries,{ when(it) { NodePurpose.ACTION -> "Tarea";NodePurpose.NOTE -> "Nota";NodePurpose.LAYER -> "Capa" } },!operation.busy) { own=own.copy(purpose=it) }
             DefaultsChoice("Obligación",own.obligation,inherited.obligation,listOf(false,true),{ if(it) "Activada" else "Desactivada" },!operation.busy) { own=own.copy(obligation=it) }
             DefaultsChoice("Moneda",own.currency,inherited.currency,listOf("CLP","USD","EUR"),{ it },!operation.busy) { own=own.copy(currency=it) }
             DefaultsChoice("Prioridad",own.priority,inherited.priority,Priority.entries,{ when(it) { Priority.NONE->"Ninguna";Priority.LOW->"Baja";Priority.MEDIUM->"Media";Priority.HIGH->"Alta" } },!operation.busy) { own=own.copy(priority=it) }

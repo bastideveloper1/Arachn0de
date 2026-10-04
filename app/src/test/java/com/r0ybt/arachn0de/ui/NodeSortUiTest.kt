@@ -33,7 +33,7 @@ class NodeSortUiTest {
             app.nodeRepository.createNode(project.id,null,"B",purpose=NodePurpose.NOTE)
             app.nodeRepository.createNode(project.id,null,"C",dueAt=5,priority=Priority.LOW)
             d=app.nodeRepository.createNode(project.id,null,"D",dueAt=20,priority=Priority.MEDIUM)
-            layer=app.nodeRepository.createNode(project.id,null,"Cuentas")
+            layer=app.nodeRepository.createNode(project.id,null,"Cuentas",purpose=com.r0ybt.arachn0de.domain.model.NodePurpose.LAYER)
             app.nodeRepository.createNode(project.id,layer.id,"Idea",purpose=NodePurpose.NOTE)
         } }
         override fun after() { app.database.close() }

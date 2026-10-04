@@ -35,7 +35,7 @@ class NodePurposeTest {
 
     @Test fun conversionRetainsIdentityAndLatentDataAndUpdatesDerivedWork() = runBlocking {
         val project = ProjectRepository(db.projectDao()).createProject("Project").id
-        val parent = nodes.createNode(project, null, "Layer")
+        val parent = nodes.createNode(project, null, "Layer",purpose=NodePurpose.LAYER)
         val a = nodes.createNode(project, parent.id, "A", "Details", startAt = 1, dueAt = 20)
         val b = nodes.createNode(project, parent.id, "B")
         val note = nodes.createNode(project, parent.id, "Note", purpose = NodePurpose.NOTE)
@@ -77,7 +77,7 @@ class NodePurposeTest {
         val task = nodes.createNode(project, null, "Task")
         try { nodes.createNode(project, note.id, "Child"); fail() } catch (_: IllegalArgumentException) {}
         try { nodes.moveNode(task.id, note.id); fail() } catch (_: IllegalArgumentException) {}
-        val parent = nodes.createNode(project, null, "Parent")
+        val parent = nodes.createNode(project, null, "Parent",purpose=NodePurpose.LAYER)
         people.save("p", "Person", null); people.setResponsiblePeople(note.id, setOf("p"))
         assertTrue(nodes.reorderNodeTo(note.id, null, task.id))
         assertTrue(nodes.moveNode(note.id, parent.id))
@@ -87,7 +87,7 @@ class NodePurposeTest {
         try { db.openHelper.writableDatabase.execSQL("UPDATE nodes SET isCompleted=1 WHERE id='stable'"); fail() } catch (_: android.database.sqlite.SQLiteConstraintException) {}
         nodes.deleteNode(note.id)
         assertNotNull(db.personDao().get("p")); assertTrue(people.observeAssignments(project).first().isEmpty())
-        assertEquals(NodePurpose.ACTION, nodes.getNode(parent.id)!!.purpose)
+        assertEquals(NodePurpose.LAYER, nodes.getNode(parent.id)!!.purpose)
     }
 
     @Test fun realV6MigrationPreservesAllDataAndDefaultsAllNodesToAction() = runBlocking {
@@ -115,9 +115,9 @@ class NodePurposeTest {
         NodeInvariants.install(sql)
         helper.close()
         open()
-        assertEquals(14, db.openHelper.readableDatabase.version)
+        assertEquals(15, db.openHelper.readableDatabase.version)
         assertEquals(NodeEntity("leaf","old","root","Task","Details",true,9,110,160,11,21), db.nodeDao().getById("leaf"))
-        assertEquals(NodeEntity("root","old",null,"Layer","Content",false,7,100,150,10,20), db.nodeDao().getById("root"))
+        assertEquals(NodeEntity("root","old",null,"Layer","Content",false,7,100,150,10,20,purpose="LAYER"), db.nodeDao().getById("root"))
         assertEquals(8, db.projectDao().getById("old")!!.position)
         assertEquals("avatar.png", db.personDao().get("p")!!.avatarFile)
         assertEquals("p", people.observeAssignments("old").first().getValue("leaf").single().id)

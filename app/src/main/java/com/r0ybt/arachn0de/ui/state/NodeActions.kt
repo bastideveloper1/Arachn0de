@@ -109,6 +109,10 @@ internal class NodeActions(private val repository: NodeRepository, private val s
         repository.advanceWorkState(id)
     })
 
+    fun confirmWorkState(id: String) = operation.submit("No se pudo confirmar el estado. Puedes reintentar.", {
+        repository.confirmWorkState(id)
+    })
+
     fun setCompleted(id: String, completed: Boolean) = operation.submit("No se pudo cambiar el completado. Puedes reintentar.", {
         repository.setCompleted(id, completed)
     })

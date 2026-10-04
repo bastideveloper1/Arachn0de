@@ -88,10 +88,23 @@ class NodeSortUiTest {
         sort(NodeSortMode.MANUAL);first("A")
         assertEquals(original,persisted());assertEquals(events,runBlocking { app.database.nodeEventDao().all() })
     }
+    @Test fun projectDefaultIsClearlyLabeledInheritedAndManualOverrideSurvivesRecreation() {
+        open();order().performClick()
+        compose.onNodeWithText("Orden predeterminado del Proyecto").assertExists()
+        compose.onNodeWithText("Las Capas sin orden propio utilizan este criterio.").assertExists()
+        compose.onNodeWithText(NodeSortMode.DUE_PRIORITY.label).performScrollTo().performClick()
+        node("Cuentas").performClick();node("Idea").assertExists()
+        order().assert(hasStateDescription("Orden: Vencimiento y prioridad; arrastre deshabilitado"))
+        sort(NodeSortMode.MANUAL)
+        compose.activityRule.scenario.recreate();await("Nuevo elemento");node("Idea").assertExists()
+        order().assert(hasStateDescription("Orden: Manual"))
+        order().performClick();compose.onNodeWithText("Usar orden predeterminado del Proyecto").performScrollTo().performClick()
+        order().assert(hasStateDescription("Orden: Vencimiento y prioridad; arrastre deshabilitado"))
+    }
     @Test fun activityRecreationRestoresIndependentProjectAndLayerModes() {
         open();sort(NodeSortMode.DUE_ASC);first("C")
         node("Cuentas").performClick();node("Idea").assertExists()
-        order().assert(hasStateDescription("Orden: Manual"))
+        order().assert(hasStateDescription("Orden: Vencimiento próximo; arrastre deshabilitado"))
         sort(NodeSortMode.CREATED_OLDEST)
         compose.activityRule.scenario.recreate();await("Nuevo elemento");node("Idea").assertExists()
         order().assert(hasStateDescription("Orden: Más antiguos; arrastre deshabilitado"))

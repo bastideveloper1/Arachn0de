@@ -48,26 +48,56 @@ class SprintRepositoryTest {
         nodes.setSprintMode(root.id,true);assertEquals(WorkState.UNPLANNED,state(pending.id));assertEquals(WorkState.DONE,state(complete.id))
         val empty=layer("Empty");assertTrue(empty.sprintMode);assertEquals(NodeProgressState.NO_WORK,nodes.calculateProgress(empty.id)!!.state)
     }
-    @Test fun forwardAndBackwardTransitionsEmitCompletionOnlyAtBoundary()=runBlocking {
+    @Test fun everyPhaseAndCompletionAreIndependent()=runBlocking {
         val root=layer();val task=nodes.createNode("p",root.id,"Task")
-        assertEquals(WorkState.UNPLANNED,state(task.id))
-        for(next in listOf(WorkState.PLANNED,WorkState.DOING,WorkState.DONE,WorkState.VALIDATED)) {
-            assertTrue(nodes.advanceWorkState(task.id));assertEquals(next,state(task.id));assertEquals(next.completed,nodes.getNode(task.id)!!.isCompleted)
+        for (phase in WorkState.entries) {
+            assertTrue(nodes.setWorkState(task.id,phase))
+            assertFalse(nodes.getNode(task.id)!!.isCompleted)
+            assertTrue(nodes.setCompleted(task.id,true));assertEquals(phase,state(task.id))
+            for (next in WorkState.entries) {
+                assertTrue(nodes.setWorkState(task.id,next))
+                assertTrue(nodes.getNode(task.id)!!.isCompleted)
+            }
+            nodes.setWorkState(task.id,phase)
+            assertTrue(nodes.toggleCompleted(task.id));assertEquals(phase,state(task.id))
+            assertFalse(nodes.getNode(task.id)!!.isCompleted)
+        }
+        assertEquals(5,db.nodeEventDao().forNode(task.id).count { it.type=="COMPLETED" })
+        assertEquals(5,db.nodeEventDao().forNode(task.id).count { it.type=="REOPENED" })
+        nodes.setWorkState(task.id,WorkState.UNPLANNED)
+        for(next in WorkState.entries.drop(1)) {
+            nodes.advanceWorkState(task.id);assertEquals(next,state(task.id))
+            assertFalse(nodes.getNode(task.id)!!.isCompleted)
         }
         val before=nodes.getNode(task.id)!!;nodes.advanceWorkState(task.id);assertEquals(before,nodes.getNode(task.id))
-        assertEquals(1,db.nodeEventDao().forNode(task.id).count { it.type=="COMPLETED" })
-        nodes.setWorkState(task.id,WorkState.DONE);assertEquals(2,db.nodeEventDao().forNode(task.id).size)
-        nodes.setWorkState(task.id,WorkState.DOING);nodes.setWorkState(task.id,WorkState.PLANNED);nodes.setWorkState(task.id,WorkState.UNPLANNED)
-        assertEquals(1,db.nodeEventDao().forNode(task.id).count { it.type=="REOPENED" })
-        nodes.setCompleted(task.id,true);assertEquals(WorkState.DONE,state(task.id))
-        nodes.setCompleted(task.id,false);assertEquals(WorkState.UNPLANNED,state(task.id))
     }
-    @Test fun normalTasksRemainBinaryAndSqlRejectsContradictoryRows()=runBlocking {
+    @Test fun confirmingSprintPhasePreservesCompletionBoundaryAndRollsBackOnFailure()=runBlocking {
+        val root=layer();val task=nodes.createNode("p",root.id,"Task")
+        nodes.confirmWorkState(task.id);nodes.confirmWorkState(task.id)
+        assertEquals(WorkState.DOING,state(task.id));assertFalse(nodes.getNode(task.id)!!.isCompleted)
+        val before=nodes.getNode(task.id)
+        db.openHelper.writableDatabase.execSQL("CREATE TRIGGER fail_event BEFORE INSERT ON node_events BEGIN SELECT RAISE(ABORT,'fail'); END")
+        assertTrue(runCatching { nodes.confirmWorkState(task.id) }.isFailure)
+        assertEquals(before,nodes.getNode(task.id))
+        db.openHelper.writableDatabase.execSQL("DROP TRIGGER fail_event")
+        nodes.confirmWorkState(task.id)
+        assertEquals(WorkState.DONE,state(task.id));assertTrue(nodes.getNode(task.id)!!.isCompleted)
+        nodes.confirmWorkState(task.id)
+        assertEquals(WorkState.VALIDATED,state(task.id));assertTrue(nodes.getNode(task.id)!!.isCompleted)
+        val final=nodes.getNode(task.id)
+        nodes.confirmWorkState(task.id);assertEquals(final,nodes.getNode(task.id))
+        assertEquals(1,db.nodeEventDao().forNode(task.id).count { it.type=="COMPLETED" })
+        val normal=nodes.createNode("p",null,"Normal")
+        assertFalse(nodes.confirmWorkState(normal.id));assertFalse(nodes.getNode(normal.id)!!.isCompleted)
+    }
+    @Test fun normalTasksRemainBinaryAndSqlKeepsContextGuards()=runBlocking {
         val normal=layer(sprint=false);val task=nodes.createNode("p",normal.id,"Simple")
         assertNull(task.workState);assertTrue(nodes.toggleCompleted(task.id));assertTrue(nodes.getNode(task.id)!!.isCompleted)
         assertFalse(nodes.advanceWorkState(task.id));assertFalse(nodes.setWorkState(task.id,WorkState.DOING))
         val sprint=layer();val child=nodes.createNode("p",sprint.id,"Sprint task")
-        for(sql in listOf("UPDATE nodes SET isCompleted=1 WHERE id=?", "UPDATE nodes SET workState='VALIDATED' WHERE id=?", "UPDATE nodes SET sprintMode=1 WHERE id=?", "UPDATE nodes SET workState='UNKNOWN' WHERE id=?"))
+        db.openHelper.writableDatabase.execSQL("UPDATE nodes SET isCompleted=1 WHERE id=?",arrayOf(child.id))
+        db.openHelper.writableDatabase.execSQL("UPDATE nodes SET workState='DOING' WHERE id=?",arrayOf(child.id))
+        for(sql in listOf("UPDATE nodes SET sprintMode=1 WHERE id=?", "UPDATE nodes SET workState='UNKNOWN' WHERE id=?"))
             assertTrue(runCatching { db.openHelper.writableDatabase.execSQL(sql,arrayOf(child.id)) }.isFailure)
         val note=nodes.createNode("p",sprint.id,"Note",purpose=NodePurpose.NOTE)
         assertFalse(nodes.setSprintMode(note.id,true));assertFalse(nodes.setWorkState(note.id,WorkState.PLANNED))
@@ -76,7 +106,7 @@ class SprintRepositoryTest {
     @Test fun completionProgressAttentionCalendarAndFiltersShareSameTruth()=runBlocking {
         val root=layer();val tasks=WorkState.entries.map { state ->
             val node=nodes.createNode("p",root.id,state.name,dueAt=10,priority=Priority.HIGH)
-            nodes.setWorkState(node.id,state);nodes.getNode(node.id)!!
+            nodes.setWorkState(node.id,state);nodes.setCompleted(node.id,state.completed);nodes.getNode(node.id)!!
         }
         val tree=NodeTreeSnapshot(nodes.getProjectNodes("p"));val progress=tree.progressById.getValue(root.id)
         assertEquals(2,progress.completed);assertEquals(5,progress.total);assertEquals(NodeProgressState.PARTIAL,progress.state)
@@ -118,9 +148,11 @@ class SprintRepositoryTest {
     }
     @Test fun failedEventAndFailedModeSwitchRollBackEveryWrite()=runBlocking {
         val root=layer();val task=nodes.createNode("p",root.id,"Task");nodes.setWorkState(task.id,WorkState.DOING)
-        val before=nodes.getNode(task.id)
         db.openHelper.writableDatabase.execSQL("CREATE TRIGGER fail_event BEFORE INSERT ON node_events BEGIN SELECT RAISE(ABORT,'fail'); END")
-        assertTrue(runCatching { nodes.setWorkState(task.id,WorkState.DONE) }.isFailure);assertEquals(before,nodes.getNode(task.id))
+        assertTrue(nodes.setWorkState(task.id,WorkState.DONE))
+        nodes.setWorkState(task.id,WorkState.DOING)
+        val before=nodes.getNode(task.id)
+        assertTrue(runCatching { nodes.setCompleted(task.id,true) }.isFailure);assertEquals(before,nodes.getNode(task.id))
         db.openHelper.writableDatabase.execSQL("DROP TRIGGER fail_event")
         db.openHelper.writableDatabase.execSQL("CREATE TRIGGER fail_mode BEFORE UPDATE OF sprintMode ON nodes BEGIN SELECT RAISE(ABORT,'fail'); END")
         assertTrue(runCatching { nodes.setSprintMode(root.id,false) }.isFailure);assertEquals(before,nodes.getNode(task.id));assertTrue(nodes.getNode(root.id)!!.sprintMode)

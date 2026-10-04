@@ -23,11 +23,14 @@ data class CurrencyTotals(
     val completedMinor: BigInteger = BigInteger.ZERO,
     val pendingCount: Int = 0,
     val completedCount: Int = 0,
+    val thisMonthPendingMinor: BigInteger = BigInteger.ZERO,
+    val nextMonthPendingMinor: BigInteger = BigInteger.ZERO,
 ) {
     val count: Int get() = pendingCount + completedCount
     operator fun plus(other: CurrencyTotals) = CurrencyTotals(totalMinor + other.totalMinor,
         pendingMinor + other.pendingMinor, completedMinor + other.completedMinor,
-        pendingCount + other.pendingCount, completedCount + other.completedCount)
+        pendingCount + other.pendingCount, completedCount + other.completedCount,
+        thisMonthPendingMinor + other.thisMonthPendingMinor, nextMonthPendingMinor + other.nextMonthPendingMinor)
 }
 data class FinancialSummary(val byCurrency: Map<String, CurrencyTotals> = emptyMap()) {
     val pendingCount: Int get() = byCurrency.values.sumOf { it.pendingCount }
@@ -59,6 +62,9 @@ class FinancialSnapshot(
     val responsibleByNode = responsibleByNode.mapValues { (_, people) -> people.toList() }.toMap()
     val tasks: List<Node>
     val summary: FinancialSummary
+    val overview: FinancialSummary
+    val overviewByNodeId: Map<String, FinancialSummary>
+    val overviewByProjectId: Map<String, FinancialSummary>
     val byNodeId: Map<String, FinancialSummary>
     val byProjectId: Map<String, FinancialSummary>
 
@@ -68,19 +74,27 @@ class FinancialSnapshot(
         val queue = ArrayDeque<Node>()
         val nodeTotals = mutableMapOf<String, FinancialSummary>()
         val projectTotals = mutableMapOf<String, FinancialSummary>()
+        val overviewNodes = mutableMapOf<String, FinancialSummary>()
+        val overviewProjects = mutableMapOf<String, FinancialSummary>()
         val included = mutableListOf<Node>()
         tree.nodes.forEach { node ->
             if (remaining.getValue(node.id) == 0) {
+                val dueMonth = node.dueAt?.let { CalendarDates.localDay(it, zone).calendarMonth }
                 val qualifies = node.purpose == NodePurpose.ACTION && node.obligation != null &&
-                    (selection.personId == null || this.responsibleByNode[node.id].orEmpty().any { it.id == selection.personId }) &&
-                    (periodMonth == null || node.dueAt?.let { CalendarDates.localDay(it, zone).calendarMonth == periodMonth } == true)
-                nodeTotals[node.id] = if (qualifies) {
-                    included.add(node)
+                    (selection.personId == null || this.responsibleByNode[node.id].orEmpty().any { it.id == selection.personId })
+                val own = if (qualifies) {
                     val obligation = checkNotNull(node.obligation)
                     val amount = BigInteger.valueOf(obligation.amountMinor)
                     FinancialSummary(mapOf(obligation.currencyCode to if (node.isCompleted)
                         CurrencyTotals(amount, completedMinor = amount, completedCount = 1)
-                    else CurrencyTotals(amount, pendingMinor = amount, pendingCount = 1)))
+                    else CurrencyTotals(amount, pendingMinor = amount, pendingCount = 1,
+                        thisMonthPendingMinor = if (dueMonth == currentMonth) amount else BigInteger.ZERO,
+                        nextMonthPendingMinor = if (dueMonth == currentMonth.shifted(1)) amount else BigInteger.ZERO)))
+                } else FinancialSummary()
+                overviewNodes[node.id] = own
+                nodeTotals[node.id] = if (qualifies && (periodMonth == null || dueMonth == periodMonth)) {
+                    included.add(node)
+                    own
                 } else FinancialSummary()
                 queue.addLast(node)
             }
@@ -90,15 +104,24 @@ class FinancialSnapshot(
             val node = queue.removeFirst(); processed++
             val own = nodeTotals.getOrDefault(node.id, FinancialSummary())
             nodeTotals[node.id] = own
+            val overviewOwn = overviewNodes.getOrDefault(node.id, FinancialSummary())
+            overviewNodes[node.id] = overviewOwn
             val parent = node.parentId
-            if (parent == null) projectTotals[node.projectId] = (projectTotals[node.projectId] ?: FinancialSummary()) + own
+            if (parent == null) {
+                projectTotals[node.projectId] = (projectTotals[node.projectId] ?: FinancialSummary()) + own
+                overviewProjects[node.projectId] = (overviewProjects[node.projectId] ?: FinancialSummary()) + overviewOwn
+            }
             else {
+                overviewNodes[parent] = (overviewNodes[parent] ?: FinancialSummary()) + overviewOwn
                 nodeTotals[parent] = (nodeTotals[parent] ?: FinancialSummary()) + own
                 remaining[parent] = remaining.getValue(parent) - 1
                 if (remaining[parent] == 0) queue.addLast(tree.nodesById.getValue(parent))
             }
         }
         check(processed == tree.nodes.size) { "Invalid financial hierarchy" }
+        overviewByNodeId = overviewNodes.toMap()
+        overviewByProjectId = overviewProjects.toMap()
+        overview = overviewProjects.values.fold(FinancialSummary(), FinancialSummary::plus)
         byNodeId = nodeTotals.toMap()
         byProjectId = projectTotals.toMap()
         summary = projectTotals.values.fold(FinancialSummary(), FinancialSummary::plus)

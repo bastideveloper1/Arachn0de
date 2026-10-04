@@ -32,6 +32,25 @@ class TaskDatesUiTest {
     @get:Rule val compose = createComposeRule()
     private val fixed = 1_800_000_000_000L
 
+    @Test fun visibleDueDatesUseSpanishLongAndCompactFormatsWithSameLocalTime() {
+        val previousZone=TimeZone.getDefault()
+        val previousLocale=java.util.Locale.getDefault()
+        TimeZone.setDefault(TimeZone.getTimeZone("UTC"))
+        java.util.Locale.setDefault(java.util.Locale.US)
+        try {
+            val instant=Calendar.getInstance().apply { clear();set(2026,Calendar.OCTOBER,15,13,28) }.timeInMillis
+            val draft=EditorDraft(null,null,"Task","",dueAt=instant)
+            val task=Node("task","p",null,"Task","",false,0,0,0,false,dueAt=instant)
+            compose.setContent { Arachn0deTheme { Column {
+                TaskDatesEditor(draft,true,remember { TaskDatePickerDraft() })
+                TaskDateIndicator(task,instant-60_000)
+            } } }
+            compose.onNodeWithText("Vencimiento: 15 de octubre de 2026 · 13:28").assertExists()
+            compose.onNodeWithText("15 oct 2026 · 13:28",substring=true).assertExists()
+            assertEquals(instant,draft.dueAt)
+        } finally { TimeZone.setDefault(previousZone);java.util.Locale.setDefault(previousLocale) }
+    }
+
     @Test fun pickersApplyLocalDateAndTimeAndDraftRestoresWithoutWriting() {
         val restoration = StateRestorationTester(compose)
         lateinit var draft: EditorDraft

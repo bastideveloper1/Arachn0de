@@ -24,6 +24,32 @@ class FinancialSnapshotTest {
     private val clp = Obligation(50000,"CLP")
     private val usd = Obligation(1050,"USD")
 
+    @Test fun pendingOverviewKeepsPersonAndScopeButUsesAllAndCalendarMonthWindows() {
+        val roy=Person("r","Roy",null)
+        val nodes=listOf(node("root"),node("current","root",money=clp,date=due(10)),
+            node("paid-current","root",money=clp,date=due(10),completed=true),
+            node("next","root",money=clp,date=due(11)),node("paid-next","root",money=clp,date=due(11),completed=true),
+            node("undated","root",money=clp),node("past","root",money=clp,date=due(9)),
+            node("outside",project="q",money=usd,date=due(10)))
+        val assignments=nodes.filter { it.id!="root" && it.id!="outside" }.associate { it.id to listOf(roy,roy) }
+        val selected=snapshot(nodes,FinancialPeriod.THIS_MONTH,"r",assignments)
+        val totals=selected.overview.byCurrency.getValue("CLP")
+        assertEquals(BigInteger.valueOf(200000),totals.pendingMinor)
+        assertEquals(BigInteger.valueOf(50000),totals.thisMonthPendingMinor)
+        assertEquals(BigInteger.valueOf(50000),totals.nextMonthPendingMinor)
+        assertEquals(BigInteger.valueOf(100000),totals.completedMinor)
+        assertFalse(selected.overview.byCurrency.containsKey("USD"))
+        assertEquals(selected.overview,selected.overviewByNodeId.getValue("root"))
+        assertEquals(selected.overview,selected.overviewByProjectId.getValue("p"))
+        assertEquals(listOf("current","paid-current"),selected.tasks.map { it.id })
+        val completed=snapshot(nodes.map { if(it.id=="current") it.copy(isCompleted=true) else it },FinancialPeriod.NEXT_MONTH,"r",assignments)
+        val pending=completed.overview.byCurrency.getValue("CLP")
+        assertEquals(BigInteger.valueOf(150000),pending.pendingMinor)
+        assertEquals(BigInteger.ZERO,pending.thisMonthPendingMinor)
+        assertEquals(BigInteger.valueOf(50000),pending.nextMonthPendingMinor)
+        assertEquals(BigInteger.valueOf(50000),completed.summary.byCurrency.getValue("CLP").pendingMinor)
+    }
+
     @Test fun recursiveScopesCurrenciesCountsStatesAndOrdinaryProgressStayDistinct() {
         val nodes = listOf(node("root"),node("inner","root"),node("pending","root",money=clp,date=due(10)),
             node("paid","inner",money=clp,completed=true,date=due(10)),node("usd","inner",money=usd),

@@ -66,10 +66,78 @@ class FinancialUiTest {
         compose.onNode(hasText("Persona:",substring=true)).performClick();compose.onNodeWithText(name).performClick()
     }
 
+    @Test fun personFilteredProjectObligationsKeepCompactCardsAndCorrectActions() {
+        runBlocking {
+            app.personRepository.setResponsiblePeople(undated, setOf("r"))
+            app.personRepository.setResponsiblePeople(bill, setOf("s"))
+        }
+        mount(); awaitText("Personal"); compose.onNodeWithText("Personal").performClick()
+        awaitText("Sin fecha")
+        compose.onNodeWithContentDescription("Filtros").performClick()
+        compose.onNodeWithText("Persona: Todas").performClick()
+        compose.onNodeWithText("Roy").performClick()
+        compose.onNodeWithText("Aplicar").performClick()
+        fun card(id: String) = compose.onNodeWithTag("person-obligation:$id", useUnmergedTree = true)
+        fun action(id: String, label: String) = compose.onNode(
+            hasText(label) and hasAnyAncestor(hasTestTag("person-obligation:$id")), useUnmergedTree = true)
+        fun check(id: String, title: String) {
+            compose.onNodeWithTag("nodes-list").performScrollToNode(hasTestTag("person-obligation:$id"))
+            card(id).assertExists()
+            action(id, title).assertExists()
+            listOf("Seleccionar", "Historial", "Editar").forEach { action(id, it).assertExists() }
+            val select = action(id, "Seleccionar").fetchSemanticsNode().boundsInRoot
+            val history = action(id, "Historial").fetchSemanticsNode().boundsInRoot
+            val edit = action(id, "Editar").fetchSemanticsNode().boundsInRoot
+            assertEquals(select.top, history.top, 1f)
+            assertEquals(history.top, edit.top, 1f)
+        }
+        // Start with one obligation assigned to Roy.
+        check(undated, "Sin fecha")
+        val second = runBlocking {
+            app.nodeRepository.createNode(project, null, "Otra compra", obligation = Obligation(2000, "CLP")).also {
+                app.personRepository.setResponsiblePeople(it.id, setOf("r"))
+            }
+        }
+        val excluded = runBlocking {
+            app.nodeRepository.createNode(project, null, "Compra Scarlett", obligation = Obligation(3000, "CLP")).also {
+                app.personRepository.setResponsiblePeople(it.id, setOf("s"))
+            }
+        }
+        compose.waitUntil(10_000) {
+            runCatching {
+                compose.onNodeWithTag("nodes-list").performScrollToNode(hasTestTag("person-obligation:${second.id}"))
+                card(second.id).fetchSemanticsNode()
+            }.isSuccess
+        }
+        check(undated, "Sin fecha"); check(second.id, "Otra compra")
+        card(excluded.id).assertDoesNotExist()
+        compose.onNodeWithText("Compra Scarlett").assertDoesNotExist()
+        action(second.id, "Historial").performClick(); awaitText("Historial · Otra compra")
+        compose.onNodeWithText("Cerrar").performClick()
+        action(second.id, "Editar").performClick(); awaitText("Editar elemento")
+        compose.onNode(hasSetTextAction() and hasText("Otra compra")).assertExists()
+        compose.onNodeWithText("Cerrar").performClick()
+        action(second.id, "Seleccionar").performClick()
+        card(second.id).assertIsSelected(); card(undated).assertIsNotSelected()
+    }
+
+    @Test fun summaryDisplaysAllPendingCurrentAndNextMonthAndKeepsCompleted() {
+        val overview=com.r0ybt.arachn0de.domain.model.FinancialSummary(mapOf("CLP" to com.r0ybt.arachn0de.domain.model.CurrencyTotals(
+            totalMinor=java.math.BigInteger.valueOf(240000),pendingMinor=java.math.BigInteger.valueOf(200000),
+            completedMinor=java.math.BigInteger.valueOf(40000),pendingCount=3,completedCount=1,
+            thisMonthPendingMinor=java.math.BigInteger.valueOf(50000),nextMonthPendingMinor=java.math.BigInteger.valueOf(70000))))
+        compose.setContent { Arachn0deTheme { FinancialSummaryCard(overview) } }
+        fun amount(value:Long)=com.r0ybt.arachn0de.domain.model.Money.format(java.math.BigInteger.valueOf(value),"CLP",Locale.US)
+        compose.onNodeWithText("Pendiente total · ${amount(200000)}").assertExists()
+        compose.onNodeWithText("Este mes · ${amount(50000)}").assertExists()
+        compose.onNodeWithText("Próximo mes · ${amount(70000)}").assertExists()
+        compose.onNodeWithText("Completado · ${amount(40000)}").assertExists()
+    }
+
     @Test fun filtersCurrencySummaryRealNavigationAndRestorationUseSameObligations() {
         val restorer=StateRestorationTester(compose)
         mount(restorer);open()
-        compose.onNodeWithTag("financial-currency:CLP").assertExists();compose.onNodeWithTag("financial-currency:USD").assertDoesNotExist()
+        compose.onNodeWithTag("financial-currency:CLP").assertExists();compose.onNodeWithTag("financial-currency:USD").assertExists()
         filter("Todo");awaitText("USD");person("Roy");awaitText("Persona: Roy")
         compose.waitUntil(10_000){compose.onAllNodesWithTag("financial-currency:USD").fetchSemanticsNodes().isEmpty()}
         restorer.emulateSavedInstanceStateRestore();awaitText("Persona: Roy")

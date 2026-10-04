@@ -362,13 +362,22 @@ class NodeRepository(
         changeWorkState(current, state.next())
     }
 
+    /** Confirm the current Sprint phase and apply its completion boundary atomically. */
+    suspend fun confirmWorkState(id: String): Boolean = database.withTransaction {
+        val current = nodeDao.getById(id) ?: return@withTransaction false
+        val state = current.workState?.let(WorkState::valueOf) ?: return@withTransaction false
+        val next = state.next()
+        if (state == next) return@withTransaction true
+        if (!changeWorkState(current, next)) return@withTransaction false
+        check(changeCompletion(requireNotNull(nodeDao.getById(id)), next.completed, currentTimeMillis()))
+        true
+    }
+
     private suspend fun changeWorkState(current: NodeEntity, state: WorkState): Boolean {
         if (current.purpose != "ACTION" || current.parentId?.let { nodeDao.getById(it)?.sprintMode } != true) return false
         if (current.workState == state.name) return true
         val at = currentTimeMillis()
-        check(nodeDao.setWorkState(current.id, state.name, state.completed, at) == 1)
-        if (current.isCompleted != state.completed)
-            appendEvent(current.id, if (state.completed) NodeEventType.COMPLETED else NodeEventType.REOPENED, at)
+        check(nodeDao.setWorkState(current.id, state.name, current.isCompleted, at) == 1)
         return true
     }
 
@@ -386,7 +395,7 @@ class NodeRepository(
     private suspend fun changeCompletion(current: NodeEntity, completed: Boolean, at: Long, updatedAt: Long = at): Boolean {
         if (current.purpose != NodePurpose.ACTION.name || nodeDao.hasChildren(current.projectId, current.id)) return false
         if (current.isCompleted == completed) return true
-        val state = if (current.workState != null) WorkState.fromCompletion(completed).name else null
+        val state = current.workState
         if (nodeDao.setWorkState(current.id, state, completed, updatedAt) != 1) return false
         appendEvent(current.id, if (completed) NodeEventType.COMPLETED else NodeEventType.REOPENED, at)
         return true

@@ -98,7 +98,7 @@ private fun DefaultsEditor(repository:CreationDefaultsRepository, scope:Defaults
             DefaultsHour("Hora de inicio",own.startTime,inherited.startTime,!operation.busy,{ validInputs["hora-inicio"]=it }) { own=own.copy(startTime=it) }
             DefaultsDate("Vencimiento",own.due,inherited.due,!operation.busy,{ validInputs["vencimiento"]=it }) { own=own.copy(due=it) }
             DefaultsHour("Hora de vencimiento",own.dueTime,inherited.dueTime,!operation.busy,{ validInputs["hora-vencimiento"]=it }) { own=own.copy(dueTime=it) }
-            Text("Día N se ajusta al último día del mes. Para vencimiento, día N y primer lunes ya pasados pasan al mes siguiente. Sin hora se usa medianoche. La hora solo se aplica cuando hay fecha.")
+            Text("Día N se ajusta al último día del mes. Para vencimiento, día N y primer lunes ya pasados pasan al mes siguiente. Sin hora se usa medianoche al aplicar una fecha predeterminada. Las horas de inicio y vencimiento se proponen también cuando eliges la fecha al crear una tarea, aunque aquí hayas elegido Sin fecha. Puedes cambiarlas para esa tarea sin modificar estos valores predeterminados.")
             TextButton(enabled=!operation.busy,onClick={ reset=true }) { Text(if(scope==DefaultsScope.Global) "Restablecer valores globales" else "Restablecer herencia") }
         }
         if(success) Text("Configuración guardada",modifier=Modifier.testTag("defaults-saved"))

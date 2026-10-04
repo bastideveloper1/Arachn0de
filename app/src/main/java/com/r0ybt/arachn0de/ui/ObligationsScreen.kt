@@ -66,7 +66,7 @@ internal fun ObligationsScreen(
                 }
                 if (!ready) item(key = "loading") { Text("Cargando Obligaciones…") }
                 else {
-                    item(key = "summary") { FinancialSummaryCard(financial!!.summary, Modifier.testTag("financial-summary")) }
+                    item(key = "summary") { FinancialSummaryCard(financial!!.summary, Modifier.testTag("financial-summary"), overview = financial!!.overview) }
                     if (financial!!.tasks.isEmpty()) item(key = "empty") { Text("No hay obligaciones para este filtro.", color = Arachn0deColors.TextSecondary) }
                     items(financial!!.tasks, key = { it.id }, contentType = { "obligation" }) { node ->
                         val project = projectById[node.projectId]

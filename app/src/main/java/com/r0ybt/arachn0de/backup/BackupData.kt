@@ -60,8 +60,7 @@ internal fun BackupData.validate(): List<NodeEntity> {
         val sprintAction = node.purpose == "ACTION" && byId[node.parentId]?.sprintMode == true
         require((node.workState != null) == sprintAction) { "Estado Sprint fuera de contexto." }
         node.workState?.let {
-            val state = com.r0ybt.arachn0de.domain.model.WorkState.valueOf(it)
-            require(state.completed == node.isCompleted) { "Estado y completitud contradictorios." }
+            com.r0ybt.arachn0de.domain.model.WorkState.valueOf(it)
         }
         require(node.purpose in listOf("ACTION","NOTE","LAYER")) { "Propósito desconocido." }
         require(!node.isCompleted || (node.purpose == "ACTION" && children[node.id].isNullOrEmpty())) { "Completado inválido." }

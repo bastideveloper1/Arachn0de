@@ -17,6 +17,12 @@ class NodeExportTest {
     private fun export(nodes: List<Node>, id: String, descendants: Boolean = true) =
         NodeMarkdownRenderer.render(NodeExportSnapshot.capture(fixtureTree(nodes),id,descendants))
 
+    @Test fun layerOnlyCopyRetainsFullLongStoredTitleAndMultilineDescription() {
+        val title="Título largo ".repeat(200)+"FINAL TITULO"
+        val description="Primera línea\n"+"Descripción extensa ".repeat(1000).trimEnd()+"\nFINAL DESCRIPCION"
+        val root=node("root",title=title,description=description,purpose=NodePurpose.LAYER)
+        assertEquals("# $title\n\n$description\n",export(listOf(root),root.id,false))
+    }
     @Test fun actualSemanticsDescriptionsAndScopesExcludePrivateFields() {
         val nodes = listOf(node("root", title="Bugs 🕷", description="Problemas encontrados."),
             node("a","root","Overlay drag","Aparece al mover hacia arriba.\nSegunda línea.",position=0),

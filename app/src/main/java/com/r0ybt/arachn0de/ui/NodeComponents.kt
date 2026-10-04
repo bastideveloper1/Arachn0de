@@ -24,6 +24,7 @@ import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.filled.Description
 import com.r0ybt.arachn0de.domain.model.NodePurpose
+import com.r0ybt.arachn0de.domain.model.WorkState
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -188,21 +189,37 @@ internal fun NodeCard(
     stateBusy: Boolean = false,
 ) {
     var showContextMenu by remember { mutableStateOf(false) }
+    val sprintPhase = node.workState
+    val sprintFinal = sprintPhase != null && sprintPhase.next() == sprintPhase
+    val checkMarked = if (sprintPhase != null) sprintFinal else node.isCompleted
     val completedTint = if (node.isCompleted) Arachn0deColors.Completed else Arachn0deColors.Primary
-    val displayTextColor = if (node.isCompleted) Arachn0deColors.TextCompleted else Arachn0deColors.TextPrimary
     val noPending = node.isStructural && progress != null && !progress.hasPending
+    val displayTextColor = when {
+        node.isCompleted -> Arachn0deColors.TextCompleted
+        noPending -> Arachn0deColors.TextSecondary
+        else -> Arachn0deColors.TextPrimary
+    }
+    val borderColor = when (sprintPhase) {
+        WorkState.UNPLANNED -> Arachn0deColors.Outline
+        WorkState.PLANNED -> Arachn0deColors.TextSecondary
+        WorkState.DOING -> Arachn0deColors.Primary
+        WorkState.DONE -> Arachn0deColors.Completed
+        WorkState.VALIDATED -> Arachn0deColors.Accent
+        null -> Arachn0deColors.Outline.copy(alpha = if (noPending) 0.45f else 0.9f)
+    }
+    val borderWidth = if (sprintPhase == WorkState.DOING) 2.dp else 1.dp
     val rowAlpha = if (node.isCompleted || noPending) 0.92f else 1f
 
     Card(
         modifier = modifier
             .fillMaxWidth()
             .alpha(rowAlpha)
-            .border(1.dp, Arachn0deColors.Outline.copy(alpha = 0.9f), RoundedCornerShape(8.dp))
+            .border(borderWidth, borderColor, RoundedCornerShape(8.dp))
             .zIndex(if (dragging) 1f else 0f)
             .semantics { onSelect?.let { select -> onLongClick("Seleccionar") { select(); true } }; this.selected = selected; if(selecting) stateDescription = if(selected) "Seleccionado" else "No seleccionado" }
             .clickable(onClick = if(selecting) ({ onSelect?.invoke(); Unit }) else onOpen),
         shape = RoundedCornerShape(8.dp),
-        colors = CardDefaults.cardColors(containerColor = Arachn0deColors.Surface),
+        colors = CardDefaults.cardColors(containerColor = if (noPending) Arachn0deColors.Background else Arachn0deColors.Surface),
     ) {
         Row(
             modifier = Modifier
@@ -211,28 +228,23 @@ internal fun NodeCard(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             if (selecting) androidx.compose.material3.Checkbox(selected, { onSelect?.invoke() })
-            else if (node.workState != null) {
-                val state = node.workState
-                val next = state.next()
-                IconButton(onClick = { onAdvanceWorkState?.invoke() }, enabled = !stateBusy && state != next && onAdvanceWorkState != null,
-                    modifier = Modifier.size(48.dp).semantics {
-                        contentDescription = "Estado: ${state.label}. " + if (state == next) "Estado final." else "Activar para avanzar a ${next.label}."
-                        stateDescription = state.label
-                    }) { Text("${state.ordinal + 1}/5", color = Arachn0deColors.TextPrimary) }
-            }
             else if (canToggleComplete) {
                 IconButton(
                     onClick = onToggleComplete,
+                    enabled = sprintPhase == null || (!stateBusy && !sprintFinal),
                     modifier = Modifier
                         .size(48.dp)
                         .semantics {
-                            contentDescription = if (node.isCompleted) "Marcar pendiente: ${node.title}" else "Completar: ${node.title}"
-                            stateDescription = if (node.isCompleted) "Completada" else "Pendiente"
+                            contentDescription = if (sprintPhase != null) {
+                                if (sprintFinal) "Sprint validado: ${node.title}"
+                                else "Confirmar ${sprintPhase.label} y avanzar a ${sprintPhase.next().label}: ${node.title}"
+                            } else if (node.isCompleted) "Marcar pendiente: ${node.title}" else "Completar: ${node.title}"
+                            stateDescription = if (checkMarked) "Completada" else "Pendiente"
                         }
                         .clip(RoundedCornerShape(10.dp))
-                        .background(if (node.isCompleted) completedTint else Arachn0deColors.ControlSurface),
+                        .background(if (checkMarked) completedTint else Arachn0deColors.ControlSurface),
                 ) {
-                    if (node.isCompleted) {
+                    if (checkMarked) {
                         Icon(
                             imageVector = Icons.Default.Check,
                             contentDescription = null,
@@ -255,6 +267,16 @@ internal fun NodeCard(
                     contentScale = ContentScale.Fit,
                     modifier = Modifier.size(36.dp),
                 )
+            }
+
+            if (!selecting && node.workState != null) {
+                val state = node.workState
+                val next = state.next()
+                IconButton(onClick = { onAdvanceWorkState?.invoke() }, enabled = !stateBusy && state != next && onAdvanceWorkState != null,
+                    modifier = Modifier.size(48.dp).semantics {
+                        contentDescription = "Estado: ${state.label}. " + if (state == next) "Estado final." else "Activar para avanzar a ${next.label}."
+                        stateDescription = state.label
+                    }) { Text("${state.ordinal + 1}/5", color = Arachn0deColors.TextPrimary) }
             }
 
             Spacer(modifier = Modifier.width(12.dp))

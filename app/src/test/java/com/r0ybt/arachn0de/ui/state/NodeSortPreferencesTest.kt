@@ -4,8 +4,34 @@ import androidx.compose.runtime.saveable.SaverScope
 import org.junit.Assert.*
 import org.junit.Test
 
+@org.junit.runner.RunWith(org.robolectric.RobolectricTestRunner::class)
+@org.robolectric.annotation.Config(sdk=[28])
 class NodeSortPreferencesTest {
     private val scope=object:SaverScope { override fun canBeSaved(value:Any)=true }
+    @Test fun projectDefaultOverridesAndExplicitManualPersistAcrossNewInstances() {
+        val context=androidx.test.core.app.ApplicationProvider.getApplicationContext<android.content.Context>()
+        val storage=context.getSharedPreferences("sort-persistence-test",android.content.Context.MODE_PRIVATE)
+        storage.edit().clear().commit()
+        try {
+            val store=NodeSortPreferences(storage=storage)
+            store.set("p:project-root",NodeSortMode.DUE_PRIORITY)
+            assertEquals(NodeSortMode.DUE_PRIORITY,store.mode("p:a"))
+            store.set("p:b",NodeSortMode.PRIORITY)
+            store.set("p:c",NodeSortMode.MANUAL)
+            val reopened=NodeSortPreferences(storage=context.getSharedPreferences("sort-persistence-test",android.content.Context.MODE_PRIVATE))
+            assertEquals(NodeSortMode.DUE_PRIORITY,reopened.mode("p:project-root"))
+            assertEquals(NodeSortMode.DUE_PRIORITY,reopened.mode("p:a"))
+            assertEquals(NodeSortMode.PRIORITY,reopened.mode("p:b"))
+            assertEquals(NodeSortMode.MANUAL,reopened.mode("p:c"))
+            reopened.set("p:project-root",NodeSortMode.DUE_ASC)
+            assertEquals(NodeSortMode.DUE_ASC,reopened.mode("p:a"))
+            assertEquals(NodeSortMode.PRIORITY,reopened.mode("p:b"))
+            assertEquals(NodeSortMode.MANUAL,reopened.mode("p:c"))
+            reopened.inherit("p:c")
+            assertEquals(NodeSortMode.DUE_ASC,NodeSortPreferences(storage=storage).mode("p:c"))
+            assertEquals(NodeSortMode.MANUAL,reopened.mode("other:layer"))
+        } finally { storage.edit().clear().commit() }
+    }
     @Test fun contextsAreIndependentSavedAndManualIsDefault() {
         val store=NodeSortPreferences()
         store.set("root",NodeSortMode.DUE_ASC);store.set("ideas",NodeSortMode.PRIORITY)

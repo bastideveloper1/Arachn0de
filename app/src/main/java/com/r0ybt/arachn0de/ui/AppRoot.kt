@@ -47,8 +47,9 @@ private fun AppRootContent(projectRepository: ProjectRepository, nodeRepository:
     var showAttention by rememberSaveable { mutableStateOf(false) }
     var returnToAttention by rememberSaveable { mutableStateOf(false) }
     var openNodeId by rememberSaveable { mutableStateOf<String?>(null) }
-    val sortPreferences = rememberSaveable(saver = com.r0ybt.arachn0de.ui.state.NodeSortPreferences.Saver) {
-        com.r0ybt.arachn0de.ui.state.NodeSortPreferences()
+    val sortContext = androidx.compose.ui.platform.LocalContext.current.applicationContext
+    val sortPreferences = remember(sortContext) {
+        com.r0ybt.arachn0de.ui.state.NodeSortPreferences(storage = sortContext.getSharedPreferences("node_sort_preferences", android.content.Context.MODE_PRIVATE))
     }
     val projectsListState = rememberLazyListState()
     var selectedProjectId by rememberSaveable { mutableStateOf<String?>(null) }

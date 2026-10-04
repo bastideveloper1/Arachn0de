@@ -23,15 +23,17 @@ object PendingChatRenderer {
             checkCancelled()
             val (node,depth)=stack.removeLast()
             val progress=tree.progressById.getValue(node.id)
-            if(!progress.hasPending) continue
+            if(!progress.hasPending && !(node.id == rootId && node.isStructural)) continue
             val indent="  ".repeat(depth.coerceAtMost(5))
             val children=tree.childrenOf(node.id)
-            if(children.isNotEmpty()) {
+            if(node.isStructural) {
                 append("$indent${clean(node.title)}${if(node.sprintMode) " · Modo Sprint" else ""}\n")
+                if(node.description.isNotEmpty()) append("$indent  ${node.description}\n")
                 children.asReversed().forEach { stack.addLast(it to depth+1) }
             } else if(node.isCompletable && !node.isCompleted) {
                 tasks++
                 append("$indent• ${clean(node.title)}\n")
+                if(node.description.isNotEmpty()) append("$indent  ${node.description}\n")
                 val details=mutableListOf<String>()
                 node.workState?.let { details.add("Estado: ${it.label}") }
                 people[node.id].orEmpty().takeIf { it.isNotEmpty() }?.let { details.add("Responsables: "+it.joinToString(", ") { person -> clean(person.name) }) }

@@ -21,6 +21,8 @@ internal class EditorDraft(
     val hadObligation: Boolean = obligation != null,
     priority: com.r0ybt.arachn0de.domain.model.Priority = com.r0ybt.arachn0de.domain.model.Priority.NONE,
 ) {
+    var defaultStartMinute: Int? = null
+    var defaultDueMinute: Int? = null
     var creationGroupId: String? = null
     private var sharedBaseline: List<String>? = null
     private fun sharedValues(): List<String> {
@@ -119,9 +121,11 @@ internal class EditorDraft(
         val Saver = listSaver<EditorDraft?, String>(
             save = {
                 if (it == null) emptyList()
-                else listOf("__shared_v1", it.creationGroupId.orEmpty(), (it.sharedBaseline?.size ?: 0).toString()) + it.sharedBaseline.orEmpty() + listOf("__ux_v1", it.batchEnabled.toString(), it.batchQuantity, it.batchNumbering.name, it.batchStartNumber, it.batchTemporal.name, it.latentFrequency, it.startEnabled.toString(), it.dueEnabled.toString()) + listOf(it.id.orEmpty(), it.parentId.orEmpty(), it.title, it.description, it.creationId, it.startAt?.toString().orEmpty(), it.dueAt?.toString().orEmpty(), it.purpose.name, it.financialEnabled.toString(), it.amountText, it.currencyCode, it.moneyLocaleTag, it.hadObligation.toString(), it.financialRemovalConfirmed.toString(), it.showResponsible.toString()) + listOf("__recurrence_v1", it.recurrenceFrequency, it.recurrenceInterval, it.recurrenceStart, it.recurrenceEnd) + listOf("__priority_v1", it.priority.name) + listOf("__tags_v1", it.tagIds.size.toString()) + it.tagIds + it.responsibleIds
+                else (if (it.defaultStartMinute != null || it.defaultDueMinute != null) listOf("__time_defaults_v1", it.defaultStartMinute?.toString().orEmpty(), it.defaultDueMinute?.toString().orEmpty()) else emptyList()) + listOf("__shared_v1", it.creationGroupId.orEmpty(), (it.sharedBaseline?.size ?: 0).toString()) + it.sharedBaseline.orEmpty() + listOf("__ux_v1", it.batchEnabled.toString(), it.batchQuantity, it.batchNumbering.name, it.batchStartNumber, it.batchTemporal.name, it.latentFrequency, it.startEnabled.toString(), it.dueEnabled.toString()) + listOf(it.id.orEmpty(), it.parentId.orEmpty(), it.title, it.description, it.creationId, it.startAt?.toString().orEmpty(), it.dueAt?.toString().orEmpty(), it.purpose.name, it.financialEnabled.toString(), it.amountText, it.currencyCode, it.moneyLocaleTag, it.hadObligation.toString(), it.financialRemovalConfirmed.toString(), it.showResponsible.toString()) + listOf("__recurrence_v1", it.recurrenceFrequency, it.recurrenceInterval, it.recurrenceStart, it.recurrenceEnd) + listOf("__priority_v1", it.priority.name) + listOf("__tags_v1", it.tagIds.size.toString()) + it.tagIds + it.responsibleIds
             },
-            restore = { encoded ->
+            restore = { rawEncoded ->
+                val timeDefaults = rawEncoded.takeIf { it.firstOrNull() == "__time_defaults_v1" }?.take(3)
+                val encoded = if (timeDefaults != null) rawEncoded.drop(3) else rawEncoded
                 val groupMeta = encoded.firstOrNull() == "__shared_v1"
                 val baselineSize = if(groupMeta) encoded[2].toInt() else 0
                 val saved = if(groupMeta) encoded.drop(3 + baselineSize) else encoded
@@ -132,6 +136,8 @@ internal class EditorDraft(
                 if (it.isEmpty()) null
                 else EditorDraft(it[0].ifEmpty { null }, it[1].ifEmpty { null }, it[2], it[3], it[4], it.getOrNull(5)?.toLongOrNull(), it.getOrNull(6)?.toLongOrNull(), it.getOrNull(7)?.let(com.r0ybt.arachn0de.domain.model.NodePurpose::valueOf) ?: com.r0ybt.arachn0de.domain.model.NodePurpose.ACTION,
                     moneyLocaleTag = it.getOrNull(11) ?: java.util.Locale.getDefault().toLanguageTag(), hadObligation = it.getOrNull(12)?.toBoolean() ?: false).apply {
+                    defaultStartMinute = timeDefaults?.get(1)?.toIntOrNull()
+                    defaultDueMinute = timeDefaults?.get(2)?.toIntOrNull()
                     creationGroupId = if(groupMeta) encoded[1].ifEmpty { null } else null
                     sharedBaseline = if(baselineSize > 0) encoded.drop(3).take(baselineSize) else null
                     this.priority = priority

@@ -38,6 +38,35 @@ class CreationDefaultsUiTest {
     private fun choose(label:String,value:String) { compose.onNodeWithTag("defaults-choice:$label").performScrollTo().performClick();compose.onNodeWithText(value).performClick() }
     private fun save() { compose.onNodeWithText("Guardar valores predeterminados").performClick();await("Configuración guardada");compose.onNodeWithText("Guardar valores predeterminados").assertExists();compose.onNodeWithText("Volver").performClick();await("Nuevo elemento") }
     private fun fresh() { compose.onNodeWithText("Nuevo elemento").performClick();await("Título") }
+    @Test fun dueHourWithoutDefaultDateSeedsPickerAndOverrideKeepsGlobalAfterRecreation() {
+        open(); settings(); choose("Hora de vencimiento", "09:00")
+        compose.onNodeWithText("Hora de vencimiento (24 h · HH:mm)").performScrollTo().performTextReplacement("20:00")
+        save()
+        compose.activityRule.scenario.recreate(); await("Nuevo elemento")
+        fresh()
+        compose.activityRule.scenario.recreate(); await("Título")
+        compose.onNodeWithText("Título").performTextInput("Hora propia")
+        compose.onNodeWithTag("option:Vencimiento").performScrollTo().performClick()
+        compose.onNodeWithText("Vencimiento: Sin fecha").performScrollTo().performClick()
+        compose.onNodeWithText("Elegir hora").performClick()
+        val inputs = compose.onAllNodes(hasSetTextAction() and hasAnyAncestor(hasTestTag("task-time-input")))
+        inputs[0].assert(hasText("20")); inputs[1].assert(hasText("00"))
+        inputs[0].performTextReplacement("18"); inputs[1].performTextReplacement("30")
+        compose.onNodeWithText("Aplicar").performClick()
+        compose.onNodeWithText("Crear").performClick()
+        compose.waitUntil(10000) { runBlocking { app.nodeRepository.getProjectNodes(project.id).any { it.title == "Hora propia" } } }
+        val task = runBlocking { app.nodeRepository.getProjectNodes(project.id).single { it.title == "Hora propia" } }
+        val time = java.util.Calendar.getInstance().apply { timeInMillis = task.dueAt!! }
+        assertEquals(18, time.get(java.util.Calendar.HOUR_OF_DAY)); assertEquals(30, time.get(java.util.Calendar.MINUTE))
+        assertEquals(DefaultTime.Minute(1200), runBlocking { app.nodeRepository.creationDefaults.configuration(DefaultsScope.Global).effective.dueTime })
+        compose.activityRule.scenario.recreate(); await("Nuevo elemento")
+        fresh()
+        compose.onNodeWithTag("option:Vencimiento").performScrollTo().performClick()
+        compose.onNodeWithText("Vencimiento: Sin fecha").performScrollTo().performClick()
+        compose.onNodeWithText("Elegir hora").performClick()
+        inputs[0].assert(hasText("20")); inputs[1].assert(hasText("00"))
+    }
+
     @Test fun globalSettingsPersistAndUnsavedSettingsSurviveActivityRecreation() {
         runBlocking { app.nodeRepository.creationDefaults.save(DefaultsScope.Global,CreationDefaults(obligation=DefaultValue.Own(true),priority=DefaultValue.Own(Priority.HIGH),start=DefaultValue.Own(DefaultDate(DefaultDateKind.TOMORROW)),due=DefaultValue.Own(DefaultDate(DefaultDateKind.TODAY)))) }
         open();settings();choose("Moneda","USD");choose("Tipo","Nota")

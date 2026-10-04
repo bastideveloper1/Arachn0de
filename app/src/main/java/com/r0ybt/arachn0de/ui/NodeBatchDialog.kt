@@ -75,7 +75,7 @@ internal fun NodeBatchDialog(
                     indices.forEachIndexed { previewIndex, index ->
                         if (previewIndex == 3 && specs.size > 4) Text("…")
                         val spec = specs[index]
-                        Text(spec.title + (spec.obligation?.let { " — ${Money.format(it, androidx.compose.ui.platform.LocalConfiguration.current.locales[0])}" } ?: "") + (spec.dueAt?.let { " — ${formatTaskDate(it)}" } ?: ""), maxLines = 2, overflow = TextOverflow.Ellipsis)
+                        Text(spec.title + (spec.obligation?.let { " — ${Money.format(it, androidx.compose.ui.platform.LocalConfiguration.current.locales[0])}" } ?: "") + (spec.dueAt?.let { " — ${formatTaskDate(it, compact = true)}" } ?: ""), maxLines = 2, overflow = TextOverflow.Ellipsis)
                     }
                 }
             }

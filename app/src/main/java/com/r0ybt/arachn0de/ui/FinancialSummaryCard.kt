@@ -19,18 +19,23 @@ internal fun FinancialState.label(): String = when (this) {
 }
 
 @Composable
-internal fun FinancialSummaryCard(summary: FinancialSummary?, modifier: Modifier = Modifier, title: String = "Obligaciones") {
-    if (summary == null || summary.count == 0) return
+internal fun FinancialSummaryCard(summary: FinancialSummary?, modifier: Modifier = Modifier, title: String = "Obligaciones", overview: FinancialSummary? = summary) {
+    if (summary == null || overview == null || overview.count == 0) return
     val locale = LocalConfiguration.current.locales[0]
     Card(modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = Arachn0deColors.ControlSurface)) {
         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             Text("$title · ${summary.state.label()}", fontSize = 14.sp)
             Text("${summary.count} obligaciones · ${summary.pendingCount} pendientes · ${summary.completedCount} completadas", fontSize = 12.sp)
-            summary.byCurrency.forEach { (code, totals) ->
+            (summary.byCurrency.keys + overview.byCurrency.keys).sorted().forEach { code ->
+                val totals = summary.byCurrency[code] ?: CurrencyTotals()
+                val pending = overview.byCurrency[code] ?: CurrencyTotals()
                 Column(Modifier.testTag("financial-currency:$code"), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                     Text(code, color = Arachn0deColors.PathHighlight, fontSize = 12.sp)
                     Text("Total · ${Money.format(totals.totalMinor, code, locale)}", fontSize = 12.sp)
-                    Text("Pendiente · ${Money.format(totals.pendingMinor, code, locale)}", fontSize = 12.sp)
+                    Text("Pendiente total · ${Money.format(pending.pendingMinor, code, locale)}", fontSize = 12.sp)
+                    Text("Este mes · ${Money.format(pending.thisMonthPendingMinor, code, locale)}", fontSize = 16.sp,
+                        fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold, color = Arachn0deColors.PathHighlight)
+                    Text("Próximo mes · ${Money.format(pending.nextMonthPendingMinor, code, locale)}", fontSize = 12.sp)
                     Text("Completado · ${Money.format(totals.completedMinor, code, locale)}", fontSize = 12.sp, color = Arachn0deColors.TextSecondary)
                 }
             }

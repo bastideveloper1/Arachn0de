@@ -41,15 +41,36 @@ class SprintUiTest {
         compose.onNodeWithText(text).performScrollTo().performClick()
     }
     @Test fun activationConfirmationCancellationAndDeactivationReturnToNormal() {
-        open();modeMenu("Modo Sprint");await("Activar Modo Sprint")
+        open()
+        scroll("Progreso");compose.onNodeWithText("Progreso").assertIsDisplayed()
+        compose.onNodeWithText("0% · 1 de 1 pendientes").assertIsDisplayed()
+        modeMenu("Modo Sprint");await("Activar Modo Sprint")
         compose.onNodeWithText("Cancelar").performClick();assertFalse(runBlocking { app.nodeRepository.getNode(layer.id)!!.sprintMode })
         modeMenu("Modo Sprint");compose.onNodeWithText("Activar").performClick()
         compose.waitUntil(10000) { runBlocking { app.nodeRepository.getNode(layer.id)!!.sprintMode } }
-        scroll("▼ No planificada · 1");compose.onNodeWithText("▼ No planificada · 1").assertExists()
+        scroll("CAPA 1");compose.onNodeWithText("Progreso").assertDoesNotExist()
+        compose.onNodeWithText("Progreso Sprint · 0 %").assertIsDisplayed()
+        compose.onNodeWithText("0% · 1 de 1 pendientes").assertDoesNotExist()
+        for (state in WorkState.entries) {
+            val label="▼ ${state.label} · ${if(state==WorkState.UNPLANNED) 1 else 0}"
+            scroll(label);compose.onNodeWithText(label).assertIsDisplayed()
+        }
+        scroll("Implement feature")
+        compose.onNodeWithContentDescription("Confirmar No planificada y avanzar a Planificada: Implement feature").performClick()
+        compose.waitUntil(10000) { runBlocking { app.nodeRepository.getNode(task.id)!!.workState==WorkState.PLANNED } }
+        scroll("CAPA 1");compose.onNodeWithText("Progreso").assertDoesNotExist()
+        compose.onNodeWithText("Progreso Sprint · 25 %").assertIsDisplayed()
+        compose.onNodeWithText("0% · 1 de 1 pendientes").assertDoesNotExist()
+        for (state in WorkState.entries) {
+            val label="▼ ${state.label} · ${if(state==WorkState.PLANNED) 1 else 0}"
+            scroll(label);compose.onNodeWithText(label).assertIsDisplayed()
+        }
         modeMenu("Desactivar Modo Sprint");compose.onNodeWithText("Desactivar").performClick()
         compose.waitUntil(10000) { runBlocking { !app.nodeRepository.getNode(layer.id)!!.sprintMode } }
         scroll("Implement feature");compose.onNodeWithContentDescription("Completar: Implement feature").assertExists()
         assertNull(runBlocking { app.nodeRepository.getNode(task.id)!!.workState })
+        scroll("Progreso");compose.onNodeWithText("Progreso").assertIsDisplayed()
+        compose.onNodeWithText("0% · 1 de 1 pendientes").assertIsDisplayed()
     }
     @Test fun verticalSectionsCountersCollapseAndStructureRemainIndependent() {
         runBlocking { app.nodeRepository.setSprintMode(layer.id,true) };open()
@@ -62,19 +83,70 @@ class SprintUiTest {
         scroll("Normal sublayer");compose.onNodeWithText("Normal sublayer").performClick();await("CAPA 2")
         assertFalse(runBlocking { app.nodeRepository.getProjectNodes(project.id).single { it.title=="Normal sublayer" }.sprintMode })
     }
-    @Test fun primaryControlAdvancesAndMenuCorrectsWithoutWrap() {
+    @Test fun sprintCheckConfirmsEachPhaseAndNormalCheckStillToggles() {
         runBlocking { app.nodeRepository.setSprintMode(layer.id,true) };open()
         for(state in WorkState.entries.dropLast(1)) {
+            scroll("CAPA 1")
+            compose.onNodeWithText("Progreso Sprint · ${state.ordinal*25} %").assertIsDisplayed()
             scroll("Implement feature")
-            compose.onNodeWithContentDescription("Estado: ${state.label}. Activar para avanzar a ${state.next().label}.").performClick()
-            compose.waitUntil(10000) { runBlocking { app.nodeRepository.getNode(task.id)!!.workState==state.next() } }
+            val check=compose.onNodeWithContentDescription("Confirmar ${state.label} y avanzar a ${state.next().label}: Implement feature")
+            check.assertIsDisplayed().assertIsEnabled()
+                .assert(SemanticsMatcher.expectValue(androidx.compose.ui.semantics.SemanticsProperties.StateDescription,"Pendiente"))
+            check.assert(hasText("${state.ordinal+1}/5").not())
+            compose.onNodeWithText("${state.ordinal+1}/5").assertIsDisplayed()
+            check.performClick()
+            compose.waitUntil(10000) { runBlocking {
+                val current=app.nodeRepository.getNode(task.id)!!
+                current.workState==state.next() && current.isCompleted==state.next().completed
+            } }
         }
-        scroll("Implement feature");compose.onNodeWithContentDescription("Estado: Validada. Estado final.").assertIsNotEnabled()
-        compose.onNodeWithTag("node-options:${task.id}").performClick();compose.onNodeWithText("Cambiar estado").performScrollTo().performClick();await("Cambiar estado · Implement feature")
+        scroll("Implement feature")
+        scroll("CAPA 1");compose.onNodeWithText("Progreso Sprint · 100 %").assertIsDisplayed()
+        scroll("Implement feature")
+        compose.onNodeWithText("5/5").assertIsDisplayed()
+        val finalCheck=compose.onNodeWithContentDescription("Sprint validado: Implement feature")
+        finalCheck.assertIsDisplayed().assertIsNotEnabled()
+            .assert(SemanticsMatcher.expectValue(androidx.compose.ui.semantics.SemanticsProperties.StateDescription,"Completada"))
+        val finalNode=runBlocking { app.nodeRepository.getNode(task.id)!! }
+        finalCheck.performClick();compose.waitForIdle()
+        assertEquals(finalNode,runBlocking { app.nodeRepository.getNode(task.id)!! })
+        assertEquals(1,runBlocking { app.database.nodeEventDao().forNode(task.id).count { it.type=="COMPLETED" } })
+        assertEquals(0,runBlocking { app.database.nodeEventDao().forNode(task.id).count { it.type=="REOPENED" } })
+        compose.onNodeWithTag("node-options:${task.id}").performClick()
+        compose.onNodeWithText("Cambiar estado").performScrollTo().performClick();await("Cambiar estado · Implement feature")
         compose.onNode(hasText("Haciendo") and hasAnyAncestor(isDialog())).performClick()
         compose.waitUntil(10000) { runBlocking { app.nodeRepository.getNode(task.id)!!.workState==WorkState.DOING } }
-        assertFalse(runBlocking { app.nodeRepository.getNode(task.id)!!.isCompleted })
-        assertEquals(1,runBlocking { app.database.nodeEventDao().forNode(task.id).count { it.type=="COMPLETED" } })
-        assertEquals(1,runBlocking { app.database.nodeEventDao().forNode(task.id).count { it.type=="REOPENED" } })
+        scroll("Implement feature")
+        compose.onNodeWithContentDescription("Confirmar Haciendo y avanzar a Terminada: Implement feature")
+            .assertIsEnabled().assert(SemanticsMatcher.expectValue(androidx.compose.ui.semantics.SemanticsProperties.StateDescription,"Pendiente"))
+        compose.onNodeWithContentDescription("Estado: Haciendo. Activar para avanzar a Terminada.").performClick()
+        compose.waitUntil(10000) { runBlocking { app.nodeRepository.getNode(task.id)!!.workState==WorkState.DONE } }
+        modeMenu("Desactivar Modo Sprint");compose.onNodeWithText("Desactivar").performClick()
+        compose.waitUntil(10000) { runBlocking { !app.nodeRepository.getNode(layer.id)!!.sprintMode } }
+        scroll("Implement feature")
+        compose.onNodeWithContentDescription("Marcar pendiente: Implement feature").performClick()
+        compose.waitUntil(10000) { runBlocking { !app.nodeRepository.getNode(task.id)!!.isCompleted } }
+        assertNull(runBlocking { app.nodeRepository.getNode(task.id)!!.workState })
+        scroll("Implement feature")
+        compose.onNodeWithContentDescription("Completar: Implement feature").performClick()
+        compose.waitUntil(10000) { runBlocking { app.nodeRepository.getNode(task.id)!!.isCompleted } }
+        assertNull(runBlocking { app.nodeRepository.getNode(task.id)!!.workState })
     }
+    @Test fun sprintProgressShowsRoundedMixtureAndNoPercentageWithoutTasks() {
+        val tasks=runBlocking {
+            app.nodeRepository.setSprintMode(layer.id,true)
+            val result=listOf(task)+listOf("Planned","Doing","Validated").map { app.nodeRepository.createNode(project.id,layer.id,it) }
+            for ((node,phase) in result.zip(listOf(WorkState.UNPLANNED,WorkState.PLANNED,WorkState.DOING,WorkState.VALIDATED)))
+                app.nodeRepository.setWorkState(node.id,phase)
+            result
+        }
+        open();scroll("CAPA 1")
+        compose.onNodeWithText("Progreso Sprint · 44 %").assertIsDisplayed()
+        compose.onNodeWithText("Progreso").assertDoesNotExist()
+        runBlocking { tasks.forEach { app.nodeRepository.deleteNode(it.id) } }
+        scroll("CAPA 1")
+        compose.onAllNodesWithText("Contenedor vacío").onFirst().assertIsDisplayed()
+        compose.onNodeWithText("Progreso Sprint",substring=true).assertDoesNotExist()
+    }
+
 }

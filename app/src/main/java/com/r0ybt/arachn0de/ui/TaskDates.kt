@@ -14,12 +14,17 @@ import com.r0ybt.arachn0de.domain.model.TaskTemporal
 import com.r0ybt.arachn0de.domain.model.TaskTemporalState
 import com.r0ybt.arachn0de.ui.state.EditorDraft
 import com.r0ybt.arachn0de.ui.theme.Arachn0deColors
-import java.text.DateFormat
+import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Date
 import java.util.TimeZone
 
-internal fun formatTaskDate(millis: Long): String = DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT).format(Date(millis))
+internal fun formatTaskDate(millis: Long): String = formatTaskDate(millis, compact = false)
+
+internal fun formatTaskDate(millis: Long, compact: Boolean): String = SimpleDateFormat(
+    if (compact) "d MMM yyyy · HH:mm" else "d 'de' MMMM 'de' yyyy · HH:mm",
+    java.util.Locale("es"),
+).format(Date(millis))
 
 @Composable
 internal fun TaskDateIndicator(node: Node, now: Long) {
@@ -39,7 +44,7 @@ internal fun TaskDateIndicator(node: Node, now: Long) {
         TaskTemporalState.UPCOMING -> Arachn0deColors.PathHighlight
         else -> Arachn0deColors.TextSecondary
     }
-    Text("$label · ${formatTaskDate(checkNotNull(instant))}", color = color, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+    Text("$label · ${formatTaskDate(checkNotNull(instant), compact = true)}", color = color, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
 }
 
 /** Material pickers use UTC calendar dates; combine their components with local wall time. */
@@ -94,7 +99,11 @@ internal fun TaskDatesEditor(draft: EditorDraft, enabled: Boolean, picker: TaskD
                 TextButton(enabled = enabled, modifier = Modifier.weight(1f), onClick = {
                     initialInstant = value ?: System.currentTimeMillis()
                     val initial = Calendar.getInstance().apply { timeInMillis = initialInstant }
-                    picker.hour = initial.get(Calendar.HOUR_OF_DAY); picker.minute = initial.get(Calendar.MINUTE)
+                    val defaultMinute = if (draft.id == null && value == null) {
+                        if (label == "Inicio") draft.defaultStartMinute else draft.defaultDueMinute
+                    } else null
+                    picker.hour = defaultMinute?.div(60) ?: initial.get(Calendar.HOUR_OF_DAY)
+                    picker.minute = defaultMinute?.rem(60) ?: initial.get(Calendar.MINUTE)
                     timeStage = false; selectedDay = null; invalidLocalTime = false; field = label
                 }) { Text("$label: ${value?.let(::formatTaskDate) ?: "Sin fecha"}") }
                 if (value != null) TextButton(enabled = enabled, onClick = {

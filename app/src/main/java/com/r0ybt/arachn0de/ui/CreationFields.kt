@@ -46,7 +46,7 @@ import com.r0ybt.arachn0de.ui.state.EditorDraft
         val indices = if (specs.size <= 4) specs.indices.toList() else listOf(0, 1, 2, specs.lastIndex)
         indices.forEachIndexed { preview, index ->
             if (preview == 3 && specs.size > 4) Text("…")
-            Text(specs[index].title + (specs[index].dueAt?.let { " — ${formatTaskDate(it)}" } ?: ""))
+            Text(specs[index].title + (specs[index].dueAt?.let { " — ${formatTaskDate(it, compact = true)}" } ?: ""))
         }
     }, onFailure = { Text(it.message ?: "Revisa los parámetros.", color = MaterialTheme.colorScheme.error) })
 }

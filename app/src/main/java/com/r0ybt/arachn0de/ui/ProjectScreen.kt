@@ -204,7 +204,9 @@ internal fun ProjectNodeScreen(
     }
     val filteredIds = remember(filteredRows) { filteredRows.orEmpty().mapTo(hashSetOf()) { it.node.id } }
     if (scopeFilters.open) ScopeFiltersDialog(scopeFilters, people, tagState.tags)
-    if (showSortMenu) NodeSortMenu(sortMode, { sortPreferences.set(sortContext, it) }, { showSortMenu = false })
+    if (showSortMenu) NodeSortMenu(sortMode, { sortPreferences.set(sortContext, it) }, { showSortMenu = false },
+        projectDefault = currentNodeId == null,
+        onInherit = if (currentNodeId == null) null else ({ sortPreferences.inherit(sortContext) }))
     val selection = remember(project.id, currentNodeId, scopedFilter) { com.r0ybt.arachn0de.ui.state.NodeSelection() }
     val visibleSelectionIds = if(scopeFilters.active) filteredRows.orEmpty().map { it.node.id }.toSet() else currentNodes.orEmpty().map { it.id }.toSet()
     LaunchedEffect(visibleSelectionIds, filteredRows != null, currentNodes != null) { if((scopeFilters.active && filteredRows != null) || (!scopeFilters.active && currentNodes != null)) selection.retain(visibleSelectionIds) }
@@ -415,8 +417,13 @@ internal fun ProjectNodeScreen(
 
                                 AttentionIndicator(if (currentNode == null) attention?.byProjectId?.get(project.id) else if (currentNode.isStructural) attention?.byNodeId?.get(currentNode.id) else null)
                                 if (currentNode == null || currentNode.isStructural) FinancialSummaryCard(
-                                    if (currentNode == null) financial?.byProjectId?.get(project.id) else financial?.byNodeId?.get(currentNode.id), title = "Obligaciones · Todo el período")
-                                if (currentNode != null && currentNode.isStructural && currentProgress != null) {
+                                    if (currentNode == null) financial?.byProjectId?.get(project.id) else financial?.byNodeId?.get(currentNode.id), title = "Obligaciones · Todo el período",
+                                    overview = if (currentNode == null) financial?.overviewByProjectId?.get(project.id) else financial?.overviewByNodeId?.get(currentNode.id))
+                                if (sprintScope) {
+                                    SprintProgressCard(com.r0ybt.arachn0de.ui.state.sprintProgressPercentage(projectState.nodes, currentNode!!.id))
+                                    Spacer(modifier = Modifier.height(12.dp))
+                                }
+                                if (currentNode != null && currentNode.isStructural && !sprintScope && currentProgress != null) {
                                     NodeProgressCard(progress = currentProgress!!)
                                     Spacer(modifier = Modifier.height(12.dp))
                                 }
@@ -434,6 +441,7 @@ internal fun ProjectNodeScreen(
                                     if (currentNode.obligation != null) Text("Convierte esta obligación en una tarea antes de usarla como capa.", color = Arachn0deColors.TextSecondary)
                                     TaskDateIndicator(currentNode, now)
                                     TagChips(tagState.forNode(currentNode.id))
+                                    if (responsibleByNode[currentNode.id].orEmpty().isNotEmpty()) Spacer(modifier = Modifier.height(12.dp))
                                     ResponsibleAvatars(responsibleByNode[currentNode.id].orEmpty())
                                     Spacer(modifier = Modifier.height(12.dp))
                                 }
@@ -444,15 +452,36 @@ internal fun ProjectNodeScreen(
                             if (filteredRows == null) item { Text("Cargando resultados…") }
                             else if (filteredRows!!.none { it.isMatch }) item { Text("Sin coincidencias") }
                             items(filteredRows.orEmpty(), key = { "filtered:${it.node.id}" }) { row ->
-                                Column(Modifier.padding(start = minOf(row.depth, 6).times(12).dp).semantics { selected = row.node.id in selection.ids; stateDescription = if(row.node.id in selection.ids) "Seleccionado" else "Sin seleccionar" }) {
-                                    SecondaryAction(if(row.node.id in selection.ids) "✓ Seleccionado" else "Seleccionar", { selection.toggle(row.node.id) }, enabled = !isSubmittingNode)
-                                    if (!row.isMatch) Text("Contexto · ${row.node.title}", color = Arachn0deColors.TextSecondary)
-                                    else {
-                                        TextButton(onClick = { if(selection.ids.isNotEmpty()) selection.toggle(row.node.id) else actions.navigate(row.node.id) { path -> currentPath.clear(); currentPath.addAll(path) } }) { Text(row.node.title) }
-                                        PriorityIndicator(row.node)
-                                        TagChips(tagState.forNode(row.node.id))
-                                        TextButton(onClick = { historyNodeId = row.node.id }) { Text("Historial") }
-                                        TextButton(onClick = { if (assignmentsLoaded && peopleLoaded) drafts.open(row.node.parentId, row.node.id) { EditorDraft(row.node.id, row.node.parentId, row.node.title, row.node.description, startAt = row.node.startAt, dueAt = row.node.dueAt, purpose = row.node.purpose, obligation = row.node.obligation, priority = row.node.priority).apply { tagIds = tagState.nodeIds[row.node.id].orEmpty().toList(); responsibleIds = responsibleByNode[row.node.id].orEmpty().map { it.id }; creationGroupId = row.node.creationGroupId; captureSharedBaseline() } } }) { Text("Editar") }
+                                if (scopeFilters.person != null && row.isMatch && row.node.obligation != null) {
+                                    androidx.compose.material3.Card(
+                                        modifier = Modifier.fillMaxWidth().padding(start = minOf(row.depth, 6).times(12).dp)
+                                            .testTag("person-obligation:${row.node.id}")
+                                            .semantics { selected = row.node.id in selection.ids; stateDescription = if (row.node.id in selection.ids) "Seleccionado" else "Sin seleccionar" },
+                                        shape = RoundedCornerShape(8.dp),
+                                        colors = androidx.compose.material3.CardDefaults.cardColors(containerColor = Arachn0deColors.Surface),
+                                    ) {
+                                        Column(Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
+                                            TextButton(modifier = Modifier.fillMaxWidth(), onClick = { if(selection.ids.isNotEmpty()) selection.toggle(row.node.id) else actions.navigate(row.node.id) { path -> currentPath.clear(); currentPath.addAll(path) } }) { Text(row.node.title, modifier = Modifier.fillMaxWidth(), color = Arachn0deColors.TextPrimary, fontSize = 17.sp, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis) }
+                                            PriorityIndicator(row.node)
+                                            TagChips(tagState.forNode(row.node.id))
+                                            androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                                SecondaryAction(if(row.node.id in selection.ids) "✓ Seleccionado" else "Seleccionar", { selection.toggle(row.node.id) }, enabled = !isSubmittingNode)
+                                                TextButton(onClick = { historyNodeId = row.node.id }) { Text("Historial") }
+                                                TextButton(onClick = { if (assignmentsLoaded && peopleLoaded) drafts.open(row.node.parentId, row.node.id) { EditorDraft(row.node.id, row.node.parentId, row.node.title, row.node.description, startAt = row.node.startAt, dueAt = row.node.dueAt, purpose = row.node.purpose, obligation = row.node.obligation, priority = row.node.priority).apply { tagIds = tagState.nodeIds[row.node.id].orEmpty().toList(); responsibleIds = responsibleByNode[row.node.id].orEmpty().map { it.id }; creationGroupId = row.node.creationGroupId; captureSharedBaseline() } } }) { Text("Editar") }
+                                            }
+                                        }
+                                    }
+                                } else {
+                                    Column(Modifier.padding(start = minOf(row.depth, 6).times(12).dp).semantics { selected = row.node.id in selection.ids; stateDescription = if(row.node.id in selection.ids) "Seleccionado" else "Sin seleccionar" }) {
+                                        SecondaryAction(if(row.node.id in selection.ids) "✓ Seleccionado" else "Seleccionar", { selection.toggle(row.node.id) }, enabled = !isSubmittingNode)
+                                        if (!row.isMatch) Text("Contexto · ${row.node.title}", color = Arachn0deColors.TextSecondary)
+                                        else {
+                                            TextButton(onClick = { if(selection.ids.isNotEmpty()) selection.toggle(row.node.id) else actions.navigate(row.node.id) { path -> currentPath.clear(); currentPath.addAll(path) } }) { Text(row.node.title) }
+                                            PriorityIndicator(row.node)
+                                            TagChips(tagState.forNode(row.node.id))
+                                            TextButton(onClick = { historyNodeId = row.node.id }) { Text("Historial") }
+                                            TextButton(onClick = { if (assignmentsLoaded && peopleLoaded) drafts.open(row.node.parentId, row.node.id) { EditorDraft(row.node.id, row.node.parentId, row.node.title, row.node.description, startAt = row.node.startAt, dueAt = row.node.dueAt, purpose = row.node.purpose, obligation = row.node.obligation, priority = row.node.priority).apply { tagIds = tagState.nodeIds[row.node.id].orEmpty().toList(); responsibleIds = responsibleByNode[row.node.id].orEmpty().map { it.id }; creationGroupId = row.node.creationGroupId; captureSharedBaseline() } } }) { Text("Editar") }
+                                        }
                                     }
                                 }
                             }
@@ -533,7 +562,7 @@ internal fun ProjectNodeScreen(
                                         deletingNodeName = node.title
                                     },
                                     onToggleComplete = {
-                                        if (node.workState != null) actions.advanceWorkState(node.id) else if (node.isCompletable) actions.setCompleted(node.id, !node.isCompleted)
+                                        if (node.workState != null) actions.confirmWorkState(node.id) else if (node.isCompletable) actions.setCompleted(node.id, !node.isCompleted)
                                     },
                                     dragging = dragging,
                                     modifier = Modifier.animateItem(
@@ -558,7 +587,16 @@ internal fun ProjectNodeScreen(
                         }
                     }
                 }
-                androidx.compose.material3.SnackbarHost(actions.snackbar, Modifier.fillMaxWidth())
+                androidx.compose.material3.SnackbarHost(actions.snackbar, Modifier.fillMaxWidth()) { data ->
+                    androidx.compose.material3.Snackbar(
+                        snackbarData = data,
+                        shape = RoundedCornerShape(8.dp),
+                        containerColor = Arachn0deColors.Surface,
+                        contentColor = Arachn0deColors.TextPrimary,
+                        actionColor = Arachn0deColors.Accent,
+                        dismissActionContentColor = Arachn0deColors.TextSecondary,
+                    )
+                }
                 RecurrenceManager(nodeRepository.recurrence, project.id, projectState.nodes, people, peopleLoaded, recurrenceSelected, showLauncher = false) { recurrenceSelected = null }
                 Row(
                     modifier = Modifier.fillMaxWidth(),

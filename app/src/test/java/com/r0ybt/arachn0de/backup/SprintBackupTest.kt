@@ -43,14 +43,22 @@ class SprintBackupTest {
             val nodes = com.r0ybt.arachn0de.data.repository.NodeRepository(db)
             nodes.advanceWorkState("DOING")
             assertEquals("DONE",db.nodeDao().getById("DOING")!!.workState)
-            assertEquals(1,db.nodeEventDao().forNode("DOING").count { it.type=="COMPLETED" })
+            assertFalse(db.nodeDao().getById("DOING")!!.isCompleted)
+            assertEquals(0,db.nodeEventDao().forNode("DOING").count { it.type=="COMPLETED" })
+            val independent=original.copy(nodes=original.nodes.map { if(it.workState!=null) it.copy(isCompleted=!it.isCompleted) else it })
+            repo.restore(BackupJson.decode(BackupJson.encode(independent)))
+            assertEquals(independent.nodes.toSet(),repo.snapshot().nodes.toSet())
+            assertEquals(independent.nodeEvents,repo.snapshot().nodeEvents)
             db.openHelper.readableDatabase.query("PRAGMA foreign_key_check").use { assertFalse(it.moveToFirst()) }
         } finally { db.close() }
     }
     @Test fun backupRejectsImpossibleStatesAndContext() {
         val data=data()
         fun reject(id:String,transform:(NodeEntity)->NodeEntity) = assertTrue(runCatching { data.copy(nodes=data.nodes.map { if(it.id==id) transform(it) else it }).validate() }.isFailure)
-        reject("DOING") { it.copy(isCompleted=true) };reject("VALIDATED") { it.copy(isCompleted=false) }
+        for (completed in listOf(false,true)) {
+            val independent=data.copy(nodes=data.nodes.map { if(it.workState!=null) it.copy(isCompleted=completed) else it })
+            assertEquals(independent,BackupJson.decode(BackupJson.encode(independent)))
+        }
         reject("note") { it.copy(workState="UNPLANNED") };reject("normal") { it.copy(workState="UNPLANNED") }
         reject("root") { it.copy(sprintMode=false) };reject("PLANNED") { it.copy(workState=null) }
         reject("DOING") { it.copy(workState="UNKNOWN") };reject("DOING") { it.copy(sprintMode=true) }

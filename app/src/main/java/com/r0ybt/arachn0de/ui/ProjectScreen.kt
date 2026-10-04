@@ -177,6 +177,7 @@ internal fun ProjectNodeScreen(
     val scopedFilter = com.r0ybt.arachn0de.domain.model.NodeFilter(
         com.r0ybt.arachn0de.domain.model.TemporalRanges.resolve(scopeFilters.time, now, java.util.TimeZone.getDefault(), java.util.Locale.getDefault()),
         scopeFilters.person, scopeFilters.completion, scopeFilters.tag, scopeFilters.priority)
+    val completedAt by remember(nodeRepository, project.id) { nodeRepository.observeCompletionTimes(project.id) }.collectAsState(initial = emptyMap())
     val sortContext = "${project.id}:${currentNodeId ?: "project-root"}"
     val sortMode = sortPreferences.mode(sortContext)
     var showSortMenu by remember(currentNodeId) { mutableStateOf(false) }
@@ -189,16 +190,16 @@ internal fun ProjectNodeScreen(
         }
     }
     // Manual keeps the existing coherent projection, without a new asynchronous loading phase.
-    val currentNodes = if (sortMode == NodeSortMode.MANUAL) remember(projectState, currentNodeId) {
-        projectState.childrenOf(currentNodeId)
+    val currentNodes = if (sortMode == NodeSortMode.MANUAL) remember(projectState, currentNodeId, completedAt) {
+        NodePresentationSort.children(projectState.childrenOf(currentNodeId), NodeSortMode.MANUAL, completedAt)
     } else automaticNodes
-    val filteredRows by androidx.compose.runtime.produceState<List<com.r0ybt.arachn0de.domain.model.FilteredNodeRow>?>(null, projectState, currentNodeId, scopedFilter, sortMode, tagState, responsibleByNode) {
+    val filteredRows by androidx.compose.runtime.produceState<List<com.r0ybt.arachn0de.domain.model.FilteredNodeRow>?>(null, projectState, currentNodeId, scopedFilter, sortMode, tagState, responsibleByNode, completedAt) {
         value = null
         if (!filterActive) { value = emptyList(); return@produceState }
         value = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
             val rows = com.r0ybt.arachn0de.domain.model.ScopedNodeFilter.apply(projectState, project.id, currentNodeId, scopedFilter,
                 responsibleByNode.mapValues { (_, people) -> people.map { it.id }.toSet() }, tagState.nodeIds)
-            NodePresentationSort.filtered(rows, sortMode)
+            NodePresentationSort.filtered(rows, sortMode, completedAt)
         }
     }
     val filteredIds = remember(filteredRows) { filteredRows.orEmpty().mapTo(hashSetOf()) { it.node.id } }
@@ -297,7 +298,7 @@ internal fun ProjectNodeScreen(
                     .then(if(showDrawer) Modifier.clearAndSetSemantics {} else Modifier)
                     .padding(horizontal = 12.dp, vertical = 10.dp),
             ) {
-                HeaderBar(onMenuClick = { showDrawer = true })
+                HeaderBar(onMenuClick = { showDrawer = true }, title = project.name)
                 if(selection.ids.isNotEmpty()) Column(Modifier.fillMaxWidth()) {
                     Text("${selection.ids.size} seleccionados", style = androidx.compose.material3.MaterialTheme.typography.titleMedium)
                     androidx.compose.foundation.layout.FlowRow(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -342,7 +343,7 @@ internal fun ProjectNodeScreen(
                                         Spacer(modifier = Modifier.width(8.dp))
                                     }
                                     Text(
-                                        text = currentNode?.title ?: project.name,
+                                        text = currentNode?.title ?: "Proyecto raíz",
                                         maxLines = 2,
                                         overflow = TextOverflow.Ellipsis,
                                         color = Arachn0deColors.TextPrimary,
@@ -366,13 +367,7 @@ internal fun ProjectNodeScreen(
 
                                 Spacer(modifier = Modifier.height(8.dp))
 
-                                if (currentNode == null) {
-                                    Text(
-                                        text = "Proyecto raíz",
-                                        color = Arachn0deColors.TextSecondary,
-                                        fontSize = 12.sp,
-                                    )
-                                } else {
+                                if (currentNode != null) {
                                     Row(
                                         modifier = Modifier.fillMaxWidth(),
                                         verticalAlignment = Alignment.CenterVertically,
@@ -432,7 +427,7 @@ internal fun ProjectNodeScreen(
                                         else if(currentNode.isCompletable) SecondaryAction(if(currentNode.isCompleted) "Reabrir" else "Completar",
                                             { actions.setCompleted(currentNode.id,!currentNode.isCompleted) },enabled = !isSubmittingNode)
                                     }
-                                    if (currentNode.purpose == NodePurpose.ACTION) Text("Para añadir elementos, convierte esta tarea en capa desde ⋮.", color = Arachn0deColors.TextSecondary)
+                                    if (currentNode.purpose == NodePurpose.ACTION && currentNode.canReceiveChildren) Text("Al añadir un elemento, esta tarea se convierte en capa.", color = Arachn0deColors.TextSecondary)
                                     if (currentNode.purpose == NodePurpose.NOTE) Text("Nota · Convierte en capa para añadir hijos", color = Arachn0deColors.TextSecondary)
                                     PriorityIndicator(currentNode)
                                     ObligationIndicator(currentNode)
@@ -571,7 +566,7 @@ internal fun ProjectNodeScreen(
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Button(
-                        onClick = { if (!isSubmittingNode && (currentNode == null || currentNode.isStructural)) {
+                        onClick = { if (!isSubmittingNode && (currentNode == null || currentNode.canReceiveChildren)) {
                             val parent = currentNodeId
                             if(drafts.hasNew(parent)) drafts.open(parent) { error("Borrador existente") }
                             else {
@@ -586,7 +581,7 @@ internal fun ProjectNodeScreen(
                         modifier = Modifier.weight(1f).heightIn(min = 52.dp),
                         colors = ButtonDefaults.buttonColors(containerColor = Arachn0deColors.Primary),
                         shape = RoundedCornerShape(14.dp),
-                        enabled = !isSubmittingNode && (currentNode == null || currentNode.isStructural),
+                        enabled = !isSubmittingNode && (currentNode == null || currentNode.canReceiveChildren),
                     ) {
                         Icon(imageVector = Icons.Default.Add, contentDescription = null)
                         Spacer(Modifier.width(8.dp))

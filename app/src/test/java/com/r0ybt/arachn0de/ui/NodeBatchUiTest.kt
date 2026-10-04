@@ -34,7 +34,7 @@ class NodeBatchUiTest {
             app = ApplicationProvider.getApplicationContext()
             runBlocking {
                 project = app.projectRepository.createProject("Project").id
-                parent = app.nodeRepository.createNode(project, null, "Parent").id
+                parent = app.nodeRepository.createNode(project, null, "Parent", purpose = com.r0ybt.arachn0de.domain.model.NodePurpose.LAYER).id
                 app.personRepository.save("p", "Roy", null)
             }
         }
@@ -69,7 +69,7 @@ class NodeBatchUiTest {
         assertEquals(NodeProgressState.NO_WORK, runBlocking { app.nodeRepository.calculateProgress(parent)!!.state })
         compose.onNodeWithTag("nodes-list").performScrollToNode(hasText("Episode 4"))
         compose.onNodeWithText("Episode 4").performClick()
-        await("Nota · Convierte en tarea para añadir hijos")
+        await("Nota · Convierte en capa para añadir hijos")
         compose.onNodeWithText("Crear varios").assertDoesNotExist()
     }
 

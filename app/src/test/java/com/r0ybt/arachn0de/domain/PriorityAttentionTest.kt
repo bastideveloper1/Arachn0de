@@ -8,8 +8,13 @@ import java.util.*
 class PriorityAttentionTest {
     private val zone=TimeZone.getTimeZone("UTC")
     private val now=CalendarDates.labelInstant(CalendarDay(2026,10,5))
+    // Explicit structural purposes for the synthetic hierarchy used by these tests.
+    private fun fixtureTree(nodes: List<Node>): NodeTreeSnapshot {
+        val parents = nodes.mapNotNull { it.parentId }.toSet()
+        return NodeTreeSnapshot(nodes.map { if (it.id in parents) it.copy(purpose = NodePurpose.LAYER) else it })
+    }
     private fun node(id: String, priority: Priority=Priority.NONE,due: Long?=null,parent: String?=null) = Node(id,"p",parent,id,"",false,0,1,1,false,dueAt=due,priority=priority)
-    private fun attention(vararg nodes: Node)=AttentionSnapshot(NodeTreeSnapshot(nodes.toList()),now,zone)
+    private fun attention(vararg nodes: Node)=AttentionSnapshot(fixtureTree(nodes.toList()),now,zone)
     @Test fun defaultAndLatentEligibility() {
         assertEquals(Priority.NONE,node("n").priority)
         assertEquals(Priority.NONE,node("note",Priority.HIGH).copy(purpose=NodePurpose.NOTE).effectivePriority)
@@ -47,18 +52,18 @@ class PriorityAttentionTest {
         val nodes=listOf(node("late-low",Priority.LOW,now-100),node("late-high",Priority.HIGH,now-100),node("late-earlier",Priority.NONE,now-200),
             node("today",Priority.MEDIUM,now+100),node("soon",Priority.NONE,now+86400000),node("high-future",Priority.HIGH,now+30*86400000L),node("high-undated",Priority.HIGH))
         val expected=listOf("late-earlier","late-high","late-low","today","soon","high-future","high-undated")
-        assertEquals(expected,AttentionSnapshot(NodeTreeSnapshot(nodes),now,zone).tasks.map { it.id })
-        assertEquals(expected,AttentionSnapshot(NodeTreeSnapshot(nodes.reversed()),now,zone).tasks.map { it.id })
+        assertEquals(expected,AttentionSnapshot(fixtureTree(nodes),now,zone).tasks.map { it.id })
+        assertEquals(expected,AttentionSnapshot(fixtureTree(nodes.reversed()),now,zone).tasks.map { it.id })
     }
     @Test fun existingTemporalBoundariesAndScheduledPolicyRemainDistinct() {
         assertEquals(AttentionReason.DUE_TODAY,attention(node("n",due=now)).reasonsByNodeId.getValue("n").first())
-        assertEquals(AttentionReason.OVERDUE,AttentionSnapshot(NodeTreeSnapshot(listOf(node("n",due=now))),now+1,zone).reasonsByNodeId.getValue("n").first())
+        assertEquals(AttentionReason.OVERDUE,AttentionSnapshot(fixtureTree(listOf(node("n",due=now))),now+1,zone).reasonsByNodeId.getValue("n").first())
         val scheduled=node("n",Priority.MEDIUM,now+100).copy(startAt=now+10)
         assertTrue(attention(scheduled).tasks.isEmpty()); assertEquals(listOf(AttentionReason.HIGH_PRIORITY),attention(scheduled.copy(priority=Priority.HIGH)).reasonsByNodeId.getValue("n"))
     }
     @Test fun todayUsesLocalCivilDateAcrossZones() {
         val n=node("n",due=now+10*3600000)
-        val utc=attention(n); val tokyo=AttentionSnapshot(NodeTreeSnapshot(listOf(n)),now,TimeZone.getTimeZone("Asia/Tokyo"))
+        val utc=attention(n); val tokyo=AttentionSnapshot(fixtureTree(listOf(n)),now,TimeZone.getTimeZone("Asia/Tokyo"))
         assertEquals(AttentionReason.DUE_TODAY,utc.reasonsByNodeId.getValue("n").first())
         assertEquals(AttentionReason.UPCOMING,tokyo.reasonsByNodeId.getValue("n").first())
     }
@@ -75,7 +80,7 @@ class PriorityAttentionTest {
     }
     @Test fun scopedContextAndCalendarKeepEligibilityAndScope() {
         val root=node("root"); val branch=node("branch",parent="root"); val child=node("match",Priority.HIGH,now,"branch")
-        val tree=NodeTreeSnapshot(listOf(root,branch,child,node("outside",Priority.HIGH,now)))
+        val tree=fixtureTree(listOf(root,branch,child,node("outside",Priority.HIGH,now)))
         val rows=ScopedNodeFilter.apply(tree,"p","root",NodeFilter(priority=Priority.HIGH),emptyMap(),emptyMap())
         assertEquals(listOf("branch","match"),rows.map { it.node.id }); assertFalse(rows.first().isMatch)
         val calendar=FilteredCalendar(CalendarSnapshot(tree,zone),NodeFilter(priority=Priority.HIGH),emptyMap())
@@ -83,7 +88,7 @@ class PriorityAttentionTest {
     }
     @Test fun tenThousandLevelsAreIterativeAndUndatedHighPropagates() {
         val nodes=(0 until 10000).map { node("$it",if (it==9999) Priority.HIGH else Priority.NONE,parent=if (it==0) null else "${it-1}") }
-        val result=AttentionSnapshot(NodeTreeSnapshot(nodes),now,zone)
+        val result=AttentionSnapshot(fixtureTree(nodes),now,zone)
         assertEquals(listOf("9999"),result.tasks.map { it.id }); assertEquals(1,result.byNodeId.getValue("0").total); assertEquals(10000,result.pathTo("9999").size)
     }
 }

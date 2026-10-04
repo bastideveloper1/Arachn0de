@@ -30,8 +30,9 @@ class PriorityRepositoryTest {
         val n=nodes.createNode("p",null,"Task",priority=Priority.HIGH); nodes.convertPurpose(n.id,NodePurpose.NOTE)
         assertEquals(Priority.HIGH,nodes.getNode(n.id)!!.priority); assertEquals(Priority.NONE,nodes.getNode(n.id)!!.effectivePriority); assertFalse(nodes.setPriority(n.id,Priority.LOW))
         nodes.convertPurpose(n.id,NodePurpose.ACTION); assertEquals(Priority.HIGH,nodes.getNode(n.id)!!.effectivePriority)
+        nodes.convertPurpose(n.id,NodePurpose.LAYER)
         val child=nodes.createNode("p",n.id,"Child"); assertEquals(Priority.NONE,child.priority); assertFalse(nodes.setPriority(n.id,Priority.LOW))
-        assertEquals(Priority.NONE,nodes.getNode(n.id)!!.effectivePriority); nodes.deleteNode(child.id); assertEquals(Priority.HIGH,nodes.getNode(n.id)!!.effectivePriority)
+        assertEquals(Priority.NONE,nodes.getNode(n.id)!!.effectivePriority); nodes.deleteNode(child.id); assertEquals(Priority.NONE,nodes.getNode(n.id)!!.effectivePriority); nodes.convertPurpose(n.id,NodePurpose.ACTION); assertEquals(Priority.HIGH,nodes.getNode(n.id)!!.effectivePriority)
     }
     @Test fun obligationAndHistoryAreIndependentOfPriority()=runBlocking {
         val money=Obligation(15000,"CLP"); val n=nodes.createNode("p",null,"Bill",obligation=money,priority=Priority.MEDIUM)

@@ -46,8 +46,8 @@ class FinancialRepositoryTest {
     }
 
     @Test fun existingFlowsUpdateMoneyCompletionResponsibilityDatesStructureAndDeletesWithoutProjectionWrites() = runBlocking {
-        val root=nodes.createNode(p,null,"Root")
-        val inner=nodes.createNode(p,root.id,"Inner")
+        val root=nodes.createNode(p,null,"Root", purpose = com.r0ybt.arachn0de.domain.model.NodePurpose.LAYER)
+        val inner=nodes.createNode(p,root.id,"Inner", purpose = com.r0ybt.arachn0de.domain.model.NodePurpose.LAYER)
         val bill=nodes.createNode(p,inner.id,"Bill",dueAt=due,obligation=Obligation(50000,"CLP"))
         people.save("r","Roy",null); people.save("s","Scarlett",null); people.setResponsiblePeople(bill.id,setOf("r","s"))
         assertEquals(1,financial().byNodeId.getValue(root.id).count)
@@ -72,10 +72,10 @@ class FinancialRepositoryTest {
         nodes.convertPurpose(bill.id,NodePurpose.ACTION)
         nodes.updateLeaf(bill.id,"Bill","",null,due,Obligation(2000,"EUR"))
         nodes.deleteNode(bill.id); assertEquals(0,financial().summary.count)
-        assertEquals(14, db.openHelper.readableDatabase.version)
+        assertEquals(16, db.openHelper.readableDatabase.version)
     }
     @Test fun batchesUseSameScopeAggregationAndProjectDeletionDoesNotAffectOtherCurrencies() = runBlocking {
-        val root=nodes.createNode(p,null,"Root")
+        val root=nodes.createNode(p,null,"Root", purpose = com.r0ybt.arachn0de.domain.model.NodePurpose.LAYER)
         val specs=NodeBatchGenerator.generate(NodeBatchParameters("Cuota",3,NumberingMode.SUFFIX,temporalRule=BatchTemporalRule.MONTHLY,
             firstDueAt=due,obligation=Obligation(50000,"CLP")),zone)
         val batch=nodes.createBatch(p,root.id,"batch",specs)

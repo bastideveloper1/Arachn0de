@@ -26,9 +26,9 @@ class NodeMoveUiTest {
             app = ApplicationProvider.getApplicationContext()
             runBlocking {
                 project = app.projectRepository.createProject("Move project").id
-                source = app.nodeRepository.createNode(project, null, "Source").id
+                source = app.nodeRepository.createNode(project, null, "Source", purpose = com.r0ybt.arachn0de.domain.model.NodePurpose.LAYER).id
                 child = app.nodeRepository.createNode(project, source, "Child").id
-                target = app.nodeRepository.createNode(project, null, "Target leaf").id
+                target = app.nodeRepository.createNode(project, null, "Target layer", purpose = com.r0ybt.arachn0de.domain.model.NodePurpose.LAYER).id
             }
         }
         override fun after() { app.database.close() }
@@ -43,7 +43,8 @@ class NodeMoveUiTest {
         compose.waitForIdle()
         compose.onNodeWithTag("nodes-list").performScrollToIndex(0)
         compose.waitUntil(10_000) { compose.onAllNodesWithText("CAPA 1").fetchSemanticsNodes().isNotEmpty() }
-        compose.onNodeWithTag("nodes-list").performScrollToNode(hasText("Mover a…"))
+        compose.onNodeWithTag("nodes-list").performScrollToNode(hasContentDescription("Opciones del elemento"))
+        compose.onNodeWithContentDescription("Opciones del elemento").performClick()
         compose.onNodeWithText("Mover a…").performClick()
     }
 
@@ -61,7 +62,7 @@ class NodeMoveUiTest {
         compose.onNodeWithTag("nodes-list").performScrollToNode(hasText("Source"))
         compose.onNodeWithText("Source").assertExists()
         compose.activityRule.scenario.recreate()
-        compose.waitUntil(10_000) { compose.onAllNodesWithText("Target leaf").fetchSemanticsNodes().isNotEmpty() }
+        compose.waitUntil(10_000) { compose.onAllNodesWithText("Target layer").fetchSemanticsNodes().isNotEmpty() }
     }
 
     @Test fun contextualMoveOfLeafToRootPreservesItsIdentity() {
@@ -72,7 +73,7 @@ class NodeMoveUiTest {
         compose.onNode(hasText("Mover a…") and hasAnyAncestor(isDialog())).performClick()
         compose.onNodeWithTag("navigator-project").performClick()
         compose.waitUntil(10_000) { runBlocking { app.nodeRepository.getNode(child)?.parentId == null } }
-        check(runBlocking { app.nodeRepository.getNode(source)!!.isCompletable })
+        check(runBlocking { app.nodeRepository.getNode(source)!!.isStructural && !app.nodeRepository.getNode(source)!!.hasChildren })
         check(runBlocking { app.nodeRepository.getNode(child)!!.title == "Child" })
     }
 

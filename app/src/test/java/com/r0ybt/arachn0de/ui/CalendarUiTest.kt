@@ -36,8 +36,8 @@ class CalendarUiTest {
             app = ApplicationProvider.getApplicationContext()
             runBlocking {
                 project = app.projectRepository.createProject("Personal").id
-                val root = app.nodeRepository.createNode(project, null, "Salud").id
-                val inner = app.nodeRepository.createNode(project, root, "Tratamiento").id
+                val root = app.nodeRepository.createNode(project, null, "Salud", purpose = com.r0ybt.arachn0de.domain.model.NodePurpose.LAYER).id
+                val inner = app.nodeRepository.createNode(project, root, "Tratamiento", purpose = com.r0ybt.arachn0de.domain.model.NodePurpose.LAYER).id
                 task = app.nodeRepository.createNode(project, inner, "Revisión", dueAt = instant).id
                 app.personRepository.save("p", "Roy", null)
                 app.personRepository.setResponsiblePeople(task, setOf("p"))
@@ -96,7 +96,7 @@ class CalendarUiTest {
         awaitText("Completada")
         runBlocking { app.nodeRepository.setCompleted(task, false) }
         compose.waitUntil(10_000) { compose.onAllNodesWithText("Completada", substring = true).fetchSemanticsNodes().isEmpty() }
-        val destination = runBlocking { app.nodeRepository.createNode(project, null, "Destino").id }
+        val destination = runBlocking { app.nodeRepository.createNode(project, null, "Destino", purpose = com.r0ybt.arachn0de.domain.model.NodePurpose.LAYER).id }
         runBlocking { app.nodeRepository.moveNode(task, destination) }
         awaitText("Personal › Destino")
         runBlocking { app.nodeRepository.updateNode(destination, "Hogar", ""); app.personRepository.save("p", "María", null, isNew = false) }

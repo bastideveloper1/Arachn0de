@@ -40,7 +40,7 @@ class TaskDatesRepositoryTest {
     @After fun cleanup() { db.close(); context.deleteDatabase("arachn0de.db") }
 
     @Test fun datesCreateEditRemovePersistMoveAndKeepPeopleOrderAndProgress() = runBlocking {
-        val parent = nodes.createNode(project, null, "Parent")
+        val parent = nodes.createNode(project, null, "Parent", purpose = com.r0ybt.arachn0de.domain.model.NodePurpose.LAYER)
         val task = nodes.createNode(project, null, "Task", startAt = 1_000, dueAt = 2_000)
         people.save("p", "Person", null)
         people.setResponsiblePeople(task.id, setOf("p"))
@@ -71,6 +71,7 @@ class TaskDatesRepositoryTest {
     @Test fun leafLayerLeafRetainsDatesAndContentOnlyEditsDoNotEraseThem() = runBlocking {
         val task = nodes.createNode(project, null, "Task", startAt = 1_000, dueAt = 2_000)
         nodes.setCompleted(task.id, true)
+        assertTrue(nodes.convertPurpose(task.id, com.r0ybt.arachn0de.domain.model.NodePurpose.LAYER))
         val child = nodes.createNode(project, task.id, "Child")
         val layer = nodes.getNode(task.id)!!
         assertTrue(layer.hasChildren); assertFalse(layer.isCompleted)
@@ -80,6 +81,8 @@ class TaskDatesRepositoryTest {
         assertTrue(nodes.updateNode(task.id, "Layer", "Content only"))
         assertEquals(2_000L, nodes.getNode(task.id)!!.dueAt)
         nodes.deleteNode(child.id)
+        assertTrue(nodes.getNode(task.id)!!.isStructural)
+        assertTrue(nodes.convertPurpose(task.id, com.r0ybt.arachn0de.domain.model.NodePurpose.ACTION))
         val leaf = nodes.getNode(task.id)!!
         assertFalse(leaf.hasChildren); assertFalse(leaf.isCompleted)
         assertEquals(TaskTemporalState.OVERDUE, TaskTemporal.state(leaf, 3_000))
@@ -123,20 +126,22 @@ class TaskDatesRepositoryTest {
         helper.writableDatabase.execSQL("INSERT INTO persons VALUES ('p', 'Person', 'original-avatar.png')")
         helper.writableDatabase.execSQL("INSERT INTO node_person VALUES ('leaf', 'p')")
         helper.close(); open()
-        assertEquals(14, db.openHelper.readableDatabase.version)
+        assertEquals(16, db.openHelper.readableDatabase.version)
         val original = db.projectDao().getById("old")!!
         assertEquals("Original", original.name); assertEquals("Description", original.description)
         assertEquals(8, original.position); assertEquals(100L, original.createdAt); assertEquals(150L, original.updatedAt)
         assertEquals(NodeEntity("leaf", "old", "root", "Task", "Details", true, 9, 110, 160), db.nodeDao().getById("leaf"))
-        assertEquals(NodeEntity("root", "old", null, "Layer", "Details", false, 7, 100, 150), db.nodeDao().getById("root"))
+        assertEquals(NodeEntity("root", "old", null, "Layer", "Details", false, 7, 100, 150, purpose="LAYER"), db.nodeDao().getById("root"))
         assertEquals(PersonEntity("p", "Person", "original-avatar.png"), db.personDao().get("p"))
         assertEquals("p", people.observeAssignments("old").first().getValue("leaf").single().id)
         db.openHelper.readableDatabase.query("PRAGMA foreign_key_check").use { assertFalse(it.moveToFirst()) }
-        db.openHelper.readableDatabase.query("SELECT COUNT(*) FROM sqlite_master WHERE type='trigger' AND name LIKE 'nodes_%'").use { assertTrue(it.moveToFirst()); assertEquals(15, it.getInt(0)) }
+        db.openHelper.readableDatabase.query("SELECT COUNT(*) FROM sqlite_master WHERE type='trigger' AND name LIKE 'nodes_%'").use { assertTrue(it.moveToFirst()); assertEquals(17, it.getInt(0)) }
+        assertTrue(nodes.convertPurpose("leaf", com.r0ybt.arachn0de.domain.model.NodePurpose.LAYER))
         val child = nodes.createNode("old", "leaf", "Child")
         assertFalse(nodes.getNode("leaf")!!.isCompleted)
         assertFalse(nodes.setCompleted("leaf", true))
         nodes.deleteNode(child.id)
+        assertTrue(nodes.convertPurpose("leaf", com.r0ybt.arachn0de.domain.model.NodePurpose.ACTION))
         assertTrue(nodes.updateNodeWithDates("leaf", "Task", "Details", 1_000, 2_000))
         assertEquals("p", people.observeAssignments("old").first().getValue("leaf").single().id)
     }

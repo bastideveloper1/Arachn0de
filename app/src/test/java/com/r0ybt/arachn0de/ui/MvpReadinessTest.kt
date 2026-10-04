@@ -36,7 +36,7 @@ class MvpReadinessTest {
         val projects = ProjectRepository(db.projectDao())
         val nodes = NodeRepository(db)
         val project = runBlocking { projects.createProject("Proyecto de prueba") }
-        val parent = runBlocking { nodes.createNode(project.id, null, "Contenedor") }
+        val parent = runBlocking { nodes.createNode(project.id, null, "Contenedor", purpose = com.r0ybt.arachn0de.domain.model.NodePurpose.LAYER) }
         val mounted = mutableStateOf(true)
         var pixelsPerDp = 1f
         try {

@@ -25,7 +25,7 @@ class PeopleUiTest {
             app = ApplicationProvider.getApplicationContext()
             runBlocking {
                 project = app.projectRepository.createProject("People project").id
-                layer = app.nodeRepository.createNode(project, null, "Layer").id
+                layer = app.nodeRepository.createNode(project, null, "Layer", purpose = com.r0ybt.arachn0de.domain.model.NodePurpose.LAYER).id
                 app.nodeRepository.createNode(project, layer, "Child")
             }
         }
@@ -52,7 +52,8 @@ class PeopleUiTest {
         compose.waitUntil(10_000) { compose.onAllNodesWithTag("nodes-list").fetchSemanticsNodes().isNotEmpty() }
         compose.onNodeWithTag("nodes-list").performScrollToNode(hasText("Layer"))
         compose.onNodeWithText("Layer").performClick()
-        compose.onNodeWithTag("nodes-list").performScrollToNode(hasText("Responsables"))
+        compose.onNodeWithTag("nodes-list").performScrollToNode(hasContentDescription("Opciones del elemento"))
+        compose.onNodeWithContentDescription("Opciones del elemento").performClick()
         compose.onNodeWithText("Responsables").performClick()
         waitText("María")
         compose.onNode(hasText("María") and hasAnyAncestor(isDialog())).performClick()
@@ -71,7 +72,7 @@ class PeopleUiTest {
         waitText("Mary")
         compose.onNodeWithText("Volver").performClick()
         compose.waitUntil(10_000) { compose.onAllNodesWithTag("nodes-list").fetchSemanticsNodes().isNotEmpty() }
-        compose.onNodeWithTag("nodes-list").performScrollToNode(hasText("Responsables"))
+        compose.onNodeWithTag("nodes-list").performScrollToNode(hasContentDescription("Mary"))
         compose.waitUntil(10_000) { compose.onAllNodesWithContentDescription("Mary").fetchSemanticsNodes().isNotEmpty() }
         compose.onNodeWithContentDescription("Abrir menú").performClick()
         compose.onNodeWithText("Personas").performScrollTo().performClick()

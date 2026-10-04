@@ -100,7 +100,7 @@ class NodeFiltersTest {
         assertEquals(listOf(task), NodeFilter(range(TimeFilter.TODAY)).apply(listOf(task), assignments) { it.startAt })
     }
     @Test fun calendarKeepsDueOnlyEligibilityAndNeverExpandsStartIntervals() {
-        val layer = node("layer")
+        val layer = node("layer").copy(purpose=NodePurpose.LAYER)
         val task = node("a", now+86400000).copy(parentId=layer.id, startAt=now-86400000)
         val note = node("note").copy(purpose=NodePurpose.NOTE)
         val undated = node("no-due", null).copy(startAt=now)

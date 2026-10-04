@@ -34,9 +34,9 @@ class NavigationTest {
         val projects = ProjectRepository(database.projectDao())
         projectId = projects.createProject("Proyecto navegación").id
         val nodes = NodeRepository(database)
-        val root = nodes.createNode(projectId, parentId = null, title = "Nivel uno")
+        val root = nodes.createNode(projectId, parentId = null, title = "Nivel uno", purpose = com.r0ybt.arachn0de.domain.model.NodePurpose.LAYER)
         rootId = root.id
-        val child = nodes.createNode(projectId, title = "Nivel dos", parentId = root.id)
+        val child = nodes.createNode(projectId, title = "Nivel dos", parentId = root.id, purpose = com.r0ybt.arachn0de.domain.model.NodePurpose.LAYER)
         nodes.createNode(projectId, title = "Tarea final", parentId = child.id)
     }
 

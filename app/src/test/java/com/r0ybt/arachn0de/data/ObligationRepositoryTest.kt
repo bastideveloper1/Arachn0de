@@ -64,7 +64,7 @@ class ObligationRepositoryTest {
         invalid { nodes.moveNode(sibling.id,bill.id) }
         invalid { nodes.createNode(project,null,"Note",purpose=NodePurpose.NOTE,obligation=amount) }
         nodes.reorderNodeTo(bill.id,null,sibling.id); assertEquals(amount,nodes.getNode(bill.id)!!.obligation)
-        val parent = nodes.createNode(project,null,"Parent")
+        val parent = nodes.createNode(project,null,"Parent", purpose = com.r0ybt.arachn0de.domain.model.NodePurpose.LAYER)
         nodes.moveNode(bill.id,parent.id); assertEquals(amount,nodes.getNode(bill.id)!!.obligation)
         assertFalse(nodes.updateLeaf(parent.id,"Parent","",null,null,amount))
         nodes.setCompleted(bill.id,true); nodes.setCompleted(bill.id,false); assertEquals(amount,nodes.getNode(bill.id)!!.obligation)
@@ -77,7 +77,7 @@ class ObligationRepositoryTest {
         try { db.nodeDao().insert(NodeEntity("child",project,bill.id,"Child","",false,0,1,1)); fail() } catch (_: SQLiteConstraintException) {}
         for (change in listOf("amountMinor=NULL","currencyCode=NULL","amountMinor=0","amountMinor=-1","amountMinor=1.5","currencyCode='usd'","purpose='NOTE'")) sqlRejected("UPDATE nodes SET $change WHERE id='bill'")
         nodes.moveNode(child.id,null)
-        val parent = nodes.createNode(project,null,"Parent",creationId="parent")
+        val parent = nodes.createNode(project,null,"Parent",creationId="parent", purpose = com.r0ybt.arachn0de.domain.model.NodePurpose.LAYER)
         nodes.moveNode(child.id,parent.id)
         sqlRejected("UPDATE nodes SET amountMinor=1,currencyCode='CLP' WHERE id='parent'")
         nodes.convertPurpose(child.id,NodePurpose.NOTE)
@@ -103,6 +103,6 @@ class ObligationRepositoryTest {
         assertEquals(3,people.observeAssignments(project).first().size)
         try { nodes.createBatch(project,null,"batch",specs.map { it.copy(obligation=Obligation(1,"USD")) },setOf("p")); fail() } catch (_: IllegalStateException) {}
         invalid { NodeBatchGenerator.generate(NodeBatchParameters("Note",2,purpose=NodePurpose.NOTE,obligation=amount),utc) }
-        assertEquals(14, sql.version)
+        assertEquals(16, sql.version)
     }
 }

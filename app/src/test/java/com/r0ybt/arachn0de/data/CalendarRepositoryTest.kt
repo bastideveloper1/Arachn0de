@@ -29,7 +29,7 @@ class CalendarRepositoryTest {
 
     @Test fun purposeStructureCompletionDatesMovesAndDeletionUseSameRowsAndPreserveLatentDates() = runBlocking {
         val project = projects.createProject("Project")
-        val parent = nodes.createNode(project.id,null,"Parent")
+        val parent = nodes.createNode(project.id,null,"Parent", purpose = com.r0ybt.arachn0de.domain.model.NodePurpose.LAYER)
         val task = nodes.createNode(project.id,parent.id,"Task",dueAt=200)
         assertEquals(setOf(task.id),calendar().ids())
         nodes.setCompleted(task.id,true)
@@ -38,15 +38,17 @@ class CalendarRepositoryTest {
         nodes.convertPurpose(task.id,NodePurpose.NOTE); assertTrue(calendar().ids().isEmpty())
         assertEquals(200L,nodes.getNode(task.id)!!.dueAt)
         nodes.convertPurpose(task.id,NodePurpose.ACTION); assertEquals(setOf(task.id),calendar().ids())
+        nodes.convertPurpose(task.id,com.r0ybt.arachn0de.domain.model.NodePurpose.LAYER)
         val child = nodes.createNode(project.id,task.id,"Child")
         assertTrue(calendar().ids().isEmpty())
-        nodes.deleteNode(child.id); assertEquals(setOf(task.id),calendar().ids())
+        nodes.deleteNode(child.id); assertTrue(calendar().ids().isEmpty())
+        nodes.convertPurpose(task.id,NodePurpose.ACTION); assertEquals(setOf(task.id),calendar().ids())
         nodes.moveNode(task.id,null)
         assertEquals(listOf(task.id),calendar().pathTo(task.id).map { it.id })
         nodes.updateNodeWithDates(task.id,"Task","",null,null); assertTrue(calendar().ids().isEmpty())
         nodes.updateNodeWithDates(task.id,"Task","",null,300); assertEquals(300L,calendar().tasksByDay.values.flatten().single().dueAt)
         nodes.deleteNode(task.id); assertTrue(calendar().ids().isEmpty())
-        assertEquals(14, db.openHelper.readableDatabase.version)
+        assertEquals(16, db.openHelper.readableDatabase.version)
     }
 
     @Test fun datedBatchProducesIndependentCalendarEntriesAndProjectDeletionRemovesThem() = runBlocking {

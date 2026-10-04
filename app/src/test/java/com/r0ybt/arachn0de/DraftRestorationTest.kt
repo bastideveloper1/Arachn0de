@@ -25,7 +25,7 @@ class DraftRestorationTest {
             app = ApplicationProvider.getApplicationContext()
             runBlocking {
                 projectId = app.projectRepository.createProject("Proyecto borradores").id
-                parentId = app.nodeRepository.createNode(projectId, null, "Padre").id
+                parentId = app.nodeRepository.createNode(projectId, null, "Padre", purpose = com.r0ybt.arachn0de.domain.model.NodePurpose.LAYER).id
             }
         }
         override fun after() { app.database.close() }

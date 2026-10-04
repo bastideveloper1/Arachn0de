@@ -44,7 +44,7 @@ class PersonRepositoryTest {
         assertTrue(people.save("roy", " Roy ", null))
         assertTrue(people.save("juan", "Juan", null))
         try { people.save("blank", "  ", null); fail("Blank name") } catch (_: IllegalArgumentException) {}
-        val layer = nodes.createNode(project, null, "Layer")
+        val layer = nodes.createNode(project, null, "Layer", purpose = com.r0ybt.arachn0de.domain.model.NodePurpose.LAYER)
         val task = nodes.createNode(project, null, "Task")
         assertTrue(people.setResponsiblePeople(layer.id, setOf("roy")))
         assertTrue(people.setResponsiblePeople(task.id, setOf("roy", "juan")))
@@ -66,7 +66,7 @@ class PersonRepositoryTest {
 
     @Test fun deletionsCascadeOnlyAssociationsAndInvalidAssignmentRollsBack() = runBlocking {
         people.save("p", "Person", null)
-        val layer = nodes.createNode(project, null, "Layer")
+        val layer = nodes.createNode(project, null, "Layer", purpose = com.r0ybt.arachn0de.domain.model.NodePurpose.LAYER)
         val child = nodes.createNode(project, layer.id, "Child")
         people.setResponsiblePeople(layer.id, setOf("p"))
         people.setResponsiblePeople(child.id, setOf("p"))
@@ -127,7 +127,7 @@ class PersonRepositoryTest {
         open()
         val oldProject = db.projectDao().getById("project")!!
         val oldNode = nodes.getNode("node")!!
-        assertEquals(14, db.openHelper.readableDatabase.version)
+        assertEquals(16, db.openHelper.readableDatabase.version)
         assertEquals("Original", oldProject.name)
         assertEquals(8, oldProject.position)
         assertEquals(100L, oldProject.createdAt)
@@ -140,6 +140,7 @@ class PersonRepositoryTest {
         assertEquals(200L, oldNode.updatedAt)
         people.save("p", "Person", null)
         people.setResponsiblePeople("node", setOf("p"))
+        assertTrue(nodes.convertPurpose("node", com.r0ybt.arachn0de.domain.model.NodePurpose.LAYER))
         nodes.createNode("project", "node", "Child")
         assertTrue(nodes.getNode("node")!!.hasChildren)
         assertFalse(nodes.getNode("node")!!.isCompleted)

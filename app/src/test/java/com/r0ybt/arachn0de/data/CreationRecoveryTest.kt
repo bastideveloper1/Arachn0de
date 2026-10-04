@@ -91,7 +91,7 @@ class CreationRecoveryTest {
             repeat(8) { launch(Dispatchers.Default) { projects.createProject("Proyecto", creationId = projectDraft.creationId) } }
         }
         val nodes = NodeRepository(db)
-        val parent = nodes.createNode(projectDraft.creationId, null, "Padre")
+        val parent = nodes.createNode(projectDraft.creationId, null, "Padre", purpose = com.r0ybt.arachn0de.domain.model.NodePurpose.LAYER)
         val draft = EditorDraft(null, parent.id, "Hijo", "")
         coroutineScope {
             repeat(8) { launch(Dispatchers.Default) { nodes.createNode(projectDraft.creationId, parent.id, "Hijo", creationId = draft.creationId) } }

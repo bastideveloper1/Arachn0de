@@ -35,7 +35,7 @@ class CreationDraftRestorationTest {
         compose.onNodeWithTag("nodes-list").performScrollToNode(hasText(title))
         // The title identifies a stable card, independent of current list position.
         compose.onNodeWithText(title).performClick();await("CAPA 1")
-        compose.onNodeWithTag("nodes-list").performScrollToNode(hasText("Editar"));compose.onNodeWithText("Editar").performClick();await("Guardar")
+        compose.onNodeWithTag("nodes-list").performScrollToNode(hasContentDescription("Opciones del elemento"));compose.onNodeWithContentDescription("Opciones del elemento").performClick();compose.onNodeWithText("Editar").performScrollTo().performClick();await("Guardar")
     }
     @Test fun backKeepsCreationAndClosedDraftSurvivesActualActivityRecreation() {
         openProject();compose.onNodeWithText("Nuevo elemento").performClick();input("Título","Pending");input("Descripción","Details")

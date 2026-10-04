@@ -71,7 +71,7 @@ internal fun LayerNavigator(
         if(selected.isEmpty()) emptySet() else com.r0ybt.arachn0de.domain.model.SelectionRoots.normalize(nodes,selected).flatMap { index.subtreeIds(it) }.toSet()
     }
     val rows = remember(index, expanded, excluded, moving) {
-        index.visibleRows(expanded).filter { it.node.id !in excluded && it.node.isStructural && (!moving || it.node.obligation == null) }
+        index.visibleRows(expanded).filter { it.node.id !in excluded && (if (moving) it.node.canReceiveChildren else it.node.isStructural) }
     }
     LazyColumn(
         state = listState,

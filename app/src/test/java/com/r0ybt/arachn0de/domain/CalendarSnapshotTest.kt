@@ -15,7 +15,7 @@ class CalendarSnapshotTest {
 
     @Test fun onlyDatedActionLeavesIncludingCompletedAreGlobalAndSortedWithoutWrites() {
         val due = instant(2026,10,15)
-        val nodes = listOf(node("layer", due), node("done", due, "layer", completed = true),
+        val nodes = listOf(node("layer", due, purpose = NodePurpose.LAYER), node("done", due, "layer", completed = true),
             node("b", due, "layer", created = 2), node("a", due, "layer", created = 2),
             node("early", due - 1, project = "other"), node("note", due, purpose = NodePurpose.NOTE), node("undated"))
         val tree = NodeTreeSnapshot(nodes)
@@ -65,7 +65,7 @@ class CalendarSnapshotTest {
     }
 
     @Test fun veryDeepPathsResolveIterativelyOnlyWhenRequested() {
-        val nodes = List(10_000) { index -> node("n$index", if (index == 9_999) instant(2026,10,15) else null, if (index == 0) null else "n${index-1}") }
+        val nodes = List(10_000) { index -> node("n$index", if (index == 9_999) instant(2026,10,15) else null, if (index == 0) null else "n${index-1}", purpose = if (index < 9_999) NodePurpose.LAYER else NodePurpose.ACTION) }
         val snapshot = CalendarSnapshot(NodeTreeSnapshot(nodes), utc)
         assertEquals(1, snapshot.tasksByDay.values.sumOf { it.size })
         assertEquals(10_000, snapshot.pathTo("n9999").size)

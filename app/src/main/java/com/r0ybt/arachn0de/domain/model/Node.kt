@@ -22,6 +22,7 @@ data class Node(
     val workState: WorkState? = null,
 ) {
     val effectivePriority: Priority get() = if (isCompletable) priority else Priority.NONE
+    val canReceiveChildren: Boolean get() = obligation == null && (isStructural || (purpose == NodePurpose.ACTION && !isCompleted))
     val isStructural: Boolean get() = purpose == NodePurpose.LAYER
     val isCompletable: Boolean get() = !hasChildren && purpose == NodePurpose.ACTION
 }

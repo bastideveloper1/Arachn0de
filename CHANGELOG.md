@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.2.4 — Beta en preparación
+
+Versión Android `0.2.4`, código `6`. Sin publicación en esta preparación.
+
+- Capas explícitas con cero o más hijos; conservar una Capa al quedar vacía.
+- Mover un Proyecto dentro de otro Proyecto o Capa, conservando su árbol y configuración.
+- Modo Sprint opcional para tareas directas de una Capa: cinco etapas y vista vertical colapsable.
+- Mejoras de dogfooding: selectores de recurrencia, orden combinado, copia compacta de pendientes y guardado de configuración.
+- Destinos Move válidos y conversión automática de tarea pendiente en Capa al recibir un hijo; completadas recientes primero en orden Manual; barra superior con el Proyecto raíz.
+- Room 16: migraciones no destructivas 14→15→16 desde v0.2.3.
+- Backup v9 conserva Capas vacías y Modo Sprint, con lectura v1–v8.
+
+Notas para revisión: [RELEASE_NOTES_v0.2.4.md](RELEASE_NOTES_v0.2.4.md).
+
 ## 0.2.3 — Beta en preparación
 
 Versión Android `0.2.3`, código `5`. Sin publicación en esta preparación.

@@ -26,11 +26,11 @@ import org.robolectric.annotation.Config
 @Config(sdk = [28])
 class LargeListsTest {
     @get:Rule val compose = createComposeRule()
-    private fun node(id: String, parent: String? = null, order: Int = 0) =
-        Node(id, "project", parent, id, "", false, order, 0, 0, false)
+    private fun node(id: String, parent: String? = null, order: Int = 0, layer: Boolean = false) =
+        Node(id, "project", parent, id, "", false, order, 0, 0, false, purpose = if(layer) com.r0ybt.arachn0de.domain.model.NodePurpose.LAYER else com.r0ybt.arachn0de.domain.model.NodePurpose.ACTION)
 
     @Test fun navigatorOnlyComposesViewportAndNavigatesToDistantNode() {
-        val nodes = (0 until 5_000).flatMap { listOf(node("node$it", order = it), node("task$it", "node$it")) }
+        val nodes = (0 until 5_000).flatMap { listOf(node("node$it", order = it, layer = true), node("task$it", "node$it")) }
         var selected: String? = null
         compose.setContent { Arachn0deTheme { LayerNavigator(nodes, emptyList(), {}, null, { selected = it }, "Project", {}, {}) } }
         compose.onNodeWithText("node4999").assertDoesNotExist()
@@ -40,7 +40,7 @@ class LargeListsTest {
     }
 
     @Test fun expansionButtonDoesNotNavigateAndCollapseHidesChildren() {
-        val nodes = listOf(node("parent"), node("child", "parent"), node("task", "child"), node("rootTask"))
+        val nodes = listOf(node("parent",layer=true), node("child", "parent",layer=true), node("task", "child"), node("rootTask"))
         var selected: String? = null
         compose.setContent {
             var expanded by remember { mutableStateOf(emptyList<String>()) }
@@ -104,7 +104,7 @@ class LargeListsTest {
         }
     }
     @Test fun deepNavigatorComposesOnlyVisibleAncestorsAndNavigatesById() {
-        val nodes = (0 until 5_000).map { node("ancestor$it", if (it == 0) null else "ancestor${it - 1}") } + node("lastTask", "ancestor4999")
+        val nodes = (0 until 5_000).map { node("ancestor$it", if (it == 0) null else "ancestor${it - 1}",layer=true) } + node("lastTask", "ancestor4999")
         var selected: String? = null
         compose.setContent { Arachn0deTheme { LayerNavigator(nodes, nodes.map { it.id }, {}, null, { selected = it }, "Project", {}, {}) } }
         compose.onNodeWithText("ancestor4999").assertDoesNotExist()

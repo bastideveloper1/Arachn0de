@@ -50,7 +50,12 @@ class CreationUxTest {
         click("Responsables (0)"); click("Persona A"); compose.onNodeWithText("Guardar").performClick()
         click("Cerrar"); click("Nuevo elemento")
         compose.onNodeWithText("Título").performScrollTo().assert(hasText("Pagar Internet"))
-        option("Recurrente"); click("Recurrencia: Diaria"); click("Mensual"); input("Inicio · AAAA-MM-DD","2090-01-31")
+        option("Recurrente"); click("Recurrencia: Diaria"); click("Mensual"); compose.onNodeWithText("Comienza:",substring=true).performScrollTo().performClick()
+        compose.runOnUiThread {
+            val dialog=org.robolectric.shadows.ShadowDialog.getLatestDialog() as android.app.DatePickerDialog
+            dialog.datePicker.updateDate(2090,0,31)
+            dialog.getButton(android.content.DialogInterface.BUTTON_POSITIVE).performClick()
+        }
         compose.onNodeWithTag("option:Crear varios").performScrollTo().assertIsNotEnabled()
         app.database.openHelper.writableDatabase.execSQL("CREATE TRIGGER ux_fail BEFORE INSERT ON recurrence_rules BEGIN SELECT RAISE(ABORT,'fail'); END")
         compose.onNodeWithText("Crear").performClick(); await("No se pudo completar la operación")
@@ -81,7 +86,7 @@ class CreationUxTest {
         compose.onNodeWithTag("obligation-enabled").performScrollTo().performClick(); input("Monto","25000")
         compose.onNodeWithTag("obligation-enabled").performScrollTo().performClick(); compose.onNodeWithText("Monto").assertDoesNotExist()
         compose.onNodeWithTag("obligation-enabled").performScrollTo().performClick(); option("Recurrente"); click("Recurrencia: Diaria"); click("Mensual")
-        input("Cada cuántos periodos (1–10000)","3"); option("Recurrente"); option("Recurrente")
+        input("Cada (cantidad de meses)","3"); option("Recurrente"); option("Recurrente")
         click("Nota"); compose.onNodeWithTag("obligation-enabled").assertDoesNotExist(); compose.onNodeWithTag("priority-selector").assertDoesNotExist()
         click("Tarea"); compose.onNodeWithText("Monto").performScrollTo().assert(hasText("25000"))
         compose.runOnIdle { draft.startAt=100; draft.dueAt=200; draft.tagIds=listOf("tag"); draft.responsibleIds=listOf("person"); draft.priority=Priority.HIGH }

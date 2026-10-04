@@ -4,6 +4,7 @@ import com.r0ybt.arachn0de.data.local.*
 import com.r0ybt.arachn0de.data.repository.*
 import com.r0ybt.arachn0de.domain.model.*
 import kotlinx.coroutines.*
+import androidx.room.withTransaction
 import kotlinx.coroutines.flow.first
 import org.junit.*
 import org.junit.Assert.*
@@ -68,12 +69,12 @@ class NodeEventRepositoryTest {
     @Test fun failedCreatedRollsBackNodeAndParentReopening() = runBlocking {
         val parent = nodes.createNode("p",null,"Parent"); nodes.setCompleted(parent.id,true)
         val before = history(parent.id); failEvent("CREATED")
-        assertTrue(runCatching { nodes.createNode("p",parent.id,"Child") }.isFailure)
+        assertTrue(runCatching { db.withTransaction { nodes.convertPurpose(parent.id,NodePurpose.LAYER); nodes.createNode("p",parent.id,"Child") } }.isFailure)
         assertTrue(nodes.getNode(parent.id)!!.isCompleted); assertEquals(before,history(parent.id))
         assertEquals(1,nodes.getProjectNodes("p").size)
     }
     @Test fun noteLayerAndMissingNodeCannotCompleteOrReopen() = runBlocking {
-        val root = nodes.createNode("p",null,"Root"); val note = nodes.createNode("p",root.id,"Note",purpose=NodePurpose.NOTE)
+        val root = nodes.createNode("p",null,"Root", purpose = com.r0ybt.arachn0de.domain.model.NodePurpose.LAYER); val note = nodes.createNode("p",root.id,"Note",purpose=NodePurpose.NOTE)
         for (id in listOf(root.id,note.id,"missing")) { assertFalse(nodes.setCompleted(id,true)); assertFalse(nodes.setCompleted(id,false)); assertFalse(nodes.toggleCompleted(id)) }
         assertEquals(2,db.nodeEventDao().all().size); assertTrue(db.nodeEventDao().all().all { it.type == "CREATED" })
     }
@@ -87,19 +88,20 @@ class NodeEventRepositoryTest {
     @Test fun existingCompletionResetsAreRecordedBeforeNoteOrLayerConversion() = runBlocking {
         val note = nodes.createNode("p",null,"Becomes note"); nodes.setCompleted(note.id,true); nodes.convertPurpose(note.id,NodePurpose.NOTE)
         assertEquals(NodeEventType.REOPENED,history(note.id).first().type); assertFalse(nodes.getNode(note.id)!!.isCompleted)
-        val parent = nodes.createNode("p",null,"Becomes layer"); nodes.setCompleted(parent.id,true); now=2002; nodes.createNode("p",parent.id,"Child")
-        assertEquals(NodeEventType.REOPENED,history(parent.id).first().type); assertTrue(nodes.getNode(parent.id)!!.hasChildren); assertEquals(1001L,nodes.getNode(parent.id)!!.updatedAt); assertEquals(2002L,history(parent.id).first().occurredAt)
+        val parent = nodes.createNode("p",null,"Becomes layer"); nodes.setCompleted(parent.id,true); now=2002; nodes.convertPurpose(parent.id,NodePurpose.LAYER); nodes.createNode("p",parent.id,"Child")
+        assertEquals(NodeEventType.REOPENED,history(parent.id).first().type); assertTrue(nodes.getNode(parent.id)!!.hasChildren); assertEquals(2002L,nodes.getNode(parent.id)!!.updatedAt); assertEquals(2002L,history(parent.id).first().occurredAt)
         val target = nodes.createNode("p",null,"Move destination"); nodes.setCompleted(target.id,true)
+        nodes.convertPurpose(target.id,NodePurpose.LAYER)
         val child = nodes.createNode("p",null,"Moved"); nodes.moveNode(child.id,target.id)
         assertEquals(NodeEventType.REOPENED,history(target.id).first().type); assertEquals(1,history(child.id).size)
     }
     @Test fun ignoredConversionOrMoveRollsBackImplicitReopening() = runBlocking {
-        val target=nodes.createNode("p",null,"Target"); nodes.setCompleted(target.id,true)
+        val target=nodes.createNode("p",null,"Target",purpose=NodePurpose.LAYER)
         val child=nodes.createNode("p",null,"Child"); nodes.setCompleted(child.id,true)
         val targetHistory=history(target.id); val childHistory=history(child.id)
         db.openHelper.writableDatabase.execSQL("CREATE TRIGGER ignore_move BEFORE UPDATE OF parentId ON nodes BEGIN SELECT RAISE(IGNORE); END")
         assertTrue(runCatching { nodes.moveNode(child.id,target.id) }.isFailure)
-        assertTrue(nodes.getNode(target.id)!!.isCompleted); assertEquals(targetHistory,history(target.id)); assertNull(nodes.getNode(child.id)!!.parentId)
+        assertFalse(nodes.getNode(target.id)!!.isCompleted); assertEquals(targetHistory,history(target.id)); assertNull(nodes.getNode(child.id)!!.parentId)
         db.openHelper.writableDatabase.execSQL("DROP TRIGGER ignore_move")
         db.openHelper.writableDatabase.execSQL("CREATE TRIGGER ignore_conversion BEFORE UPDATE OF purpose ON nodes BEGIN SELECT RAISE(IGNORE); END")
         assertTrue(runCatching { nodes.convertPurpose(child.id,NodePurpose.NOTE) }.isFailure)
@@ -112,7 +114,7 @@ class NodeEventRepositoryTest {
         assertEquals(listOf(NodeEventType.COMPLETED,NodeEventType.REOPENED,NodeEventType.COMPLETED,NodeEventType.CREATED),history(node.id).map { it.type })
     }
     @Test fun nodeSubtreeAndProjectDeletionCascadeEventsWithoutOrphans() = runBlocking {
-        val root = nodes.createNode("p",null,"Root"); val child = nodes.createNode("p",root.id,"Child"); nodes.setCompleted(child.id,true)
+        val root = nodes.createNode("p",null,"Root", purpose = com.r0ybt.arachn0de.domain.model.NodePurpose.LAYER); val child = nodes.createNode("p",root.id,"Child"); nodes.setCompleted(child.id,true)
         val other = nodes.createNode("p",null,"Other"); nodes.deleteNode(root.id)
         assertEquals(listOf(other.id),db.nodeEventDao().all().map { it.nodeId })
         db.projectDao().delete("p"); assertTrue(db.nodeEventDao().all().isEmpty())

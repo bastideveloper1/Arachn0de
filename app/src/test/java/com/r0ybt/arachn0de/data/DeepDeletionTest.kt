@@ -45,6 +45,7 @@ class DeepDeletionTest {
                     parentId = if (index == 0) parentId else "deep-${index - 1}",
                     title = "Level $index", description = "", isCompleted = false,
                     position = 0, createdAt = 1, updatedAt = 1,
+                    purpose = if (index < 1199) "LAYER" else "ACTION",
                 ))
             }
         }
@@ -54,14 +55,15 @@ class DeepDeletionTest {
     @Test
     fun deletesDeepSubtreeAndPreservesOtherBranches() = runBlocking {
         val project = projects.createProject("Deep")
-        val parent = nodes.createNode(project.id, null, "Parent")
+        val parent = nodes.createNode(project.id, null, "Parent", purpose = com.r0ybt.arachn0de.domain.model.NodePurpose.LAYER)
         val sibling = nodes.createNode(project.id, null, "Sibling")
         nodes.setCompleted(sibling.id, true)
         val root = deepTree(project.id, parent.id)
         assertTrue(nodes.deleteNode(root))
         assertFalse(nodes.deleteNode(root))
         assertEquals(setOf(parent.id, sibling.id), nodes.getProjectNodes(project.id).map { it.id }.toSet())
-        assertTrue(nodes.getNode(parent.id)!!.isCompletable)
+        assertTrue(nodes.getNode(parent.id)!!.isStructural)
+        assertFalse(nodes.getNode(parent.id)!!.hasChildren)
         assertFalse(nodes.getNode(parent.id)!!.isCompleted)
         assertTrue(nodes.getNode(sibling.id)!!.isCompleted)
     }
@@ -81,7 +83,7 @@ class DeepDeletionTest {
     @Test
     fun failedDeletionRollsBackDetachedRelationships() = runBlocking {
         val project = projects.createProject("Rollback")
-        val parent = nodes.createNode(project.id, null, "Parent")
+        val parent = nodes.createNode(project.id, null, "Parent", purpose = com.r0ybt.arachn0de.domain.model.NodePurpose.LAYER)
         val root = deepTree(project.id, parent.id)
         val before = nodes.getProjectNodes(project.id)
         db.openHelper.writableDatabase.execSQL("""

@@ -63,7 +63,7 @@ class RecoveryUxTest {
         compose.onNodeWithText("2 seleccionados").assertDoesNotExist()
     }
     @Test fun bulkMoveSelectionClearsAndContextNavigationDoesNotCarrySelection() {
-        val rows=runBlocking { listOf(app.nodeRepository.createNode(project,null,"First"),app.nodeRepository.createNode(project,null,"Second"),app.nodeRepository.createNode(project,null,"Destination")) }
+        val rows=runBlocking { listOf(app.nodeRepository.createNode(project,null,"First"),app.nodeRepository.createNode(project,null,"Second"),app.nodeRepository.createNode(project,null,"Destination",purpose=NodePurpose.LAYER)) }
         open();await("First")
         compose.onAllNodesWithContentDescription("Más opciones")[0].performTouchInput { longClick() };await("1 seleccionados");click("Second");click("Mover");await("Mover 2 elementos")
         compose.onNodeWithTag("navigator-node:${rows[2].id}").performScrollTo().performClick();await("2 elementos movidos")

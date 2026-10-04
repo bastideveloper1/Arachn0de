@@ -75,7 +75,7 @@ class RecurrenceRepositoryTest {
     }
     @Test fun octoberSnapshotRemainsOldNovemberUsesEditedTemplateAndPeopleAndDestination() = runBlocking {
         db.personDao().insert(PersonEntity("roy", "Roy", null)); db.personDao().insert(PersonEntity("ana", "Ana", null))
-        val layer = nodes.createNode("project", null, "Capa")
+        val layer = nodes.createNode("project", null, "Capa", purpose = com.r0ybt.arachn0de.domain.model.NodePurpose.LAYER)
         repo.create(rule(), setOf("roy")); repo.materializeDue()
         val october = nodes.getProjectNodes("project").single { it.obligation != null }
         repo.editTemplate("rule", "project", layer.id, "Nuevo plan", "Nuevo", Obligation(17000, "CLP"), setOf("ana"))
@@ -133,7 +133,7 @@ class RecurrenceRepositoryTest {
         db.openHelper.writableDatabase.execSQL("DROP TRIGGER fail_receipt"); repo.materializeDue(); assertEquals(1, nodes.getProjectNodes("project").size)
     }
     @Test fun deletedDestinationPausesRatherThanLosingRuleOrHistory() = runBlocking {
-        val layer = nodes.createNode("project", null, "Capa"); repo.create(rule().copy(parentId = layer.id)); repo.materializeDue()
+        val layer = nodes.createNode("project", null, "Capa", purpose = com.r0ybt.arachn0de.domain.model.NodePurpose.LAYER); repo.create(rule().copy(parentId = layer.id)); repo.materializeDue()
         nodes.deleteNode(layer.id); at("2026-11-10"); repo.materializeDue()
         assertEquals("PAUSED", repo.get("rule")!!.status); assertEquals(1, db.recurrenceDao().occurrences().size)
         repo.editTemplate("rule", "project", null, "Reparado", "", null, emptySet()); repo.setStatus("rule", RecurrenceStatus.ACTIVE)

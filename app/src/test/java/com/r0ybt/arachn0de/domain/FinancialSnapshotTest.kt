@@ -9,13 +9,18 @@ import java.util.*
 class FinancialSnapshotTest {
     private val utc = TimeZone.getTimeZone("UTC")
     private val month = CalendarMonth(2026,10)
+    // Explicit structural purposes for the synthetic hierarchy used by these tests.
+    private fun fixtureTree(nodes: List<Node>): NodeTreeSnapshot {
+        val parents = nodes.mapNotNull { it.parentId }.toSet()
+        return NodeTreeSnapshot(nodes.map { if (it.id in parents) it.copy(purpose = NodePurpose.LAYER) else it })
+    }
     private fun due(m: Int, d: Int = 15, h: Int = 12) = GregorianCalendar(utc).apply { clear(); set(2026,m-1,d,h,0) }.timeInMillis
     private fun node(id: String, parent: String? = null, project: String = "p", money: Obligation? = null,
         completed: Boolean = false, date: Long? = null, purpose: NodePurpose = NodePurpose.ACTION, created: Long = 1) =
         Node(id,project,parent,id,"",completed,999,created,1,false,dueAt=date,purpose=purpose,obligation=money)
     private fun snapshot(nodes: List<Node>, period: FinancialPeriod = FinancialPeriod.ALL, person: String? = null,
         assignments: Map<String,List<Person>> = emptyMap(), zone: TimeZone = utc) =
-        FinancialSnapshot(NodeTreeSnapshot(nodes),assignments,FinancialSelection(period,person),month,zone)
+        FinancialSnapshot(fixtureTree(nodes),assignments,FinancialSelection(period,person),month,zone)
     private val clp = Obligation(50000,"CLP")
     private val usd = Obligation(1050,"USD")
 

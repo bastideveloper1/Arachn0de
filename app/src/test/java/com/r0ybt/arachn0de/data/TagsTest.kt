@@ -36,7 +36,7 @@ class TagsTest {
     }
     @Test fun allNodeTypesNoInheritanceAndCascadesOnlyRelations() = runBlocking {
         val tag = nodes.tags.create("A")
-        val root = nodes.createNode("p",null,"Root",tagIds=setOf(tag.id))
+        val root = nodes.createNode("p",null,"Root",purpose=NodePurpose.LAYER,tagIds=setOf(tag.id))
         val leaf = nodes.createNode("p",root.id,"Leaf")
         val note = nodes.createNode("p",root.id,"Note",purpose=NodePurpose.NOTE,tagIds=setOf(tag.id))
         val bill = nodes.createNode("p",root.id,"Bill",obligation=Obligation(12,"CLP"),tagIds=setOf(tag.id))
@@ -65,8 +65,8 @@ class TagsTest {
     }
     @Test fun scopedAndFiltersKeepOnlyMinimalAncestorsWithoutChangingProgress() = runBlocking {
         val tag = nodes.tags.create("Match")
-        val root = nodes.createNode("p",null,"Root")
-        val branch = nodes.createNode("p",root.id,"Branch")
+        val root = nodes.createNode("p",null,"Root",purpose=NodePurpose.LAYER)
+        val branch = nodes.createNode("p",root.id,"Branch",purpose=NodePurpose.LAYER)
         val leaf = nodes.createNode("p",branch.id,"Match",dueAt=10,tagIds=setOf(tag.id),responsibleIds=emptySet())
         nodes.createNode("p",root.id,"Other")
         nodes.createNode("other",null,"Outside",tagIds=setOf(tag.id))

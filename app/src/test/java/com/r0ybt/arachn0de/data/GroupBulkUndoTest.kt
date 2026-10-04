@@ -24,7 +24,7 @@ class GroupBulkUndoTest {
     private suspend fun batch(id:String="g",count:Int=12)=repo.createBatch("p",null,id,NodeBatchGenerator.generate(NodeBatchParameters("Cuota",count,NumberingMode.SUFFIX,1,description="Base",temporalRule=BatchTemporalRule.MONTHLY,firstDueAt=1769853600000,obligation=Obligation(10000,"CLP"),priority=Priority.LOW),java.util.TimeZone.getTimeZone("UTC")),setOf("person"))
     @Test fun groupIdentitySurvivesMovesEditsAndPartialDeletionAndIndividualHasNone()=runBlocking {
         val group=batch();assertTrue(group.all { it.creationGroupId=="g" });assertTrue(batch("h",2).all { it.creationGroupId=="h" })
-        val parent=repo.createNode("p",null,"Parent");assertNull(parent.creationGroupId)
+        val parent=repo.createNode("p",null,"Parent", purpose = com.r0ybt.arachn0de.domain.model.NodePurpose.LAYER);assertNull(parent.creationGroupId)
         assertTrue(repo.moveNode(group[0].id,parent.id));assertTrue(repo.updateNode(group[0].id,"Changed"));assertTrue(repo.deleteNode(group[1].id))
         assertEquals(11,repo.groupMembers("g").size);assertEquals("g",repo.getNode(group[0].id)!!.creationGroupId)
     }
@@ -42,10 +42,10 @@ class GroupBulkUndoTest {
         assertTrue(runCatching { repo.undoCreation(undo) }.isFailure);assertEquals(3,repo.getProjectNodes("p").size)
         db.openHelper.writableDatabase.execSQL("DROP TRIGGER undo_fail")
         repo.tags.assignNode(nodes.first().id,setOf(repo.tags.create("new tag").id));assertFalse(repo.undoCreation(undo));assertEquals(3,repo.getProjectNodes("p").size)
-        val leaf=repo.createNode("p",null,"Leaf");val token=repo.captureCreation(listOf(leaf.id));repo.createNode("p",leaf.id,"Child");assertFalse(repo.undoCreation(token))
+        val leaf=repo.createNode("p",null,"Leaf");val token=repo.captureCreation(listOf(leaf.id));repo.convertPurpose(leaf.id,NodePurpose.LAYER);repo.createNode("p",leaf.id,"Child");assertFalse(repo.undoCreation(token))
     }
     @Test fun deleteNormalizesParentChildAndPreservesExternalSiblingsAndRollsBack()=runBlocking {
-        val parent=repo.createNode("p",null,"Parent");val child=repo.createNode("p",parent.id,"Child");val note=repo.createNode("p",null,"Note",purpose=NodePurpose.NOTE)
+        val parent=repo.createNode("p",null,"Parent", purpose = com.r0ybt.arachn0de.domain.model.NodePurpose.LAYER);val child=repo.createNode("p",parent.id,"Child");val note=repo.createNode("p",null,"Note",purpose=NodePurpose.NOTE)
         val sibling=repo.createNode("p",null,"Sibling")
         db.openHelper.writableDatabase.execSQL("CREATE TRIGGER delete_fail BEFORE DELETE ON nodes WHEN OLD.id='${note.id}' BEGIN SELECT RAISE(ABORT,'fail'); END")
         assertTrue(runCatching { repo.deleteSelected("p",setOf(parent.id,child.id,note.id)) }.isFailure);assertEquals(4,repo.getProjectNodes("p").size);assertEquals(parent.id,repo.getNode(child.id)!!.parentId)
@@ -53,7 +53,7 @@ class GroupBulkUndoTest {
         repo.deleteSelected("p",setOf(parent.id,child.id,note.id));assertEquals(listOf(sibling.id),repo.getProjectNodes("p").map { it.id });assertEquals(1,db.nodeEventDao().all().size)
     }
     @Test fun movesNormalizeRootsPreserveRelativeOrderAndGroupAndRejectCyclesAtomically()=runBlocking {
-        val group=batch(count=3);val destination=repo.createNode("p",null,"Destination")
+        val group=batch(count=3);val destination=repo.createNode("p",null,"Destination", purpose = com.r0ybt.arachn0de.domain.model.NodePurpose.LAYER)
         repo.moveSelected("p",setOf(group[2].id,group[0].id),destination.id)
         assertEquals(listOf(group[0].id,group[2].id),repo.observeProjectState("p").first().childrenOf(destination.id).map { it.id })
         assertEquals("g",repo.getNode(group[0].id)!!.creationGroupId)
@@ -70,7 +70,7 @@ class GroupBulkUndoTest {
         before.forEach { old -> val changed=repo.getNode(old.id)!!;assertEquals(old.copy(obligation=Obligation(12000,old.obligation!!.currencyCode),updatedAt=changed.updatedAt),changed) };assertEquals(events,db.nodeEventDao().all())
     }
     @Test fun multiplePatchesReachMovedExistingMembersAndRollbackRelationships()=runBlocking {
-        val nodes=batch();repo.deleteNode(nodes.last().id);val parent=repo.createNode("p",null,"Parent");repo.moveNode(nodes[0].id,parent.id)
+        val nodes=batch();repo.deleteNode(nodes.last().id);val parent=repo.createNode("p",null,"Parent", purpose = com.r0ybt.arachn0de.domain.model.NodePurpose.LAYER);repo.moveNode(nodes[0].id,parent.id)
         val before=repo.getProjectNodes("p");val tag=repo.tags.create("tag");val source=repo.getNode(nodes[1].id)!!;val ids=repo.groupMembers("g").map { it.id }.toSet()
         val patch=SharedNodePatch(description="New",amount=FieldChange(12000L),priority=Priority.MEDIUM,tags=setOf(tag.id),responsibleIds=emptySet())
         db.openHelper.writableDatabase.execSQL("CREATE TRIGGER patch_fail BEFORE INSERT ON node_tag WHEN NEW.nodeId='${nodes[2].id}' BEGIN SELECT RAISE(ABORT,'fail'); END")

@@ -39,8 +39,8 @@ class FinancialUiTest {
             app=ApplicationProvider.getApplicationContext()
             runBlocking {
                 project=app.projectRepository.createProject("Personal").id
-                root=app.nodeRepository.createNode(project,null,"Salud").id
-                val inner=app.nodeRepository.createNode(project,root,"Tratamiento").id
+                root=app.nodeRepository.createNode(project,null,"Salud", purpose = com.r0ybt.arachn0de.domain.model.NodePurpose.LAYER).id
+                val inner=app.nodeRepository.createNode(project,root,"Tratamiento", purpose = com.r0ybt.arachn0de.domain.model.NodePurpose.LAYER).id
                 bill=app.nodeRepository.createNode(project,inner,"Cuenta",dueAt=fixed,obligation=Obligation(50000,"CLP")).id
                 undated=app.nodeRepository.createNode(project,null,"Sin fecha",obligation=Obligation(1050,"USD")).id
                 app.personRepository.save("r","Roy",null);app.personRepository.save("s","Scarlett",null)
@@ -59,7 +59,7 @@ class FinancialUiTest {
         awaitText("Personal");compose.onNodeWithContentDescription("Abrir menú").performClick();compose.onNodeWithText("Obligaciones").performScrollTo().performClick()
         awaitTag("financial-summary")
     }
-    private fun row(id:String) { compose.onNodeWithTag("obligations-list").performScrollToNode(hasTestTag("obligation-task:$id"));awaitTag("obligation-task:$id") }
+    private fun row(id:String) { awaitTag("financial-summary"); compose.onNodeWithTag("obligations-list").performScrollToNode(hasTestTag("obligation-task:$id"));awaitTag("obligation-task:$id") }
     private fun filter(text:String) { compose.onNodeWithTag("obligations-list").performScrollToIndex(0);compose.onNodeWithText(text).performClick() }
     private fun person(name:String) {
         compose.onNodeWithTag("obligations-list").performScrollToIndex(0)

@@ -34,9 +34,9 @@ class AttentionRepositoryTest {
     private suspend fun attention() = AttentionSnapshot(nodes.observeAllState().first(), now)
 
     @Test fun moveCompletionShapeAndDeletionReactWithoutMutatingDatesOrResponsibilities() = runBlocking {
-        val a = nodes.createNode(project, null, "Old branch")
-        val b = nodes.createNode(project, a.id, "Old inner")
-        val target = nodes.createNode(project, null, "New branch")
+        val a = nodes.createNode(project, null, "Old branch", purpose = com.r0ybt.arachn0de.domain.model.NodePurpose.LAYER)
+        val b = nodes.createNode(project, a.id, "Old inner", purpose = com.r0ybt.arachn0de.domain.model.NodePurpose.LAYER)
+        val target = nodes.createNode(project, null, "New branch", purpose = com.r0ybt.arachn0de.domain.model.NodePurpose.LAYER)
         val task = nodes.createNode(project, b.id, "Urgent", dueAt = now - 1)
         people.save("p", "Roy", null); people.setResponsiblePeople(task.id, setOf("p"))
         val before = attention()
@@ -57,21 +57,24 @@ class AttentionRepositoryTest {
         assertTrue(attention().tasks.isEmpty())
         nodes.setCompleted(task.id, false)
         assertEquals(listOf(task.id), attention().tasks.map { it.id })
+        assertTrue(nodes.convertPurpose(task.id, com.r0ybt.arachn0de.domain.model.NodePurpose.LAYER))
         val child = nodes.createNode(project, task.id, "Child")
         assertTrue(attention().tasks.isEmpty())
         assertEquals(dates, nodes.getNode(task.id)!!.dueAt)
         nodes.deleteNode(child.id)
+        assertTrue(nodes.getNode(task.id)!!.isStructural)
+        assertTrue(nodes.convertPurpose(task.id, NodePurpose.ACTION))
         assertEquals(listOf(task.id), attention().tasks.map { it.id })
         nodes.deleteNode(task.id)
         assertTrue(attention().tasks.isEmpty())
         assertTrue(people.observeAllAssignments().first().isEmpty())
         assertEquals(1, people.observePeople().first().size)
-        assertEquals(14, db.openHelper.readableDatabase.version)
+        assertEquals(16, db.openHelper.readableDatabase.version)
     }
 
     @Test fun globalProjectionAndAssignmentsObserveMultipleProjectsAndNameChanges() = runBlocking {
         val otherProject = ProjectRepository(db.projectDao()).createProject("Work").id
-        val layer = nodes.createNode(project, null, "Layer")
+        val layer = nodes.createNode(project, null, "Layer", purpose = com.r0ybt.arachn0de.domain.model.NodePurpose.LAYER)
         val task = nodes.createNode(project, layer.id, "Same title", dueAt = now)
         val other = nodes.createNode(otherProject, null, "Same title", dueAt = now - 1)
         people.save("p", "Roy", null); people.setResponsiblePeople(task.id, setOf("p"))

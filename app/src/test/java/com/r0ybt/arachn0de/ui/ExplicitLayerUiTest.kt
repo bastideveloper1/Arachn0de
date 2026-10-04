@@ -68,12 +68,14 @@ class ExplicitLayerUiTest {
         assertEquals(NodePurpose.LAYER,converted.purpose);assertNull(converted.parentId)
         compose.onNodeWithText("Source").assertDoesNotExist()
     }
-    @Test fun actionRequiresExplicitLayerConversionBeforeCreatingChildren() {
+    @Test fun pendingActionConvertsAutomaticallyWhenCreatingFirstChild() {
         val task=runBlocking { app.nodeRepository.createNode(target.id,null,"Action") }
         await("Target");compose.onNodeWithText("Target").performClick();await("Action")
         compose.onNodeWithTag("nodes-list").performScrollToNode(hasText("Action"));compose.onNodeWithText("Action").performClick()
-        compose.onNodeWithText("Nuevo elemento").assertIsNotEnabled()
-        compose.onNodeWithContentDescription("Opciones del elemento").performScrollTo().performClick();compose.onNodeWithText("Convertir en capa").performScrollTo().performClick()
+        compose.onNodeWithText("Nuevo elemento").assertIsEnabled().performClick()
+        await("Título")
+        compose.onNodeWithText("Título").performScrollTo().performTextInput("First child")
+        compose.onNode(hasText("Guardar") or hasText("Crear")).performClick()
         compose.waitUntil(10000) { runBlocking { app.nodeRepository.getNode(task.id)?.purpose==NodePurpose.LAYER } }
         compose.onNodeWithText("Nuevo elemento").assertIsEnabled()
     }

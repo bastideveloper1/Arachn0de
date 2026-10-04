@@ -57,6 +57,7 @@ class TaskDatesIntegrationTest {
         runBlocking {
             assertEquals(due, app.nodeRepository.getNode(task)!!.dueAt)
             assertEquals("p", app.personRepository.observeAssignments(project).first().getValue(task).single().id)
+            assertTrue(app.nodeRepository.convertPurpose(task, com.r0ybt.arachn0de.domain.model.NodePurpose.LAYER))
             app.nodeRepository.createNode(project, task, "Child")
         }
         compose.waitUntil(10_000) { compose.onAllNodesWithContentDescription("Capa").fetchSemanticsNodes().isNotEmpty() }

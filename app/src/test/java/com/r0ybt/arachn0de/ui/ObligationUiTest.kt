@@ -62,7 +62,7 @@ class ObligationUiTest {
         assertEquals(setOf("r", "s"), runBlocking { app.database.personDao().assignmentIds(node.id).toSet() })
         listTo("Bill"); compose.onNodeWithText("Bill").performClick(); await("CAPA 1")
         compose.onNodeWithText("Nuevo elemento").assertIsNotEnabled(); compose.onNodeWithText("Crear varios").assertDoesNotExist()
-        listTo("Editar"); compose.onNodeWithText("Editar").performClick(); toggle()
+        compose.onNodeWithTag("nodes-list").performScrollToNode(hasContentDescription("Opciones del elemento")); compose.onNodeWithContentDescription("Opciones del elemento").performClick(); compose.onNodeWithText("Editar").performClick(); toggle()
         compose.onNode(hasText("Guardar") or hasText("Crear")).performClick(); await("Eliminar datos financieros")
         compose.onNodeWithTag("cancel-remove-obligation").performClick()
         assertEquals(Obligation(1050,"USD"),runBlocking { app.nodeRepository.getNode(node.id)!!.obligation })

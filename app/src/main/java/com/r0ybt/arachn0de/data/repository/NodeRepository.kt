@@ -36,6 +36,19 @@ class NodeRepository(
     val recurrence = RecurrenceRepository(database, currentTimeMillis)
     private val nodeDao = database.nodeDao()
 
+    /** Derived from existing history; no schema or persisted presentation order. */
+    fun observeCompletionTimes(projectId: String): Flow<Map<String, Long>> =
+        database.invalidationTracker.createFlow("nodes", "node_events").map {
+            val ids = nodeDao.getProjectNodes(projectId).map { it.id }
+            val result = mutableMapOf<String, Long>()
+            ids.chunked(500).forEach { batch ->
+                database.nodeEventDao().eventsForNodes(batch).forEach { event ->
+                    if (event.type == "COMPLETED") result.putIfAbsent(event.nodeId, event.occurredAt)
+                }
+            }
+            result.toMap()
+        }.flowOn(Dispatchers.Default)
+
     fun observeHistory(nodeId: String) = database.nodeEventDao().observe(nodeId).map { rows -> rows.map { it.toEvent() } }
         .flowOn(Dispatchers.Default)
 
@@ -434,13 +447,13 @@ class NodeRepository(
         while (ancestor != null) {
             require(ancestor !in rootsSet && visited.add(ancestor)) { "Destino dentro de la selección." }
             val parent = requireNotNull(byId[ancestor]) { "Destino ausente." }
-            require(parent.purpose == NodePurpose.LAYER && parent.obligation == null) { "Destino incompatible." }
+            require(parent.obligation == null && (parent.isStructural || (ancestor == parentId && parent.canReceiveChildren))) { "Destino incompatible." }
             ancestor = parent.parentId
         }
         val changing = roots.filter { byId.getValue(it).parentId != parentId }
         if (changing.isNotEmpty()) {
             val at = currentTimeMillis()
-            reopenBeforeConversion(parentId, at)
+            validateParent(projectId, parentId)
             var maximum = nodes.filter { it.parentId == parentId }.maxOfOrNull { it.position } ?: -1
             if (maximum.toLong() + changing.size > Int.MAX_VALUE) {
                 writeOrder(nodeDao.getSiblings(projectId, parentId))
@@ -554,9 +567,12 @@ class NodeRepository(
             val parent = nodeDao.getById(currentId)
             requireNotNull(parent) { "Parent node not found" }
             require(parent.amountMinor == null) { "Convierte esta obligación en una tarea antes de usarla como capa." }
-            require(parent.purpose == NodePurpose.LAYER.name) { "Only layers can receive children" }
+            require(parent.purpose == NodePurpose.LAYER.name || (currentId == parentId && parent.purpose == "ACTION" && !parent.isCompleted)) { "Only layers or pending tasks can receive children" }
             require(parent.projectId == projectId) { "Parent node must belong to the same project" }
             currentId = parent.parentId
+        }
+        if (parentId != null && nodeDao.getById(parentId)?.purpose == "ACTION") {
+            check(convertPurpose(parentId, NodePurpose.LAYER)) { "Destination conversion was not written" }
         }
     }
 

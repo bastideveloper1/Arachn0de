@@ -16,7 +16,7 @@ internal object NodePresentationSort {
     private fun priority(node: Node) = when (node.effectivePriority) {
         Priority.HIGH -> 3; Priority.MEDIUM -> 2; Priority.LOW -> 1; Priority.NONE -> 0
     }
-    fun comparator(mode: NodeSortMode): Comparator<Node> {
+    fun comparator(mode: NodeSortMode, completedAt: Map<String, Long> = emptyMap()): Comparator<Node> {
         val criterion = when (mode) {
             NodeSortMode.MANUAL -> manual
             NodeSortMode.DUE_PRIORITY -> dueAscending.thenByDescending { priority(it) }.then(manual)
@@ -27,15 +27,19 @@ internal object NodePresentationSort {
             NodeSortMode.CREATED_OLDEST -> compareBy<Node> { it.createdAt }.thenBy { it.position }.thenBy { it.id }
         }
         // Existing Available/Completed sections are preserved, including in filtered trees.
-        return compareBy<Node> { it.isCompleted }.then(criterion)
+        val completion = Comparator<Node> { a, b ->
+            if (mode == NodeSortMode.MANUAL && a.isCompleted && b.isCompleted)
+                compareValues(completedAt[b.id], completedAt[a.id]) else 0
+        }
+        return compareBy<Node> { it.isCompleted }.then(completion).then(criterion)
     }
-    fun children(nodes: List<Node>, mode: NodeSortMode): List<Node> = nodes.sortedWith(comparator(mode))
+    fun children(nodes: List<Node>, mode: NodeSortMode, completedAt: Map<String, Long> = emptyMap()): List<Node> = nodes.sortedWith(comparator(mode, completedAt))
 
     /** Retain minimal context, depth and matching flags; only siblings change order. */
-    fun filtered(rows: List<FilteredNodeRow>, mode: NodeSortMode): List<FilteredNodeRow> {
-        if (mode == NodeSortMode.MANUAL) return rows
+    fun filtered(rows: List<FilteredNodeRow>, mode: NodeSortMode, completedAt: Map<String, Long> = emptyMap()): List<FilteredNodeRow> {
+        if (mode == NodeSortMode.MANUAL && completedAt.isEmpty()) return rows
         val ids = rows.mapTo(hashSetOf()) { it.node.id }
-        val nodeComparator = comparator(mode)
+        val nodeComparator = comparator(mode, completedAt)
         val comparator = Comparator<FilteredNodeRow> { a, b -> nodeComparator.compare(a.node, b.node) }
         val children = rows.groupBy { it.node.parentId }.mapValues { (_, siblings) -> siblings.sortedWith(comparator) }
         val roots = rows.filter { it.node.parentId !in ids }.sortedWith(comparator)

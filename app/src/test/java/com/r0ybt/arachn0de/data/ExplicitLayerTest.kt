@@ -31,9 +31,10 @@ class ExplicitLayerTest {
         nodes.deleteNode(child.id);assertEquals(NodePurpose.LAYER,nodes.getNode(b.id)!!.purpose)
         assertTrue(nodes.convertPurpose(b.id,NodePurpose.ACTION));assertTrue(nodes.getNode(b.id)!!.isCompletable)
     }
-    @Test fun actionAndNoteRejectChildrenAtRepositoryAndSql()=runBlocking {
+    @Test fun completedActionAndNoteRejectChildrenAtRepositoryAndSql()=runBlocking {
         for(purpose in listOf(NodePurpose.ACTION,NodePurpose.NOTE)) {
             val parent=nodes.createNode("p",null,purpose.name,purpose=purpose)
+            if (purpose == NodePurpose.ACTION) nodes.setCompleted(parent.id,true)
             assertTrue(runCatching { nodes.createNode("p",parent.id,"Child") }.isFailure)
             assertTrue(runCatching { db.nodeDao().insert(NodeEntity("child-${purpose.name}","p",parent.id,"Child","",false,0,1,1)) }.isFailure)
             assertEquals(purpose,nodes.getNode(parent.id)!!.purpose)

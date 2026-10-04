@@ -8,6 +8,21 @@ class NodePresentationSortTest {
     private fun node(id: String, position: Int = 0, due: Long? = null, priority: Priority = Priority.NONE, created: Long = 100) =
         Node(id,"p",null,id,"",false,position,created,200,false,dueAt=due,priority=priority)
     private fun ids(nodes: List<Node>, mode: NodeSortMode) = NodePresentationSort.children(nodes,mode).map { it.id }
+    @Test fun historyOrdersOnlyManualCompletedTasksAndPreservesFilterContext() {
+        val pendingA=node("p1",0);val pendingB=node("p2",1)
+        val old=node("old",2,1).copy(isCompleted=true)
+        val recent=node("recent",3,2).copy(isCompleted=true)
+        val unknown=node("unknown",4).copy(isCompleted=true)
+        val times=mapOf("old" to 10L,"recent" to 20L)
+        val input=listOf(unknown,recent,old,pendingB,pendingA)
+        assertEquals(listOf("p1","p2","recent","old","unknown"),NodePresentationSort.children(input,NodeSortMode.MANUAL,times).map { it.id })
+        assertEquals(listOf("p1","p2","old","recent","unknown"),NodePresentationSort.children(input,NodeSortMode.DUE_ASC,times).map { it.id })
+        val layer=node("layer").copy(purpose=NodePurpose.LAYER)
+        val rows=listOf(FilteredNodeRow(layer,0,false),FilteredNodeRow(old.copy(parentId=layer.id),1,true),FilteredNodeRow(recent.copy(parentId=layer.id),1,true))
+        val sorted=NodePresentationSort.filtered(rows,NodeSortMode.MANUAL,times)
+        assertEquals(listOf("layer","recent","old"),sorted.map { it.node.id })
+        assertEquals(listOf(0,1,1),sorted.map { it.depth })
+    }
     @Test fun dueAndPriorityUsesDatesThenRankThenStableTies() {
         val input=listOf(node("none",due=null,priority=Priority.HIGH),node("low",due=5,priority=Priority.LOW),node("high",due=5,priority=Priority.HIGH),node("early",due=1),node("tie",position=1,due=5,priority=Priority.HIGH))
         assertEquals(listOf("early","high","tie","low","none"),ids(input,NodeSortMode.DUE_PRIORITY))

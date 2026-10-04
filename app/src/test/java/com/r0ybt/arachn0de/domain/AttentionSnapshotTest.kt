@@ -11,7 +11,7 @@ class AttentionSnapshotTest {
         Node(id, project, parent, id, "", completed, position, 0, 0, false, start, due)
     private fun tree(nodes: List<Node>): NodeTreeSnapshot {
         val parents = nodes.mapNotNull { it.parentId }.toSet()
-        return NodeTreeSnapshot(nodes.map { it.copy(hasChildren = it.id in parents) })
+        return NodeTreeSnapshot(nodes.map { it.copy(hasChildren = it.id in parents, purpose = if (it.id in parents) NodePurpose.LAYER else it.purpose) })
     }
 
     @Test fun onlyOperativeUpcomingAndOverdueLeavesGenerateAttention() {

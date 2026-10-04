@@ -36,8 +36,8 @@ class AttentionUiTest {
             app = ApplicationProvider.getApplicationContext()
             runBlocking {
                 project = app.projectRepository.createProject("Personal").id
-                root = app.nodeRepository.createNode(project, null, "Salud").id
-                inner = app.nodeRepository.createNode(project, root, "Tratamiento").id
+                root = app.nodeRepository.createNode(project, null, "Salud", purpose = com.r0ybt.arachn0de.domain.model.NodePurpose.LAYER).id
+                inner = app.nodeRepository.createNode(project, root, "Tratamiento", purpose = com.r0ybt.arachn0de.domain.model.NodePurpose.LAYER).id
                 urgent = app.nodeRepository.createNode(project, inner, "Mismo título", dueAt = fixed - 1).id
                 val work = app.projectRepository.createProject("Trabajo").id
                 other = app.nodeRepository.createNode(work, null, "Mismo título", dueAt = fixed + 10_000).id
@@ -77,7 +77,7 @@ class AttentionUiTest {
         assertEquals(before, runBlocking { app.nodeRepository.getProjectNodes(project) })
         compose.onNodeWithTag("attention-task:$urgent").performClick()
         awaitText("CAPA 3")
-        compose.onNodeWithTag("nodes-list").performScrollToNode(hasText("Responsables"))
+        compose.onNodeWithTag("nodes-list").performScrollToNode(hasContentDescription("Roy"))
         compose.onNodeWithContentDescription("Roy").assertExists()
         restoration.emulateSavedInstanceStateRestore()
         awaitText("CAPA 3")
@@ -106,7 +106,7 @@ class AttentionUiTest {
         compose.waitUntil(10_000) { compose.onAllNodesWithTag("attention-task:$urgent").fetchSemanticsNodes().isEmpty() }
         runBlocking { app.nodeRepository.setCompleted(urgent, false) }
         awaitTag("attention-task:$urgent")
-        val target = runBlocking { app.nodeRepository.createNode(project, null, "Destino").id }
+        val target = runBlocking { app.nodeRepository.createNode(project, null, "Destino", purpose = com.r0ybt.arachn0de.domain.model.NodePurpose.LAYER).id }
         runBlocking { app.nodeRepository.moveNode(urgent, target) }
         awaitText("Personal › Destino")
         runBlocking { app.nodeRepository.updateNode(target, "Hogar", ""); app.personRepository.save("p", "María", null, isNew = false) }

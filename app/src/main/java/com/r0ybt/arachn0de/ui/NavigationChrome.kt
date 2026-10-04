@@ -87,15 +87,16 @@ internal fun AppIdentityDrawer(onDismiss: () -> Unit, onPeople: (() -> Unit)? = 
 }
 
 @Composable
-internal fun HeaderBar(onMenuClick: () -> Unit, trailingAction: (@Composable () -> Unit)? = null) {
+internal fun HeaderBar(onMenuClick: () -> Unit, trailingAction: (@Composable () -> Unit)? = null, title: String = "Arachn0de") {
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         IconButton(onClick = onMenuClick, modifier = Modifier.size(48.dp)
             .background(Arachn0deColors.SurfaceRaised, androidx.compose.foundation.shape.RoundedCornerShape(12.dp))) {
             Icon(Icons.Default.Menu, "Abrir menú", tint = Arachn0deColors.Accent)
         }
         Spacer(Modifier.width(10.dp))
-        Text("Arachn0de", color = Arachn0deColors.TextSecondary, fontSize = 16.sp,
-            modifier = Modifier.weight(1f))
+        Text(title, color = Arachn0deColors.TextSecondary, fontSize = 16.sp,
+            maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f).testTag("app-bar-title"))
         trailingAction?.invoke()
     }
 }

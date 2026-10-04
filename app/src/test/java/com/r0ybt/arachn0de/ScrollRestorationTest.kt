@@ -25,7 +25,7 @@ class ScrollRestorationTest {
                 val project = ProjectRepository(app.database.projectDao()) { 1L }.createProject("Proyecto scroll")
                 repeat(35) { i ->
                     ProjectRepository(app.database.projectDao()) { 100L + i }.createProject("Proyecto $i")
-                    val node = app.nodeRepository.createNode(project.id, null, "Raíz $i")
+                    val node = app.nodeRepository.createNode(project.id, null, "Raíz $i", purpose = com.r0ybt.arachn0de.domain.model.NodePurpose.LAYER)
                     if (i != 20) app.nodeRepository.createNode(project.id, node.id, "Tarea")
                     if (i == 20) repeat(35) { j -> app.nodeRepository.createNode(project.id, node.id, "Hijo $j") }
                 }

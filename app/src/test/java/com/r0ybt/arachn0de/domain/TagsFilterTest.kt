@@ -6,7 +6,7 @@ import org.junit.Assert.*
 import java.util.TimeZone
 
 class TagsFilterTest {
-    private fun node(id: String,parent: String? = null,children: Boolean = false) = Node(id,"p",parent,id,"",false,0,1,1,children,dueAt=10)
+    private fun node(id: String,parent: String? = null,children: Boolean = false) = Node(id,"p",parent,id,"",false,0,1,1,children,dueAt=10,purpose=if(children) NodePurpose.LAYER else NodePurpose.ACTION)
     @Test fun deepProjectionIsIterativeAndContextIsNotAMatch() {
         val nodes = (0 until 10000).map { node("$it",if (it==0) null else "${it-1}",it<9999) }
         val tree = NodeTreeSnapshot(nodes)

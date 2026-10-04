@@ -29,8 +29,8 @@ class NodeOrderTest {
         runBlocking { project = ProjectRepository(db.projectDao()).createProject("Order").id }
     }
     @After fun close() { db.close() }
-    private suspend fun insert(id: String, position: Int, parent: String? = null, created: Long = 1) {
-        db.nodeDao().insert(NodeEntity(id, project, parent, id, "description", false, position, created, 5))
+    private suspend fun insert(id: String, position: Int, parent: String? = null, created: Long = 1, purpose: String = "ACTION") {
+        db.nodeDao().insert(NodeEntity(id, project, parent, id, "description", false, position, created, 5, purpose=purpose))
     }
     private suspend fun ids(parent: String? = null) = db.nodeDao().getSiblings(project, parent).map { it.id }
 
@@ -80,8 +80,8 @@ class NodeOrderTest {
     }
 
     @Test fun childMoveDoesNotTouchOtherParentsDescendantsOrProjects() = runBlocking {
-        insert("parent",0); insert("other",1)
-        insert("a",0,"parent"); insert("b",1,"parent"); insert("grandchild",0,"a")
+        insert("parent",0,purpose="LAYER"); insert("other",1,purpose="LAYER")
+        insert("a",0,"parent",purpose="LAYER"); insert("b",1,"parent"); insert("grandchild",0,"a")
         insert("otherChild",8,"other")
         val otherProject=ProjectRepository(db.projectDao()).createProject("Other")
         nodes.createNode(otherProject.id,null,"Foreign")
@@ -121,13 +121,13 @@ class NodeOrderTest {
     }
 
     @Test fun preparedObservationRepairsAllLayersBeforeEmission() = runBlocking {
-        insert("a",10); insert("b",10); insert("child1",8,"a"); insert("child2",8,"a")
+        insert("a",10,purpose="LAYER"); insert("b",10); insert("child1",8,"a"); insert("child2",8,"a")
         val state=nodes.observePreparedProjectState(project).first()
         assertEquals(listOf(0,1),state.childrenOf(null).map { it.position })
         assertEquals(listOf(0,1),state.childrenOf("a").map { it.position })
     }
     @Test fun dropKeepsGroupsParentsAndSurvivesDatabaseReopen() = runBlocking {
-        insert("a", 8); insert("b", 8); insert("c", 8); insert("done", 9)
+        insert("a", 8); insert("b", 8); insert("c", 8,purpose="LAYER"); insert("done", 9)
         nodes.setCompleted("done", true)
         insert("child", 0, "c")
         assertFalse(nodes.reorderNodeTo("a", null, "done"))

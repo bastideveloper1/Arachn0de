@@ -2884,3 +2884,132 @@ pasó. Registro: `/tmp/sprint-validation2.log`; XML en
 No se ejecutaron suite global, lint ni release. No se realizó commit ni push.
 Los resultados Robolectric/Compose no acreditan pruebas físicas de APK,
 TalkBack, gestos, muerte de proceso ni rendimiento real en dispositivo.
+
+## Auditoría de cierre v0.2.4 Beta (2026-10-04)
+
+Estado inicial limpio: main y origin/main locales en 4f4adee. El diff real
+v0.2.3..HEAD contiene tres commits, incluidas correcciones de dogfooding,
+LAYER explícito, Project→Layer y Sprint. Se prepara 0.2.4/código 6;
+el APK oficial local v0.2.3 declara código 5. ApplicationId intacto.
+No se ejecutaron commit, tag, push ni publicación.
+
+Se actualizaron Gradle/versionado, CHANGELOG, RELEASING y notas de release.
+Las correcciones necesarias afectan pruebas: fixtures de padres LAYER,
+conversión explícita tras vaciar una capa, expectativas Room 16/triggers,
+controles actuales del menú y selectores de fecha, y espera de carga tras
+restaurar la pantalla financiera. No se cambió lógica de producción ni
+se eliminaron pruebas, añadieron supresiones o baselines.
+
+Room 16: cadena registrada 1→2→…→14→15→16, sin fallback destructivo.
+La prueba que parte del esquema 14 abre realmente Room 16 y verifica
+padres LAYER, hojas, relaciones, historial y foreign_key_check; 15→16
+preserva filas y arranca en modo NORMAL, sin workState. Las 26 ejecuciones
+de migración pasan en la suite final (SDK 24/28 según configuración).
+Backup v9: 103/103 ejecuciones de Backup; lectura v1–v8, capas vacías,
+Sprint/estados, asociaciones y restore/rollback cubiertos.
+ProjectNesting: 16/16 ejecuciones; destino Project/Layer, vacío, árbol,
+asociaciones, defaults, recurrencia, historial, identidad y rollback/cancelación.
+Sprint: 29/29 ejecuciones en repositorio, migración, Backup y UI; transición
+sin wrap, corrección hacia atrás, completion/eventos/proyecciones, Move,
+Batch/recurrence/Undo y secciones. Copy exporta contexto, no clona nodos.
+Updater sin cambios desde v0.2.3: sus 46 pruebas pasan.
+
+Suite global inicial: 755 casos, 621 correctos, 134 fallidos.
+Segunda suite: 745/755, diez fallos; después las cuatro clases afectadas
+pasaron 19/19 en ejecución dirigida. Suite global FINAL: **750/755**,
+116 clases, **5 fallos, 0 errores, 0 omitidos**. Los cinco fallos históricos,
+ya documentados en v0.2.3, se conservan sin ocultarlos:
+- ScrollRestorationTest.dashboardRetainsScrollAcrossProjectVisitAndRecreation
+- ScrollRestorationTest.mapRetainsScrollWhileClosedAndAcrossRecreation
+- LargeListsTest.largeTaskLayerScrollsWithoutNavigatingIntoLeaf
+- LargeListsTest.projectListLongPressDragReordersByStableId
+- MvpReadinessTest.narrowDashboardAndDrawerExposeNoNonfunctionalFeatures
+No quedan fallos nuevos en esta ejecución. PNG pasa en la suite final;
+no se reprodujo el ReportMemoryException ambiental registrado en v0.2.3.
+
+lintDebug: **1 error, 19 warnings, 4 hints**. El error es WrongConstant
+histórico en ObligationPngRenderer.kt:68. Warning nuevo CheckResult en
+ExplicitLayerUiTest.kt:47 (consulta de semantics sin usar su resultado);
+no compromete el APK y se conserva. Los otros 18 warnings corresponden a
+herramientas/dependencias, Exif, manifest, Modifier, iconos y Ktx; los cuatro
+hints son de estado Compose. No se hizo limpieza de warnings históricos.
+assembleDebug correcto; aapt confirma com.r0ybt.arachn0de, 0.2.4/código 6,
+minSdk 24. git diff --check correcto. El comando combinado termina fallido
+por los cinco tests históricos y lint, no por assembleDebug.
+
+Reportes iniciales, segunda y final conservados en
+/tmp/arachnode-v024-{initial,second,final}-results y
+/tmp/arachnode-v024-{initial,second,final}-report.
+Logs en /tmp/arachnode-v024-global-{initial,final,verified}.log y
+/tmp/arachnode-v024-affected.log; el definitivo es global-verified.log.
+Reportes vigentes también en app/build/reports/tests/testDebugUnitTest y
+app/build/reports/lint-results-debug.{xml,txt,html}.
+
+Release detenido: no están disponibles las cuatro credenciales oficiales
+ARACHNODE_KEYSTORE_PATH/KEY_ALIAS/KEYSTORE_PASSWORD/KEY_PASSWORD en entorno
+ni propiedades externas de Gradle. No se ejecutó assembleRelease ni se
+creó clave, APK v0.2.4 o checksum. El APK previo v0.2.3 verifica firma v2;
+su certificado SHA-256 está registrado en RELEASING para comparación.
+El usuario debe ejecutar el bloque seguro de credenciales y build local
+allí documentado; después verificar firma/metadata, copiar a
+release-assets/Arachn0de-v0.2.4.apk y generar SHA256SUMS.txt del archivo exacto.
+Notas propuestas en RELEASE_NOTES_v0.2.4.md. Pendientes instalación física
+0.2.3→0.2.4 conservando datos, restore, UX en dispositivo y updater con el
+APK oficial nuevo. No se acredita validación física.
+
+## Tres correcciones de dogfooding antes de v0.2.4 (2026-10-04)
+
+Se conserva toda la preparación de release, 0.2.4/código 6, Room 16 y Backup 9.
+No se modificaron schema/DAO/migraciones, triggers ni Backup. Sin commit,
+push, tag ni publicación. Las cifras de la auditoría global precedente
+corresponden al estado anterior a estas tres correcciones; no se repitió
+la suite global ni lint por instrucción del usuario.
+
+Causas: Room 15/16 había eliminado el flujo ACTION pendiente→LAYER al
+recibir el primer hijo: validateParent, Move múltiple y el botón de creación
+exigían LAYER. El selector de Move ya filtraba LAYER; por tanto la lista de
+ACTION completadas observada en dogfooding no se reproduce en este checkout.
+Las completadas se ordenaban por position sin consultar eventos. HeaderBar
+mostraba la marca fija, sin contexto del proyecto.
+
+Solución mínima: canReceiveChildren admite LAYER o ACTION pendiente sin
+obligación financiera. Move ofrece estos destinos y Project raíz, excluye
+NOTE/completadas/obligaciones y toda la selección con sus descendientes.
+Repositorio revalida identidad, proyecto, ancestros y ciclos, luego convierte
+la ACTION en LAYER dentro de la transacción que mueve/crea el hijo. Una
+completada nunca se convierte implícitamente. Move múltiple aplica lo mismo.
+La conversión mantiene ID, descripción, fechas, prioridad latente,
+responsables, tags e historial; fallos revierten también la conversión.
+Una LAYER sigue siendo LAYER tras quedar vacía. Project→Layer conserva su
+selector estructural y su transacción existentes.
+
+La presentación observa eventos existentes mediante APIs ya disponibles,
+sin cambiar Room. En orden Manual, las completadas con último COMPLETED
+más reciente van primero, incluyendo reopen→completar. Sin evento se usa
+el orden estable existente; empates usan position/createdAt/id únicamente
+como desempate, nunca como fecha de completitud. Pendientes no cambian;
+los modos explícitos de sorting conservan sus criterios. Filtros mantienen
+ancestros/depth y ordenan solo hermanos. Sprint conserva las secciones por
+workState y aplica el orden dentro de DONE o VALIDATED; pasar DONE→VALIDATED
+no inventa un evento COMPLETED nuevo ni una fecha de completitud.
+
+HeaderBar recibe project.name en la pantalla de proyecto, incluso dentro
+de capas. Una línea con ellipsis; recomposición al renombrar/cambiar proyecto,
+restauración y navegación atrás cubiertas. La raíz dice Proyecto raíz en
+el contexto para no repetir el nombre. Header global conserva Arachn0de.
+
+Validación dirigida FINAL: **122/122 casos en 12 clases, 0 fallos/errores/
+omitidos**. DogfoodingMoveOrderTest 12; DogfoodingChromeMoveTest 3;
+NodePresentationSortTest 14; NodeOrderTest 20; NodeMoveUiTest 3;
+ExplicitLayerTest 10; ExplicitLayerUiTest 4; ProjectNestingTest 16;
+SprintRepositoryTest 16; SprintUiTest 3; GroupBulkUndoTest 18; NotesUiTest 3.
+La primera ejecución dirigida dio 118/121; una expectativa UI antigua y
+dos pruebas nuevas de layout/navegación se adaptaron. La prueba Compose de
+nombre largo verifica una línea y que el título cabe en el ancho reducido;
+ellipsis está configurado en Text. No acredita render físico.
+assembleDebug y git diff --check correctos. Log definitivo:
+/tmp/arachnode-v024-dogfix-final.log. Reporte dirigido vigente:
+app/build/reports/tests/testDebugUnitTest/index.html. La suite global anterior
+se conserva en /tmp/arachnode-v024-final-report y final-results.
+Persisten los pendientes de release: credenciales/firma/APK oficial,
+validación física y los cinco tests históricos/error lint ya documentados.

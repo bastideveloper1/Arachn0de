@@ -2458,3 +2458,59 @@ Reportes conservados: `/tmp/arachnode-defaults-directed-report/index.html`,
 `*-results`. `assembleDebug` final y `git diff --check` correctos. No se ejecutó
 lint completo ni Release. No cambia app 0.2.2 / code 4; sin commit, push, tag ni
 publicación. La validación física y benchmark permanecen pendientes.
+
+
+## Preparación de Release v0.2.3 Beta
+
+Versionado Android 0.2.3 / 5; applicationId `com.r0ybt.arachn0de` y minSdk 24
+sin cambios. Estado inicial limpio, HEAD 6c066f0; nueve commits desde v0.2.2
+cubren el ciclo funcional documentado arriba. Esta preparación solo cambia
+versionado y documentación, sin funciones nuevas ni correcciones de producto.
+
+La Release v0.2.2 (tag local) usa Room v8. La base actual registra toda la cadena
+8→9 Recurrence →10 Tags →11 History →12 Priority →13 creationGroup →14
+CreationDefaults, sin fallback destructivo. RecurrenceMigrationTest construye
+una base desde el schema exportado v8 y la abre en v14: conserva tareas, notas,
+obligaciones, personas, asignaciones, posiciones y fechas, verifica foreign keys
+sin errores, los 15 triggers y creación posterior. Pasa en API 24 y 28.
+Las 22 ejecuciones de pruebas de migración pasan. Backup permanece v7:
+lectura v1–v7, validación y restauración transaccional; 89 pruebas de Backup
+pasan, incluidas las conversiones legacy y rollback. El updater y los
+FileProvider no cambiaron desde v0.2.2; sus 46 pruebas de actualización pasan.
+La integración de las funciones del ciclo se verifica con compilación Debug
+y la suite existente; no acredita una actualización física sobre datos reales.
+
+Validación completa ejecutada con `./gradlew test --continue --offline
+--no-configuration-cache --console=plain`: 681 casos Debug, 675 correctos,
+6 fallidos, 0 errores y 0 omitidos. Cinco fallos históricos: los dos
+ScrollRestorationTest, los dos LargeListsTest y
+MvpReadinessTest.narrowDashboardAndDrawerExposeNoNonfunctionalFeatures,
+con los mismos métodos registrados en la validación anterior. El sexto es
+ObligationPngRendererTest.longTextWrapsWithinPanelsAndHeightIncludesAllRows,
+con ReportMemoryException. La clase PNG aislada pasó 4/4 en una nueva ejecución;
+se clasifica como memoria ambiental, sin ocultar el fallo de la suite completa.
+Las 41 ejecuciones de CreationDefaults pasan. No hubo regresiones nuevas
+confirmadas ni correcciones, por lo que no se repitió toda la suite tras la
+repetición ambiental: el resultado completo sigue siendo 675/681.
+
+`assembleDebug` correcto. aapt confirma package, 0.2.3/code 5 y minSdk 24.
+`lintDebug` falla con el WrongConstant histórico en ObligationPngRenderer.kt:68,
+20 warnings y 4 hints. El renderer no cambió desde v0.2.2; el error ya está
+registrado en #33. Las advertencias restantes son de dependencias/herramientas,
+Exif, manifest, modifier, iconos y Ktx; los hints son de estado Compose.
+No se añadieron exclusiones ni baseline. `git diff --check` correcto.
+Reportes de suite completa conservados en
+`/tmp/arachnode-release-full-report/index.html` y XML en
+`/tmp/arachnode-release-full-results`; logs tests/build-lint/png en
+`/tmp/arachnode-release-*.log`.
+
+Las cuatro variables ARACHNODE_KEYSTORE_PATH, ARACHNODE_KEY_ALIAS,
+ARACHNODE_KEYSTORE_PASSWORD y ARACHNODE_KEY_PASSWORD no están disponibles;
+tampoco están configuradas como propiedades externas de Gradle. Se detuvo
+la fase Release según la instrucción del usuario: no assembleRelease, nueva
+keystore, cambio de alias ni sustitución de firma. El APK Release anterior
+no se copió ni renombró como v0.2.3. No se generaron APK oficial ni checksum;
+`git check-ignore` confirma ambas rutas previstas en release-assets ignoradas.
+Quedan pendientes firma/certificado, checksum, instalación física 0.2.2→0.2.3,
+restore en dispositivo, navegación/drag, calendario/recurrencia, exportación PNG
+y updater. Notas en RELEASE_NOTES_v0.2.3.md. Sin commit, push, tag ni publicación.

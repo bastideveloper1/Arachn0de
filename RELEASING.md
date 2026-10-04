@@ -1,11 +1,11 @@
 # Publicar Arachn0de manualmente
 
 Repositorio y canal oficial: https://github.com/bastideveloper1/Arachn0de.
-Este documento prepara #30–32; no publica nada. #33–34 están pendientes.
+Este documento prepara v0.2.3 Beta; no autoriza commit, push, tag ni publicación. El updater interno ya fue validado físicamente en v0.2.1 → v0.2.2.
 
 ## Versión y requisitos
 
-Se prepara **Arachn0de v0.2.0 Beta**, `versionName = "0.2.0"`, `versionCode = 2`, desde la base `0.1.0 / 1`. No hay tags en el checkout inspeccionado.
+Se prepara **Arachn0de v0.2.3 Beta**, `versionName = "0.2.3"`, `versionCode = 5`, desde la Release instalada `0.2.2 / 4`. Existen los tags históricos v0.2.0, v0.2.1 y v0.2.2.
 
 En `app/build.gradle.kts`, usar MAJOR.MINOR.PATCH: PATCH para correcciones, MINOR para funcionalidades compatibles, MAJOR para cambios importantes/incompatibles. Incrementar siempre `versionCode`: nunca reutilizarlo ni disminuirlo, incluso para una Beta. La versión del menú viene de `BuildConfig.VERSION_NAME`.
 
@@ -19,20 +19,9 @@ export ANDROID_HOME=/home/r0ybt/Android/Sdk
 
 `apksigner` y `aapt` están en `$ANDROID_HOME/build-tools/36.1.0/`. En otro equipo localizar las herramientas instaladas antes de adaptar estas rutas. Ejecutar todo desde la raíz del checkout.
 
-## Crear la clave definitiva, una sola vez
+## Conservar la clave oficial existente
 
-Si ya existe una clave release definitiva, reutilizarla. No sustituirla por otra para una actualización. Si no existe, el usuario debe ejecutar manualmente:
-
-```bash
-install -d -m 700 "$HOME/.local/share/arachn0de/signing"
-keytool -genkeypair -v \
-  -keystore "$HOME/.local/share/arachn0de/signing/arachn0de-release.jks" \
-  -storetype JKS -alias arachn0de-release \
-  -keyalg RSA -keysize 3072 -validity 10000
-chmod 600 "$HOME/.local/share/arachn0de/signing/arachn0de-release.jks"
-```
-
-Introducir contraseñas propias en los prompts de keytool y conservar el alias elegido. No incluir contraseñas en comandos, historial, documentos ni Git. Mantener la clave **fuera del repositorio**, junto con una copia de seguridad segura y sus credenciales: las futuras actualizaciones deben conservar la misma identidad de firma. Esta misión no crea la clave definitiva.
+Esta actualización debe reutilizar la keystore oficial y su alias. No crear otra clave ni sustituirla por Debug. Mantener la clave fuera del repositorio y respaldarla de forma segura. No imprimir ni guardar contraseñas en comandos, documentos o Git.
 
 Una instalación Debug tiene otra firma: Android no permite reemplazarla directamente con Release del mismo applicationId. Probar inicialmente Release en un dispositivo/perfil separado; desinstalar la instalación anterior elimina sus datos locales. No hay migración entre identidades de firma implementada.
 
@@ -56,11 +45,15 @@ Release comprueba presencia de las cuatro variables, ruta absoluta externa y arc
 ## Construir, verificar y preparar assets
 
 1. Revisar `git remote -v`: origin debe ser `https://github.com/bastideveloper1/Arachn0de.git`. Confirmar versión/código y actualizar CHANGELOG.md con cambios realmente implementados.
-2. Construir Debug y Release:
+2. Validar primero tests, Debug y lint. En este checkout, `test` ejecutó la suite Debug. Cualquier tarea que dependa de `preReleaseBuild` requiere las credenciales oficiales; no desactivar esa protección. Clasificar fallos sin ocultar los históricos. Si faltan las cuatro credenciales, detener la preparación del APK Release. Con la clave oficial configurada, construir:
 
 ```bash
+./gradlew test --continue --console=plain --no-configuration-cache
 ./gradlew assembleDebug --console=plain
-./gradlew assembleRelease --console=plain
+./gradlew lintDebug --console=plain
+git diff --check
+# Solo con las cuatro credenciales oficiales disponibles:
+./gradlew assembleRelease --console=plain --no-configuration-cache
 ```
 
 3. El resultado esperado es **`app/build/outputs/apk/release/app-release.apk`**. No distribuir `app-debug.apk` ni archivos `*-unsigned.apk`. Verificar:
@@ -71,16 +64,16 @@ Release comprueba presencia de las cuatro variables, ruta absoluta externa y arc
 keytool -list -v -keystore "$ARACHNODE_KEYSTORE_PATH" -alias "$ARACHNODE_KEY_ALIAS"
 ```
 
-La verificación debe finalizar correctamente. Comparar el SHA-256 del certificado de apksigner con el de keytool y con el certificado release previamente conservado. Confirmar package `com.r0ybt.arachn0de`, `versionName='0.2.0'`, `versionCode='2'` y ausencia de `application-debuggable`. No confundir el hash del certificado con el hash del APK.
+La verificación debe finalizar correctamente. Comparar el SHA-256 del certificado de apksigner con el de keytool y con el certificado release previamente conservado. Confirmar package `com.r0ybt.arachn0de`, `versionName='0.2.3'`, `versionCode='5'` y ausencia de `application-debuggable`. No confundir el hash del certificado con el hash del APK.
 
 4. Preparar un nombre neutral y checksums:
 
 ```bash
 mkdir -p release-assets
-cp app/build/outputs/apk/release/app-release.apk release-assets/Arachn0de-v0.2.0.apk
+cp app/build/outputs/apk/release/app-release.apk release-assets/Arachn0de-v0.2.3.apk
 cd release-assets
-sha256sum Arachn0de-v0.2.0.apk
-sha256sum Arachn0de-v0.2.0.apk > SHA256SUMS.txt
+sha256sum Arachn0de-v0.2.3.apk
+sha256sum Arachn0de-v0.2.3.apk > SHA256SUMS.txt
 sha256sum -c SHA256SUMS.txt
 cd ..
 ```
@@ -101,9 +94,9 @@ git branch --show-current
 Confirmar la rama `main`, revisar que no haya secretos y añadir únicamente archivos revisados:
 
 ```bash
-git add .gitignore app/build.gradle.kts app/src/main/java/com/r0ybt/arachn0de/ui/NavigationChrome.kt ARCHITECTURE.md CHANGELOG.md RELEASING.md
+git add app/build.gradle.kts ARCHITECTURE.md CHANGELOG.md RELEASING.md RELEASE_NOTES_v0.2.3.md
 git diff --cached
-git commit -m "chore: prepare Arachn0de v0.2.0 beta"
+git commit -m "chore: prepare Arachn0de v0.2.3 beta"
 git push origin main
 ```
 
@@ -118,20 +111,17 @@ git rev-parse HEAD
 Una vez verificados los assets del commit:
 
 ```bash
-git tag -a v0.2.0 -m "Arachn0de v0.2.0 Beta" HEAD
-git rev-list -n 1 v0.2.0
-git push origin v0.2.0
+git tag -a v0.2.3 -m "Arachn0de v0.2.3 Beta" HEAD
+git rev-list -n 1 v0.2.3
+git push origin v0.2.3
 ```
 
-El commit mostrado para el tag debe coincidir exactamente con el commit del APK. Si `v0.2.0` ya existe, detenerse y verificarlo; no forzar su reemplazo.
+El commit mostrado para el tag debe coincidir exactamente con el commit del APK. Si `v0.2.3` ya existe, detenerse y verificarlo; no forzar su reemplazo.
 
 ## GitHub Release manual
 
-Abrir https://github.com/bastideveloper1/Arachn0de/releases/new. Elegir el tag **existente** `v0.2.0`, título **Arachn0de v0.2.0 Beta**, marcar **pre-release** y pegar estas notas propuestas:
-
-> Beta con mejoras de Capas de cebolla, Personas y responsables, fechas y Atención, Notas, creación múltiple y Calendario. Incluye Obligaciones con totales por moneda, períodos y Persona, informe PNG y copia de contexto estructurado. Distribución mediante APK Release firmado. La actualización desde la aplicación todavía no está disponible.
-
-Adjuntar `release-assets/Arachn0de-v0.2.0.apk` y `release-assets/SHA256SUMS.txt`. Revisar tag, versión, notas y archivos antes de pulsar Publish release. Descargar manualmente los assets publicados y comprobar `sha256sum -c SHA256SUMS.txt`, firma e instalación en un entorno de prueba. No requiere token GitHub dentro de la aplicación.
+Abrir https://github.com/bastideveloper1/Arachn0de/releases/new. Elegir el tag **existente** `v0.2.3`, título **Arachn0de v0.2.3 Beta**, marcar **pre-release** y usar el borrador revisado de `RELEASE_NOTES_v0.2.3.md`.
+Adjuntar `release-assets/Arachn0de-v0.2.3.apk` y `release-assets/SHA256SUMS.txt`. Revisar tag, versión, notas y archivos antes de pulsar Publish release. Descargar manualmente los assets publicados y comprobar `sha256sum -c SHA256SUMS.txt`, firma e instalación en un entorno de prueba. No requiere token GitHub dentro de la aplicación.
 
 Al terminar la sesión local:
 
@@ -139,16 +129,16 @@ Al terminar la sesión local:
 unset ARACHNODE_KEYSTORE_PASSWORD ARACHNODE_KEY_PASSWORD
 ```
 
-Preparar la siguiente versión según el tipo de cambio, con código Android **mayor que 2** y mayor que todos los códigos distribuidos; nueva entrada de changelog y nuevo tag. Conservar la misma clave release.
+Preparar la siguiente versión según el tipo de cambio, con código Android **mayor que 5** y mayor que todos los códigos distribuidos; nueva entrada de changelog y nuevo tag. Conservar la misma clave release.
 
-## Contrato futuro #33–34 y privacidad
+## Actualizador y privacidad
 
-El único canal de actualización será GitHub Releases de **bastideveloper1/Arachn0de**. La implementación futura necesitará versión publicada, tag, release notes, APK correcto, URL del asset y eventualmente SHA-256. Nada de ello se consulta desde la app en esta etapa.
+El único canal de actualización será GitHub Releases de **bastideveloper1/Arachn0de**. El actualizador usa metadatos de la Release, tag, notas, APK y checksum. No se modificó durante esta preparación.
 
 **ARACHN0DE NUNCA REALIZA UNA ACTUALIZACIÓN SILENCIOSA.**
 
-Flujo futuro obligatorio: nueva GitHub Release → detección → informar versión y cambios → usuario elige **Descargar / Ahora no** → descargar solo con autorización → usuario decide instalar → Android controla y autoriza la instalación. Sin descarga/instalación silenciosa, actualización obligatoria ni updater en background sin conocimiento del usuario.
+Flujo: nueva GitHub Release → detección → informar versión y cambios → usuario elige **Descargar / Ahora no** → descargar solo con autorización → usuario decide instalar → Android controla y autoriza la instalación. Sin descarga/instalación silenciosa, actualización obligatoria ni updater en background sin conocimiento del usuario.
 
-La futura comprobación consultará solo metadatos necesarios de Releases. Nunca enviará Projects, Nodes, Notes, Personas, responsables, obligaciones, montos, estadísticas, contenido exportado ni información personal de Arachn0de. Sin analytics ni telemetría.
+La comprobación consulta solo metadatos necesarios de Releases. Nunca enviará Projects, Nodes, Notes, Personas, responsables, obligaciones, montos, estadísticas, contenido exportado ni información personal de Arachn0de. Sin analytics ni telemetría.
 
 Referencias oficiales: [firma Android](https://developer.android.com/studio/publish/app-signing), [apksigner](https://developer.android.com/tools/apksigner), [GitHub Releases manuales](https://docs.github.com/en/repositories/releasing-projects-on-github/managing-releases-in-a-repository).

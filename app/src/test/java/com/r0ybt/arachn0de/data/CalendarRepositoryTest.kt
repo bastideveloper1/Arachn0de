@@ -48,7 +48,7 @@ class CalendarRepositoryTest {
         nodes.updateNodeWithDates(task.id,"Task","",null,null); assertTrue(calendar().ids().isEmpty())
         nodes.updateNodeWithDates(task.id,"Task","",null,300); assertEquals(300L,calendar().tasksByDay.values.flatten().single().dueAt)
         nodes.deleteNode(task.id); assertTrue(calendar().ids().isEmpty())
-        assertEquals(16, db.openHelper.readableDatabase.version)
+        assertEquals(17, db.openHelper.readableDatabase.version)
     }
 
     @Test fun datedBatchProducesIndependentCalendarEntriesAndProjectDeletionRemovesThem() = runBlocking {

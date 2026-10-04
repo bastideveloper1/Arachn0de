@@ -87,12 +87,18 @@ class DogfoodingMoveOrderTest {
     @Test fun sprintKeepsDoneAndValidatedGroupsAndOriginalCompletionInstant()=runBlocking {
         val layer=nodes.createNode("p",null,"Sprint",purpose=NodePurpose.LAYER);nodes.setSprintMode(layer.id,true)
         val a=nodes.createNode("p",layer.id,"A");val b=nodes.createNode("p",layer.id,"B");val c=nodes.createNode("p",layer.id,"C")
-        now=200;nodes.setWorkState(a.id,WorkState.DONE);now=300;nodes.setWorkState(b.id,WorkState.DONE)
-        now=400;nodes.setWorkState(c.id,WorkState.VALIDATED);now=500;nodes.setWorkState(a.id,WorkState.VALIDATED)
+        // Selecting a phase is independent of completion; confirmation crosses the boundary.
+        nodes.setWorkState(a.id,WorkState.DOING);nodes.setWorkState(b.id,WorkState.DOING);nodes.setWorkState(c.id,WorkState.DOING)
+        now=200;assertTrue(nodes.confirmWorkState(a.id));now=300;assertTrue(nodes.confirmWorkState(b.id))
+        now=400;assertTrue(nodes.confirmWorkState(c.id));assertTrue(nodes.confirmWorkState(c.id))
+        now=500;assertTrue(nodes.confirmWorkState(a.id))
         val times=nodes.observeCompletionTimes("p").first()
         val sorted=NodePresentationSort.children(nodes.getProjectNodes("p").filter { it.parentId==layer.id },NodeSortMode.MANUAL,times)
         assertEquals(listOf(c.id,a.id),sorted.filter { it.workState==WorkState.VALIDATED }.map { it.id })
         assertEquals(listOf(b.id),sorted.filter { it.workState==WorkState.DONE }.map { it.id })
         assertEquals(200L,times[a.id])
+        assertEquals(300L,times[b.id]);assertEquals(400L,times[c.id])
+        assertTrue(listOf(a,b,c).all { nodes.getNode(it.id)!!.isCompleted })
+        assertEquals(listOf(200L),db.nodeEventDao().forNode(a.id).filter { it.type=="COMPLETED" }.map { it.occurredAt })
     }
 }

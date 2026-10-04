@@ -2,6 +2,7 @@ package com.r0ybt.arachn0de.report
 
 import android.content.res.Resources
 import android.graphics.*
+import android.graphics.text.LineBreaker
 import android.text.Layout
 import android.text.StaticLayout
 import android.text.TextPaint
@@ -65,7 +66,7 @@ class ObligationPngRenderer(private val resources: Resources) {
             }
             val layout = StaticLayout.Builder.obtain(value, 0, value.length, paint, width)
                 .setAlignment(alignment).setIncludePad(false).setLineSpacing(6f, 1f)
-                .setBreakStrategy(Layout.BREAK_STRATEGY_HIGH_QUALITY).build()
+                .setBreakStrategy(LineBreaker.BREAK_STRATEGY_HIGH_QUALITY).build()
             validate(top + layout.height + 72)
             marks.add(Mark.Text(layout, x, top))
             return layout.height.toFloat()

@@ -62,7 +62,7 @@ class ScrollRestorationTest {
         compose.onNodeWithTag("projects-list").performScrollToIndex(21)
         compose.onNodeWithText("Proyecto 20").performClick()
         compose.activityRule.scenario.recreate()
-        compose.waitUntil(10_000) { compose.onAllNodesWithText("Capas de cebolla").fetchSemanticsNodes().isNotEmpty() }
+        compose.waitUntil(10_000) { compose.onAllNodesWithContentDescription("Capas de cebolla").fetchSemanticsNodes().isNotEmpty() }
         back()
         awaitTag("projects-list")
         compose.onNodeWithText("Proyecto 20").assertIsDisplayed()
@@ -73,13 +73,13 @@ class ScrollRestorationTest {
 
     @Test fun mapRetainsScrollWhileClosedAndAcrossRecreation() {
         openProject()
-        compose.onNodeWithText("Capas de cebolla").performClick()
+        compose.onNodeWithContentDescription("Capas de cebolla").performClick()
         compose.onNodeWithTag("layer-navigator").performScrollToIndex(22)
         compose.onNodeWithText("Raíz 20").assertIsDisplayed()
         compose.onNodeWithText("Cerrar").performClick()
         compose.activityRule.scenario.recreate()
         awaitTag("nodes-list")
-        compose.onNodeWithText("Capas de cebolla").performClick()
+        compose.onNodeWithContentDescription("Capas de cebolla").performClick()
         compose.onNodeWithText("Raíz 20").assertIsDisplayed()
         compose.activityRule.scenario.recreate()
         awaitTag("layer-navigator")

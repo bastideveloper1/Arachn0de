@@ -78,13 +78,16 @@ class MvpReadinessTest {
         val db = Room.inMemoryDatabaseBuilder(ApplicationProvider.getApplicationContext(), Arachn0deDatabase::class.java).build()
         val repository = ProjectRepository(db.projectDao())
         val mounted = mutableStateOf(true)
+        var openedPeople = false
+        var openedSettings = false
         try {
             compose.setContent {
                 CompositionLocalProvider(LocalDensity provides Density(LocalDensity.current.density, 1.6f)) {
                     Arachn0deTheme {
                         Box(Modifier.requiredSize(320.dp, 480.dp)) {
                             AppSafeArea(WindowInsets(top = 52.dp, bottom = 24.dp)) {
-                                if (mounted.value) ProjectDashboardScreen(repository, emptyList(), emptyMap())
+                                if (mounted.value) ProjectDashboardScreen(repository, emptyList(), emptyMap(),
+                                    onOpenPeople = { openedPeople = true }, onOpenSettings = { openedSettings = true })
                             }
                         }
                     }
@@ -97,8 +100,12 @@ class MvpReadinessTest {
             compose.onNodeWithText("Nombre").assertExists()
             compose.onNodeWithText("Cancelar").performClick()
             compose.onNodeWithContentDescription("Abrir menú").performClick()
-            compose.onNodeWithText("Personas").assertDoesNotExist()
-            compose.onNodeWithText("Configuración").assertDoesNotExist()
+            compose.onNodeWithText("Personas").performScrollTo().assertIsEnabled().performClick()
+            compose.runOnIdle { assertTrue(openedPeople) }
+            compose.onNodeWithContentDescription("Abrir menú").performClick()
+            compose.onNodeWithText("Configuración").performScrollTo().assertIsEnabled().performClick()
+            compose.runOnIdle { assertTrue(openedSettings) }
+            compose.onNodeWithContentDescription("Abrir menú").performClick()
             compose.onNodeWithContentDescription("Cerrar menú").assertIsDisplayed().performClick()
         } finally {
             compose.runOnIdle { mounted.value = false }

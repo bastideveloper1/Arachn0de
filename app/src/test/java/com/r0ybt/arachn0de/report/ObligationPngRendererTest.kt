@@ -52,11 +52,14 @@ class ObligationPngRendererTest {
         logo.recycle()
     }
     @Test fun longTextWrapsWithinPanelsAndHeightIncludesAllRows() {
-        val short = renderer.measure(ReportFixture.data(ReportFixture.snapshot(source = listOf(ReportFixture.node("one")))))
+        // Layout assertions use a fixed budget, independent of the test worker's live heap.
+        // The separate rejection test still checks height, memory and pathological text limits.
+        val budget = ObligationPngRenderer.MAX_BITMAP_BYTES
+        val short = renderer.measure(ReportFixture.data(ReportFixture.snapshot(source = listOf(ReportFixture.node("one")))), budget)
         val many = ReportFixture.data(ReportFixture.snapshot(source = List(10) {
             ReportFixture.node("n$it", title = "Obligación con un título largo que debe ocupar varias líneas y conservar todo su contenido")
         }, assignments = mapOf("n0" to List(12) { ReportFixture.roy.copy(id = "$it", name = "Responsable con nombre largo $it") })))
-        val document = renderer.measure(many)
+        val document = renderer.measure(many, budget)
         assertTrue(document.height > short.height)
         val texts = document.marks.filterIsInstance<ObligationPngRenderer.Mark.Text>()
         assertTrue(texts.any { it.layout.lineCount > 1 })

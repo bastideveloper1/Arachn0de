@@ -43,6 +43,8 @@ class CreationUxTest {
 
     @Test fun normalEntryKeepsFullInputWhenRecurrenceIsChosenLastAndRetryClearsOnlyOnSuccess() {
         appContent(); await("Project"); click("Project"); await("Nuevo elemento"); click("Nuevo elemento")
+        // Wait for asynchronous defaults resolution and the mounted editor.
+        await("Título")
         input("Título","Pagar Internet"); input("Descripción","Plan hogar")
         compose.onNodeWithTag("obligation-enabled").performScrollTo().performClick(); input("Monto","25000")
         compose.onNodeWithTag("priority-selector").performScrollTo().performClick(); compose.onNodeWithTag("priority-option:HIGH").performClick()
@@ -75,7 +77,7 @@ class CreationUxTest {
             assertEquals(1,app.nodeRepository.recurrence.tagIds(rule.id).size)
             assertTrue(app.nodeRepository.getProjectNodes(project).isEmpty()); assertTrue(app.database.nodeEventDao().all().isEmpty())
         }
-        click("Nuevo elemento"); compose.onNodeWithText("Título").assert(hasText("")); compose.onNodeWithText("Monto").assertDoesNotExist()
+        click("Nuevo elemento"); await("Título"); compose.onNodeWithText("Título").assert(hasText("")); compose.onNodeWithText("Monto").assertDoesNotExist()
     }
 
     @Test fun disclosureAndPurposeAndRecreationPreserveLatentValuesAndBlockCombinedModes() {

@@ -72,7 +72,7 @@ class FinancialRepositoryTest {
         nodes.convertPurpose(bill.id,NodePurpose.ACTION)
         nodes.updateLeaf(bill.id,"Bill","",null,due,Obligation(2000,"EUR"))
         nodes.deleteNode(bill.id); assertEquals(0,financial().summary.count)
-        assertEquals(16, db.openHelper.readableDatabase.version)
+        assertEquals(17, db.openHelper.readableDatabase.version)
     }
     @Test fun batchesUseSameScopeAggregationAndProjectDeletionDoesNotAffectOtherCurrencies() = runBlocking {
         val root=nodes.createNode(p,null,"Root", purpose = com.r0ybt.arachn0de.domain.model.NodePurpose.LAYER)

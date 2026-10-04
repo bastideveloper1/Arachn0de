@@ -50,6 +50,15 @@ class FinancialUiTest {
         override fun after() { app.database.close();TimeZone.setDefault(oldZone) }
     }).around(compose)
     private fun awaitText(text:String)=compose.waitUntil(10_000){compose.onAllNodesWithText(text,substring=true).fetchSemanticsNodes().isNotEmpty()}
+    private fun awaitEmptyObligations() {
+        val text = "No hay obligaciones para este filtro."
+        compose.waitUntil(10_000) {
+            runCatching {
+                compose.onNodeWithTag("obligations-list").performScrollToNode(hasText(text))
+                compose.onNodeWithText(text).assertIsDisplayed()
+            }.isSuccess
+        }
+    }
     private fun awaitTag(tag:String)=compose.waitUntil(10_000){compose.onAllNodesWithTag(tag).fetchSemanticsNodes().isNotEmpty()}
     private fun mount(restorer:StateRestorationTester?=null) {
         if(restorer==null)compose.setContent { Arachn0deTheme { AppSafeArea { AppRoot(app.projectRepository,app.nodeRepository){clock.get()} } } }
@@ -160,18 +169,18 @@ class FinancialUiTest {
         awaitText("Renamed")
         person("Renamed");awaitTag("financial-summary")
         runBlocking { app.personRepository.setResponsiblePeople(bill,setOf("s")) }
-        awaitText("No hay obligaciones para este filtro.")
+        awaitEmptyObligations()
         person("Todas las Personas");awaitTag("financial-summary")
         val edge=GregorianCalendar(zone).apply { clear();set(2026,Calendar.NOVEMBER,1,1,0) }.timeInMillis
         runBlocking { app.nodeRepository.updateNodeWithDates(bill,"Cuenta","",null,edge) }
-        awaitText("No hay obligaciones para este filtro.")
+        awaitEmptyObligations()
         val before=runBlocking { app.nodeRepository.getNode(bill) }
         compose.runOnIdle { TimeZone.setDefault(TimeZone.getTimeZone("GMT-03:00"));app.sendBroadcast(Intent(Intent.ACTION_TIMEZONE_CHANGED)) }
         awaitTag("financial-summary");row(bill)
         assertEquals(before,runBlocking { app.nodeRepository.getNode(bill) })
         filter("Todo");awaitText("USD");row(undated);compose.onNodeWithTag("obligation-task:$undated").assert(hasText("Sin vencimiento"))
         runBlocking { app.nodeRepository.deleteNode(bill);app.nodeRepository.deleteNode(undated) }
-        awaitText("No hay obligaciones para este filtro.")
+        awaitEmptyObligations()
     }
     @Test fun projectAndLayerContextsShowRecursiveTotalsAndVisitingViewKeepsLocation() {
         mount();awaitText("Personal");compose.onNodeWithText("Personal").performClick()

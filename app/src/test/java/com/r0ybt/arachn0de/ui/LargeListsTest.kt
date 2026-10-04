@@ -1,7 +1,6 @@
 package com.r0ybt.arachn0de.ui
 
 import androidx.compose.runtime.*
-import androidx.compose.ui.geometry.Offset
 import androidx.room.Room
 import androidx.room.withTransaction
 import androidx.test.core.app.ApplicationProvider
@@ -90,11 +89,26 @@ class LargeListsTest {
             }
         }
 
-        compose.onNodeWithText("Project 2").performTouchInput {
-            down(center)
-            advanceEventTime(600)
-            moveBy(Offset(0f, 200f))
-            up()
+        val from = compose.onNodeWithText("Project 2").fetchSemanticsNode().boundsInRoot.center
+        val to = compose.onNodeWithText("Project 3").fetchSemanticsNode().boundsInRoot.center
+        // The held drag runs a frame loop; inject events and advance those frames explicitly.
+        compose.mainClock.autoAdvance = false
+        try {
+            compose.onRoot().performTouchInput {
+                down(from)
+                advanceEventTime(600)
+                moveTo(from)
+            }
+            compose.mainClock.advanceTimeByFrame()
+            repeat(6) { step ->
+                compose.onRoot().performTouchInput {
+                    moveTo(from + (to - from) * ((step + 1) / 6f), delayMillis = 40)
+                }
+                compose.mainClock.advanceTimeByFrame()
+            }
+            compose.onRoot().performTouchInput { up() }
+        } finally {
+            compose.mainClock.autoAdvance = true
         }
 
         compose.runOnIdle {
@@ -113,7 +127,7 @@ class LargeListsTest {
         compose.runOnIdle { assertEquals("ancestor4999", selected) }
     }
 
-    @Test fun largeTaskLayerScrollsWithoutNavigatingIntoLeaf() {
+    @Test fun largeTaskLayerScrollsAndOpensLeafDetailWithoutChangingStructure() {
         val database = Room.inMemoryDatabaseBuilder(ApplicationProvider.getApplicationContext(), Arachn0deDatabase::class.java).build()
         val project = runBlocking {
             val project = ProjectRepository(database.projectDao()).createProject("Large project")
@@ -132,7 +146,16 @@ class LargeListsTest {
             compose.onNodeWithText("Task 1999").assertDoesNotExist()
             compose.onNode(hasScrollToIndexAction()).performScrollToKey("node:task1999")
             compose.onNodeWithText("Task 1999").performTouchInput { click() }
-            compose.onNodeWithContentDescription("Volver a la capa anterior").assertDoesNotExist()
+            compose.onNodeWithContentDescription("Volver a la capa anterior").assertExists()
+            compose.onNodeWithText("Task 1999").assertExists()
+            compose.onNodeWithText("Completar").assertExists()
+            compose.onNodeWithContentDescription("Volver a la capa anterior").performClick()
+            compose.onNodeWithTag("nodes-list").performScrollToKey("node:task1999")
+            compose.onNodeWithText("Task 1999").assertExists()
+            runBlocking {
+                assertEquals(2_000, repository.getProjectNodes(project.id).size)
+                assertTrue(repository.getProjectNodes(project.id).all { it.parentId == null && !it.isCompleted && !it.isStructural })
+            }
         } finally {
             compose.runOnIdle { visible.value = false }
             compose.waitForIdle()

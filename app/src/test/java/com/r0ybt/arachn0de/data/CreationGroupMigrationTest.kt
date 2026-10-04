@@ -50,7 +50,7 @@ class CreationGroupMigrationTest {
         helper.close()
         val db = Arachn0deDatabase.create(context)
         try {
-            assertEquals(16, db.openHelper.readableDatabase.version)
+            assertEquals(17, db.openHelper.readableDatabase.version)
             assertEquals(NodeEntity("leaf","old","root","Task","Details",true,9,110,160,11,21, amountMinor = 15000, currencyCode = "CLP", priority = "HIGH"),db.nodeDao().getById("leaf"))
             assertEquals(NodeEntity("root","old",null,"Layer","Content",false,7,100,150,10,20,purpose="LAYER"),db.nodeDao().getById("root"))
             assertEquals(NodeEntity("note","old","root","Note","Text",false,10,111,161,12,22,"NOTE"),db.nodeDao().getById("note"))

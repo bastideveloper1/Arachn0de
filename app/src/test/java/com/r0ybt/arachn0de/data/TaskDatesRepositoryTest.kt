@@ -126,7 +126,7 @@ class TaskDatesRepositoryTest {
         helper.writableDatabase.execSQL("INSERT INTO persons VALUES ('p', 'Person', 'original-avatar.png')")
         helper.writableDatabase.execSQL("INSERT INTO node_person VALUES ('leaf', 'p')")
         helper.close(); open()
-        assertEquals(16, db.openHelper.readableDatabase.version)
+        assertEquals(17, db.openHelper.readableDatabase.version)
         val original = db.projectDao().getById("old")!!
         assertEquals("Original", original.name); assertEquals("Description", original.description)
         assertEquals(8, original.position); assertEquals(100L, original.createdAt); assertEquals(150L, original.updatedAt)

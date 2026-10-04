@@ -112,7 +112,7 @@ class NodeBatchUiTest {
         }
         val expected = NodeBatchGenerator.generate(draft.parameters(), TimeZone.getDefault())
         click("Vista previa · 3 elementos")
-        compose.onNodeWithText("Episode 4 — ${formatTaskDate(expected[0].dueAt!!)}").assertExists()
+        compose.onNodeWithText("Episode 4 — ${formatTaskDate(expected[0].dueAt!!, compact = true)}").assertExists()
         compose.onNodeWithText("Crear lote").performClick()
         await("No se pudo crear el lote. Se conservan tus parámetros; revisa el destino y los responsables y reintenta.")
         assertEquals(1, runBlocking { app.nodeRepository.getProjectNodes(project).size }); assertEquals(0, saved)

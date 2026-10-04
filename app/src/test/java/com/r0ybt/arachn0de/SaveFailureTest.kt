@@ -67,6 +67,8 @@ class SaveFailureTest {
         compose.onNodeWithText("Proyecto de prueba").performClick()
         awaitText("Nuevo elemento")
         compose.onNodeWithText("Nuevo elemento").performClick()
+        // Defaults are loaded asynchronously before the editor is mounted.
+        awaitText("Título")
         compose.onNodeWithText("Título").performScrollTo().performTextInput("Tarea conservada")
         failWrites("nodes", "INSERT")
         compose.onNode(hasText("Guardar") or hasText("Crear")).performClick()

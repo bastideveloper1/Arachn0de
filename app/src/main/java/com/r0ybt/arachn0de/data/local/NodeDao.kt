@@ -54,14 +54,14 @@ interface NodeDao {
     @Query("UPDATE nodes SET title = :title, description = :description, startAt = :startAt, dueAt = :dueAt, updatedAt = :updatedAt WHERE id = :id")
     suspend fun updateContentAndDates(id: String, title: String, description: String, startAt: Long?, dueAt: Long?, updatedAt: Long): Int
 
-    @Query("UPDATE nodes SET purpose = :purpose, isCompleted = 0, amountMinor = NULL, currencyCode = NULL, updatedAt = :updatedAt WHERE id = :id AND NOT EXISTS(SELECT 1 FROM nodes AS child WHERE child.parentId = nodes.id)")
-    suspend fun updatePurpose(id: String, purpose: String, updatedAt: Long): Int
+    @Query("UPDATE nodes SET purpose = :purpose, sprintMode = 0, workState = :workState, isCompleted = 0, amountMinor = NULL, currencyCode = NULL, updatedAt = :updatedAt WHERE id = :id AND NOT EXISTS(SELECT 1 FROM nodes AS child WHERE child.parentId = nodes.id)")
+    suspend fun updatePurpose(id: String, purpose: String, updatedAt: Long, workState: String? = null): Int
 
     @Query("UPDATE nodes SET title = :title, description = :description, startAt = :startAt, dueAt = :dueAt, amountMinor = :amountMinor, currencyCode = :currencyCode, updatedAt = :updatedAt WHERE id = :id")
     suspend fun updateLeaf(id: String, title: String, description: String, startAt: Long?, dueAt: Long?, amountMinor: Long?, currencyCode: String?, updatedAt: Long): Int
 
-    @Query("UPDATE nodes SET parentId = :parentId, position = :position, updatedAt = :updatedAt WHERE id = :id")
-    suspend fun move(id: String, parentId: String?, position: Int, updatedAt: Long): Int
+    @Query("UPDATE nodes SET parentId = :parentId, workState = :workState, position = :position, updatedAt = :updatedAt WHERE id = :id")
+    suspend fun move(id: String, parentId: String?, position: Int, updatedAt: Long, workState: String? = null): Int
 
     @Query("""
         UPDATE nodes SET isCompleted = :completed, updatedAt = :updatedAt
@@ -70,6 +70,12 @@ interface NodeDao {
         )
     """)
     suspend fun setCompleted(id: String, completed: Boolean, updatedAt: Long): Int
+
+    @Query("UPDATE nodes SET sprintMode = :enabled, updatedAt = :at WHERE id = :id AND purpose = 'LAYER'")
+    suspend fun setSprintMode(id: String, enabled: Boolean, at: Long): Int
+
+    @Query("UPDATE nodes SET workState = :state, isCompleted = :completed, updatedAt = :at WHERE id = :id AND purpose = 'ACTION'")
+    suspend fun setWorkState(id: String, state: String?, completed: Boolean, at: Long): Int
 
     @Query("""
         WITH RECURSIVE subtree(id) AS (

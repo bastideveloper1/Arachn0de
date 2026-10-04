@@ -43,7 +43,7 @@ class BackupFormatTest {
     }
     @Test fun incompatibleDataAndInvalidTypesFieldsDuplicatesAndUtf8AreRejected() {
         val variants = listOf(
-            altered { it.put("dataVersion", 9) },
+            altered { it.put("dataVersion", 10) },
             altered { it.remove("nodes") }, altered { it.put("unexpected", true) },
             altered { it.getJSONArray("nodes").getJSONObject(0).put("isCompleted", 1) },
             altered { it.getJSONArray("nodes").getJSONObject(0).put("position", 2147483648L) },

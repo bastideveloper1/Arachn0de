@@ -42,7 +42,7 @@ class ObligationMigrationTest {
         helper.close()
         val db = Arachn0deDatabase.create(context)
         try {
-            assertEquals(15, db.openHelper.readableDatabase.version)
+            assertEquals(16, db.openHelper.readableDatabase.version)
             assertEquals(NodeEntity("leaf","old","root","Task","Details",true,9,110,160,11,21),db.nodeDao().getById("leaf"))
             assertEquals(NodeEntity("root","old",null,"Layer","Content",false,7,100,150,10,20,purpose="LAYER"),db.nodeDao().getById("root"))
             assertEquals(NodeEntity("note","old","root","Note","Text",false,10,111,161,12,22,"NOTE"),db.nodeDao().getById("note"))
@@ -50,7 +50,7 @@ class ObligationMigrationTest {
             assertEquals("avatar.png",db.personDao().get("p")!!.avatarFile)
             assertEquals("p",PersonRepository(db,AvatarStore(context)).observeAssignments("old").first().getValue("leaf").single().id)
             db.openHelper.readableDatabase.query("PRAGMA foreign_key_check").use { assertFalse(it.moveToFirst()) }
-            db.openHelper.readableDatabase.query("SELECT COUNT(*) FROM sqlite_master WHERE type='trigger' AND name LIKE 'nodes_%'").use { it.moveToFirst(); assertEquals(15,it.getInt(0)) }
+            db.openHelper.readableDatabase.query("SELECT COUNT(*) FROM sqlite_master WHERE type='trigger' AND name LIKE 'nodes_%'").use { it.moveToFirst(); assertEquals(17,it.getInt(0)) }
             val nodes = NodeRepository(db)
             val bill = nodes.createNode("old",null,"Bill",obligation=com.r0ybt.arachn0de.domain.model.Obligation(50000,"CLP"))
             assertEquals(50000L,db.nodeDao().getById(bill.id)!!.amountMinor)

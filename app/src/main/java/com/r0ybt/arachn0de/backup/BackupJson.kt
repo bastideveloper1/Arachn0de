@@ -24,9 +24,9 @@ internal object BackupJson {
         require(textBytes <= BackupLimits.PAYLOAD_BYTES / 2) { "El contenido supera el límite de backup v1." }
         fun obj(vararg values: Pair<String, Any?>) = JSONObject().apply { values.forEach { (key, value) -> put(key, value ?: JSONObject.NULL) } }
         val json = obj(
-            "dataVersion" to 8, "appVersion" to data.appVersion, "createdAt" to data.createdAt,
+            "dataVersion" to 9, "appVersion" to data.appVersion, "createdAt" to data.createdAt,
             "projects" to JSONArray(data.projects.map { obj("id" to it.id, "name" to it.name, "description" to it.description, "position" to it.position, "createdAt" to it.createdAt, "updatedAt" to it.updatedAt) }),
-            "nodes" to JSONArray(data.nodes.map { obj("id" to it.id, "projectId" to it.projectId, "parentId" to it.parentId, "title" to it.title, "description" to it.description, "isCompleted" to it.isCompleted, "position" to it.position, "createdAt" to it.createdAt, "updatedAt" to it.updatedAt, "startAt" to it.startAt, "dueAt" to it.dueAt, "purpose" to it.purpose, "amountMinor" to it.amountMinor, "currencyCode" to it.currencyCode, "priority" to it.priority, "creationGroupId" to it.creationGroupId) }),
+            "nodes" to JSONArray(data.nodes.map { obj("id" to it.id, "projectId" to it.projectId, "parentId" to it.parentId, "title" to it.title, "description" to it.description, "isCompleted" to it.isCompleted, "position" to it.position, "createdAt" to it.createdAt, "updatedAt" to it.updatedAt, "startAt" to it.startAt, "dueAt" to it.dueAt, "purpose" to it.purpose, "amountMinor" to it.amountMinor, "currencyCode" to it.currencyCode, "priority" to it.priority, "creationGroupId" to it.creationGroupId, "sprintMode" to it.sprintMode, "workState" to it.workState) }),
             "persons" to JSONArray(data.persons.map { obj("id" to it.id, "name" to it.name, "avatarFile" to it.avatarFile) }),
             "assignments" to JSONArray(data.assignments.map { obj("nodeId" to it.nodeId, "personId" to it.personId) }),
             "recurrenceRules" to JSONArray(data.recurrenceRules.map { obj("id" to it.id, "projectId" to it.projectId, "parentId" to it.parentId, "title" to it.title, "description" to it.description, "amountMinor" to it.amountMinor, "currencyCode" to it.currencyCode, "startDay" to it.startDay, "frequency" to it.frequency, "interval" to it.interval, "endDay" to it.endDay, "nextIndex" to it.nextIndex, "status" to it.status, "zoneId" to it.zoneId, "dueMinute" to it.dueMinute, "startOffsetMillis" to it.startOffsetMillis, "priority" to it.priority) }),
@@ -58,17 +58,17 @@ internal object BackupJson {
             value as? JSONObject ?: error("Backup no es un objeto.")
         }
         val version = root.integer("dataVersion")
-        require(version in 1L..8L) { "Versión de datos no compatible." }
+        require(version in 1L..9L) { "Versión de datos no compatible." }
         val baseFields = arrayOf("dataVersion", "appVersion", "createdAt", "projects", "nodes", "persons", "assignments", "avatars")
         root.fields(*(baseFields + (if (version >= 2L) arrayOf("recurrenceRules", "recurrenceOccurrences", "recurrenceAssignments") else emptyArray()) + (if (version >= 3L) arrayOf("tags", "nodeTags", "recurrenceTags") else emptyArray()) + (if (version >= 4L) arrayOf("nodeEvents") else emptyArray()) + (if (version >= 7L) arrayOf("creationDefaults","defaultsTags","defaultsPeople") else emptyArray())))
-        require(version in 1L..8L) { "Versión de datos no compatible." }
+        require(version in 1L..9L) { "Versión de datos no compatible." }
         val projects = root.records("projects").map { row ->
             row.fields("id", "name", "description", "position", "createdAt", "updatedAt")
             ProjectEntity(row.string("id"), row.string("name"), row.string("description"), row.position(), row.integer("createdAt"), row.integer("updatedAt"))
         }
         val rawNodes = root.records("nodes").map { row ->
-            row.fields("id", "projectId", "parentId", "title", "description", "isCompleted", "position", "createdAt", "updatedAt", "startAt", "dueAt", "purpose", "amountMinor", "currencyCode", *(if (version >= 5) arrayOf("priority") else emptyArray()), *(if (version >= 6) arrayOf("creationGroupId") else emptyArray()))
-            NodeEntity(row.string("id"), row.string("projectId"), row.nullableString("parentId"), row.string("title"), row.string("description"), row.get("isCompleted") as? Boolean ?: error("Completado inválido."), row.position(), row.integer("createdAt"), row.integer("updatedAt"), row.nullableLong("startAt"), row.nullableLong("dueAt"), row.string("purpose"), row.nullableLong("amountMinor"), row.nullableString("currencyCode"), if (version >= 5) row.string("priority") else "NONE", if (version >= 6) row.nullableString("creationGroupId") else null)
+            row.fields("id", "projectId", "parentId", "title", "description", "isCompleted", "position", "createdAt", "updatedAt", "startAt", "dueAt", "purpose", "amountMinor", "currencyCode", *(if (version >= 5) arrayOf("priority") else emptyArray()), *(if (version >= 6) arrayOf("creationGroupId") else emptyArray()), *(if (version >= 9) arrayOf("sprintMode","workState") else emptyArray()))
+            NodeEntity(row.string("id"), row.string("projectId"), row.nullableString("parentId"), row.string("title"), row.string("description"), row.get("isCompleted") as? Boolean ?: error("Completado inválido."), row.position(), row.integer("createdAt"), row.integer("updatedAt"), row.nullableLong("startAt"), row.nullableLong("dueAt"), row.string("purpose"), row.nullableLong("amountMinor"), row.nullableString("currencyCode"), if (version >= 5) row.string("priority") else "NONE", if (version >= 6) row.nullableString("creationGroupId") else null, if (version >= 9) row.boolean("sprintMode") else false, if (version >= 9) row.nullableString("workState") else null)
         }
         val legacyParents=rawNodes.mapNotNullTo(hashSetOf()) { it.parentId }
         if(version<8) require(rawNodes.all { it.purpose in listOf("ACTION","NOTE") }) { "Propósito desconocido en backup antiguo." }

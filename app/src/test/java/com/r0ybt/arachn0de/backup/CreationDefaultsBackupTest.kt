@@ -28,7 +28,7 @@ class CreationDefaultsBackupTest {
     @After fun close() { db.close();RuntimeEnvironment.getApplication().deleteDatabase("arachn0de.db") }
     @Test fun v7RoundTripRestoresAllScopesAndEffectiveConfiguration()=runBlocking {
         val before=backup.snapshot();val effective=nodes.creationDefaults.resolve("p","layer")
-        val bytes=BackupJson.encode(before);assertEquals(8,JSONObject(bytes.toString(Charsets.UTF_8)).getInt("dataVersion"))
+        val bytes=BackupJson.encode(before);assertEquals(9,JSONObject(bytes.toString(Charsets.UTF_8)).getInt("dataVersion"))
         backup.restore(BackupJson.decode(bytes));val after=backup.snapshot()
         assertEquals(before.copy(createdAt=after.createdAt),after);assertEquals(effective,nodes.creationDefaults.resolve("p","layer"))
     }
@@ -37,7 +37,7 @@ class CreationDefaultsBackupTest {
         for(version in 1..6) {
             nodes.creationDefaults.save(DefaultsScope.Global,CreationDefaults(currency=DefaultValue.Own("EUR")))
             val json=JSONObject(BackupJson.encode(before).toString(Charsets.UTF_8)).apply {
-                put("dataVersion",version); for(i in 0 until getJSONArray("nodes").length()) { val row=getJSONArray("nodes").getJSONObject(i);if(row.getString("purpose")=="LAYER") row.put("purpose","ACTION") };remove("creationDefaults");remove("defaultsTags");remove("defaultsPeople")
+                put("dataVersion",version); for(i in 0 until getJSONArray("nodes").length()) { getJSONArray("nodes").getJSONObject(i).remove("sprintMode"); getJSONArray("nodes").getJSONObject(i).remove("workState") }; for(i in 0 until getJSONArray("nodes").length()) { val row=getJSONArray("nodes").getJSONObject(i);if(row.getString("purpose")=="LAYER") row.put("purpose","ACTION") };remove("creationDefaults");remove("defaultsTags");remove("defaultsPeople")
                 if(version<6) for(i in 0 until getJSONArray("nodes").length()) getJSONArray("nodes").getJSONObject(i).remove("creationGroupId")
                 if(version<5) for(key in listOf("nodes","recurrenceRules")) for(i in 0 until getJSONArray(key).length()) getJSONArray(key).getJSONObject(i).remove("priority")
                 if(version<4) remove("nodeEvents")

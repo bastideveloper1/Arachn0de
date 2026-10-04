@@ -164,6 +164,10 @@ internal fun ProjectNodeScreen(
     var showDefaults by rememberSaveable(currentNodeId) { mutableStateOf(false) }
     var showContextActions by remember(currentNodeId) { mutableStateOf(false) }
     val currentNode = projectState.nodesById[currentNodeId]
+    val sprintScope = currentNode?.sprintMode == true
+    var showSprintMode by rememberSaveable(currentNodeId) { mutableStateOf(false) }
+    var changingWorkStateId by rememberSaveable { mutableStateOf<String?>(null) }
+    var collapsedSprintSections by rememberSaveable(currentNodeId) { mutableStateOf(listOf<String>()) }
     var historyNodeId by rememberSaveable { mutableStateOf<String?>(null) }
     historyNodeId?.let { id -> projectState.nodesById[id]?.let { node -> NodeHistoryDialog(node, nodeRepository) { historyNodeId = null } } }
     val tagState by remember(nodeRepository) { nodeRepository.tags.observe() }.collectAsState(initial = com.r0ybt.arachn0de.domain.model.TagState())
@@ -197,6 +201,7 @@ internal fun ProjectNodeScreen(
             NodePresentationSort.filtered(rows, sortMode)
         }
     }
+    val filteredIds = remember(filteredRows) { filteredRows.orEmpty().mapTo(hashSetOf()) { it.node.id } }
     if (scopeFilters.open) ScopeFiltersDialog(scopeFilters, people, tagState.tags)
     if (showSortMenu) NodeSortMenu(sortMode, { sortPreferences.set(sortContext, it) }, { showSortMenu = false })
     val selection = remember(project.id, currentNodeId, scopedFilter) { com.r0ybt.arachn0de.ui.state.NodeSelection() }
@@ -307,7 +312,7 @@ internal fun ProjectNodeScreen(
                     val groups = listOf(false, true).associateWith { completed ->
                         currentNodes.orEmpty().filter { it.projectId == project.id && it.parentId == currentNodeId && it.isCompleted == completed }.map { it.id }
                     }
-                    val drag = rememberDragReorderState(nodeListState, "node:", groups, isSubmittingNode || selection.ids.isNotEmpty() || filterActive || sortMode != NodeSortMode.MANUAL || currentNodes == null, actions.operation.error, "$currentNodeId:${sortMode.name}:$filterActive") { source, target, _ ->
+                    val drag = rememberDragReorderState(nodeListState, "node:", groups, sprintScope || isSubmittingNode || selection.ids.isNotEmpty() || filterActive || sortMode != NodeSortMode.MANUAL || currentNodes == null, actions.operation.error, "$currentNodeId:${sortMode.name}:$filterActive") { source, target, _ ->
                         if (sortMode == NodeSortMode.MANUAL && !filterActive) actions.reorderTo(source, currentNodeId, target)
                     }
                     LazyColumn(
@@ -423,7 +428,8 @@ internal fun ProjectNodeScreen(
 
                                 if (currentNode != null) {
                                     androidx.compose.foundation.layout.FlowRow(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                        if(currentNode.isCompletable) SecondaryAction(if(currentNode.isCompleted) "Reabrir" else "Completar",
+                                        if(currentNode.workState != null) SecondaryAction("Estado: ${currentNode.workState.label}", { changingWorkStateId = currentNode.id }, enabled = !isSubmittingNode)
+                                        else if(currentNode.isCompletable) SecondaryAction(if(currentNode.isCompleted) "Reabrir" else "Completar",
                                             { actions.setCompleted(currentNode.id,!currentNode.isCompleted) },enabled = !isSubmittingNode)
                                     }
                                     if (currentNode.purpose == NodePurpose.ACTION) Text("Para añadir elementos, convierte esta tarea en capa desde ⋮.", color = Arachn0deColors.TextSecondary)
@@ -439,7 +445,7 @@ internal fun ProjectNodeScreen(
 
                             }
                         }
-                        if (scopeFilters.active) {
+                        if (scopeFilters.active && !sprintScope) {
                             if (filteredRows == null) item { Text("Cargando resultados…") }
                             else if (filteredRows!!.none { it.isMatch }) item { Text("Sin coincidencias") }
                             items(filteredRows.orEmpty(), key = { "filtered:${it.node.id}" }) { row ->
@@ -460,26 +466,43 @@ internal fun ProjectNodeScreen(
                         else if (currentNodes.orEmpty().isEmpty()) {
                             item(key = "empty-layer", contentType = "empty") { if (currentNode == null || currentNode.isStructural) EmptyLayerState() }
                         }
-                        for (completedGroup in listOf(false, true)) {
-                            val groupNodes = currentNodes.orEmpty().filter { it.isCompleted == completedGroup }
-                            val renderNodes = drag.orderFor(completedGroup, groupNodes.map { it.id })
+                        if (sprintScope && filterActive) {
+                            if (filteredRows == null) item { Text("Cargando resultados…") }
+                            else if (filteredRows!!.none { it.isMatch }) item { Text("Sin coincidencias") }
+                        }
+                        val sectionKeys = if (sprintScope) listOf("structure") + com.r0ybt.arachn0de.domain.model.WorkState.entries.map { it.name } else listOf("pending", "completed")
+                        for (sectionKey in sectionKeys) {
+                            val completedGroup = sectionKey == "completed"
+                            val groupNodes = currentNodes.orEmpty().filter { node ->
+                                if (!sprintScope) node.isCompleted == completedGroup else
+                                    (if (sectionKey == "structure") node.purpose != NodePurpose.ACTION else node.workState?.name == sectionKey) &&
+                                    (!filterActive || node.id in filteredIds)
+                            }
+                            val expanded = sectionKey !in collapsedSprintSections
+                            val renderNodes = if (sprintScope) { if (expanded) groupNodes else emptyList() } else drag.orderFor(completedGroup, groupNodes.map { it.id })
                                 .mapNotNull { id -> projectState.nodesById[id] }
-                            if (groupNodes.isNotEmpty()) {
+                            if (sprintScope && (sectionKey != "structure" || groupNodes.isNotEmpty())) {
+                                item(key = "sprint-section:$sectionKey", contentType = "section") {
+                                    val label = if (sectionKey == "structure") "Capas y notas" else com.r0ybt.arachn0de.domain.model.WorkState.valueOf(sectionKey).label
+                                    SprintSectionHeader(label, groupNodes.size, expanded) {
+                                        collapsedSprintSections = if (expanded) collapsedSprintSections + sectionKey else collapsedSprintSections - sectionKey
+                                    }
+                                }
+                            } else if (groupNodes.isNotEmpty()) {
                                 item(key = "section:$completedGroup", contentType = "section") {
                                     Column {
                                         if (completedGroup) androidx.compose.material3.HorizontalDivider(color = Arachn0deColors.Outline)
-                                        Text(
-                                            if (completedGroup) "Completadas" else "Disponibles",
-                                            color = Arachn0deColors.TextSecondary,
-                                            fontSize = 12.sp,
-                                            modifier = Modifier.padding(vertical = 8.dp),
-                                        )
+                                        Text(if (completedGroup) "Completadas" else "Disponibles", color = Arachn0deColors.TextSecondary,
+                                            fontSize = 12.sp, modifier = Modifier.padding(vertical = 8.dp))
                                     }
                                 }
                             }
                             items(renderNodes, key = { "node:${it.id}" }, contentType = { "node" }) { node ->
                                 val dragging = drag.isDragging(node.id)
                                 NodeCard(
+                                    onAdvanceWorkState = node.workState?.let { ({ actions.advanceWorkState(node.id) }) },
+                                    onChangeWorkState = node.workState?.let { ({ changingWorkStateId = node.id }) },
+                                    stateBusy = isSubmittingNode,
                                     onHistory = { historyNodeId = node.id },
                                     tags = tagState.forNode(node.id),
                                     node = node,
@@ -505,8 +528,8 @@ internal fun ProjectNodeScreen(
                                     onEdit = {
                                         if (assignmentsLoaded && peopleLoaded) drafts.open(node.parentId, node.id) { EditorDraft(node.id, node.parentId, node.title, node.description, startAt = node.startAt, dueAt = node.dueAt, purpose = node.purpose, obligation = node.obligation, priority = node.priority).apply { tagIds = tagState.nodeIds[node.id].orEmpty().toList(); responsibleIds = responsibleByNode[node.id].orEmpty().map { it.id }; creationGroupId = node.creationGroupId; captureSharedBaseline() } }
                                     },
-                                    canMoveUp = node.id != renderNodes.firstOrNull()?.id && !isSubmittingNode && sortMode == NodeSortMode.MANUAL,
-                                    canMoveDown = node.id != renderNodes.lastOrNull()?.id && !isSubmittingNode && sortMode == NodeSortMode.MANUAL,
+                                    canMoveUp = !sprintScope && node.id != renderNodes.firstOrNull()?.id && !isSubmittingNode && sortMode == NodeSortMode.MANUAL,
+                                    canMoveDown = !sprintScope && node.id != renderNodes.lastOrNull()?.id && !isSubmittingNode && sortMode == NodeSortMode.MANUAL,
                                     onReorder = { moveUp, onSuccess ->
                                         if (sortMode == NodeSortMode.MANUAL) actions.reorder(node.id, node.parentId, moveUp, onSuccess)
                                     },
@@ -515,7 +538,7 @@ internal fun ProjectNodeScreen(
                                         deletingNodeName = node.title
                                     },
                                     onToggleComplete = {
-                                        if (node.isCompletable) actions.setCompleted(node.id, !node.isCompleted)
+                                        if (node.workState != null) actions.advanceWorkState(node.id) else if (node.isCompletable) actions.setCompleted(node.id, !node.isCompleted)
                                     },
                                     dragging = dragging,
                                     modifier = Modifier.animateItem(
@@ -523,6 +546,18 @@ internal fun ProjectNodeScreen(
                                         placementSpec = if (dragging) null else androidx.compose.animation.core.spring(),
                                     ).then(drag.cardModifier(node.id)),
                                 )
+                            }
+                        }
+                        if (sprintScope && filterActive) {
+                            val nestedMatches = filteredRows.orEmpty().filter { it.depth > 0 }
+                            if (nestedMatches.isNotEmpty()) item { Text("Coincidencias en subcapas", color = Arachn0deColors.TextSecondary) }
+                            items(nestedMatches, key = { "sprint-filtered:${it.node.id}" }) { row ->
+                                Column(Modifier.padding(start = minOf(row.depth, 6).times(12).dp)) {
+                                    if (!row.isMatch) Text("Contexto · ${row.node.title}", color = Arachn0deColors.TextSecondary)
+                                    TextButton(onClick = { if (selection.ids.isNotEmpty()) selection.toggle(row.node.id) else actions.navigate(row.node.id) { path -> currentPath.clear();currentPath.addAll(path) } }) { Text(row.node.title) }
+                                    row.node.workState?.let { Text(it.label, color = Arachn0deColors.TextSecondary) }
+                                    SecondaryAction(if (row.node.id in selection.ids) "✓ Seleccionado" else "Seleccionar", { selection.toggle(row.node.id) }, enabled = !isSubmittingNode)
+                                }
                             }
                         }
                         }
@@ -623,8 +658,15 @@ internal fun ProjectNodeScreen(
             currentNode?.title ?: project.name, tagState.tags, people) { showDefaults = false } }
     }
 
+    if (showSprintMode && currentNode?.isStructural == true) SprintModeDialog(currentNode.sprintMode, isSubmittingNode,
+        { showSprintMode = false }, { actions.sprintMode(currentNode.id, !currentNode.sprintMode) { showSprintMode = false } })
+    changingWorkStateId?.let { id -> projectState.nodesById[id]?.let { node -> node.workState?.let { state ->
+        WorkStateDialog(node.title, state, isSubmittingNode, { changingWorkStateId = null }, { chosen -> actions.workState(id, chosen) { changingWorkStateId = null } })
+    } } }
     if(showContextActions) ActionMenu(currentNode?.title ?: project.name,{ showContextActions = false }) {
         ActionMenuItem("Recurrencias", androidx.compose.material.icons.Icons.Default.Refresh, { showContextActions=false; recurrenceSelected="" })
+        if(currentNode?.isStructural == true) ActionMenuItem(if(currentNode.sprintMode) "Desactivar Modo Sprint" else "Modo Sprint", androidx.compose.material.icons.Icons.Default.SwapHoriz, { showContextActions=false;showSprintMode=true }, enabled=!isSubmittingNode)
+        if(currentNode?.workState != null) ActionMenuItem("Cambiar estado", androidx.compose.material.icons.Icons.Default.SwapHoriz, { showContextActions=false;changingWorkStateId=currentNode.id }, enabled=!isSubmittingNode)
         if(currentNode != null) {
             ActionMenuItem("Editar", androidx.compose.material.icons.Icons.Default.Edit, {
                 showContextActions=false

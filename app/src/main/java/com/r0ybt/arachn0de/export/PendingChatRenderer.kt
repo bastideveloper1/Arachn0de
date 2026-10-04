@@ -27,12 +27,13 @@ object PendingChatRenderer {
             val indent="  ".repeat(depth.coerceAtMost(5))
             val children=tree.childrenOf(node.id)
             if(children.isNotEmpty()) {
-                append("$indent${clean(node.title)}\n")
+                append("$indent${clean(node.title)}${if(node.sprintMode) " · Modo Sprint" else ""}\n")
                 children.asReversed().forEach { stack.addLast(it to depth+1) }
             } else if(node.isCompletable && !node.isCompleted) {
                 tasks++
                 append("$indent• ${clean(node.title)}\n")
                 val details=mutableListOf<String>()
+                node.workState?.let { details.add("Estado: ${it.label}") }
                 people[node.id].orEmpty().takeIf { it.isNotEmpty() }?.let { details.add("Responsables: "+it.joinToString(", ") { person -> clean(person.name) }) }
                 node.dueAt?.let { details.add("Vence: "+DateFormat.getDateInstance(DateFormat.SHORT).format(Date(it))) }
                 if(node.effectivePriority!=Priority.NONE) details.add("Prioridad: "+when(node.effectivePriority) { Priority.HIGH->"Alta";Priority.MEDIUM->"Media";else->"Baja" })

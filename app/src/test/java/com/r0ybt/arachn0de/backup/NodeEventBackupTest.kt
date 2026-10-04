@@ -30,7 +30,7 @@ class NodeEventBackupTest {
         val task=nodes.createNode("p",null,"Task"); now += 1234
         nodes.setCompleted(bill.id,true); nodes.setCompleted(bill.id,false); nodes.setCompleted(bill.id,true); nodes.setCompleted(task.id,true)
         val before=backup.snapshot(); val history=db.nodeEventDao().forNode(bill.id)
-        val encoded=BackupJson.encode(before); assertEquals(8,JSONObject(encoded.toString(Charsets.UTF_8)).getInt("dataVersion"))
+        val encoded=BackupJson.encode(before); assertEquals(9,JSONObject(encoded.toString(Charsets.UTF_8)).getInt("dataVersion"))
         val decoded=backup.inspect(BackupFixture.archive(before).inputStream()); assertEquals(before.nodeEvents,decoded.nodeEvents)
         nodes.deleteNode(bill.id); backup.restore(decoded)
         assertEquals(before.nodeEvents,backup.snapshot().nodeEvents); assertEquals(history,db.nodeEventDao().forNode(bill.id))
@@ -44,7 +44,7 @@ class NodeEventBackupTest {
             val json=JSONObject(BackupJson.encode(before).toString(Charsets.UTF_8)).apply {
                 for (i in 0 until getJSONArray("nodes").length()) getJSONArray("nodes").getJSONObject(i).apply { remove("priority"); remove("creationGroupId") }
                 for (i in 0 until getJSONArray("recurrenceRules").length()) getJSONArray("recurrenceRules").getJSONObject(i).apply { remove("priority"); remove("creationGroupId") }
-                put("dataVersion",version); for(i in 0 until getJSONArray("nodes").length()) { val row=getJSONArray("nodes").getJSONObject(i);if(row.getString("purpose")=="LAYER") row.put("purpose","ACTION") }; remove("creationDefaults"); remove("defaultsTags"); remove("defaultsPeople"); remove("nodeEvents")
+                put("dataVersion",version); for(i in 0 until getJSONArray("nodes").length()) { getJSONArray("nodes").getJSONObject(i).remove("sprintMode"); getJSONArray("nodes").getJSONObject(i).remove("workState") }; for(i in 0 until getJSONArray("nodes").length()) { val row=getJSONArray("nodes").getJSONObject(i);if(row.getString("purpose")=="LAYER") row.put("purpose","ACTION") }; remove("creationDefaults"); remove("defaultsTags"); remove("defaultsPeople"); remove("nodeEvents")
                 if (version < 3) { remove("tags"); remove("nodeTags"); remove("recurrenceTags") }
                 if (version < 2) { remove("recurrenceRules"); remove("recurrenceOccurrences"); remove("recurrenceAssignments") }
             }

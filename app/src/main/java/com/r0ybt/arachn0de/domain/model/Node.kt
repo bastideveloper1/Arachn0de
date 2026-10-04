@@ -18,6 +18,8 @@ data class Node(
     val obligation: Obligation? = null,
     val priority: Priority = Priority.NONE,
     val creationGroupId: String? = null,
+    val sprintMode: Boolean = false,
+    val workState: WorkState? = null,
 ) {
     val effectivePriority: Priority get() = if (isCompletable) priority else Priority.NONE
     val isStructural: Boolean get() = purpose == NodePurpose.LAYER

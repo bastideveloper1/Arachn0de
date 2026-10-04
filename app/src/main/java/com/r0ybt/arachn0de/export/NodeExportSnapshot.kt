@@ -7,7 +7,8 @@ import java.util.Collections
 
 enum class ExportKind { LAYER, ACTION, NOTE }
 data class ExportEntry(val title: String, val description: String, val depth: Int,
-    val kind: ExportKind, val completed: Boolean)
+    val kind: ExportKind, val completed: Boolean,
+    val sprintMode: Boolean = false, val workState: com.r0ybt.arachn0de.domain.model.WorkState? = null)
 class ContextTooLargeException : Exception("El contexto es demasiado grande para el portapapeles. Copia una capa más pequeña.")
 
 /** Only presentation content leaves the existing tree; no IDs, money, dates, or associations. */
@@ -48,7 +49,7 @@ class NodeExportSnapshot private constructor(val entries: List<ExportEntry>) {
                 if (contentSize > MAX_TEXT_CHARS) throw ContextTooLargeException()
                 result.add(ExportEntry(node.title, node.description, depth,
                     if (node.isStructural) ExportKind.LAYER else if (node.purpose == NodePurpose.NOTE) ExportKind.NOTE else ExportKind.ACTION,
-                    node.isCompleted))
+                    node.isCompleted, node.sprintMode, node.workState))
                 if (descendants) children.asReversed().forEach { pending.addLast(it.id to depth + 1) }
             }
             return NodeExportSnapshot(Collections.unmodifiableList(result))

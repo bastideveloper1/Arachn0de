@@ -388,7 +388,7 @@ Utilizar:
 
 Room debe proporcionar la capa de persistencia.
 
-El esquema actual es la **versión 15** (valores predeterminados de creación; véase la sección final). v4 incorporó el orden persistente de proyectos, v5 Personas/Responsables, v6 fechas opcionales, v7 ACTION/NOTE, v8 obligaciones, v9 recurrencia, v10 etiquetas, v11 eventos, v12 Priority, v13 creation groups y v14 CreationDefaults y v15 LAYER explícito. Se conservan los esquemas históricos **1–15** y todas sus rutas de migración; no se usa `fallbackToDestructiveMigration`.
+El esquema actual es la **versión 16** (Modo Sprint; véase la sección final). v4 incorporó el orden persistente de proyectos, v5 Personas/Responsables, v6 fechas opcionales, v7 ACTION/NOTE, v8 obligaciones, v9 recurrencia, v10 etiquetas, v11 eventos, v12 Priority, v13 creation groups y v14 CreationDefaults, v15 LAYER explícito y v16 Modo Sprint. Se conservan los esquemas históricos **1–16** y todas sus rutas de migración; no se usa `fallbackToDestructiveMigration`.
 
 ### Invariantes de nodos
 
@@ -824,7 +824,7 @@ Proyecto → Nodo → jerarquía arbitraria de Nodos → Capas de cebolla
 
 Las capas no se completan manualmente. El progreso existente se deriva de todas las tareas hoja descendientes, incluidas subcapas, sin contar los contenedores ni promediar sus porcentajes. `NodeTreeSnapshot` y los flujos del repositorio mantienen esta información reactiva. Las hojas NOTE quedan excluidas del trabajo medible.
 
-La base actual es local-first y offline-first, sin cuenta ni backend obligatorio: proyectos, nodos, navegación por Capas de cebolla, orden manual, drag/reorder y progreso derivado se apoyan en Room/SQLite v15, con Personas, responsables, fechas locales, propósito de hoja y capacidad financiera opcional. Las secciones anteriores y los ajustes finales describen su implementación y las verificaciones físicas pendientes. Esta documentación no convierte esos pendientes en comprobaciones realizadas.
+La base actual es local-first y offline-first, sin cuenta ni backend obligatorio: proyectos, nodos, navegación por Capas de cebolla, orden manual, drag/reorder y progreso derivado se apoyan en Room/SQLite v16, con Personas, responsables, fechas locales, propósito de hoja y capacidad financiera opcional. Las secciones anteriores y los ajustes finales describen su implementación y las verificaciones físicas pendientes. Esta documentación no convierte esos pendientes en comprobaciones realizadas.
 
 El repositorio ofrece `moveNode(id, parentId)` transaccional, valida el proyecto del padre y rechaza ciclos. La acción visible «Mover a…» está implementada y reutiliza esta operación. Reordenar entre hermanos y trasladar a otro padre son operaciones distintas.
 
@@ -2748,3 +2748,139 @@ No se ejecutó toda la suite global, lint ni build release. Quedan pendientes
 la actualización de una instalación real y el dogfooding en dispositivo
 (incluidos accesibilidad y gestos); Robolectric/Compose no acreditan esas pruebas.
 No se realizó commit ni push.
+
+## Modo Sprint de LAYER — contrato actual (Room 16 / Backup 9)
+
+**Modo Sprint ≠ Sprint numerado.** Es una propiedad opcional de una Capa, no
+una iteración, entidad SprintTask, planificación, puntos ni Kanban horizontal.
+La auditoría revisó LAYER/guards de Room 15, Backup 8, completitud/progreso,
+NodeEvents, Attention/Calendar, filtros/sorting, recurrence/Batch, grupos/defaults,
+selección/Undo, Copy/Move y Project → Layer. Las proyecciones existentes usan
+isCompleted; no requieren cinco nuevas políticas de progreso o eventos.
+
+### Modelo e invariantes
+
+`Node.sprintMode` (false por defecto) pertenece solo a LAYER y funciona con 0..N
+hijos. Afecta exclusivamente a sus ACTION hijas **directas**. Subcapas conservan
+su modo independiente; NOTE y LAYER nunca tienen workState.
+`Node.workState` es nullable: null en ACTION de contexto normal y en NOTE/LAYER;
+en ACTION directas de una Capa Sprint es UNPLANNED, PLANNED, DOING, DONE o
+VALIDATED. Textos: No planificada, Planificada, Haciendo, Terminada y Validada.
+Responsables son independientes y no existe estado «Asignada».
+
+UNPLANNED/PLANNED/DOING implican isCompleted=false; DONE/VALIDATED implican true.
+La relación es determinista, protegida por guards SQLite de fila y escrituras
+transaccionales de Repository. isCompleted conserva su papel para proyecciones
+existentes, sin una segunda completitud divergente. Backup valida además el
+contexto padre/modo. Los guards de fila permiten los pasos intermedios de una
+normalización de contexto dentro de la misma transacción; la integridad de
+contexto entre filas corresponde a Repository y a la validación del snapshot
+Backup. No se escriben estos campos desde collectors ni desde presentación.
+
+Activar desde ⋮ de la Capa abierta confirma el cambio: pendientes → UNPLANNED,
+completadas → DONE, nunca VALIDATED automáticamente. Solo transforma ACTION
+directas. Desactivar confirma y elimina workState activo: los tres primeros
+estados quedan pendientes; DONE/VALIDATED quedan completados. No se conserva
+estado latente; reactivar vuelve a mapear completitud a UNPLANNED/DONE. Estas
+normalizaciones no crean eventos de completitud ni cambian otros atributos.
+Convertir una Capa vacía a ACTION desactiva su modo; convertir NOTE a ACTION
+bajo Sprint la inicia UNPLANNED. Convertir ACTION completada sigue reabriéndola
+con el evento existente antes de dejar de ser tarea.
+
+### Interacción y vista
+
+Una Capa normal mantiene el control binario y las secciones existentes. Sprint
+muestra Capas y notas por separado y cinco secciones verticales en orden fijo.
+Cada encabezado muestra cantidad visible y permite expandir/contraer; su estado
+se guarda como estado UI por contexto, sin Room. El control primario muestra
+etapa 1/5..5/5, con texto de estado en tarjeta y semántica de estado/siguiente
+acción, sin depender de colores. Un toque avanza; VALIDATED queda final y no
+hace wrap. «Cambiar estado» en ⋮ o en la tarea abierta permite elegir cualquier
+etapa y retroceder. Targets de controles/encabezados son de al menos 48 dp.
+
+El orden seleccionado se aplica dentro de cada sección; nunca mezcla etapas.
+Los filtros pendientes/completadas mantienen su significado binario. La vista
+Sprint retiene contexto de filtros recursivos y presenta coincidencias en
+subcapas aparte de las etapas directas, sin heredar el modo. Selección, borrado
+y traslado múltiple siguen disponibles. En esta versión el drag manual se
+mantiene en contextos normales y queda deshabilitado en la vista Sprint; no se
+usa arrastre para cambiar etapas. Las posiciones existentes se conservan.
+
+### Completitud y proyecciones
+
+DONE y VALIDATED aportan trabajo completado con el peso existente de una ACTION;
+los otros estados aportan pendiente. LAYER vacía sigue NO_WORK. No cambian
+NOT_STARTED/PARTIAL/COMPLETE ni agregación de subcapas. Attention excluye
+DONE/VALIDATED como cualquier tarea completada; las otras etapas usan fechas y
+prioridad existentes. Calendar mantiene las ACTION con fechas, incluidas
+completadas, según su semántica actual; no hay calendario Sprint.
+
+Cruzar pendiente → completado registra COMPLETED una sola vez; cruzar de vuelta
+registra REOPENED. Transiciones entre pendientes y DONE ↔ VALIDATED no fabrican
+eventos. No se amplía NodeEvent. La API binaria setCompleted normaliza una ACTION
+Sprint a DONE/UNPLANNED cuando cambia completitud; solicitudes idempotentes no
+rebajan VALIDATED. Errores de evento revierten estado y completitud juntos.
+
+### Creación, traslado, exportación y recuperación
+
+Crear ACTION, aplicar CreationDefaults, Batch y materializar recurrence bajo
+Sprint inicia UNPLANNED. No se añaden campos Sprint a defaults o formularios
+Batch ni se cambia el calendario/estado/cursor/recibos de reglas. Las ocurrencias
+previas permanecen Nodes independientes. creationGroup y atributos compartidos
+no incluyen workState ni cambian el modo de ninguna Capa.
+
+Move individual y múltiple normalizan atómicamente: NORMAL → SPRINT mapea
+pendiente/completada a UNPLANNED/DONE; SPRINT → NORMAL elimina workState
+conservando completitud; SPRINT → SPRINT conserva la etapa. Mover LAYER conserva
+su modo y los estados de sus propias tareas. Project → Layer conserva esos
+campos al reinsertar descendientes con sus IDs; su nuevo envoltorio es NORMAL
+porque el Project origen no tenía modo. Su destino no lo activa implícitamente.
+Undo de creación captura los nuevos campos mediante Node; cambiar estado o modo
+invalida un token que ya no describe exactamente la creación, evitando borrar
+trabajo modificado.
+
+En este proyecto Copy es **exportación al portapapeles**, no duplicación de
+Nodes. No existe una operación de clonado de ACTION/Layer/Project que deba
+inventarse en esta misión. Markdown mantiene su estructura y checkboxes de
+completitud, añadiendo etiqueta de etapa/modo cuando corresponde. Copiar con
+descendientes mantiene la exportación compacta de pendientes: excluye DONE y
+VALIDATED, incluye etapa de tareas pendientes y modo del contexto. No cambia
+IDs, estados, fechas, historial ni filas al copiar.
+
+### Persistencia y compatibilidad
+
+Room **16** añade `nodes.sprintMode INTEGER NOT NULL DEFAULT 0` y
+`nodes.workState TEXT` mediante migración explícita 15→16; mantiene la cadena
+histórica y no usa migración destructiva. Todas las Capas históricas quedan
+NORMAL y todos los workState quedan null, conservando completitud, relaciones,
+metadatos e historial. Bases nuevas y migradas instalan los mismos guards: modo
+solo en LAYER, estado solo en ACTION y consistencia estado/completitud.
+
+Backup lógico **9**, contenedor externo v1 sin cambios: representa ambos campos
+explícitos, valida contexto e invariantes y preserva Sprint vacío. Lectura
+v1–v8 asigna NORMAL/null y conserva completitud; v1–v7 sigue infiriendo LAYER
+histórica antes de validar. Restore conserva transacción, orden padre primero,
+foreign keys, límites y rollback existentes. No se promete downgrade a apps
+que solo leen v8.
+
+Fuera del alcance: iteraciones numeradas, fechas/puntos/velocidad de Sprint,
+Kanban/Gantt, métricas avanzadas, notificaciones y demás funciones del roadmap.
+Validación física de actualización de APK, TalkBack y gestos queda pendiente.
+
+### Validación de Modo Sprint
+
+La validación conjunta dirigida pasó **257/257 pruebas en 39 clases**, con cero
+fallos, errores u omisiones; incluye 29 ejecuciones nuevas de Sprint en modelo/
+Repository, migración real 15→16 en API 24/28, Backup/restore y Compose. Las
+regresiones cubren migraciones históricas, Backup, LAYER, Project → Layer,
+invariantes/persistencia, NodeEvents/recurrence, defaults, sorting y Copy.
+ProjectNestingTest conserva las verificaciones de profundidad de 1100 niveles,
+600 elementos en destino y rollback por fallo/cancelación.
+
+`assembleDebug` terminó correctamente en la misma ejecución; `git diff --check`
+pasó. Registro: `/tmp/sprint-validation2.log`; XML en
+`app/build/test-results/testDebugUnitTest` e informe HTML en
+`app/build/reports/tests/testDebugUnitTest/index.html`.
+No se ejecutaron suite global, lint ni release. No se realizó commit ni push.
+Los resultados Robolectric/Compose no acreditan pruebas físicas de APK,
+TalkBack, gestos, muerte de proceso ni rendimiento real en dispositivo.

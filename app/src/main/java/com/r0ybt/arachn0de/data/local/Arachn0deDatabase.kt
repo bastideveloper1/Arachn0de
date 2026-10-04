@@ -7,7 +7,7 @@ import androidx.room.RoomDatabase
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 
-@Database(entities = [ProjectEntity::class, NodeEntity::class, PersonEntity::class, NodePersonEntity::class, RecurrenceRuleEntity::class, RecurrenceOccurrenceEntity::class, RecurrencePersonEntity::class, TagEntity::class, NodeTagEntity::class, RecurrenceTagEntity::class, NodeEventEntity::class, CreationDefaultsEntity::class, CreationDefaultsTagEntity::class, CreationDefaultsPersonEntity::class], version = 15, exportSchema = true)
+@Database(entities = [ProjectEntity::class, NodeEntity::class, PersonEntity::class, NodePersonEntity::class, RecurrenceRuleEntity::class, RecurrenceOccurrenceEntity::class, RecurrencePersonEntity::class, TagEntity::class, NodeTagEntity::class, RecurrenceTagEntity::class, NodeEventEntity::class, CreationDefaultsEntity::class, CreationDefaultsTagEntity::class, CreationDefaultsPersonEntity::class], version = 16, exportSchema = true)
 abstract class Arachn0deDatabase : RoomDatabase() {
     abstract fun creationDefaultsDao(): CreationDefaultsDao
     abstract fun projectDao(): ProjectDao
@@ -25,11 +25,12 @@ abstract class Arachn0deDatabase : RoomDatabase() {
             Arachn0deDatabase::class.java,
             "arachn0de.db",
         )
-            .addMigrations(MIGRATION_1_2, NodeMigration2To3, ProjectMigration3To4, PersonMigration4To5, TaskDatesMigration5To6, NodePurposeMigration6To7, ObligationMigration7To8, RecurrenceMigration8To9, TagMigration9To10, NodeEventMigration10To11, PriorityMigration11To12, CreationGroupMigration12To13, CreationDefaultsMigration13To14, ExplicitLayerMigration14To15)
+            .addMigrations(MIGRATION_1_2, NodeMigration2To3, ProjectMigration3To4, PersonMigration4To5, TaskDatesMigration5To6, NodePurposeMigration6To7, ObligationMigration7To8, RecurrenceMigration8To9, TagMigration9To10, NodeEventMigration10To11, PriorityMigration11To12, CreationGroupMigration12To13, CreationDefaultsMigration13To14, ExplicitLayerMigration14To15, SprintMigration15To16)
             .addCallback(object : Callback() {
                 override fun onCreate(db: SupportSQLiteDatabase) {
                     NodeInvariants.install(db)
                     ExplicitLayerInvariants.install(db)
+                    SprintInvariants.install(db)
                     ObligationInvariants.install(db)
                 }
             })

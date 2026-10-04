@@ -183,6 +183,9 @@ internal fun NodeCard(
     selected: Boolean = false,
     selecting: Boolean = false,
     onSelect: (() -> Unit)? = null,
+    onAdvanceWorkState: (() -> Unit)? = null,
+    onChangeWorkState: (() -> Unit)? = null,
+    stateBusy: Boolean = false,
 ) {
     var showContextMenu by remember { mutableStateOf(false) }
     val completedTint = if (node.isCompleted) Arachn0deColors.Completed else Arachn0deColors.Primary
@@ -208,6 +211,15 @@ internal fun NodeCard(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             if (selecting) androidx.compose.material3.Checkbox(selected, { onSelect?.invoke() })
+            else if (node.workState != null) {
+                val state = node.workState
+                val next = state.next()
+                IconButton(onClick = { onAdvanceWorkState?.invoke() }, enabled = !stateBusy && state != next && onAdvanceWorkState != null,
+                    modifier = Modifier.size(48.dp).semantics {
+                        contentDescription = "Estado: ${state.label}. " + if (state == next) "Estado final." else "Activar para avanzar a ${next.label}."
+                        stateDescription = state.label
+                    }) { Text("${state.ordinal + 1}/5", color = Arachn0deColors.TextPrimary) }
+            }
             else if (canToggleComplete) {
                 IconButton(
                     onClick = onToggleComplete,
@@ -250,6 +262,7 @@ internal fun NodeCard(
             Column(
                 modifier = Modifier.weight(1f),
             ) {
+                node.workState?.let { Text(it.label, color = Arachn0deColors.TextSecondary, fontSize = 12.sp) }
                 PriorityIndicator(node)
                 TagChips(tags)
                 if (noPending) Text("Sin pendientes", color = Arachn0deColors.TextSecondary, fontSize = 12.sp)
@@ -303,7 +316,7 @@ internal fun NodeCard(
                 } else if (node.isStructural) {
                     Spacer(modifier = Modifier.height(6.dp))
                     Text(
-                        text = "Capa",
+                        text = if (node.sprintMode) "Capa · Modo Sprint" else "Capa",
                         color = Arachn0deColors.TextSecondary,
                         fontSize = 11.sp,
                     )
@@ -340,6 +353,7 @@ internal fun NodeCard(
     if (showContextMenu) {
         ActionMenu(node.title, { showContextMenu = false }) {
             onSelect?.let { select -> ActionMenuItem("Seleccionar", Icons.Default.CheckBox, { showContextMenu = false; select() }) }
+            onChangeWorkState?.let { change -> ActionMenuItem("Cambiar estado",Icons.Default.SwapHoriz,{ showContextMenu = false; change() }, enabled = !stateBusy) }
             ActionMenuItem("Editar",Icons.Default.Edit,{ showContextMenu = false; onEdit() })
             onHistory?.let { history -> ActionMenuItem("Historial",Icons.Default.History,{ showContextMenu = false; history() }) }
             if (!hasChildren) ActionMenuItem(if(node.purpose != NodePurpose.ACTION) "Convertir en tarea" else "Convertir en nota",

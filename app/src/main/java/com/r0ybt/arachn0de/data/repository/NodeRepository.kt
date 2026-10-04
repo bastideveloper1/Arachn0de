@@ -6,6 +6,7 @@ import com.r0ybt.arachn0de.data.local.NodeTagEntity
 import com.r0ybt.arachn0de.data.local.NodePersonEntity
 import com.r0ybt.arachn0de.data.local.NodeEventEntity
 import com.r0ybt.arachn0de.data.local.toEvent
+import com.r0ybt.arachn0de.domain.model.WorkState
 import com.r0ybt.arachn0de.domain.model.Priority
 import com.r0ybt.arachn0de.domain.model.NodeEventType
 import com.r0ybt.arachn0de.data.local.NodeEntity
@@ -74,7 +75,7 @@ class NodeRepository(
         val current = nodeDao.getById(id) ?: return@withTransaction false
         if (current.parentId != expectedParentId) return@withTransaction false
         val siblings = sortSiblingsForDisplay(nodeDao.getSiblings(current.projectId, current.parentId))
-        val sameGroup = siblings.filter { it.isCompleted == current.isCompleted }
+        val sameGroup = siblings.filter { it.isCompleted == current.isCompleted && it.workState == current.workState }
         val from = sameGroup.indexOfFirst { it.id == id }
         check(from >= 0)
         val to = from + if (moveUp) -1 else 1
@@ -97,7 +98,7 @@ class NodeRepository(
         val current = nodeDao.getById(id) ?: return@withTransaction false
         val target = nodeDao.getById(targetId) ?: return@withTransaction false
         if (current.parentId != expectedParentId || target.parentId != expectedParentId ||
-            current.projectId != target.projectId || current.isCompleted != target.isCompleted) return@withTransaction false
+            current.projectId != target.projectId || current.isCompleted != target.isCompleted || current.workState != target.workState) return@withTransaction false
         val ordered = sortSiblingsForDisplay(nodeDao.getSiblings(current.projectId, expectedParentId)).toMutableList()
         val from = ordered.indexOfFirst { it.id == id }
         val to = ordered.indexOfFirst { it.id == targetId }
@@ -174,6 +175,7 @@ class NodeRepository(
             position = nextPosition(projectId, parentId), createdAt = now, updatedAt = now,
             startAt = startAt, dueAt = dueAt, purpose = purpose.name,
             amountMinor = obligation?.amountMinor, currencyCode = obligation?.currencyCode, priority = priority.name,
+            workState = initialWorkState(parentId, purpose),
         )
         reopenBeforeConversion(parentId, now)
         nodeDao.insert(entity)
@@ -231,7 +233,7 @@ class NodeRepository(
                 specs.mapIndexed { index, spec ->
                     val entity = NodeEntity(ids[index], projectId, parentId, spec.title, spec.description,
                         false, maximum + 1 + index, now, now, startAt = null, dueAt = spec.dueAt, purpose = spec.purpose.name,
-                        amountMinor = spec.obligation?.amountMinor, currencyCode = spec.obligation?.currencyCode, priority = spec.priority.name, creationGroupId = batchId)
+                        amountMinor = spec.obligation?.amountMinor, currencyCode = spec.obligation?.currencyCode, priority = spec.priority.name, creationGroupId = batchId, workState = initialWorkState(parentId, spec.purpose))
                     reopenBeforeConversion(parentId, now)
                     nodeDao.insert(entity)
                     appendEvent(entity.id, NodeEventType.CREATED, now)
@@ -301,7 +303,7 @@ class NodeRepository(
         require(current.amountMinor == null || removeObligation) { "Confirma la eliminación de los datos financieros." }
         val at = currentTimeMillis()
         reopenBeforeConversion(id, at)
-        check(nodeDao.updatePurpose(id, purpose.name, at) == 1) { "Purpose change was not written" }
+        check(nodeDao.updatePurpose(id, purpose.name, at, initialWorkState(current.parentId, purpose)) == 1) { "Purpose change was not written" }
         true
     }
 
@@ -312,8 +314,49 @@ class NodeRepository(
         if (current.parentId == parentId) return@withTransaction true
         val at = currentTimeMillis()
         reopenBeforeConversion(parentId, at)
-        check(nodeDao.move(id, parentId, nextPosition(current.projectId, parentId), at) == 1) { "Move was not written" }
+        check(nodeDao.move(id, parentId, nextPosition(current.projectId, parentId), at, movedWorkState(current, parentId)) == 1) { "Move was not written" }
         true
+    }
+
+    private suspend fun initialWorkState(parentId: String?, purpose: NodePurpose): String? =
+        if (purpose == NodePurpose.ACTION && parentId?.let { nodeDao.getById(it)?.sprintMode } == true) WorkState.UNPLANNED.name else null
+
+    private suspend fun movedWorkState(current: NodeEntity, parentId: String?): String? =
+        if (current.purpose == "ACTION" && parentId?.let { nodeDao.getById(it)?.sprintMode } == true)
+            current.workState ?: WorkState.fromCompletion(current.isCompleted).name else null
+
+    suspend fun setSprintMode(id: String, enabled: Boolean): Boolean = database.withTransaction {
+        val layer = nodeDao.getById(id) ?: return@withTransaction false
+        if (layer.purpose != "LAYER") return@withTransaction false
+        if (layer.sprintMode == enabled) return@withTransaction true
+        val at = currentTimeMillis()
+        nodeDao.getSiblings(layer.projectId, id).filter { it.purpose == "ACTION" }.forEach { child ->
+            val state = if (enabled) WorkState.fromCompletion(child.isCompleted).name else null
+            check(nodeDao.setWorkState(child.id, state, child.isCompleted, at) == 1)
+        }
+        check(nodeDao.setSprintMode(id, enabled, at) == 1)
+        true
+    }
+
+    suspend fun setWorkState(id: String, state: WorkState): Boolean = database.withTransaction {
+        val current = nodeDao.getById(id) ?: return@withTransaction false
+        changeWorkState(current, state)
+    }
+
+    suspend fun advanceWorkState(id: String): Boolean = database.withTransaction {
+        val current = nodeDao.getById(id) ?: return@withTransaction false
+        val state = current.workState?.let(WorkState::valueOf) ?: return@withTransaction false
+        changeWorkState(current, state.next())
+    }
+
+    private suspend fun changeWorkState(current: NodeEntity, state: WorkState): Boolean {
+        if (current.purpose != "ACTION" || current.parentId?.let { nodeDao.getById(it)?.sprintMode } != true) return false
+        if (current.workState == state.name) return true
+        val at = currentTimeMillis()
+        check(nodeDao.setWorkState(current.id, state.name, state.completed, at) == 1)
+        if (current.isCompleted != state.completed)
+            appendEvent(current.id, if (state.completed) NodeEventType.COMPLETED else NodeEventType.REOPENED, at)
+        return true
     }
 
     suspend fun setCompleted(id: String, completed: Boolean): Boolean = database.withTransaction {
@@ -330,7 +373,8 @@ class NodeRepository(
     private suspend fun changeCompletion(current: NodeEntity, completed: Boolean, at: Long, updatedAt: Long = at): Boolean {
         if (current.purpose != NodePurpose.ACTION.name || nodeDao.hasChildren(current.projectId, current.id)) return false
         if (current.isCompleted == completed) return true
-        if (nodeDao.setCompleted(current.id, completed, updatedAt) != 1) return false
+        val state = if (current.workState != null) WorkState.fromCompletion(completed).name else null
+        if (nodeDao.setWorkState(current.id, state, completed, updatedAt) != 1) return false
         appendEvent(current.id, if (completed) NodeEventType.COMPLETED else NodeEventType.REOPENED, at)
         return true
     }
@@ -403,7 +447,7 @@ class NodeRepository(
                 maximum = nodeDao.maxPosition(projectId, parentId) ?: -1
             }
             check(maximum.toLong() + changing.size <= Int.MAX_VALUE) { "Orden agotado." }
-            changing.forEachIndexed { index, id -> check(nodeDao.move(id,parentId,maximum+index+1,at) == 1) }
+            changing.forEachIndexed { index, id -> check(nodeDao.move(id,parentId,maximum+index+1,at,movedWorkState(checkNotNull(nodeDao.getById(id)),parentId)) == 1) }
         }
         selected.size
     }

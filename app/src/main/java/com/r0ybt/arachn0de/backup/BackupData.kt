@@ -56,6 +56,13 @@ internal fun BackupData.validate(): List<NodeEntity> {
         }
         require(node.creationGroupId == null || (node.creationGroupId.isNotBlank() && node.creationGroupId.length <= 200)) { "Grupo inválido." }
         com.r0ybt.arachn0de.domain.model.Priority.valueOf(node.priority)
+        require(!node.sprintMode || node.purpose == "LAYER") { "Modo Sprint incompatible." }
+        val sprintAction = node.purpose == "ACTION" && byId[node.parentId]?.sprintMode == true
+        require((node.workState != null) == sprintAction) { "Estado Sprint fuera de contexto." }
+        node.workState?.let {
+            val state = com.r0ybt.arachn0de.domain.model.WorkState.valueOf(it)
+            require(state.completed == node.isCompleted) { "Estado y completitud contradictorios." }
+        }
         require(node.purpose in listOf("ACTION","NOTE","LAYER")) { "Propósito desconocido." }
         require(!node.isCompleted || (node.purpose == "ACTION" && children[node.id].isNullOrEmpty())) { "Completado inválido." }
         require(node.purpose == "LAYER" || children[node.id].isNullOrEmpty()) { "Nota con hijos." }

@@ -99,6 +99,16 @@ internal class NodeActions(private val repository: NodeRepository, private val s
             repository.reorderNodeTo(id, parentId, targetId)
         })
 
+    fun sprintMode(id: String, enabled: Boolean, onSuccess: () -> Unit) = operation.submit("No se pudo cambiar el modo. Puedes reintentar.", {
+        repository.setSprintMode(id, enabled)
+    }, onSuccess)
+    fun workState(id: String, state: com.r0ybt.arachn0de.domain.model.WorkState, onSuccess: () -> Unit = {}) = operation.submit("No se pudo cambiar el estado. Puedes reintentar.", {
+        repository.setWorkState(id, state)
+    }, onSuccess)
+    fun advanceWorkState(id: String) = operation.submit("No se pudo avanzar el estado. Puedes reintentar.", {
+        repository.advanceWorkState(id)
+    })
+
     fun setCompleted(id: String, completed: Boolean) = operation.submit("No se pudo cambiar el completado. Puedes reintentar.", {
         repository.setCompleted(id, completed)
     })

@@ -24,7 +24,8 @@ object NodeMarkdownRenderer {
                     else -> "- **$title**"
                 }
             }
-            append("$indent$prefix$level\n")
+            val workflow = entry.workState?.let { " · ${it.label}" } ?: if (entry.sprintMode) " · Modo Sprint" else ""
+            append("$indent$prefix$workflow$level\n")
             if (entry.description.isNotBlank()) {
                 append("\n")
                 val bodyIndent = if (entry.depth == 0 && entry.kind != ExportKind.ACTION) "" else "$indent    "

@@ -14,6 +14,8 @@ import com.r0ybt.arachn0de.domain.model.TaskTemporal
 import com.r0ybt.arachn0de.domain.model.TaskTemporalState
 import com.r0ybt.arachn0de.ui.state.EditorDraft
 import com.r0ybt.arachn0de.ui.theme.Arachn0deColors
+import com.r0ybt.arachn0de.ui.theme.SemanticColors
+import com.r0ybt.arachn0de.ui.theme.ContentTypography
 import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Date
@@ -41,10 +43,10 @@ internal fun TaskDateIndicator(node: Node, now: Long, wrap: Boolean = false) {
     val instant = if (state == TaskTemporalState.SCHEDULED) node.startAt else node.dueAt ?: node.startAt
     val color = when (state) {
         TaskTemporalState.OVERDUE -> Arachn0deColors.Destructive
-        TaskTemporalState.UPCOMING -> Arachn0deColors.PathHighlight
+        TaskTemporalState.UPCOMING -> SemanticColors.Upcoming
         else -> Arachn0deColors.TextSecondary
     }
-    Text("$label · ${formatTaskDate(checkNotNull(instant), compact = true)}", color = color, fontSize = 12.sp, maxLines = if (wrap) Int.MAX_VALUE else 1, overflow = TextOverflow.Ellipsis)
+    Text("$label · ${formatTaskDate(checkNotNull(instant), compact = true)}", color = color, fontSize = ContentTypography.Metadata, maxLines = if (wrap) Int.MAX_VALUE else 1, overflow = TextOverflow.Ellipsis)
 }
 
 /** Material pickers use UTC calendar dates; combine their components with local wall time. */

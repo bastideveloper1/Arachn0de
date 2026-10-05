@@ -11,6 +11,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import kotlin.math.roundToInt
 import com.r0ybt.arachn0de.domain.model.WorkState
 import com.r0ybt.arachn0de.ui.theme.Arachn0deColors
+import com.r0ybt.arachn0de.ui.theme.SemanticColors
 
 @Composable
 internal fun SprintProgressCard(percentage: Double?) {
@@ -24,7 +25,7 @@ internal fun SprintProgressCard(percentage: Double?) {
             Text("Progreso Sprint · ${percentage.roundToInt()} %", color = Arachn0deColors.TextSecondary, fontSize = 12.sp)
             Spacer(Modifier.height(8.dp))
             LinearProgressIndicator(progress = { (percentage / 100.0).toFloat() }, modifier = Modifier.fillMaxWidth(),
-                color = Arachn0deColors.Primary, trackColor = Arachn0deColors.ControlSurface)
+                color = SemanticColors.SprintDoing, trackColor = Arachn0deColors.ControlSurface)
         }
     }
 }

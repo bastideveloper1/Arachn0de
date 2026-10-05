@@ -10,6 +10,7 @@ import com.r0ybt.arachn0de.domain.model.Project
 import com.r0ybt.arachn0de.domain.model.NodeTreeSnapshot
 import com.r0ybt.arachn0de.export.*
 import kotlinx.coroutines.*
+import kotlinx.coroutines.flow.first
 
 /** Screen-owned operation: scrolling a card out of composition cannot cancel copying. */
 internal class NodeCopyActions(context: Context, private val scope: CoroutineScope, private val people: suspend () -> Map<String,List<com.r0ybt.arachn0de.domain.model.Person>> = { emptyMap() }) {
@@ -18,16 +19,18 @@ internal class NodeCopyActions(context: Context, private val scope: CoroutineSco
     var busy by mutableStateOf(false)
         private set
     fun copy(tree: NodeTreeSnapshot, id: String, descendants: Boolean) {
-        if(descendants) copyText { check -> PendingChatRenderer.render(tree,id,people=people(),checkCancelled=check) }
+        if(descendants) copyText { check -> val names = imageNames(); PendingChatRenderer.render(tree,id,people=people(),checkCancelled=check,descriptionText={ descriptionClipboardText(it, names) }) }
         else copySnapshot { check -> NodeExportSnapshot.capture(tree,id,false,check) }
     }
     fun copyProject(project: Project, tree: NodeTreeSnapshot, descendants: Boolean) {
-        if(descendants) copyText { check -> PendingChatRenderer.render(tree,null,project,people(),check) }
+        if(descendants) copyText { check -> val names = imageNames(); PendingChatRenderer.render(tree,null,project,people(),check,descriptionText={ descriptionClipboardText(it, names) }) }
         else copySnapshot { check -> NodeExportSnapshot.captureProject(project,tree,false,check) }
     }
     private fun copySnapshot(capture: (() -> Unit) -> NodeExportSnapshot) {
-        copyText { check -> NodeMarkdownRenderer.render(capture(check),check) }
+        copyText { check -> val names = imageNames(); NodeMarkdownRenderer.render(capture(check),check,descriptionText={ descriptionClipboardText(it, names) }) }
     }
+    private suspend fun imageNames() = (appContext as com.r0ybt.arachn0de.Arachn0deApplication)
+        .attachmentRepository.observeFiles().first().associate { it.id to it.originalName }
     private fun copyText(render: suspend (() -> Unit) -> String) {
         if (busy) return
         busy = true

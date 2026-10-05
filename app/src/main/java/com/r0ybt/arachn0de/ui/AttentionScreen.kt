@@ -18,6 +18,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.r0ybt.arachn0de.domain.model.*
 import com.r0ybt.arachn0de.ui.theme.Arachn0deColors
+import com.r0ybt.arachn0de.ui.theme.SemanticColors
 
 @Composable
 internal fun AttentionIndicator(summary: AttentionSummary?) {
@@ -27,7 +28,7 @@ internal fun AttentionIndicator(summary: AttentionSummary?) {
         if (summary.priorityOnly > 0) add("${summary.priorityOnly} ${if (summary.priorityOnly == 1) "de prioridad alta" else "de prioridad alta"}")
         if (summary.upcoming > 0) add("${summary.upcoming} ${if (summary.upcoming == 1) "próxima" else "próximas"}")
     }.joinToString(" · ")
-    Text("Contiene $counts", color = if (summary.level == AttentionLevel.OVERDUE) Arachn0deColors.Destructive else Arachn0deColors.PathHighlight,
+    Text("Contiene $counts", color = if (summary.level == AttentionLevel.OVERDUE) Arachn0deColors.Destructive else SemanticColors.Attention,
         fontSize = 12.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
 }
 
@@ -73,7 +74,7 @@ internal fun AttentionScreen(
                 item(key = "reason:${reason.name}") { Text(when (reason) {
                     AttentionReason.OVERDUE -> "Atrasadas"; AttentionReason.DUE_TODAY -> "Vencen hoy"; AttentionReason.UPCOMING -> "Próximas"
                     AttentionReason.HIGH_PRIORITY -> "Prioridad alta"; AttentionReason.MEDIUM_PRIORITY -> "Prioridad media"
-                }, color = Arachn0deColors.PathHighlight) }
+                }, color = SemanticColors.Attention) }
                 items(nodes, key = { it.id }) { node ->
                     val project = projectById.getValue(node.projectId)
                     val path = remember(attention!!.tree, node.id, project.name) {
@@ -85,7 +86,7 @@ internal fun AttentionScreen(
                             Text(node.title, maxLines = 2, overflow = TextOverflow.Ellipsis)
                             Text(path, color = Arachn0deColors.TextSecondary, fontSize = 12.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
                             Text(attention.reasonsByNodeId.getValue(node.id).joinToString(" · ", transform = ::attentionReasonLabel),
-                                color = Arachn0deColors.PathHighlight, modifier = Modifier.testTag("attention-reasons:${node.id}"))
+                                color = SemanticColors.Attention, modifier = Modifier.testTag("attention-reasons:${node.id}"))
                             if (node.effectivePriority == Priority.LOW) PriorityIndicator(node)
                             TagChips(tagState.forNode(node.id))
                             ObligationIndicator(node)

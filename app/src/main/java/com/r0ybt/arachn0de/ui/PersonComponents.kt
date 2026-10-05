@@ -7,7 +7,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.selection.toggleable
-import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.listSaver
@@ -29,6 +29,8 @@ import com.r0ybt.arachn0de.ui.theme.Arachn0deColors
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
+internal val PersonAvatarShape = RoundedCornerShape(7.dp)
+
 @Composable
 internal fun PersonAvatar(person: Person) {
     val context = LocalContext.current
@@ -37,7 +39,7 @@ internal fun PersonAvatar(person: Person) {
             person.avatarFile?.let { runCatching { AvatarStore(context).read(it) }.getOrNull() }
         }
     }
-    Box(Modifier.size(28.dp).clip(CircleShape).background(Arachn0deColors.ControlSurface).semantics { contentDescription = person.name }, contentAlignment = Alignment.Center) {
+    Box(Modifier.size(28.dp).clip(PersonAvatarShape).background(Arachn0deColors.ControlSurface).semantics { contentDescription = person.name }, contentAlignment = Alignment.Center) {
         if (bitmap != null) Image(bitmap!!.asImageBitmap(), null, Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
         else Text(person.name.take(1).uppercase(), color = Arachn0deColors.PathHighlight, fontSize = 12.sp)
     }

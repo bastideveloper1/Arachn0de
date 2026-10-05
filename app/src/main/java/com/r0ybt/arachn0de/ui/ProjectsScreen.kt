@@ -57,7 +57,7 @@ internal fun ProjectDashboardScreen(
     onOpenCalendar: () -> Unit = {},
     onOpenObligations: () -> Unit = {},
     onOpenAbout: () -> Unit = {},
-    onOpenSettings: () -> Unit = {},
+    onOpenAppearance: () -> Unit = {},
     recurrenceContent: @Composable () -> Unit = {},
     projectAttentionById: Map<String, com.r0ybt.arachn0de.domain.model.AttentionSummary> = emptyMap(),
     exportTree: com.r0ybt.arachn0de.domain.model.NodeTreeSnapshot = com.r0ybt.arachn0de.domain.model.NodeTreeSnapshot(emptyList()),
@@ -68,8 +68,9 @@ internal fun ProjectDashboardScreen(
     val copyActions = remember(context,scope) { com.r0ybt.arachn0de.ui.state.NodeCopyActions(context,scope) { (context.applicationContext as com.r0ybt.arachn0de.Arachn0deApplication).personRepository.observeAllAssignments().first() } }
     var moveProject by rememberSaveable { mutableStateOf<String?>(null) }
     projects.firstOrNull { it.id==moveProject }?.let { moving -> ProjectMoveDialog(repository,moving,{ moveProject=null },{ moveProject=null }) }
-    val actions = remember(repository, scope) { ProjectActions(repository, scope) }
-    var draft by rememberSaveable(stateSaver = EditorDraft.Saver) { mutableStateOf<EditorDraft?>(null) }
+    val actions = remember(repository, scope) { ProjectActions(repository, scope, (context.applicationContext as com.r0ybt.arachn0de.Arachn0deApplication).attachmentRepository) }
+    val drafts = rememberSaveable(saver = com.r0ybt.arachn0de.ui.state.EditorDraftStore.Saver) { com.r0ybt.arachn0de.ui.state.EditorDraftStore() }
+    val draft = drafts.active
     var deletingProjectId by rememberSaveable { mutableStateOf<String?>(null) }
     var deletingProjectName by rememberSaveable { mutableStateOf("") }
     var showDrawer by remember { mutableStateOf(false) }
@@ -118,7 +119,7 @@ internal fun ProjectDashboardScreen(
 
                 if (projects.isEmpty()) {
                     Column(Modifier.weight(1f).verticalScroll(rememberScrollState())) {
-                        EmptyProjectsState(onCreateProject = { draft = EditorDraft(null, null, "", "") })
+                        EmptyProjectsState(onCreateProject = { drafts.open(null) { EditorDraft(null, null, "", "") } })
                     }
                 } else {
                     ProjectList(
@@ -132,9 +133,9 @@ internal fun ProjectDashboardScreen(
                         reorderBusy = actions.operation.busy,
                         reorderError = actions.operation.error,
                         listState = listState,
-                        onCreateProject = { draft = EditorDraft(null, null, "", "") },
+                        onCreateProject = { drafts.open(null) { EditorDraft(null, null, "", "") } },
                         onEdit = { project ->
-                            draft = EditorDraft(project.id, null, project.name, project.description)
+                            drafts.open(null, project.id) { EditorDraft(project.id, null, project.name, project.description) }
                         },
                         onDelete = { project ->
                             deletingProjectId = project.id
@@ -162,7 +163,7 @@ internal fun ProjectDashboardScreen(
                         onAttention = { showDrawer = false; onOpenAttention() },
                         onCalendar = { showDrawer = false; onOpenCalendar() },
                         onObligations = { showDrawer = false; onOpenObligations() },
-                        onSettings = { showDrawer = false; onOpenSettings() }, onAbout = { showDrawer = false; onOpenAbout() },
+                        onAppearance = { showDrawer = false; onOpenAppearance() }, onAbout = { showDrawer = false; onOpenAbout() },
                     )
                 }
             }
@@ -174,11 +175,12 @@ internal fun ProjectDashboardScreen(
             draft = editor,
             isSubmitting = actions.operation.busy,
             onDismiss = {
-                draft = null
+                drafts.close()
             },
+            onDiscard = { actions.discardDraft(editor) { drafts.clear() } },
             onSave = { name, description ->
-                actions.save(editor.id, name, description, editor.creationId) {
-                    draft = null
+                actions.save(editor.id, name, description, editor.creationId, draft = editor) {
+                    drafts.clear()
                 }
             },
         )

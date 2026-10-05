@@ -4,7 +4,7 @@ package com.r0ybt.arachn0de.export
  * Beyond level six, a bounded list indent plus explicit relative levels avoids quadratic output.
  */
 object NodeMarkdownRenderer {
-    fun render(snapshot: NodeExportSnapshot, checkCancelled: () -> Unit = {}): String {
+    fun render(snapshot: NodeExportSnapshot, checkCancelled: () -> Unit = {}, descriptionText: ((String) -> String)? = null): String {
         val output = StringBuilder()
         fun append(value: String) {
             if (output.length.toLong() + value.length > NodeExportSnapshot.MAX_TEXT_CHARS) throw ContextTooLargeException()
@@ -29,10 +29,12 @@ object NodeMarkdownRenderer {
             if (entry.description.isNotBlank()) {
                 append("\n")
                 val bodyIndent = if (entry.depth == 0 && entry.kind != ExportKind.ACTION) "" else "$indent    "
-                val description = entry.description.replace("\r\n", "\n").replace('\r', '\n').trim('\n')
+                val presented = descriptionText?.invoke(entry.description) ?: entry.description
+                val humanDescription = presented != entry.description
+                val description = presented.replace("\r\n", "\n").replace('\r', '\n').trim('\n')
                 description.lines().forEach { line ->
                     checkCancelled()
-                    val text = literal(line.trimEnd())
+                    val text = if (!humanDescription) literal(line.trimEnd()) else line.trimEnd()
                     // Descriptions are plain text in Arachn0de, not new exported structural sections.
                     val leading = text.takeWhile { it == ' ' || it == '\t' }
                     val content = text.drop(leading.length)

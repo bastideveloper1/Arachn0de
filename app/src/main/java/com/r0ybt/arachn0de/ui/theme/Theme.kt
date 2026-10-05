@@ -2,34 +2,37 @@ package com.r0ybt.arachn0de.ui.theme
 
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
-import androidx.compose.runtime.Composable
+import androidx.compose.runtime.*
+import androidx.compose.ui.platform.LocalContext
 
-private val DarkColorScheme = darkColorScheme(
-    primary = Arachn0deColors.Accent,
-    onPrimary = Arachn0deColors.Background,
-    primaryContainer = Arachn0deColors.AccentSurface,
-    onPrimaryContainer = Arachn0deColors.TextPrimary,
-    secondary = Arachn0deColors.Accent,
-    onSecondary = Arachn0deColors.Background,
-    secondaryContainer = Arachn0deColors.Selection,
-    onSecondaryContainer = Arachn0deColors.TextPrimary,
-    tertiary = Arachn0deColors.PathHighlight,
-    onTertiary = Arachn0deColors.Background,
-    background = Arachn0deColors.Background,
-    onBackground = Arachn0deColors.TextPrimary,
-    surface = Arachn0deColors.Surface,
-    onSurface = Arachn0deColors.TextPrimary,
-    surfaceVariant = Arachn0deColors.ControlSurface,
-    onSurfaceVariant = Arachn0deColors.TextSecondary,
-    surfaceTint = Arachn0deColors.Accent,
-    outline = Arachn0deColors.TextSecondary,
-    outlineVariant = Arachn0deColors.Outline,
-    error = Arachn0deColors.Destructive,
-    onError = Arachn0deColors.Background,
-)
+internal fun AppearancePalette.materialColors(): androidx.compose.material3.ColorScheme {
+    val base = darkColorScheme(
+    primary = primary, onPrimary = background, primaryContainer = accentSurface, onPrimaryContainer = text,
+    // Preserve the current Material secondary treatment in the default palette.
+    secondary = if (this == AppearanceTheme.Arachn0de.palette) primary else secondary,
+    onSecondary = background, secondaryContainer = selection, onSecondaryContainer = text,
+    tertiary = secondary, onTertiary = background,
+    background = background, onBackground = text, surface = surface, onSurface = text,
+    surfaceVariant = controls, onSurfaceVariant = muted, surfaceTint = primary,
+    outline = muted, outlineVariant = outline, error = SemanticColors.Error, onError = background,
+    )
+    if (this == AppearanceTheme.Arachn0de.palette) return base
+    // Cover Material surface/fixed roles too: custom palettes never inherit decorative violet.
+    return base.copy(tertiaryContainer = accentSurface, onTertiaryContainer = text,
+        inverseSurface = text, inverseOnSurface = background, inversePrimary = solidPrimary, surfaceDim = background, surfaceBright = controls, surfaceContainerLowest = background,
+        surfaceContainerLow = raised, surfaceContainer = surface, surfaceContainerHigh = controls, surfaceContainerHighest = selection,
+        primaryFixed = primary, primaryFixedDim = primary, onPrimaryFixed = background, onPrimaryFixedVariant = background,
+        secondaryFixed = secondary, secondaryFixedDim = secondary, onSecondaryFixed = background, onSecondaryFixedVariant = background,
+        tertiaryFixed = secondary, tertiaryFixedDim = secondary, onTertiaryFixed = background, onTertiaryFixedVariant = background)
+}
 
-/** Dark brand theme; light and wallpaper-derived palettes are not implemented yet. */
 @Composable
-fun Arachn0deTheme(content: @Composable () -> Unit) {
-    MaterialTheme(colorScheme = DarkColorScheme, typography = Typography, content = content)
+fun Arachn0deTheme(preferences: AppearancePreferences? = null, content: @Composable () -> Unit) {
+    val context = LocalContext.current.applicationContext
+    val resolved = preferences ?: remember(context) { AppearancePreferences(context.getSharedPreferences(AppearancePreferences.FILE, android.content.Context.MODE_PRIVATE)) }
+    val settings = resolved.settings
+    CompositionLocalProvider(LocalAppearancePreferences provides resolved, LocalAppearancePalette provides settings.theme.palette,
+        LocalContentSizes provides contentSizes(settings.textSize)) {
+        MaterialTheme(colorScheme = settings.theme.palette.materialColors(), typography = appearanceTypography(settings.textSize), content = content)
+    }
 }

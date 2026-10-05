@@ -12,6 +12,8 @@ import java.io.FileOutputStream
 import java.io.InputStream
 import java.util.UUID
 
+internal class AttachmentsNotSupportedException(message: String) : IllegalStateException(message)
+
 internal class BackupRepository(private val database: Arachn0deDatabase, context: Context, private val avatars: BackupAvatarFiles = BackupAvatarFiles(context.applicationContext)) {
     private val cache = File(context.cacheDir, "backups")
     private val mutex = Mutex()
@@ -19,6 +21,7 @@ internal class BackupRepository(private val database: Arachn0deDatabase, context
     suspend fun snapshot(): BackupData = withContext(Dispatchers.IO) {
         mutex.withLock {
             database.withTransaction {
+                if (database.attachmentDao().hasFiles()) throw AttachmentsNotSupportedException("El backup actual todavía no admite adjuntos. No se puede crear un backup completo.")
                 val dao = database.backupDao()
                 val projects = dao.projects()
                 val nodes = dao.nodes()
@@ -64,6 +67,9 @@ internal class BackupRepository(private val database: Arachn0deDatabase, context
     /** A failure/cancellation before commit rolls back Room and removes only new unreferenced files. */
     suspend fun restore(data: BackupData) = withContext(Dispatchers.IO) {
         mutex.withLock {
+            database.withTransaction {
+                if (database.attachmentDao().hasFiles()) throw AttachmentsNotSupportedException("No se puede restaurar este backup mientras existan adjuntos: el formato actual no los admite.")
+            }
             val ordered = data.validate()
             recoverFiles() // Complete cleanup from a previous interrupted operation before replacing its journal.
             val names = data.avatars.keys.associateWith { "${UUID.randomUUID()}.png" }
@@ -75,6 +81,7 @@ internal class BackupRepository(private val database: Arachn0deDatabase, context
                 }
                 avatars.finishStaging()
                 database.withTransaction {
+                    if (database.attachmentDao().hasFiles()) throw AttachmentsNotSupportedException("No se puede restaurar este backup mientras existan adjuntos: el formato actual no los admite.")
                     val dao = database.backupDao()
                     val previous = dao.persons().mapNotNull { it.avatarFile }.toSet()
                     // Persist both sets before DB changes: recovery queries committed references after a crash.

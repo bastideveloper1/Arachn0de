@@ -70,6 +70,8 @@ import com.r0ybt.arachn0de.domain.model.Node
 import com.r0ybt.arachn0de.domain.model.NodeProgress
 import com.r0ybt.arachn0de.domain.model.NodeProgressState
 import com.r0ybt.arachn0de.ui.theme.Arachn0deColors
+import com.r0ybt.arachn0de.ui.theme.SemanticColors
+import com.r0ybt.arachn0de.ui.theme.ContentTypography
 import com.r0ybt.arachn0de.R
 
 @Composable
@@ -89,7 +91,7 @@ internal fun EmptyLayerState() {
             Text(
                 text = "Esta capa está vacía",
                 color = Arachn0deColors.TextPrimary,
-                fontSize = 24.sp,
+                fontSize = ContentTypography.ScopeTitle,
                 fontWeight = FontWeight.SemiBold,
                 modifier = Modifier.fillMaxWidth(),
                 textAlign = TextAlign.Center,
@@ -98,7 +100,7 @@ internal fun EmptyLayerState() {
             Text(
                 text = "Añade un elemento para empezar a construir la siguiente capa.",
                 color = Arachn0deColors.TextSecondary,
-                fontSize = 15.sp,
+                fontSize = ContentTypography.Summary,
                 modifier = Modifier.fillMaxWidth(),
                 textAlign = TextAlign.Center,
             )
@@ -203,11 +205,11 @@ internal fun NodeCard(
         else -> 0.dp
     }
     val borderColor = when (sprintPhase) {
-        WorkState.UNPLANNED -> Arachn0deColors.Outline
-        WorkState.PLANNED -> Arachn0deColors.TextSecondary
-        WorkState.DOING -> Arachn0deColors.Primary
-        WorkState.DONE -> Arachn0deColors.Completed
-        WorkState.VALIDATED -> Arachn0deColors.Accent
+        WorkState.UNPLANNED -> SemanticColors.SprintUnplanned
+        WorkState.PLANNED -> SemanticColors.SprintPlanned
+        WorkState.DOING -> SemanticColors.SprintDoing
+        WorkState.DONE -> SemanticColors.SprintDone
+        WorkState.VALIDATED -> SemanticColors.SprintValidated
         null -> Arachn0deColors.Outline.copy(alpha = if (noPending) 0.45f else 0.9f)
     }
     val borderWidth = if (sprintPhase == WorkState.DOING) 2.dp else 1.dp
@@ -254,8 +256,8 @@ internal fun NodeCard(
                         Text(
                             text = node.title,
                             color = Arachn0deColors.PathHighlight,
-                            fontSize = 14.sp,
-                            style = TextStyle(lineHeight = 16.sp, platformStyle = PlatformTextStyle(includeFontPadding = false)),
+                            fontSize = ContentTypography.CardTitle,
+                            style = TextStyle(lineHeight = ContentTypography.CardTitleLine, platformStyle = PlatformTextStyle(includeFontPadding = false)),
                             fontWeight = FontWeight.SemiBold,
                             maxLines = 2,
                             overflow = TextOverflow.Ellipsis,
@@ -263,8 +265,8 @@ internal fun NodeCard(
                         )
 
                         if (node.description.isNotBlank()) {
-                            Text(node.description, color = Arachn0deColors.TextSecondary, fontSize = 12.sp,
-                                style = TextStyle(lineHeight = 14.sp, platformStyle = PlatformTextStyle(includeFontPadding = false)),
+                            AttachmentText(node.description, color = Arachn0deColors.TextSecondary, fontSize = ContentTypography.Description,
+                                style = TextStyle(lineHeight = ContentTypography.DescriptionLine, platformStyle = PlatformTextStyle(includeFontPadding = false)),
                                 maxLines = 2, overflow = TextOverflow.Ellipsis)
                         }
 
@@ -277,13 +279,13 @@ internal fun NodeCard(
                                 Text(
                                     text = "Contenedor vacío",
                                     color = Arachn0deColors.TextSecondary,
-                                    fontSize = 11.sp,
+                                    fontSize = ContentTypography.SmallMetadata,
                                 )
                             } else {
                                 Text(
                                     text = "${progress.percentage}% · ${progress.total - progress.completed} de ${progress.total} pendientes",
                                     color = Arachn0deColors.TextSecondary,
-                                    fontSize = 11.sp,
+                                    fontSize = ContentTypography.SmallMetadata,
                                     fontWeight = FontWeight.SemiBold,
                                 )
                                 Spacer(modifier = Modifier.height(6.dp))
@@ -299,7 +301,7 @@ internal fun NodeCard(
                             Text(
                                 text = if (node.sprintMode) "Capa · Modo Sprint" else "Capa",
                                 color = Arachn0deColors.TextSecondary,
-                                fontSize = 11.sp,
+                                fontSize = ContentTypography.SmallMetadata,
                             )
                         }
                     }
@@ -356,11 +358,11 @@ internal fun NodeCard(
                             ) {
                                 Text(phase.label, modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
                                     color = when (phase) {
-                                        WorkState.UNPLANNED, WorkState.PLANNED -> Arachn0deColors.TextSecondary
-                                        WorkState.DOING, WorkState.VALIDATED -> Arachn0deColors.Accent
+                                        WorkState.UNPLANNED, WorkState.PLANNED -> SemanticColors.SprintPlanned
+                                        WorkState.DOING, WorkState.VALIDATED -> SemanticColors.SprintValidated
                                         WorkState.DONE -> Arachn0deColors.TextCompleted
                                     },
-                                    fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                                    fontSize = ContentTypography.Metadata, fontWeight = FontWeight.SemiBold)
                             }
                         }
                         PriorityIndicator(node)

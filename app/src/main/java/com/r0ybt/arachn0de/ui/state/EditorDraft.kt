@@ -20,7 +20,14 @@ internal class EditorDraft(
     val moneyLocaleTag: String = java.util.Locale.getDefault().toLanguageTag(),
     val hadObligation: Boolean = obligation != null,
     priority: com.r0ybt.arachn0de.domain.model.Priority = com.r0ybt.arachn0de.domain.model.Priority.NONE,
+    val attachmentDraftId: String = UUID.randomUUID().toString(),
 ) {
+    var removedAttachmentIds by mutableStateOf(emptyList<String>())
+    var descriptionSelectionStart by mutableStateOf(description.length)
+    var descriptionSelectionEnd by mutableStateOf(description.length)
+    var attachmentsLoaded by mutableStateOf(false)
+    var attachmentBusy by mutableStateOf(false)
+    var attachmentError by mutableStateOf<String?>(null)
     var defaultStartMinute: Int? = null
     var defaultDueMinute: Int? = null
     var creationGroupId: String? = null
@@ -71,7 +78,7 @@ internal class EditorDraft(
     val hasWork: Boolean get() = title.isNotBlank() || description.isNotBlank() || financialEnabled || amountText.isNotBlank() ||
         startAt != null || dueAt != null || recurrenceFrequency != "NONE" || recurrenceStart.isNotBlank() || batchEnabled ||
         batchQuantity != "1" || batchStartNumber != "1" || batchNumbering != com.r0ybt.arachn0de.domain.model.NumberingMode.NONE ||
-        batchTemporal != com.r0ybt.arachn0de.domain.model.BatchTemporalRule.NONE || recurrenceInterval != "1" || recurrenceEnd.isNotBlank() || startEnabled || dueEnabled || priority != com.r0ybt.arachn0de.domain.model.Priority.NONE || tagIds.isNotEmpty() || responsibleIds.isNotEmpty()
+        batchTemporal != com.r0ybt.arachn0de.domain.model.BatchTemporalRule.NONE || recurrenceInterval != "1" || recurrenceEnd.isNotBlank() || startEnabled || dueEnabled || priority != com.r0ybt.arachn0de.domain.model.Priority.NONE || tagIds.isNotEmpty() || responsibleIds.isNotEmpty() || removedAttachmentIds.isNotEmpty()
     var priority by mutableStateOf(priority)
     var tagIds by mutableStateOf(emptyList<String>())
     var responsibleIds by mutableStateOf(emptyList<String>())
@@ -121,9 +128,12 @@ internal class EditorDraft(
         val Saver = listSaver<EditorDraft?, String>(
             save = {
                 if (it == null) emptyList()
-                else (if (it.defaultStartMinute != null || it.defaultDueMinute != null) listOf("__time_defaults_v1", it.defaultStartMinute?.toString().orEmpty(), it.defaultDueMinute?.toString().orEmpty()) else emptyList()) + listOf("__shared_v1", it.creationGroupId.orEmpty(), (it.sharedBaseline?.size ?: 0).toString()) + it.sharedBaseline.orEmpty() + listOf("__ux_v1", it.batchEnabled.toString(), it.batchQuantity, it.batchNumbering.name, it.batchStartNumber, it.batchTemporal.name, it.latentFrequency, it.startEnabled.toString(), it.dueEnabled.toString()) + listOf(it.id.orEmpty(), it.parentId.orEmpty(), it.title, it.description, it.creationId, it.startAt?.toString().orEmpty(), it.dueAt?.toString().orEmpty(), it.purpose.name, it.financialEnabled.toString(), it.amountText, it.currencyCode, it.moneyLocaleTag, it.hadObligation.toString(), it.financialRemovalConfirmed.toString(), it.showResponsible.toString()) + listOf("__recurrence_v1", it.recurrenceFrequency, it.recurrenceInterval, it.recurrenceStart, it.recurrenceEnd) + listOf("__priority_v1", it.priority.name) + listOf("__tags_v1", it.tagIds.size.toString()) + it.tagIds + it.responsibleIds
+                else listOf("__attachments_v1", it.attachmentDraftId, it.descriptionSelectionStart.toString(), it.descriptionSelectionEnd.toString(), it.removedAttachmentIds.size.toString()) + it.removedAttachmentIds + (if (it.defaultStartMinute != null || it.defaultDueMinute != null) listOf("__time_defaults_v1", it.defaultStartMinute?.toString().orEmpty(), it.defaultDueMinute?.toString().orEmpty()) else emptyList()) + listOf("__shared_v1", it.creationGroupId.orEmpty(), (it.sharedBaseline?.size ?: 0).toString()) + it.sharedBaseline.orEmpty() + listOf("__ux_v1", it.batchEnabled.toString(), it.batchQuantity, it.batchNumbering.name, it.batchStartNumber, it.batchTemporal.name, it.latentFrequency, it.startEnabled.toString(), it.dueEnabled.toString()) + listOf(it.id.orEmpty(), it.parentId.orEmpty(), it.title, it.description, it.creationId, it.startAt?.toString().orEmpty(), it.dueAt?.toString().orEmpty(), it.purpose.name, it.financialEnabled.toString(), it.amountText, it.currencyCode, it.moneyLocaleTag, it.hadObligation.toString(), it.financialRemovalConfirmed.toString(), it.showResponsible.toString()) + listOf("__recurrence_v1", it.recurrenceFrequency, it.recurrenceInterval, it.recurrenceStart, it.recurrenceEnd) + listOf("__priority_v1", it.priority.name) + listOf("__tags_v1", it.tagIds.size.toString()) + it.tagIds + it.responsibleIds
             },
-            restore = { rawEncoded ->
+            restore = { raw ->
+                val attachmentMeta = raw.takeIf { it.firstOrNull() == "__attachments_v1" }
+                val attachmentCount = attachmentMeta?.get(4)?.toInt() ?: 0
+                val rawEncoded = if (attachmentMeta != null) raw.drop(5 + attachmentCount) else raw
                 val timeDefaults = rawEncoded.takeIf { it.firstOrNull() == "__time_defaults_v1" }?.take(3)
                 val encoded = if (timeDefaults != null) rawEncoded.drop(3) else rawEncoded
                 val groupMeta = encoded.firstOrNull() == "__shared_v1"
@@ -135,7 +145,10 @@ internal class EditorDraft(
                 val it = if (stored.getOrNull(20) == "__priority_v1") stored.take(20) + stored.drop(22) else stored
                 if (it.isEmpty()) null
                 else EditorDraft(it[0].ifEmpty { null }, it[1].ifEmpty { null }, it[2], it[3], it[4], it.getOrNull(5)?.toLongOrNull(), it.getOrNull(6)?.toLongOrNull(), it.getOrNull(7)?.let(com.r0ybt.arachn0de.domain.model.NodePurpose::valueOf) ?: com.r0ybt.arachn0de.domain.model.NodePurpose.ACTION,
-                    moneyLocaleTag = it.getOrNull(11) ?: java.util.Locale.getDefault().toLanguageTag(), hadObligation = it.getOrNull(12)?.toBoolean() ?: false).apply {
+                    moneyLocaleTag = it.getOrNull(11) ?: java.util.Locale.getDefault().toLanguageTag(), hadObligation = it.getOrNull(12)?.toBoolean() ?: false, attachmentDraftId = attachmentMeta?.get(1) ?: UUID.randomUUID().toString()).apply {
+                    removedAttachmentIds = attachmentMeta?.drop(5)?.take(attachmentCount).orEmpty()
+                    descriptionSelectionStart = attachmentMeta?.get(2)?.toInt() ?: description.length
+                    descriptionSelectionEnd = attachmentMeta?.get(3)?.toInt() ?: description.length
                     defaultStartMinute = timeDefaults?.get(1)?.toIntOrNull()
                     defaultDueMinute = timeDefaults?.get(2)?.toIntOrNull()
                     creationGroupId = if(groupMeta) encoded[1].ifEmpty { null } else null

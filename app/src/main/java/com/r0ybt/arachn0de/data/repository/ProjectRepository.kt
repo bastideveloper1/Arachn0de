@@ -68,6 +68,7 @@ class ProjectRepository(
         description: String = "",
         creationId: String = UUID.randomUUID().toString(),
     ): Project = inTransaction {
+        require(database != null || com.r0ybt.arachn0de.domain.model.AttachmentReferences.ids(description).isEmpty()) { "Los adjuntos requieren una transacción de base de datos." }
         val normalizedName = validateName(name)
         require(creationId.isNotBlank())
         val now = currentTimeMillis()
@@ -80,6 +81,7 @@ class ProjectRepository(
             updatedAt = now,
         )
         val persisted = projectDao.insertOrGet(entity)
+        if (com.r0ybt.arachn0de.domain.model.AttachmentReferences.ids(description).isNotEmpty()) ensureProjectReferences(requireNotNull(database), persisted.id, description)
         check(persisted.name == normalizedName && persisted.description == description) {
             "Creation already committed with different content"
         }
@@ -88,7 +90,11 @@ class ProjectRepository(
 
     /** Returns false if the project no longer exists; never inserts a missing project. */
     suspend fun updateProject(id: String, name: String, description: String): Boolean =
-        projectDao.update(id, validateName(name), description, currentTimeMillis()) == 1
+        inTransaction {
+            if (projectDao.getById(id) == null) return@inTransaction false
+            if (com.r0ybt.arachn0de.domain.model.AttachmentReferences.ids(description).isNotEmpty()) ensureProjectReferences(requireNotNull(database), id, description)
+            projectDao.update(id, validateName(name), description, currentTimeMillis()) == 1
+        }
 
     /** Deleting an already absent project returns false. */
     suspend fun deleteProject(id: String): Boolean = inTransaction {

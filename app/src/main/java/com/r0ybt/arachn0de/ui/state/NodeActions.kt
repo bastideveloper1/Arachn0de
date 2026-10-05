@@ -8,7 +8,7 @@ import kotlinx.coroutines.launch
 import androidx.compose.material3.*
 import com.r0ybt.arachn0de.domain.model.CreationUndo
 
-internal class NodeActions(private val repository: NodeRepository, private val scope: CoroutineScope) {
+internal class NodeActions(private val repository: NodeRepository, private val scope: CoroutineScope, private val attachments: com.r0ybt.arachn0de.data.repository.AttachmentRepository? = null) {
     val operation = OperationState(scope)
     val snackbar = SnackbarHostState()
     private var notice: kotlinx.coroutines.Job? = null
@@ -34,14 +34,27 @@ internal class NodeActions(private val repository: NodeRepository, private val s
         operation.submit("No se pudo revisar el grupo.", { members=repository.groupMembers(requireNotNull(draft.creationGroupId)); members.isNotEmpty() }, { onSuccess(members) })
     }
     fun saveGroup(draft: EditorDraft, members: Set<String>, editDates: Boolean, onSuccess: () -> Unit) = operation.submit("No se pudo actualizar el grupo. Se conservan tus cambios; revisa sus miembros y capacidades.", {
-        repository.updateGroup(requireNotNull(draft.id), draft.sharedPatch(), members, draft.title.trim(), draft.description.trim(), draft.activeStart, draft.activeDue,
-            editDates, draft.obligation(), draft.financialRemovalConfirmed, draft.tagIds.toSet(), draft.priority, draft.responsibleIds.toSet()); true
+        val patch = draft.sharedPatch()
+        suspend fun write(description: String) = repository.updateGroup(requireNotNull(draft.id),
+            patch.copy(description = patch.description?.let { description }), members, draft.title.trim(), description, draft.activeStart, draft.activeDue,
+            editDates, draft.obligation(), draft.financialRemovalConfirmed, draft.tagIds.toSet(), draft.priority, draft.responsibleIds.toSet())
+        if (attachments == null) write(draft.description.trim())
+        else attachments.saveNodeDraft(draft.attachmentDraftId, if (patch.description != null) members.toList() else listOf(requireNotNull(draft.id)),
+            draft.description.trim(), draft.removedAttachmentIds.toSet(), ::write)
+        true
     }, { onSuccess(); feedback("${members.size} elementos actualizados") })
-    fun save(projectId: String, parentId: String?, id: String?, title: String, description: String, creationId: String = UUID.randomUUID().toString(), startAt: Long? = null, dueAt: Long? = null, editDates: Boolean = true, purpose: com.r0ybt.arachn0de.domain.model.NodePurpose = com.r0ybt.arachn0de.domain.model.NodePurpose.ACTION, obligation: com.r0ybt.arachn0de.domain.model.Obligation? = null, removeObligation: Boolean = false, responsibleIds: Set<String> = emptySet(), tagIds: Set<String> = emptySet(), priority: com.r0ybt.arachn0de.domain.model.Priority = com.r0ybt.arachn0de.domain.model.Priority.NONE, editResponsible: Boolean = false, onSuccess: () -> Unit) {
+    fun save(projectId: String, parentId: String?, id: String?, title: String, description: String, creationId: String = UUID.randomUUID().toString(), startAt: Long? = null, dueAt: Long? = null, editDates: Boolean = true, purpose: com.r0ybt.arachn0de.domain.model.NodePurpose = com.r0ybt.arachn0de.domain.model.NodePurpose.ACTION, obligation: com.r0ybt.arachn0de.domain.model.Obligation? = null, removeObligation: Boolean = false, responsibleIds: Set<String> = emptySet(), tagIds: Set<String> = emptySet(), priority: com.r0ybt.arachn0de.domain.model.Priority = com.r0ybt.arachn0de.domain.model.Priority.NONE, editResponsible: Boolean = false, attachmentDraft: EditorDraft? = null, onSuccess: () -> Unit) {
         var created: CreationUndo? = null
         operation.submit("No se pudo guardar el elemento. Tus cambios siguen en el formulario.", {
-            if (id == null) { created = repository.createNodeWithUndo(projectId, parentId, title, description, creationId, startAt.takeIf { purpose == com.r0ybt.arachn0de.domain.model.NodePurpose.ACTION }, dueAt.takeIf { purpose == com.r0ybt.arachn0de.domain.model.NodePurpose.ACTION }, purpose, obligation, responsibleIds, tagIds, if (purpose == com.r0ybt.arachn0de.domain.model.NodePurpose.ACTION) priority else com.r0ybt.arachn0de.domain.model.Priority.NONE); true }
-            else repository.updateEditor(id, title, description, startAt, dueAt, obligation, removeObligation, editDates, tagIds, if (editDates) priority else null, if (editResponsible) responsibleIds else null)
+            suspend fun write(description: String): Boolean {
+                return if (id == null) { created = repository.createNodeWithUndo(projectId, parentId, title, description, creationId, startAt.takeIf { purpose == com.r0ybt.arachn0de.domain.model.NodePurpose.ACTION }, dueAt.takeIf { purpose == com.r0ybt.arachn0de.domain.model.NodePurpose.ACTION }, purpose, obligation, responsibleIds, tagIds, if (purpose == com.r0ybt.arachn0de.domain.model.NodePurpose.ACTION) priority else com.r0ybt.arachn0de.domain.model.Priority.NONE); true }
+                else repository.updateEditor(id, title, description, startAt, dueAt, obligation, removeObligation, editDates, tagIds, if (editDates) priority else null, if (editResponsible) responsibleIds else null)
+            }
+            val result = if (attachments != null && attachmentDraft != null) attachments.saveNodeDraft(
+                attachmentDraft.attachmentDraftId, listOf(id ?: creationId), description, attachmentDraft.removedAttachmentIds.toSet(), ::write)
+                else write(description)
+            if (created != null) created = repository.captureCreation(listOf(creationId))
+            result
         }, { onSuccess(); created?.let { showCreated(it) } })
     }
 
@@ -55,9 +68,13 @@ internal class NodeActions(private val repository: NodeRepository, private val s
             draft.id == null && draft.recurrenceFrequency != "NONE" && draft.purpose == com.r0ybt.arachn0de.domain.model.NodePurpose.ACTION -> createRecurrence(projectId, draft, onSuccess)
             else -> save(projectId, draft.parentId, draft.id, draft.title.trim(), draft.description.trim(), draft.creationId,
                 draft.activeStart, draft.activeDue, editDates, draft.purpose, draft.obligation(), draft.financialRemovalConfirmed,
-                draft.responsibleIds.toSet(), draft.tagIds.toSet(), draft.priority, editResponsible = true, onSuccess = onSuccess)
+                draft.responsibleIds.toSet(), draft.tagIds.toSet(), draft.priority, editResponsible = true, attachmentDraft = draft, onSuccess = onSuccess)
         }
     }
+
+    fun discardDraft(draft: EditorDraft, onSuccess: () -> Unit) = operation.submit("No se pudo descartar el borrador. Puedes reintentar.", {
+        attachments?.discardDraft(draft.attachmentDraftId); true
+    }, onSuccess)
 
     fun createRecurrence(projectId: String, draft: EditorDraft, onSuccess: () -> Unit) =
         operation.submit("No se pudo guardar la recurrencia. Revisa fechas, destino y responsables.", {

@@ -67,7 +67,7 @@ class CreationDraftStateTest {
             recurrenceFrequency="YEARLY";recurrenceStart="2090-01-01";tagIds=listOf("tag");responsibleIds=listOf("person")
         }
         val current=(with(EditorDraft.Saver) { scope.save(d) } as List<*>).map { it as String }
-        val old=current.drop(3).drop(9)
+        val old=current.drop(5 + d.removedAttachmentIds.size).drop(3).drop(9)
         val restored=checkNotNull(EditorDraft.Saver.restore(old))
         assertEquals(d.creationId,restored.creationId);assertEquals(Priority.HIGH,restored.priority)
         assertEquals(100L,restored.activeStart);assertEquals(200L,restored.activeDue)

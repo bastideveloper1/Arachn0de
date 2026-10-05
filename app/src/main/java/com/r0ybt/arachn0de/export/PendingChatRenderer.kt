@@ -7,7 +7,7 @@ import java.util.Date
 /** Compact pending work, preserving only ancestors needed to locate tasks. */
 object PendingChatRenderer {
     fun render(tree: NodeTreeSnapshot, rootId: String?, project: Project? = null,
-        people: Map<String,List<Person>> = emptyMap(), checkCancelled: () -> Unit = {}): String {
+        people: Map<String,List<Person>> = emptyMap(), checkCancelled: () -> Unit = {}, descriptionText: (String) -> String = { it }): String {
         val output=StringBuilder("Arachn0de — Pendientes\n\n")
         fun append(text:String) {
             if(output.length.toLong()+text.length>NodeExportSnapshot.MAX_TEXT_CHARS) throw ContextTooLargeException()
@@ -28,12 +28,12 @@ object PendingChatRenderer {
             val children=tree.childrenOf(node.id)
             if(node.isStructural) {
                 append("$indent${clean(node.title)}${if(node.sprintMode) " · Modo Sprint" else ""}\n")
-                if(node.description.isNotEmpty()) append("$indent  ${node.description}\n")
+                if(node.description.isNotEmpty()) append("$indent  ${descriptionText(node.description)}\n")
                 children.asReversed().forEach { stack.addLast(it to depth+1) }
             } else if(node.isCompletable && !node.isCompleted) {
                 tasks++
                 append("$indent• ${clean(node.title)}\n")
-                if(node.description.isNotEmpty()) append("$indent  ${node.description}\n")
+                if(node.description.isNotEmpty()) append("$indent  ${descriptionText(node.description)}\n")
                 val details=mutableListOf<String>()
                 node.workState?.let { details.add("Estado: ${it.label}") }
                 people[node.id].orEmpty().takeIf { it.isNotEmpty() }?.let { details.add("Responsables: "+it.joinToString(", ") { person -> clean(person.name) }) }

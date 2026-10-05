@@ -26,7 +26,9 @@ internal class ProjectNestingRepository(private val database:Arachn0deDatabase,
                 require(row.purpose=="LAYER" && row.amountMinor==null) { "El destino debe ser una capa." }
                 ancestor=row.parentId
             }
+            val projectAttachments=database.attachmentDao().forProject(sourceId)
             val original=nodes.getProjectNodes(sourceId)
+            val nodeAttachments=original.flatMap { database.attachmentDao().forNode(it.id) }
             val originalParents=original.mapNotNullTo(hashSetOf()) { it.parentId }
             NodeTreeSnapshot(original.map { it.toNode(it.id in originalParents) }) // Validate before destructive writes.
             val children=original.groupBy { it.parentId }
@@ -60,6 +62,7 @@ internal class ProjectNestingRepository(private val database:Arachn0deDatabase,
                 currentCoroutineContext().ensureActive()
                 nodes.insert(row.copy(projectId=targetId,parentId=row.parentId ?: layerId))
             }
+            database.attachmentDao().attachNode(nodeAttachments + projectAttachments.map { NodeAttachmentEntity(layerId,it.attachmentId) })
             database.personDao().assign(people);database.tagDao().assignNodes(tags);database.nodeEventDao().insertAll(events)
             val remap=defaults.associate { row -> row.id to if(row.nodeId==null) "N:$layerId" else row.id }
             defaults.forEach { row -> defaultsDao.save(row.copy(id=remap.getValue(row.id),projectId=targetId,nodeId=row.nodeId ?: layerId)) }

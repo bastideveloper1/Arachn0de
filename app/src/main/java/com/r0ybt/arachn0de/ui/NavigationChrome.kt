@@ -38,7 +38,7 @@ internal object DrawerWidthPolicy {
 internal fun AppIdentityDrawer(onDismiss: () -> Unit, onPeople: (() -> Unit)? = null,
     onAttention: (() -> Unit)? = null, onCalendar: (() -> Unit)? = null,
     onObligations: (() -> Unit)? = null, onAbout: (() -> Unit)? = null,
-    onSettings: (() -> Unit)? = null, onProjects: (() -> Unit)? = null, projectsSelected: Boolean = false) {
+    onAppearance: (() -> Unit)? = null, onProjects: (() -> Unit)? = null, projectsSelected: Boolean = false) {
     BackHandler(onBack = onDismiss)
     BoxWithConstraints(Modifier.fillMaxSize()) {
         val compact = DrawerWidthPolicy.fullWidth(maxWidth)
@@ -59,7 +59,9 @@ internal fun AppIdentityDrawer(onDismiss: () -> Unit, onPeople: (() -> Unit)? = 
             }
             Column(Modifier.fillMaxWidth().padding(bottom = 16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                 Image(painterResource(R.drawable.arachn0de_logo), "Logo de Arachn0de",
-                    Modifier.size(112.dp).testTag("drawer-logo"), contentScale = ContentScale.Fit)
+                    Modifier.size(112.dp).testTag("drawer-logo"), contentScale = ContentScale.Fit,
+                    colorFilter = if (com.r0ybt.arachn0de.ui.theme.LocalAppearancePalette.current != com.r0ybt.arachn0de.ui.theme.AppearanceTheme.Arachn0de.palette)
+                        androidx.compose.ui.graphics.ColorFilter.tint(Arachn0deColors.Accent) else null)
                 Text("Arachn0de", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold,
                     color = Arachn0deColors.Accent)
             }
@@ -77,8 +79,8 @@ internal fun AppIdentityDrawer(onDismiss: () -> Unit, onPeople: (() -> Unit)? = 
                 icon = { Icon(Icons.Default.People, null) }, onClick = { navigate(it) }, modifier = Modifier.heightIn(min = 48.dp)) }
             HorizontalDivider(Modifier.padding(vertical = 8.dp))
             Text("Aplicación", style = MaterialTheme.typography.labelLarge, color = Arachn0deColors.TextSecondary)
-            onSettings?.let { NavigationDrawerItem(label = { Text("Configuración") }, selected = false,
-                icon = { Icon(Icons.Default.Settings, null) }, onClick = { navigate(it) }, modifier = Modifier.heightIn(min = 48.dp)) }
+            onAppearance?.let { NavigationDrawerItem(label = { Text("Apariencia") }, selected = false,
+                icon = { Icon(Icons.Default.Palette, null) }, onClick = { navigate(it) }, modifier = Modifier.heightIn(min = 48.dp)) }
             onAbout?.let { NavigationDrawerItem(label = { Text("Acerca de") }, selected = false,
                 icon = { Icon(Icons.Default.Info, null) }, onClick = { navigate(it) }, modifier = Modifier.heightIn(min = 48.dp)) }
             Text("v${BuildConfig.VERSION_NAME}", style = MaterialTheme.typography.bodySmall, color = Arachn0deColors.TextSecondary)

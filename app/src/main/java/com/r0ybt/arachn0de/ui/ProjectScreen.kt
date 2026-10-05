@@ -86,6 +86,7 @@ import com.r0ybt.arachn0de.data.repository.NodeRepository
 import com.r0ybt.arachn0de.domain.model.NodeTreeSnapshot
 import com.r0ybt.arachn0de.domain.model.Project
 import com.r0ybt.arachn0de.ui.theme.Arachn0deColors
+import com.r0ybt.arachn0de.ui.theme.ContentTypography
 import com.r0ybt.arachn0de.ui.state.LoadState
 import com.r0ybt.arachn0de.ui.state.NodeActions
 
@@ -100,7 +101,7 @@ internal fun ProjectNodeScreen(
     onOpenCalendar: () -> Unit = {},
     onOpenObligations: () -> Unit = {},
     onOpenAbout: () -> Unit = {},
-    onOpenSettings: () -> Unit = {},
+    onOpenAppearance: () -> Unit = {},
     onBackToObligations: (() -> Unit)? = null,
     onBackToCalendar: (() -> Unit)? = null,
     openNodeId: String? = null,
@@ -155,7 +156,8 @@ internal fun ProjectNodeScreen(
     val recurrenceLoad = remember(nodeRepository) { LoadState() }
     LaunchedEffect(nodeRepository, recurrenceLoad.attempt) { recurrenceLoad.collect(nodeRepository.recurrence.occurrences) { recurrenceReceipts = it } }
     val recurrenceByNode = remember(recurrenceReceipts) { recurrenceReceipts.associate { it.nodeId to it.ruleId } }
-    val actions = remember(nodeRepository, scope) { NodeActions(nodeRepository, scope) }
+    val attachmentRepository = (androidx.compose.ui.platform.LocalContext.current.applicationContext as com.r0ybt.arachn0de.Arachn0deApplication).attachmentRepository
+    val actions = remember(nodeRepository, scope) { NodeActions(nodeRepository, scope, attachmentRepository) }
     val copyContext = androidx.compose.ui.platform.LocalContext.current
     val copyActions = remember(copyContext, scope) { com.r0ybt.arachn0de.ui.state.NodeCopyActions(copyContext, scope) { personRepository.observeAssignments(project.id).first() } }
     val defaultsOperation = remember(scope) { com.r0ybt.arachn0de.ui.state.OperationState(scope) }
@@ -164,6 +166,7 @@ internal fun ProjectNodeScreen(
     var showDefaults by rememberSaveable(currentNodeId) { mutableStateOf(false) }
     var showContextActions by remember(currentNodeId) { mutableStateOf(false) }
     val currentNode = projectState.nodesById[currentNodeId]
+    val scopeDescription = currentNode?.description ?: project.description
     val sprintScope = currentNode?.sprintMode == true
     var showSprintMode by rememberSaveable(currentNodeId) { mutableStateOf(false) }
     var changingWorkStateId by rememberSaveable { mutableStateOf<String?>(null) }
@@ -349,7 +352,7 @@ internal fun ProjectNodeScreen(
                                         maxLines = 2,
                                         overflow = TextOverflow.Ellipsis,
                                         color = Arachn0deColors.TextPrimary,
-                                        fontSize = 24.sp,
+                                        fontSize = ContentTypography.ScopeTitle,
                                         fontWeight = FontWeight.SemiBold,
                                         modifier = Modifier.weight(1f),
                                     )
@@ -386,7 +389,7 @@ internal fun ProjectNodeScreen(
 
                                 Spacer(modifier = Modifier.height(10.dp))
 
-                                if (!currentNode?.description.isNullOrBlank()) {
+                                if (scopeDescription.isNotBlank()) {
                                     androidx.compose.material3.Card(
                                         modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
                                         shape = RoundedCornerShape(10.dp),
@@ -405,11 +408,11 @@ internal fun ProjectNodeScreen(
                                                 letterSpacing = 0.08.sp,
                                             )
                                             Spacer(modifier = Modifier.height(4.dp))
-                                            Text(
-                                                text = currentNode!!.description,
+                                            AttachmentText(
+                                                text = scopeDescription,
                                                 color = Arachn0deColors.TextPrimary,
-                                                fontSize = 14.sp,
-                                                lineHeight = 20.sp,
+                                                fontSize = ContentTypography.Detail,
+                                                lineHeight = ContentTypography.DetailLine,
                                             )
                                         }
                                     }
@@ -460,7 +463,7 @@ internal fun ProjectNodeScreen(
                                         colors = androidx.compose.material3.CardDefaults.cardColors(containerColor = Arachn0deColors.Surface),
                                     ) {
                                         Column(Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
-                                            TextButton(modifier = Modifier.fillMaxWidth(), onClick = { if(selection.ids.isNotEmpty()) selection.toggle(row.node.id) else actions.navigate(row.node.id) { path -> currentPath.clear(); currentPath.addAll(path) } }) { Text(row.node.title, modifier = Modifier.fillMaxWidth(), color = Arachn0deColors.TextPrimary, fontSize = 17.sp, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis) }
+                                            TextButton(modifier = Modifier.fillMaxWidth(), onClick = { if(selection.ids.isNotEmpty()) selection.toggle(row.node.id) else actions.navigate(row.node.id) { path -> currentPath.clear(); currentPath.addAll(path) } }) { Text(row.node.title, modifier = Modifier.fillMaxWidth(), color = Arachn0deColors.TextPrimary, fontSize = ContentTypography.ProjectTitle, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis) }
                                             PriorityIndicator(row.node)
                                             TagChips(tagState.forNode(row.node.id))
                                             androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -616,7 +619,7 @@ internal fun ProjectNodeScreen(
                             }
                         } },
                         modifier = Modifier.weight(1f).heightIn(min = 52.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = Arachn0deColors.Primary),
+                        colors = ButtonDefaults.buttonColors(containerColor = Arachn0deColors.Primary, contentColor = Arachn0deColors.OnSolidPrimary),
                         shape = RoundedCornerShape(14.dp),
                         enabled = !isSubmittingNode && (currentNode == null || currentNode.canReceiveChildren),
                     ) {
@@ -650,7 +653,7 @@ internal fun ProjectNodeScreen(
                         .fillMaxSize(),
                 ) {
                     Box(Modifier.fillMaxSize().background(Arachn0deColors.Scrim.copy(alpha = 0.45f)).clickable { showDrawer = false }.clearAndSetSemantics {})
-                    AppIdentityDrawer(onDismiss = { showDrawer = false }, onProjects = onOpenProjects, projectsSelected = true, onPeople = { showDrawer = false; onOpenPeople() }, onAttention = { showDrawer = false; onOpenAttention() }, onCalendar = { showDrawer = false; onOpenCalendar() }, onObligations = { showDrawer = false; onOpenObligations() }, onSettings = { showDrawer = false; onOpenSettings() }, onAbout = { showDrawer = false; onOpenAbout() })
+                    AppIdentityDrawer(onDismiss = { showDrawer = false }, onProjects = onOpenProjects, projectsSelected = true, onPeople = { showDrawer = false; onOpenPeople() }, onAttention = { showDrawer = false; onOpenAttention() }, onCalendar = { showDrawer = false; onOpenCalendar() }, onObligations = { showDrawer = false; onOpenObligations() }, onAppearance = { showDrawer = false; onOpenAppearance() }, onAbout = { showDrawer = false; onOpenAbout() })
                 }
             }
         }
@@ -674,7 +677,7 @@ internal fun ProjectNodeScreen(
                     drafts.close()
                 }
             },
-            onDiscard = { drafts.clear() },
+            onDiscard = { actions.discardDraft(editor) { drafts.clear() } },
             onSave = { _, _ ->
                 val dates = editor.purpose == NodePurpose.ACTION && (editor.id == null || projectState.nodesById[editor.id]?.isCompletable == true)
                 if(editor.creationGroupId != null && !editor.sharedPatch().isEmpty) actions.reviewGroup(editor) { members ->

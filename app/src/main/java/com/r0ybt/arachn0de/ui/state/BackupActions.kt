@@ -27,6 +27,7 @@ internal class BackupActions(
         scope.launch(Dispatchers.Main.immediate) {
             try { work() }
             catch (cancelled: CancellationException) { throw cancelled }
+            catch (unsupported: AttachmentsNotSupportedException) { notice = unsupported.message }
             catch (_: Exception) { notice = error }
             catch (_: OutOfMemoryError) { notice = "No hay memoria suficiente para procesar este backup." }
             finally { busy = false }

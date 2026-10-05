@@ -4,7 +4,8 @@ import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.test.core.app.ApplicationProvider
 import com.r0ybt.arachn0de.Arachn0deApplication
-import com.r0ybt.arachn0de.MainActivity
+import androidx.activity.ComponentActivity
+import androidx.activity.compose.setContent
 import com.r0ybt.arachn0de.domain.defaults.*
 import com.r0ybt.arachn0de.domain.model.*
 import kotlinx.coroutines.runBlocking
@@ -18,7 +19,7 @@ import org.robolectric.annotation.Config
 
 @RunWith(RobolectricTestRunner::class) @Config(sdk=[28])
 class CreationDefaultsUiTest {
-    private val compose=createAndroidComposeRule<MainActivity>()
+    private val compose=createAndroidComposeRule<ComponentActivity>()
     private lateinit var app:Arachn0deApplication
     private lateinit var project:Project
     private lateinit var layer:Node
@@ -33,8 +34,25 @@ class CreationDefaultsUiTest {
         override fun after() { app.database.close() }
     }).around(compose)
     private fun await(label:String) { try { compose.waitUntil(10000) { org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle(); compose.onAllNodesWithText(label).fetchSemanticsNodes().isNotEmpty() } } catch(t:Throwable) { throw AssertionError("Esperando $label: ${compose.onRoot().printToString()}",t) } }
-    private fun open() { await("Defaults project");compose.onNodeWithText("Defaults project").performClick();await("Nuevo elemento") }
-    private fun settings() { compose.onNodeWithContentDescription("Abrir menú").performClick();compose.onNodeWithText("Configuración").performScrollTo().performClick();await("Guardar valores predeterminados") }
+    private var openGlobalDefaults: (() -> Unit)? = null
+    // The drawer entry was retired. Keep testing the retained defaults component directly.
+    private fun mount() {
+        compose.activity.setContent {
+            com.r0ybt.arachn0de.ui.theme.Arachn0deTheme {
+                val global = androidx.compose.runtime.saveable.rememberSaveable { androidx.compose.runtime.mutableStateOf(false) }
+                openGlobalDefaults = { global.value = true }
+                androidx.compose.foundation.layout.Box {
+                    AppSafeArea { AppRoot(app.projectRepository, app.nodeRepository) }
+                    if (global.value) AppSafeArea {
+                        CreationDefaultsScreen(app.nodeRepository.creationDefaults, DefaultsScope.Global, "Global", emptyList(), emptyList()) { global.value = false }
+                    }
+                }
+            }
+        }
+    }
+    private fun recreateHost() { compose.activityRule.scenario.recreate(); mount() }
+    private fun open() { mount(); await("Defaults project");compose.onNodeWithText("Defaults project").performClick();await("Nuevo elemento") }
+    private fun settings() { compose.runOnIdle { checkNotNull(openGlobalDefaults).invoke() }; await("Guardar valores predeterminados") }
     private fun choose(label:String,value:String) { compose.onNodeWithTag("defaults-choice:$label").performScrollTo().performClick();compose.onNodeWithText(value).performClick() }
     private fun save() { compose.onNodeWithText("Guardar valores predeterminados").performClick();await("Configuración guardada");compose.onNodeWithText("Guardar valores predeterminados").assertExists();compose.onNodeWithText("Volver").performClick();await("Nuevo elemento") }
     private fun fresh() { compose.onNodeWithText("Nuevo elemento").performClick();await("Título") }
@@ -42,9 +60,9 @@ class CreationDefaultsUiTest {
         open(); settings(); choose("Hora de vencimiento", "09:00")
         compose.onNodeWithText("Hora de vencimiento (24 h · HH:mm)").performScrollTo().performTextReplacement("20:00")
         save()
-        compose.activityRule.scenario.recreate(); await("Nuevo elemento")
+        recreateHost(); await("Nuevo elemento")
         fresh()
-        compose.activityRule.scenario.recreate(); await("Título")
+        recreateHost(); await("Título")
         compose.onNodeWithText("Título").performTextInput("Hora propia")
         compose.onNodeWithTag("option:Vencimiento").performScrollTo().performClick()
         compose.onNodeWithText("Vencimiento: Sin fecha").performScrollTo().performClick()
@@ -59,7 +77,7 @@ class CreationDefaultsUiTest {
         val time = java.util.Calendar.getInstance().apply { timeInMillis = task.dueAt!! }
         assertEquals(18, time.get(java.util.Calendar.HOUR_OF_DAY)); assertEquals(30, time.get(java.util.Calendar.MINUTE))
         assertEquals(DefaultTime.Minute(1200), runBlocking { app.nodeRepository.creationDefaults.configuration(DefaultsScope.Global).effective.dueTime })
-        compose.activityRule.scenario.recreate(); await("Nuevo elemento")
+        recreateHost(); await("Nuevo elemento")
         fresh()
         compose.onNodeWithTag("option:Vencimiento").performScrollTo().performClick()
         compose.onNodeWithText("Vencimiento: Sin fecha").performScrollTo().performClick()
@@ -70,7 +88,7 @@ class CreationDefaultsUiTest {
     @Test fun globalSettingsPersistAndUnsavedSettingsSurviveActivityRecreation() {
         runBlocking { app.nodeRepository.creationDefaults.save(DefaultsScope.Global,CreationDefaults(obligation=DefaultValue.Own(true),priority=DefaultValue.Own(Priority.HIGH),start=DefaultValue.Own(DefaultDate(DefaultDateKind.TOMORROW)),due=DefaultValue.Own(DefaultDate(DefaultDateKind.TODAY)))) }
         open();settings();choose("Moneda","USD");choose("Tipo","Nota")
-        compose.activityRule.scenario.recreate();await("Guardar valores predeterminados")
+        recreateHost();await("Guardar valores predeterminados")
         compose.onNodeWithTag("defaults-choice:Tipo").performScrollTo().assert(hasText("Elegido aquí · Nota"))
         save();assertEquals(NodePurpose.NOTE,runBlocking { app.nodeRepository.creationDefaults.configuration(DefaultsScope.Global).effective.purpose })
         fresh();compose.onNodeWithText("Título").performTextInput("Nueva nota");compose.onNodeWithText("Crear").performClick()

@@ -65,6 +65,7 @@ class MvpReadinessTest {
             assertTrue(button.right <= viewport.right - 12 * pixelsPerDp)
             assertTrue(button.bottom <= viewport.bottom - 24 * pixelsPerDp)
             create.performClick()
+            compose.waitUntil(10_000) { compose.onAllNodesWithText("Título").fetchSemanticsNodes().isNotEmpty() }
             compose.onNodeWithText("Título").performTextInput("Tarea accesible")
             compose.onNode(hasText("Guardar") or hasText("Crear")).assertIsDisplayed().assertIsEnabled()
         } finally {
@@ -87,7 +88,7 @@ class MvpReadinessTest {
                         Box(Modifier.requiredSize(320.dp, 480.dp)) {
                             AppSafeArea(WindowInsets(top = 52.dp, bottom = 24.dp)) {
                                 if (mounted.value) ProjectDashboardScreen(repository, emptyList(), emptyMap(),
-                                    onOpenPeople = { openedPeople = true }, onOpenSettings = { openedSettings = true })
+                                    onOpenPeople = { openedPeople = true }, onOpenAppearance = { openedSettings = true })
                             }
                         }
                     }
@@ -98,12 +99,12 @@ class MvpReadinessTest {
             compose.onNodeWithContentDescription("Buscar").assertDoesNotExist()
             compose.onNodeWithText("Nuevo proyecto").performScrollTo().assertIsDisplayed().performClick()
             compose.onNodeWithText("Nombre").assertExists()
-            compose.onNodeWithText("Cancelar").performClick()
+            compose.onNodeWithText("Cerrar").performClick()
             compose.onNodeWithContentDescription("Abrir menú").performClick()
             compose.onNodeWithText("Personas").performScrollTo().assertIsEnabled().performClick()
             compose.runOnIdle { assertTrue(openedPeople) }
             compose.onNodeWithContentDescription("Abrir menú").performClick()
-            compose.onNodeWithText("Configuración").performScrollTo().assertIsEnabled().performClick()
+            compose.onNodeWithText("Apariencia").performScrollTo().assertIsEnabled().performClick()
             compose.runOnIdle { assertTrue(openedSettings) }
             compose.onNodeWithContentDescription("Abrir menú").performClick()
             compose.onNodeWithContentDescription("Cerrar menú").assertIsDisplayed().performClick()

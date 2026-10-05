@@ -57,6 +57,7 @@ import com.r0ybt.arachn0de.domain.model.NodeProgress
 import com.r0ybt.arachn0de.domain.model.NodeProgressState
 import com.r0ybt.arachn0de.domain.model.Project
 import com.r0ybt.arachn0de.ui.theme.Arachn0deColors
+import com.r0ybt.arachn0de.ui.theme.ContentTypography
 import java.text.SimpleDateFormat
 import java.util.Locale
 
@@ -131,7 +132,7 @@ internal fun EmptyProjectsState(onCreateProject: () -> Unit) {
             Text(
                 text = "Todavía no hay proyectos",
                 color = Arachn0deColors.TextPrimary,
-                fontSize = 24.sp,
+                fontSize = ContentTypography.ScopeTitle,
                 fontWeight = FontWeight.SemiBold,
                 modifier = Modifier.fillMaxWidth(),
                 textAlign = androidx.compose.ui.text.style.TextAlign.Center,
@@ -140,14 +141,14 @@ internal fun EmptyProjectsState(onCreateProject: () -> Unit) {
             Text(
                 text = "Crea tu primer proyecto para empezar a organizar ideas, objetivos y seguimiento.",
                 color = Arachn0deColors.TextSecondary,
-                fontSize = 15.sp,
+                fontSize = ContentTypography.Summary,
                 modifier = Modifier.fillMaxWidth(),
                 textAlign = androidx.compose.ui.text.style.TextAlign.Center,
             )
             Spacer(modifier = Modifier.height(20.dp))
             Button(
                 onClick = onCreateProject,
-                colors = ButtonDefaults.buttonColors(containerColor = Arachn0deColors.Primary),
+                colors = ButtonDefaults.buttonColors(containerColor = Arachn0deColors.Primary, contentColor = Arachn0deColors.OnSolidPrimary),
                 shape = RoundedCornerShape(14.dp),
                 modifier = Modifier
                     .fillMaxWidth()
@@ -218,7 +219,7 @@ internal fun ProjectList(
                 modifier = Modifier
                     .fillMaxWidth()
                     .heightIn(min = 52.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = Arachn0deColors.Primary),
+                colors = ButtonDefaults.buttonColors(containerColor = Arachn0deColors.Primary, contentColor = Arachn0deColors.OnSolidPrimary),
                 shape = RoundedCornerShape(14.dp),
             ) {
                 Icon(imageVector = Icons.Default.Add, contentDescription = null)
@@ -282,7 +283,7 @@ internal fun ProjectCard(
                 Text(
                     text = project.name,
                     color = Arachn0deColors.TextPrimary,
-                    fontSize = 17.sp,
+                    fontSize = ContentTypography.ProjectTitle,
                     fontWeight = FontWeight.SemiBold,
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
@@ -290,13 +291,13 @@ internal fun ProjectCard(
                 )
                 if (project.description.isNotBlank()) {
                     Spacer(modifier = Modifier.height(4.dp))
-                    Text(
+                    AttachmentText(
                         text = project.description,
                         color = Arachn0deColors.TextSecondary,
                         maxLines = 2,
                         overflow = TextOverflow.Ellipsis,
                         softWrap = true,
-                        fontSize = 12.sp,
+                        fontSize = ContentTypography.Description,
                     )
                 }
                 AttentionIndicator(attention)
@@ -308,7 +309,7 @@ internal fun ProjectCard(
                             Text(
                                 text = "Contenedor vacío",
                                 color = Arachn0deColors.TextSecondary,
-                                fontSize = 11.sp,
+                                fontSize = ContentTypography.SmallMetadata,
                                 fontWeight = FontWeight.Normal,
                             )
                         }
@@ -317,7 +318,7 @@ internal fun ProjectCard(
                                 Text(
                                     text = "${progress.percentage}% · $pending de ${progress.total} pendientes",
                                     color = Arachn0deColors.Accent,
-                                    fontSize = 11.sp,
+                                    fontSize = ContentTypography.SmallMetadata,
                                     fontWeight = FontWeight.SemiBold,
                                 )
                                 Spacer(modifier = Modifier.height(6.dp))

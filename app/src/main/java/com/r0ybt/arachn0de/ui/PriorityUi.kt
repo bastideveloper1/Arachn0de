@@ -8,6 +8,8 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.sp
 import com.r0ybt.arachn0de.domain.model.*
 import com.r0ybt.arachn0de.ui.theme.Arachn0deColors
+import com.r0ybt.arachn0de.ui.theme.SemanticColors
+import com.r0ybt.arachn0de.ui.theme.ContentTypography
 
 internal fun priorityLabel(priority: Priority): String = when (priority) { Priority.NONE -> "Ninguna"; Priority.LOW -> "Baja"; Priority.MEDIUM -> "Media"; Priority.HIGH -> "Alta" }
 @Composable internal fun PrioritySelector(value: Priority?, onChange: (Priority?) -> Unit, filter: Boolean = false, enabled: Boolean = true) {
@@ -22,7 +24,7 @@ internal fun priorityLabel(priority: Priority): String = when (priority) { Prior
 }
 @Composable internal fun PriorityIndicator(node: Node) {
     if (node.effectivePriority != Priority.NONE) Text("Prioridad ${priorityLabel(node.effectivePriority).lowercase()}",
-        color = if (node.effectivePriority == Priority.HIGH) Arachn0deColors.PathHighlight else Arachn0deColors.TextSecondary, fontSize = 12.sp)
+        color = if (node.effectivePriority == Priority.HIGH) SemanticColors.HighPriority else Arachn0deColors.TextSecondary, fontSize = ContentTypography.Metadata)
 }
 internal fun attentionReasonLabel(reason: AttentionReason): String = when (reason) {
     AttentionReason.OVERDUE -> "Atrasada"; AttentionReason.DUE_TODAY -> "Vence hoy"; AttentionReason.UPCOMING -> "Vence pronto"

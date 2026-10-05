@@ -192,6 +192,7 @@ class NodeRepository(
         )
         reopenBeforeConversion(parentId, now)
         nodeDao.insert(entity)
+        ensureNodeReferences(database, entity.id, entity.description)
         appendEvent(entity.id, NodeEventType.CREATED, now)
         if (responsibleIds.isNotEmpty()) database.personDao().assign(responsibleIds.map { NodePersonEntity(entity.id, it) })
         tags.assignNode(entity.id, tagIds)
@@ -249,6 +250,7 @@ class NodeRepository(
                         amountMinor = spec.obligation?.amountMinor, currencyCode = spec.obligation?.currencyCode, priority = spec.priority.name, creationGroupId = batchId, workState = initialWorkState(parentId, spec.purpose))
                     reopenBeforeConversion(parentId, now)
                     nodeDao.insert(entity)
+                    ensureNodeReferences(database, entity.id, entity.description)
                     appendEvent(entity.id, NodeEventType.CREATED, now)
                     if (people.isNotEmpty()) database.personDao().assign(people.map {
                         NodePersonEntity(entity.id, it)
@@ -263,6 +265,8 @@ class NodeRepository(
     /** Content edits never change structure, completion, identity or sibling order. */
     suspend fun updateNode(id: String, title: String, description: String = ""): Boolean =
         database.withTransaction {
+            if (nodeDao.getById(id) == null) return@withTransaction false
+            ensureNodeReferences(database, id, description)
             nodeDao.updateContent(id, validateTitle(title), description, currentTimeMillis()) == 1
         }
 
@@ -272,6 +276,7 @@ class NodeRepository(
             com.r0ybt.arachn0de.domain.model.TaskTemporal.validateDates(startAt, dueAt)
             val current = nodeDao.getById(id) ?: return@withTransaction false
             if (current.purpose != NodePurpose.ACTION.name || nodeDao.hasChildren(current.projectId, id)) return@withTransaction false
+            ensureNodeReferences(database, id, description)
             nodeDao.updateContentAndDates(id, validateTitle(title), description, startAt, dueAt, currentTimeMillis()) == 1
         }
 
@@ -281,6 +286,7 @@ class NodeRepository(
         val current = nodeDao.getById(id) ?: return@withTransaction false
         if (current.purpose != NodePurpose.ACTION.name || nodeDao.hasChildren(current.projectId, id)) return@withTransaction false
         require(current.amountMinor == null || obligation != null || removeObligation) { "Confirma la eliminación de los datos financieros." }
+        ensureNodeReferences(database, id, description)
         nodeDao.updateLeaf(id, validateTitle(title), description, startAt, dueAt, obligation?.amountMinor, obligation?.currencyCode, currentTimeMillis()) == 1
     }
 
@@ -427,7 +433,8 @@ class NodeRepository(
         com.r0ybt.arachn0de.domain.model.CreationUndo(ids.map { rows.getValue(it).toNode(it in parents) },
             ids.associateWith { tags[it].orEmpty().map { row -> row.tagId }.toSet() },
             ids.associateWith { people[it].orEmpty().map { row -> row.personId }.toSet() },
-            ids.associateWith { events[it].orEmpty().map { row -> row.toEvent() } })
+            ids.associateWith { events[it].orEmpty().map { row -> row.toEvent() } },
+            ids.associateWith { id -> database.attachmentDao().forNode(id).map { it.attachmentId }.toSet() }.filterValues { it.isNotEmpty() })
     }
 
     suspend fun deleteSelected(projectId: String, selected: Set<String>): Int = database.withTransaction {
@@ -514,6 +521,7 @@ class NodeRepository(
                 database.personDao().clearAssignments(current.id)
                 if(ids.isNotEmpty()) database.personDao().assign(ids.map { NodePersonEntity(current.id,it) })
             }
+            ensureNodeReferences(database, current.id, patch.description ?: current.description)
             check(nodeDao.patchShared(current.id, patch.description ?: current.description, financial?.amountMinor,
                 financial?.currencyCode, patch.priority?.name ?: current.priority, at) == 1)
         }

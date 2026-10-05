@@ -8,7 +8,7 @@ import android.text.StaticLayout
 import android.text.TextPaint
 import androidx.compose.ui.graphics.toArgb
 import com.r0ybt.arachn0de.R
-import com.r0ybt.arachn0de.ui.theme.Arachn0deColors
+import com.r0ybt.arachn0de.ui.theme.AppearanceTheme
 import kotlin.math.ceil
 
 class ReportTooLargeException : Exception("El informe es demasiado largo para generar un PNG. Elige un mes o una Persona.")
@@ -46,10 +46,10 @@ class ObligationPngRenderer(private val resources: Resources) {
     fun measure(data: ObligationReportData, budgetBytes: Long = bitmapBudget(), checkCancelled: () -> Unit = {}): Document {
         require(data.obligations.isNotEmpty()) { "No hay obligaciones para generar este informe." }
         val marks = mutableListOf<Mark>()
-        val primary = Arachn0deColors.TextPrimary.toArgb()
-        val secondary = Arachn0deColors.TextSecondary.toArgb()
-        val orange = Arachn0deColors.PathHighlight.toArgb()
-        val violet = Arachn0deColors.Accent.toArgb()
+        val primary = AppearanceTheme.Arachn0de.palette.text.toArgb()
+        val secondary = AppearanceTheme.Arachn0de.palette.muted.toArgb()
+        val orange = AppearanceTheme.Arachn0de.palette.secondary.toArgb()
+        val violet = AppearanceTheme.Arachn0de.palette.primary.toArgb()
         var y = 72f
         fun validate(height: Float) {
             if (!height.isFinite() || height > MAX_HEIGHT) throw ReportTooLargeException()
@@ -138,7 +138,7 @@ class ObligationPngRenderer(private val resources: Resources) {
             checkCancelled()
             bitmap = Bitmap.createBitmap(WIDTH, document.height, Bitmap.Config.ARGB_8888)
             val canvas = Canvas(bitmap)
-            canvas.drawColor(Arachn0deColors.BackgroundEnd.toArgb())
+            canvas.drawColor(AppearanceTheme.Arachn0de.palette.end.toArgb())
             val paint = Paint(Paint.ANTI_ALIAS_FLAG)
             logo = BitmapFactory.decodeResource(resources, R.drawable.arachn0de_logo,
                 BitmapFactory.Options().apply { inScaled = false; inSampleSize = 8 })
@@ -151,11 +151,11 @@ class ObligationPngRenderer(private val resources: Resources) {
                         mark.layout.draw(canvas); canvas.restore()
                     }
                     is Mark.Panel -> {
-                        paint.color = Arachn0deColors.Surface.toArgb()
+                        paint.color = AppearanceTheme.Arachn0de.palette.surface.toArgb()
                         canvas.drawRoundRect(mark.bounds, 20f, 20f, paint)
                     }
                     is Mark.Rule -> {
-                        paint.color = Arachn0deColors.Outline.toArgb(); paint.strokeWidth = 2f
+                        paint.color = AppearanceTheme.Arachn0de.palette.outline.toArgb(); paint.strokeWidth = 2f
                         canvas.drawLine(80f, mark.y, 1360f, mark.y, paint)
                     }
                     Mark.Logo -> {

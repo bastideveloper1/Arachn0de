@@ -8,6 +8,7 @@ import androidx.compose.ui.zIndex
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -57,6 +58,8 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.PlatformTextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDecoration
@@ -194,10 +197,10 @@ internal fun NodeCard(
     val checkMarked = if (sprintPhase != null) sprintFinal else node.isCompleted
     val completedTint = if (node.isCompleted) Arachn0deColors.Completed else Arachn0deColors.Primary
     val noPending = node.isStructural && progress != null && !progress.hasPending
-    val displayTextColor = when {
-        node.isCompleted -> Arachn0deColors.TextCompleted
-        noPending -> Arachn0deColors.TextSecondary
-        else -> Arachn0deColors.TextPrimary
+    val leadingColumnWidth = when {
+        selecting || canToggleComplete -> 48.dp
+        node.purpose == NodePurpose.NOTE || node.isStructural -> 36.dp
+        else -> 0.dp
     }
     val borderColor = when (sprintPhase) {
         WorkState.UNPLANNED -> Arachn0deColors.Outline
@@ -221,152 +224,196 @@ internal fun NodeCard(
         shape = RoundedCornerShape(8.dp),
         colors = CardDefaults.cardColors(containerColor = if (noPending) Arachn0deColors.Background else Arachn0deColors.Surface),
     ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 12.dp, vertical = 8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            if (selecting) androidx.compose.material3.Checkbox(selected, { onSelect?.invoke() })
-            else if (canToggleComplete) {
-                IconButton(
-                    onClick = onToggleComplete,
-                    enabled = sprintPhase == null || (!stateBusy && !sprintFinal),
+        Box(Modifier.fillMaxWidth()) {
+            Column(Modifier.fillMaxWidth()) {
+                Row(
                     modifier = Modifier
-                        .size(48.dp)
-                        .semantics {
-                            contentDescription = if (sprintPhase != null) {
-                                if (sprintFinal) "Sprint validado: ${node.title}"
-                                else "Confirmar ${sprintPhase.label} y avanzar a ${sprintPhase.next().label}: ${node.title}"
-                            } else if (node.isCompleted) "Marcar pendiente: ${node.title}" else "Completar: ${node.title}"
-                            stateDescription = if (checkMarked) "Completada" else "Pendiente"
-                        }
-                        .clip(RoundedCornerShape(10.dp))
-                        .background(if (checkMarked) completedTint else Arachn0deColors.ControlSurface),
+                        .fillMaxWidth()
+                        .padding(horizontal = 12.dp, vertical = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    if (checkMarked) {
-                        Icon(
-                            imageVector = Icons.Default.Check,
-                            contentDescription = null,
-                            tint = Arachn0deColors.OnPrimary,
-                        )
-                    } else {
-                        Box(
-                            modifier = Modifier
-                                .size(14.dp)
-                                .border(2.dp, Arachn0deColors.TextSecondary, RoundedCornerShape(4.dp)),
+                    if (selecting || canToggleComplete) Spacer(Modifier.size(48.dp))
+                    else if (node.purpose == NodePurpose.NOTE) {
+                        Icon(Icons.Default.Description, contentDescription = "Nota", tint = Arachn0deColors.TextSecondary, modifier = Modifier.size(36.dp))
+                    } else if (node.isStructural) {
+                        Image(
+                            painter = painterResource(id = R.drawable.cebolla_icon),
+                            contentDescription = "Capa",
+                            contentScale = ContentScale.Fit,
+                            modifier = Modifier.size(36.dp),
                         )
                     }
-                }
-            } else if (node.purpose == NodePurpose.NOTE) {
-                Icon(Icons.Default.Description, contentDescription = "Nota", tint = Arachn0deColors.TextSecondary, modifier = Modifier.size(36.dp))
-            } else if (node.isStructural) {
-                Image(
-                    painter = painterResource(id = R.drawable.cebolla_icon),
-                    contentDescription = "Capa",
-                    contentScale = ContentScale.Fit,
-                    modifier = Modifier.size(36.dp),
-                )
-            }
 
-            if (!selecting && node.workState != null) {
-                val state = node.workState
-                val next = state.next()
-                IconButton(onClick = { onAdvanceWorkState?.invoke() }, enabled = !stateBusy && state != next && onAdvanceWorkState != null,
-                    modifier = Modifier.size(48.dp).semantics {
-                        contentDescription = "Estado: ${state.label}. " + if (state == next) "Estado final." else "Activar para avanzar a ${next.label}."
-                        stateDescription = state.label
-                    }) { Text("${state.ordinal + 1}/5", color = Arachn0deColors.TextPrimary) }
-            }
+                    Spacer(modifier = Modifier.width(12.dp))
 
-            Spacer(modifier = Modifier.width(12.dp))
-
-            Column(
-                modifier = Modifier.weight(1f),
-            ) {
-                node.workState?.let { Text(it.label, color = Arachn0deColors.TextSecondary, fontSize = 12.sp) }
-                PriorityIndicator(node)
-                TagChips(tags)
-                if (noPending) Text("Sin pendientes", color = Arachn0deColors.TextSecondary, fontSize = 12.sp)
-                if (onRecurrence != null) TextButton(onClick = onRecurrence) { Text("↻ Recurrencia", color = Arachn0deColors.Primary, fontSize = 12.sp) }
-                Text(
-                    text = node.title,
-                    color = displayTextColor,
-                    fontSize = 17.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                    textDecoration = if (node.isCompleted) TextDecoration.LineThrough else null,
-                )
-
-                if (node.description.isNotBlank()) {
-                    Text(node.description, color = Arachn0deColors.TextSecondary, fontSize = 12.sp,
-                        maxLines = 2, overflow = TextOverflow.Ellipsis)
-                }
-
-                ObligationIndicator(node)
-                TaskDateIndicator(node, now)
-                if (node.isStructural) AttentionIndicator(attention)
-
-                if (responsiblePeople.isNotEmpty()) {
-                    Spacer(modifier = Modifier.height(4.dp))
-                    ResponsibleAvatars(responsiblePeople)
-                }
-                if (node.isStructural && progress != null) {
-                    Spacer(modifier = Modifier.height(6.dp))
-                    if (progress.state == NodeProgressState.NO_WORK) {
+                    Column(
+                        modifier = Modifier.weight(1f),
+                    ) {
+                        if (noPending) Text("Sin pendientes", color = Arachn0deColors.TextSecondary, fontSize = 12.sp)
+                        if (onRecurrence != null) TextButton(onClick = onRecurrence) { Text("↻ Recurrencia", color = Arachn0deColors.Primary, fontSize = 12.sp) }
                         Text(
-                            text = "Contenedor vacío",
-                            color = Arachn0deColors.TextSecondary,
-                            fontSize = 11.sp,
-                        )
-                    } else {
-                        Text(
-                            text = "${progress.percentage}% · ${progress.total - progress.completed} de ${progress.total} pendientes",
-                            color = Arachn0deColors.TextSecondary,
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.SemiBold,
-                        )
-                        Spacer(modifier = Modifier.height(6.dp))
-                        androidx.compose.material3.LinearProgressIndicator(
-                            progress = { progress.percentage / 100f },
-                            modifier = Modifier.fillMaxWidth().height(4.dp),
+                            text = node.title,
                             color = Arachn0deColors.PathHighlight,
-                            trackColor = Arachn0deColors.ControlSurface,
+                            fontSize = 14.sp,
+                            style = TextStyle(lineHeight = 16.sp, platformStyle = PlatformTextStyle(includeFontPadding = false)),
+                            fontWeight = FontWeight.SemiBold,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                            textDecoration = if (node.isCompleted) TextDecoration.LineThrough else null,
                         )
+
+                        if (node.description.isNotBlank()) {
+                            Text(node.description, color = Arachn0deColors.TextSecondary, fontSize = 12.sp,
+                                style = TextStyle(lineHeight = 14.sp, platformStyle = PlatformTextStyle(includeFontPadding = false)),
+                                maxLines = 2, overflow = TextOverflow.Ellipsis)
+                        }
+
+                        ObligationIndicator(node)
+                        if (node.isStructural) AttentionIndicator(attention)
+
+                        if (node.isStructural && progress != null) {
+                            Spacer(modifier = Modifier.height(6.dp))
+                            if (progress.state == NodeProgressState.NO_WORK) {
+                                Text(
+                                    text = "Contenedor vacío",
+                                    color = Arachn0deColors.TextSecondary,
+                                    fontSize = 11.sp,
+                                )
+                            } else {
+                                Text(
+                                    text = "${progress.percentage}% · ${progress.total - progress.completed} de ${progress.total} pendientes",
+                                    color = Arachn0deColors.TextSecondary,
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                )
+                                Spacer(modifier = Modifier.height(6.dp))
+                                androidx.compose.material3.LinearProgressIndicator(
+                                    progress = { progress.percentage / 100f },
+                                    modifier = Modifier.fillMaxWidth().height(4.dp),
+                                    color = Arachn0deColors.PathHighlight,
+                                    trackColor = Arachn0deColors.ControlSurface,
+                                )
+                            }
+                        } else if (node.isStructural) {
+                            Spacer(modifier = Modifier.height(6.dp))
+                            Text(
+                                text = if (node.sprintMode) "Capa · Modo Sprint" else "Capa",
+                                color = Arachn0deColors.TextSecondary,
+                                fontSize = 11.sp,
+                            )
+                        }
                     }
-                } else if (node.isStructural) {
-                    Spacer(modifier = Modifier.height(6.dp))
-                    Text(
-                        text = if (node.sprintMode) "Capa · Modo Sprint" else "Capa",
-                        color = Arachn0deColors.TextSecondary,
-                        fontSize = 11.sp,
-                    )
+
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        if (node.isStructural) {
+                            Icon(
+                                imageVector = Icons.Default.ChevronRight,
+                                contentDescription = null,
+                                tint = Arachn0deColors.TextSecondary,
+                            )
+                        }
+
+                        Box(
+                            modifier = Modifier.size(48.dp).testTag("node-options:${node.id}").combinedClickable(
+                                onClick = { if(selecting) onSelect?.invoke() else showContextMenu = true },
+                                role = androidx.compose.ui.semantics.Role.Button,
+                                onLongClickLabel = "Seleccionar",
+                                onLongClick = { onSelect?.invoke() },
+                            ), contentAlignment = Alignment.Center,
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.MoreVert,
+                                contentDescription = "Más opciones",
+                                tint = Arachn0deColors.TextSecondary,
+                            )
+                        }
+                    }
+                }
+                if (sprintPhase != null || responsiblePeople.isNotEmpty() || tags.isNotEmpty() ||
+                    node.effectivePriority != com.r0ybt.arachn0de.domain.model.Priority.NONE || (!node.isStructural && (node.startAt != null || node.dueAt != null))) Column(
+                    modifier = Modifier.fillMaxWidth().padding(start = 24.dp + leadingColumnWidth, end = 12.dp, top = 2.dp, bottom = 6.dp),
+                ) {
+                    if (sprintPhase != null || node.effectivePriority != com.r0ybt.arachn0de.domain.model.Priority.NONE ||
+                        (!node.isStructural && (node.startAt != null || node.dueAt != null))) FlowRow(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(2.dp),
+                        itemVerticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        if (!selecting && sprintPhase != null) {
+                            val next = sprintPhase.next()
+                            IconButton(onClick = { onAdvanceWorkState?.invoke() }, enabled = !stateBusy && sprintPhase != next && onAdvanceWorkState != null,
+                                modifier = Modifier.size(48.dp).semantics {
+                                    contentDescription = "Estado: ${sprintPhase.label}. " + if (sprintPhase == next) "Estado final." else "Activar para avanzar a ${next.label}."
+                                    stateDescription = sprintPhase.label
+                                }) { Text("${sprintPhase.ordinal + 1}/5", color = Arachn0deColors.TextPrimary) }
+                        }
+                        sprintPhase?.let { phase ->
+                            Surface(
+                                shape = RoundedCornerShape(6.dp),
+                                color = borderColor.copy(alpha = 0.14f),
+                                border = androidx.compose.foundation.BorderStroke(borderWidth, borderColor),
+                            ) {
+                                Text(phase.label, modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                    color = when (phase) {
+                                        WorkState.UNPLANNED, WorkState.PLANNED -> Arachn0deColors.TextSecondary
+                                        WorkState.DOING, WorkState.VALIDATED -> Arachn0deColors.Accent
+                                        WorkState.DONE -> Arachn0deColors.TextCompleted
+                                    },
+                                    fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                            }
+                        }
+                        PriorityIndicator(node)
+                        TaskDateIndicator(node, now, wrap = true)
+                    }
+                    if (tags.isNotEmpty() || responsiblePeople.isNotEmpty()) FlowRow(
+                        modifier = Modifier.fillMaxWidth().padding(top = 2.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalArrangement = Arrangement.spacedBy(2.dp),
+                        itemVerticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        TagChips(tags, compact = true)
+                        if (responsiblePeople.isNotEmpty()) Box(Modifier.padding(start = if (tags.isNotEmpty()) 8.dp else 0.dp)) {
+                            ResponsibleAvatars(responsiblePeople)
+                        }
+                    }
                 }
             }
-
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                if (node.isStructural) {
-                    Icon(
-                        imageVector = Icons.Default.ChevronRight,
-                        contentDescription = null,
-                        tint = Arachn0deColors.TextSecondary,
-                    )
-                }
-
-                Box(
-                    modifier = Modifier.size(48.dp).testTag("node-options:${node.id}").combinedClickable(
-                        onClick = { if(selecting) onSelect?.invoke() else showContextMenu = true },
-                        role = androidx.compose.ui.semantics.Role.Button,
-                        onLongClickLabel = "Seleccionar",
-                        onLongClick = { onSelect?.invoke() },
-                    ), contentAlignment = Alignment.Center,
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.MoreVert,
-                        contentDescription = "Más opciones",
-                        tint = Arachn0deColors.TextSecondary,
-                    )
+            if (selecting || canToggleComplete) Box(
+                modifier = Modifier.align(Alignment.CenterStart).padding(start = 12.dp).size(48.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                if (selecting) androidx.compose.material3.Checkbox(selected, { onSelect?.invoke() })
+                else if (canToggleComplete) {
+                    IconButton(
+                        onClick = onToggleComplete,
+                        enabled = sprintPhase == null || (!stateBusy && !sprintFinal),
+                        modifier = Modifier
+                            .size(48.dp)
+                            .semantics {
+                                contentDescription = if (sprintPhase != null) {
+                                    if (sprintFinal) "Sprint validado: ${node.title}"
+                                    else "Confirmar ${sprintPhase.label} y avanzar a ${sprintPhase.next().label}: ${node.title}"
+                                } else if (node.isCompleted) "Marcar pendiente: ${node.title}" else "Completar: ${node.title}"
+                                stateDescription = if (checkMarked) "Completada" else "Pendiente"
+                            }
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(if (checkMarked) completedTint else Arachn0deColors.ControlSurface),
+                    ) {
+                        if (checkMarked) {
+                            Icon(
+                                imageVector = Icons.Default.Check,
+                                contentDescription = null,
+                                tint = Arachn0deColors.OnPrimary,
+                            )
+                        } else {
+                            Box(
+                                modifier = Modifier
+                                    .size(14.dp)
+                                    .border(2.dp, Arachn0deColors.TextSecondary, RoundedCornerShape(4.dp)),
+                            )
+                        }
+                    }
                 }
             }
         }

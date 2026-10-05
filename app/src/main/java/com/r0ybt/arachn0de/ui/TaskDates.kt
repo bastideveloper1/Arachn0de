@@ -27,7 +27,7 @@ internal fun formatTaskDate(millis: Long, compact: Boolean): String = SimpleDate
 ).format(Date(millis))
 
 @Composable
-internal fun TaskDateIndicator(node: Node, now: Long) {
+internal fun TaskDateIndicator(node: Node, now: Long, wrap: Boolean = false) {
     if (node.isStructural || (node.startAt == null && node.dueAt == null)) return
     val state = TaskTemporal.state(node, now)
     val label = when (state) {
@@ -44,7 +44,7 @@ internal fun TaskDateIndicator(node: Node, now: Long) {
         TaskTemporalState.UPCOMING -> Arachn0deColors.PathHighlight
         else -> Arachn0deColors.TextSecondary
     }
-    Text("$label · ${formatTaskDate(checkNotNull(instant), compact = true)}", color = color, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+    Text("$label · ${formatTaskDate(checkNotNull(instant), compact = true)}", color = color, fontSize = 12.sp, maxLines = if (wrap) Int.MAX_VALUE else 1, overflow = TextOverflow.Ellipsis)
 }
 
 /** Material pickers use UTC calendar dates; combine their components with local wall time. */

@@ -434,7 +434,6 @@ internal fun ProjectNodeScreen(
                                         else if(currentNode.isCompletable) SecondaryAction(if(currentNode.isCompleted) "Reabrir" else "Completar",
                                             { actions.setCompleted(currentNode.id,!currentNode.isCompleted) },enabled = !isSubmittingNode)
                                     }
-                                    if (currentNode.purpose == NodePurpose.ACTION && currentNode.canReceiveChildren) Text("Al añadir un elemento, esta tarea se convierte en capa.", color = Arachn0deColors.TextSecondary)
                                     if (currentNode.purpose == NodePurpose.NOTE) Text("Nota · Convierte en capa para añadir hijos", color = Arachn0deColors.TextSecondary)
                                     PriorityIndicator(currentNode)
                                     ObligationIndicator(currentNode)

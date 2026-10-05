@@ -8,14 +8,29 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.r0ybt.arachn0de.domain.model.*
 import com.r0ybt.arachn0de.data.repository.TagRepository
+import com.r0ybt.arachn0de.ui.theme.Arachn0deColors
 import kotlinx.coroutines.launch
 
-@Composable internal fun TagChips(tags: List<Tag>) {
-    if (tags.isNotEmpty()) Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-        tags.take(2).forEach { SuggestionChip(onClick = {}, label = { Text(it.name, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis, modifier = Modifier.widthIn(max = 100.dp)) }) }
-        if (tags.size > 2) SuggestionChip(onClick = {}, label = { Text("+${tags.size - 2}") })
+@Composable internal fun TagChips(tags: List<Tag>, compact: Boolean = false) {
+    if (tags.isEmpty()) return
+    if (!compact) {
+        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+            tags.take(2).forEach { SuggestionChip(onClick = {}, label = { Text(it.name, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis, modifier = Modifier.widthIn(max = 100.dp)) }) }
+            if (tags.size > 2) SuggestionChip(onClick = {}, label = { Text("+${tags.size - 2}") })
+        }
+        return
+    }
+    FlowRow(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        tags.take(2).forEach { tag ->
+            Surface(shape = androidx.compose.foundation.shape.RoundedCornerShape(6.dp), color = Arachn0deColors.ControlSurface) {
+                Text(tag.name, fontSize = 12.sp, color = Arachn0deColors.TextSecondary,
+                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 1.dp).widthIn(max = 100.dp))
+            }
+        }
+        if (tags.size > 2) Text("+${tags.size - 2}", fontSize = 12.sp, color = Arachn0deColors.TextSecondary)
     }
 }
 @Composable internal fun TagSelector(tags: List<Tag>, selected: Set<String>, onChange: (Set<String>) -> Unit,

@@ -30,7 +30,7 @@ class ExplicitLayerMigrationTest {
         helper.close()
         val db=Arachn0deDatabase.create(context)
         try { kotlinx.coroutines.runBlocking {
-            assertEquals(18, db.openHelper.readableDatabase.version)
+            assertEquals(20, db.openHelper.readableDatabase.version)
             val layer=db.nodeDao().getById("layer")!!;assertEquals("LAYER",layer.purpose);assertEquals(100L,layer.startAt);assertEquals("HIGH",layer.priority)
             assertEquals(NodeEntity("task","p","layer","Task","",true,4,11,21,110,210,"ACTION",15000,"CLP","HIGH","group"),db.nodeDao().getById("task"))
             assertEquals("NOTE",db.nodeDao().getById("note")!!.purpose)

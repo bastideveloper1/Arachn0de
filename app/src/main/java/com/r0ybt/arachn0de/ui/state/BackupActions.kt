@@ -27,7 +27,7 @@ internal class BackupActions(
         scope.launch(Dispatchers.Main.immediate) {
             try { work() }
             catch (cancelled: CancellationException) { throw cancelled }
-            catch (unsupported: AttachmentsNotSupportedException) { notice = unsupported.message }
+            catch (attachment: AttachmentBackupException) { notice = attachment.message }
             catch (_: Exception) { notice = error }
             catch (_: OutOfMemoryError) { notice = "No hay memoria suficiente para procesar este backup." }
             finally { busy = false }
@@ -35,26 +35,28 @@ internal class BackupActions(
     }
     fun create(ready: (File) -> Unit) = run("No se pudo crear el backup. Revisa el espacio disponible; los datos actuales se conservan.") {
         val file = repository.create()
-        try { ready(file) } catch (failure: Exception) { file.delete(); throw failure }
+        try { ready(file) } catch (failure: Exception) { runCatching { repository.discardPending(file.name) }; throw failure }
     }
     fun save(name: String, uri: Uri) = run("No se pudo guardar el backup. Si quedó un archivo incompleto en el destino, elimínalo y vuelve a intentarlo.") {
         val file = repository.pendingFile(name)
         try {
             documents.save(file, uri)
             notice = "Backup guardado correctamente."
-        } finally { file.delete() }
+        } finally { runCatching { repository.discardPending(file.name) } }
     }
-    fun cancelSave(name: String?) { name?.let { runCatching { repository.pendingFile(it).delete() } } }
+    fun cancelSave(name: String?) { name?.let { runCatching { repository.discardPending(it) } } }
     fun inspect(uri: Uri) = run("No se pudo validar el backup: puede estar dañado, ser incompatible o superar los límites admitidos. No se han cambiado los datos actuales.") {
+        repository.discard(candidate)
         candidate = null
         candidate = documents.read(repository, uri)
     }
     fun noticeSelectionFailed() { notice = "Android no pudo abrir el selector de archivos. Vuelve a intentarlo." }
-    fun dismiss() { if (!busy) candidate = null }
+    fun dismiss() { if (!busy) { repository.discard(candidate); candidate = null } }
     fun restore(onRestored: () -> Unit) {
         val data = candidate ?: return
         run("No se pudo restaurar el backup. Se conservan los datos anteriores; puedes volver a intentarlo.") {
             repository.restore(data)
+            repository.discard(data)
             candidate = null
             notice = "Backup restaurado correctamente."
             try { onRestored() } catch (_: Exception) {

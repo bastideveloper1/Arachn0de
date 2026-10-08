@@ -6,8 +6,8 @@ import kotlinx.coroutines.CoroutineScope
 
 internal class PersonActions(private val repository: PersonRepository, scope: CoroutineScope) {
     val operation = OperationState(scope)
-    fun save(id: String, name: String, avatar: String?, isNew: Boolean, onSuccess: () -> Unit) =
-        operation.submit("No se pudo guardar la Persona. Puedes reintentar.", { repository.save(id, name, avatar, isNew) }, onSuccess)
+    fun save(id: String, name: String, avatar: String?, isNew: Boolean, framing: com.r0ybt.arachn0de.domain.model.AvatarFraming = com.r0ybt.arachn0de.domain.model.AvatarFraming(), onSuccess: () -> Unit) =
+        operation.submit("No se pudo guardar la Persona. Puedes reintentar.", { repository.save(id, name, avatar, isNew, draftId = id, zoom = framing.zoom, x = framing.x, y = framing.y) }, onSuccess)
     fun delete(id: String, onSuccess: () -> Unit) =
         operation.submit("No se pudo eliminar la Persona. Puedes reintentar.", { repository.delete(id) }, onSuccess)
     fun assign(nodeId: String, ids: Set<String>, onSuccess: () -> Unit) =

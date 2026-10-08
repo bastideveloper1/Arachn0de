@@ -36,7 +36,7 @@ class SprintMigrationTest {
         helper.close()
         val db=Arachn0deDatabase.create(context)
         try {
-            assertEquals(18,db.openHelper.readableDatabase.version)
+            assertEquals(20,db.openHelper.readableDatabase.version)
             val rows=db.nodeDao().getProjectNodes("p");assertTrue(rows.all { !it.sprintMode && it.workState==null })
             assertEquals(NodeEntity("task","p","layer","Task","",true,4,11,21,110,210,"ACTION",15000,"CLP","HIGH","group"),db.nodeDao().getById("task"))
             assertEquals("LAYER",db.nodeDao().getById("layer")!!.purpose);assertEquals("NOTE",db.nodeDao().getById("note")!!.purpose)
@@ -69,7 +69,7 @@ class SprintMigrationTest {
         }
         sql.execSQL("INSERT INTO node_events VALUES ('event','DONE','COMPLETED',21)")
         fun snapshot(database:androidx.sqlite.db.SupportSQLiteDatabase)=tables.associateWith { table ->
-            database.query("SELECT * FROM `$table` ORDER BY rowid").use { cursor ->
+            database.query("SELECT ${if (table == "persons") "id, name, avatarFile" else "*"} FROM `$table` ORDER BY rowid").use { cursor ->
                 buildList { while(cursor.moveToNext()) add((0 until cursor.columnCount).map { if(cursor.isNull(it)) null else cursor.getString(it) }) }
             }
         }
@@ -79,7 +79,7 @@ class SprintMigrationTest {
         val db=Arachn0deDatabase.create(context)
         try {
             val migrated=db.openHelper.writableDatabase
-            assertEquals(18,migrated.version);assertEquals(before,snapshot(migrated))
+            assertEquals(20,migrated.version);assertEquals(before,snapshot(migrated))
             for(state in com.r0ybt.arachn0de.domain.model.WorkState.entries) {
                 for(completed in listOf(0,1)) migrated.execSQL("UPDATE nodes SET isCompleted=? WHERE id=?",arrayOf<Any>(completed,state.name))
             }

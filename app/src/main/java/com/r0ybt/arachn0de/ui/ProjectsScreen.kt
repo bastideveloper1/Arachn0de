@@ -57,11 +57,13 @@ internal fun ProjectDashboardScreen(
     onOpenCalendar: () -> Unit = {},
     onOpenObligations: () -> Unit = {},
     onOpenAbout: () -> Unit = {},
+    onOpenGame: () -> Unit = {},
     onOpenAppearance: () -> Unit = {},
     recurrenceContent: @Composable () -> Unit = {},
     projectAttentionById: Map<String, com.r0ybt.arachn0de.domain.model.AttentionSummary> = emptyMap(),
     exportTree: com.r0ybt.arachn0de.domain.model.NodeTreeSnapshot = com.r0ybt.arachn0de.domain.model.NodeTreeSnapshot(emptyList()),
     copyDescendantsReady: Boolean = false,
+    onOpenTechnologies: () -> Unit = {},
 ) {
     val scope = rememberCoroutineScope()
     val context = androidx.compose.ui.platform.LocalContext.current
@@ -159,11 +161,11 @@ internal fun ProjectDashboardScreen(
                         onDismiss = { showDrawer = false },
                         onProjects = {},
                         projectsSelected = true,
-                        onPeople = { showDrawer = false; onOpenPeople() },
+                        onPeople = { showDrawer = false; onOpenPeople() }, onTechnologies = { showDrawer = false; onOpenTechnologies() },
                         onAttention = { showDrawer = false; onOpenAttention() },
                         onCalendar = { showDrawer = false; onOpenCalendar() },
                         onObligations = { showDrawer = false; onOpenObligations() },
-                        onAppearance = { showDrawer = false; onOpenAppearance() }, onAbout = { showDrawer = false; onOpenAbout() },
+                        onAppearance = { showDrawer = false; onOpenAppearance() }, onGame = { showDrawer = false; onOpenGame() }, onAbout = { showDrawer = false; onOpenAbout() },
                     )
                 }
             }

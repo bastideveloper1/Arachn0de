@@ -65,8 +65,8 @@ android {
         applicationId = "com.r0ybt.arachn0de"
         minSdk = 24
         targetSdk = 36
-        versionCode = 7
-        versionName = "0.2.5"
+        versionCode = 8
+        versionName = "0.2.5-beta-test1"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }

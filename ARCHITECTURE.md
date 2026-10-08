@@ -846,7 +846,7 @@ Room pasa de **v4 a v5** mediante `PersonMigration4To5`: añade `persons` y `nod
 
 «Personas» es un destino funcional del panel existente, tanto desde proyectos como desde una capa. Permite listar, crear, editar y eliminar con confirmación, seleccionar/cambiar/quitar avatar. Al volver conserva la ruta del proyecto y el estado guardable mediante `SaveableStateHolder`. «Responsables» aparece en el menú de cada tarea/Capa y en el contexto de la capa abierta: un selector permite guardar ninguna, una o varias Personas. Su estado vacío indica dónde crearlas. Las tarjetas y la capa abierta muestran hasta tres avatares y `+N`, sin sección vacía. Los flujos de Room actualizan nombres, avatares y asignaciones sin reabrir pantallas.
 
-El selector Android `PickVisualMedia` entrega la imagen que `AvatarStore` copia inmediatamente al almacenamiento privado de la app. Room guarda únicamente el nombre del archivo PNG; no guarda blobs ni depende de mantener acceso a la URI original. Se acepta una entrada de hasta 20 MiB y se genera una miniatura de hasta 512 px por lado, respetando orientación EXIF. Sin imagen disponible se muestra la inicial. Cambiar/quitar/eliminar y cancelar un borrador limpia archivos sin referencias, con limpieza de archivos como mejor esfuerzo. No existe crop avanzado.
+El selector Android `PickVisualMedia` entrega la imagen que `AvatarStore` copia inmediatamente al almacenamiento privado de la app. Room guarda únicamente el nombre del archivo PNG; no guarda blobs ni depende de mantener acceso a la URI original. Se acepta una entrada de hasta 20 MiB y se genera una miniatura de hasta 512 px por lado, respetando orientación EXIF. Sin imagen disponible se muestra la inicial. Cambiar/quitar/eliminar y cancelar un borrador limpia archivos sin referencias, con limpieza durable y reservas de editor descritas en el contrato de liberación de archivos. No existe crop avanzado.
 
 Eliminar una Persona elimina sus asociaciones y conserva los Nodes. Eliminar un Node/subárbol elimina sus asociaciones y conserva las Personas. No existe herencia hacia descendientes: cada capa/tarea tiene responsables propios. El progreso, completado, orden y drag conservan su lógica; «Mover a…» conserva responsables porque mantiene el ID del Node.
 
@@ -3013,3 +3013,202 @@ app/build/reports/tests/testDebugUnitTest/index.html. La suite global anterior
 se conserva en /tmp/arachnode-v024-final-report y final-results.
 Persisten los pendientes de release: credenciales/firma/APK oficial,
 validación física y los cinco tests históricos/error lint ya documentados.
+
+## Módulo experimental Juego
+
+El paquete `com.r0ybt.arachn0de.game` contiene el juego local/offline hot-seat para
+2–4 jugadores. Su única integración funcional es «Juego» al final del menú desde
+proyectos y desde un proyecto. Reutiliza el contenedor seguro y tema Compose;
+no depende de repositorios de productividad, Room, finanzas ni backups. Este
+bloque no modifica navegación, dependencias, versiones ni protocolo de release.
+
+`GameModel.kt` conserva slots EMPTY/TILE/FOREST y casillas con identidad y
+conexiones dirigidas `next: List<String>`. `FirstGameMap` sigue siendo el recorrido
+perimetral horario de 27 losetas en una cuadrícula 5×11, con separación entre salida y meta. No hay nuevas casillas especiales ni
+selección de bifurcaciones; el movimiento sigue la primera conexión. La distancia
+para proximidad y colocación usa BFS sobre esas conexiones en ambos
+sentidos; la visión recorre conexiones dirigidas, 3 adelante/2 atrás (Cazadora: 4/2), nunca coordenadas de pantalla. Cada jugador conserva su cuadrante 2×2.
+
+`GameDefinitions.kt` centraliza MAX_HP=100, recuperación=50, daño de ataques,
+visión, habilidades, cargas y definiciones de objetos. BoardObject contiene
+identidad, propietario, casilla, tipo y actividad; las reglas estáticas se resuelven
+mediante su definición y no se duplican en cada instancia. No se necesitan todavía
+payload, duración temporal ni seis motores independientes. `visionModifier` deja
+preparada una modificación de visión por estados futuros, sin implementar objetos
+ni economía ajenos a las seis habilidades solicitadas.
+
+`GameRules.kt` aplica transiciones inmutables y fases persistibles:
+HANDOFF → DAMAGE (si hay avisos) → REST (si corresponde) o READY → PLACING
+(opcional, vuelve a READY) → ROLLING → MOVING → HANDOFF/WON.
+D6 se determina y guarda antes de la animación. Los diez frames con retardos
+crecientes suman 1300 ms, seguidos de 300 ms mostrando el resultado; no se guardan
+frames, rotaciones ni temporizadores de presentación. MOVING consume una conexión
+cada 300 ms. Al restaurar ROLLING se repite la presentación con el mismo resultado;
+MOVING continúa únicamente los pasos pendientes. Las acciones de UI consultan el
+snapshot más reciente para rechazar dos pulsaciones previas a recomposición.
+
+El daño modifica HP inmediatamente en el modelo, limitado a 0–100, y añade un
+PendingDamage con atacante, víctima, fuente, daño efectivo y HP antes/después.
+La víctima ve esos avisos en orden al comienzo de su siguiente turno; reconocerlos
+no vuelve a aplicar daño. Se muestra el battleSprite y se anima la barra roja.
+HP=0 marca agotamiento y detiene el movimiento restante. Después de los avisos,
+el descanso consume ese próximo turno y recupera 50 HP, sin eliminar al jugador.
+Cada trampa de oso añade un turno perdido. Si agotamiento y trampa vencen en el
+mismo turno, ese descanso satisface ambos; varias trampas pueden exigir más turnos.
+No se habilitan dado ni habilidad durante avisos, descanso o movimiento.
+
+Reglas de objetos, incluidas las decisiones necesarias donde el texto no fijaba
+comportamiento:
+
+- Colocación en casilla visible a distancia de grafo ≤3, seleccionada y confirmada
+  mediante el HUD. Una sola instancia activa por casilla, sin apilar efectos.
+  Cancelar no consume carga. El botón sigue visible/deshabilitado al llegar a ×0.
+- Estandarte: permanece; reduce daño 50 % a su propietario dentro de radio 2.
+  Varios estandartes no acumulan reducción; daño fraccional se redondea hacia arriba.
+- Hielo: impide entrar, termina el movimiento en la casilla anterior y se derrite
+  después de bloquear un intento. Esta duración evita hacer imposible completar
+  el mapa lineal. No se coloca en salida/meta ni sobre jugadores sin clasificar.
+- Espinas: al terminar el movimiento un enemigo en su casilla, 15 de daño y consumo de la instancia.
+- Trampa de oso: al terminar el movimiento un enemigo en su casilla, 20 de daño, un turno perdido y consumo.
+- Zombi: al terminar el movimiento un enemigo en su casilla, 15 de daño; permanece y proporciona radio de visión
+  2 adelante/2 atrás únicamente al Nigromante propietario. El dueño es inmune a sus objetos ofensivos.
+- Tótem: solo se comprueba al final del movimiento de su propietario; radio 2,
+  cura 20 sin superar 100 y se consume, incluso si la vida ya estaba completa.
+  No revive a un propietario agotado antes de su descanso.
+- Combate: automático contra todos los rivales sin clasificar que compartan la
+  casilla final, antes de comprobar meta; no se ataca simplemente al pasar y un
+  atacante agotado no realiza combate. No hay contraataque automático.
+
+`GameVision` calcula una proyección por jugador: máscara oscura sobre todo el mundo fuera de
+visión, incluido césped y bosque, sin fichas enemigas ni objetos enemigos fuera del área visible.
+Los objetos propios pueden dibujarse aunque estén lejos, pero no revelan jugadores
+cercanos; solo los zombis aportan visión remota. La UI no contiene lista global de
+posiciones, clasificación parcial, tiradas ajenas ni indicadores de progreso de
+rivales. HANDOFF sustituye por completo el tablero, incluyendo sus nodos de
+accesibilidad, antes de entregar el teléfono. WON revela la clasificación completa.
+
+La selección permite 1–4 vueltas (predeterminado 1). Cada llegada a meta cuenta una
+vuelta y descarta los pasos sobrantes, conservando la regla previa de no exigir
+una tirada exacta. Si faltan vueltas, se reinicia en salida para el próximo turno;
+no se añade una conexión espacial entre salida/meta ni se envuelve el radio de
+visión a través de esa unión. Los objetos permanecen entre vueltas. Al completar
+las vueltas, se asigna el siguiente puesto y se omite al jugador en turnos futuros.
+La primera llegada no termina la partida con 3–4 jugadores; cuando queda uno sin
+puesto, obtiene automáticamente el último. Con dos jugadores, la primera llegada
+ya determina ambos puestos. Solo entonces la fase pasa a WON.
+
+`GameAssets.kt` separa normalSprite y battleSprite, manteniendo también los roles
+portrait/token/attackArt/abilityArt/hurtArt/victoryArt. Los PNG anteriores permanecen
+intactos como battleSprite; seis retratos nuevos se copian con prefijo `normal_`.
+`normal_arquero.png` representa al personaje Cazadora/Flechero; `zombie.png` es la
+invocación. `normal_nigromante.png` se usa en todos los roles normales y el anterior en combate.
+Las fichas son tarjetas redondeadas con barra de vida inferior. Un botón «?» junto
+a la habilidad abre su descripción sin consumir cargas. `GameBattleArt.kt` enmascara
+al dibujar el fondo casi negro conectado al exterior de los PNG RGB de combate;
+conserva los archivos originales y los colores de los píxeles del personaje. Castillo es fondo de inicio/selección; pergamino
+es fondo del HUD; dados1–6 son frames. Se copiaron los 19 PNG nuevos sin modificación,
+con escala proporcional. `GameBoardUi.kt` contiene renderer, HUD y overlays; el
+modelo/reglas no dependen de Android ni de recursos gráficos.
+
+`GameSessionCodec` guarda JSON v2 en SharedPreferences `experimental_game`, separado
+de Room y de backups. Conserva HP, agotamiento, turnos perdidos, cargas, propietarios,
+objetos, cola de daño, vueltas, ranking, configuración, IDs y fases (incluida colocación).
+El estado Compose usa rememberSaveable. Lee v1 conservando posiciones, cuadrantes,
+turno y pasos pendientes; normaliza HP 10→100 e inicializa habilidades. Para una
+partida v1 ya ganada, conserva el ganador como puesto 1: con dos jugadores asigna
+el último automáticamente; con más deja continuar a los demás sin inventar su
+orden de llegada. Partidas corruptas/desconocidas no se restauran como estados
+jugables. Una nueva partida sustituye la anterior al pulsar Comenzar partida.
+No hay guardado de campañas, exportación, IA, tiendas, inventario funcional ni
+atajos nuevos en este bloque.
+
+## Contrato de persistencia y backup
+
+Toda funcionalidad nueva que incorpore tablas o columnas persistentes, preferencias o configuraciones, archivos, imágenes o adjuntos, relaciones entre entidades o nuevos tipos de datos locales debe evaluar e implementar su exportación, restauración, integridad, compatibilidad y pruebas en la misma intervención.
+
+Si una función introduce datos que el backup no puede recuperar, **la implementación no debe considerarse terminada**. No basta con exportar registros si faltan archivos para reconstruirlos. Un respaldo incompleto debe fallar explícitamente y nunca informar éxito.
+
+El procedimiento de desarrollo debe comprobar:
+
+- [ ] Inventariar cada dato persistente y archivo, su propietario y su ciclo de vida, incluidas preferencias y relaciones.
+- [ ] Definir qué es dato confirmado y qué es temporal de un editor; documentar cualquier exclusión.
+- [ ] Añadir los datos al snapshot transaccional y a la exportación; incluir los bytes necesarios sin rutas absolutas.
+- [ ] Versionar el JSON cuando corresponda y conservar lectores de respaldos anteriores, con defaults explícitos.
+- [ ] Validar identidad, estructura, relaciones, integridad de archivos y límites antes de sustituir datos.
+- [ ] Preparar archivos privados nuevos y durables, realizar el reemplazo en una transacción y conservar los archivos anteriores hasta el commit.
+- [ ] Registrar los archivos creados/reemplazados para recuperar interrupciones; limpiar solo archivos de la operación sin referencias confirmadas.
+- [ ] Verificar recuperación en una instalación vacía, lectura de versiones anteriores, corrupción, archivos faltantes, rollback y cancelación.
+- [ ] Añadir migración Room y prueba de preservación si cambia el esquema; revisar pruebas que comprueban la versión actual.
+- [ ] Actualizar la documentación del formato y adjuntar los resultados de las pruebas pertinentes antes de dar el trabajo por terminado.
+
+Esta lista también se revisa antes de preparar un release, según RELEASING.md; no cambia firmas, versiones de aplicación, publicación ni autorización para commit/push.
+
+### Catálogo local de tecnologías
+
+Room **19** añade `technologies`, `node_technologies` y `project_technologies` mediante la migración no destructiva 18→19. El catálogo almacena un nombre libre y un icono opcional. Las relaciones con proyectos y nodos son referencias compartidas; las capas y tareas siguen usando el modelo Node existente. Eliminar una tecnología desvincula sus relaciones por FK CASCADE sin eliminar propietarios. No cambia Personas ni responsables.
+
+Los iconos se importan offline desde el selector Android, se normalizan con el procesamiento existente de avatares a PNG de hasta 512×512 y se guardan en `files/technology-icons`. Cada tecnología conserva un solo archivo compartido por todas sus apariciones. Edición y eliminación usan un diario durable para limpiar reemplazos tras commit o recuperar rollback. Los archivos temporales elegidos pero no guardados se descartan al cancelar el editor.
+
+El contenedor `.arachnode` permanece en **v2** y el JSON pasa a **v11**, con catálogo completo, relaciones e iconos PNG en base64 dentro del payload protegido por SHA-256. El lector conserva datos v1–v10. Se mantienen límites: JSON 16 MiB; cada avatar/icono 1 MiB; conjunto de avatares e iconos 8 MiB; 100.000 registros incluyendo tecnologías y relaciones. La restauración renombra archivos internos, conserva IDs y nombres de usuario y prepara todos los iconos antes de reemplazar datos. Los detalles del formato están en BACKUP_FORMAT.md.
+
+### Contrato de liberación de archivos
+
+Toda funcionalidad nueva que almacene archivos debe definir también cuándo y cómo se liberan. La implementación no está terminada sin verificar eliminación, reemplazo, archivos compartidos, cancelaciones y recuperación tras fallos. Esta regla complementa el contrato de persistencia y backup y se revisa durante desarrollo y release.
+
+Avatares e iconos comparten `ImageFileLifecycle`: reservas durables por importación/editor y marcas de eliminación en `files/image-lifecycle`, fuera de las carpetas de imágenes. Se verifica la última referencia en Room y se registra el cambio antes del commit; la eliminación física ocurre después. Las reservas de varios editores conservan el archivo hasta liberar la última. Un fallo conserva el diario o la marca para reintentar; una operación confirmada no se revierte ni se informa como fallida por un fallo posterior de limpieza. Los adjuntos reutilizan sus reservas y el estado `DELETE_PENDING`, y protegen los nombres registrados por la recuperación del backup.
+
+La aplicación recupera primero los diarios de backup y después limpia Personas, tecnologías y adjuntos. Se ejecuta al iniciar (con cinco segundos para restituir editores), ante invalidaciones de las tablas pertinentes y cada hora mientras vive el proceso. Todas estas operaciones y los backups comparten el bloqueo de archivos. No se necesita una nueva tabla ni migración: Room sigue en 19, contenedor en 2 y JSON en 11.
+
+El barrido de imágenes solo reconoce hijos directos con nombres UUID PNG en `avatars` y `technology-icons`; no sigue enlaces fuera del directorio ni elimina nombres desconocidos o subdirectorios. Un huérfano sin diario necesita dos observaciones separadas por 24 horas y un archivo de esa antigüedad. Los temporales reconocidos de importaciones interrumpidas se limpian bajo el mismo bloqueo. Las reservas no caducan: es preferible conservar un archivo pendiente a romper un editor recuperable. Los archivos compartidos conservan su identidad; no se reescriben registros para deduplicar imágenes activas por contenido.
+
+La caché común de miniaturas de Personas y tecnologías usa un LRU de 4 MiB con decodificación reducida a 96 px, claves por archivo/tamaño/fecha y liberación ante presión de memoria. No se reciclan bitmaps todavía usados por Compose. El visor de adjuntos conserva su decodificación acotada existente. Los backups pendientes de guardar llevan una marca durable `.keep`; las inspecciones activas quedan protegidas mientras se muestran. Los temporales de backup abandonados y sin protección se eliminan tras 24 horas; guardar o cancelar libera su protección. No se recorren otras carpetas privadas.
+
+Las reservas, diarios, marcas y cachés son estado operativo local, no datos confirmados del usuario: se excluyen del backup. Los bytes de todas las imágenes y adjuntos confirmados siguen siendo obligatorios. Una reserva cuyo editor nunca se recupera puede conservar un archivo indefinidamente; no se aplica una caducidad que arriesgue pérdida de datos. La limpieza tras cierre inesperado se retoma cuando vuelva a ejecutarse la aplicación.
+
+Lista adicional de desarrollo/release:
+
+- [ ] Definir propietario, referencias compartidas y condiciones de liberación de cada archivo.
+- [ ] Proteger editores y operaciones pendientes; confirmar Room antes de eliminar físicamente.
+- [ ] Registrar limpieza pendiente y comprobar recuperación después de fallos.
+- [ ] Limitar directorios, nombres y cachés; preservar archivos desconocidos.
+- [ ] Probar reemplazo, última referencia, cancelación y compatibilidad con backup/restauración.
+
+### Editor compartido de avatares de Personas
+
+Room **20** añade `persons.avatarZoom` (REAL, default 1), `avatarX` y `avatarY` (REAL, default 0) mediante `AvatarMigration19To20`. La migración 19→20 solo añade columnas: no modifica imágenes, identidades, nombres ni relaciones. Las proyecciones de responsables incluyen esos parámetros.
+
+`AvatarFraming` define la geometría compartida: zoom 1–5 sobre la escala que cubre el círculo y desplazamientos normalizados -1–1 sobre el excedente de imagen disponible. Así el encuadre es independiente del tamaño de pantalla. Se limita el desplazamiento para no descubrir zonas vacías. El gesto de transformación conserva el punto bajo el centro del pellizco y no reinicia el detector al cambiar parámetros; el primer movimiento no vuelve a centrar la imagen. `FramedAvatar` dibuja esta misma geometría en el editor y en `PersonAvatar`, utilizado por listas, selectores y responsables de tareas.
+
+`AvatarEditor` ofrece marco circular, arrastre/pellizco, Ampliar/Alejar, Centrar, Restablecer y Confirmar/Cancelar. Los valores del editor se conservan ante recreación mediante estado guardable. Confirmar solo actualiza el borrador; Guardar Persona confirma los parámetros en Room. Cancelar el ajuste mantiene el encuadre previo; cancelar la Persona tampoco modifica los registros. Seleccionar una imagen nueva abre un ajuste separado y cancelar esa selección elimina únicamente su archivo reservado.
+
+Se reutiliza la fotografía privada completa normalizada por `AvatarStore` (PNG de hasta 512 px), sin aplicar un recorte destructivo. El zoom no genera archivos ni vuelve a comprimir la fotografía. No se conserva el archivo de cámara a resolución completa; se conserva toda su composición dentro de la resolución existente para avatares. Los avatares antiguos empiezan centrados con zoom 1, equivalente al anterior `ContentScale.Crop`; ahora el marco compartido es circular. Las tecnologías conservan su modelo y apariencia propios.
+
+Las vistas pequeñas siguen usando el LRU compartido de 4 MiB y miniaturas de hasta 96 px; únicamente el editor decodifica la fotografía privada completa (ya acotada a 512 px). No hay límite de Personas. Se comprueban persistencia y proyecciones con 100 Personas, además de las pruebas existentes de la caché.
+
+Backup: contenedor **v2**, JSON **v12**. Cada Persona añade `avatarZoom`, `avatarX`, `avatarY`; solo estos campos aceptan números decimales finitos y dentro de sus rangos. Todos los demás campos enteros mantienen su lectura estricta, sin perder precisión monetaria. Lectura de v1–v11 aplica valores centrados predeterminados; se siguen incluyendo los PNG completos referenciados. La restauración transaccional y los diarios existentes recuperan imagen y parámetros conjuntamente. Los límites anteriores de archivos/JSON se conservan: excederlos produce un error explícito, nunca un backup incompleto.
+
+El reemplazo, cancelación y eliminación reutilizan `ImageFileLifecycle`, reservas de importación/editor y el bloqueo común del backup. La imagen anterior solo se libera tras el commit y si desapareció la última referencia/reserva; ajustar un encuadre sin cambiar fotografía no elimina ni crea archivos. No hay release ni cambios del protocolo de publicación en este bloque.
+
+Validación de este bloque: 159 ejecuciones dirigidas correctas (15 nuevas), `assembleDebug` y `git diff --check`. El inventario completo de archivos y pruebas está en la sección de encuadres de BACKUP_FORMAT.md. La prueba conjunta en dispositivo físico queda pendiente por decisión del usuario; no se genera release.
+
+### Dogfooding Bloque 1: navegación y visualización
+
+El título completo del contexto vive en `DetailScopeTitle`, debajo de la fila de Volver/ordenación/opciones/filtros. Usa el tamaño proporcional de título de proyecto (17/19/21 sp según Apariencia), el ancho disponible y líneas sin truncamiento. La barra global conserva la identificación del proyecto como referencia compacta; en la raíz el título completo independiente muestra el nombre del proyecto. Las acciones siguen teniendo objetivos táctiles de 48 dp y el contexto continúa dentro de la lista desplazable existente.
+
+Seleccionar Proyectos desde el menú descarta el estado guardado del contexto del proyecto, igual que la salida habitual a Proyectos. Abrir desde la lista también descarta cualquier contexto anterior y limpia `openNodeId`, para empezar siempre en la raíz. La recreación de una pantalla mientras se permanece dentro del proyecto conserva la ruta; Atrás sigue recorriendo padres. Las rutas explícitas de Calendario y Atención conservan su manejo independiente y no pasan por la apertura desde la lista.
+
+`ResponsibleAvatars` sigue mostrando tres avatares y +N en tarjetas. El detalle usa `ResponsiblePeopleDetail`: todos los avatares con sus nombres en un FlowRow que adapta filas al ancho disponible. La etiqueta individual es reutilizable para futuros grupos de roles; no se añade jerarquía ni datos nuevos. Se reutiliza `PersonAvatar` y su encuadre, miniaturas y caché existentes.
+
+Los mensajes se basan en los hijos y `NodeProgress` ya disponibles: sin hijos, “Esta capa está vacía”; contenido con total de tareas cero, “No hay tareas por realizar”; tareas existentes sin pendientes, “No hay tareas pendientes”; con trabajo pendiente, no se muestra mensaje de ausencia. Los textos del detalle son discretos y centrados. Los indicadores sin tareas de tarjetas también dejan de confundir notas con contenido vacío. Los porcentajes de progreso normal y Sprint no cambian; los indicadores de progreso sin tareas no duplican el mensaje contextual. No se ocultaron notas ni se introdujeron consultas adicionales.
+
+El control normal de completado usa el acento activo para marcado y borde, con `onPrimary` para contraste de la marca y opacidad de deshabilitado. Respeta el estado ocupado y mantiene la indicación de pulsación Material. El control Sprint conserva sus colores semánticos, avance por estados y último paso deshabilitado. No se modifica el cálculo de completado ni progreso.
+
+Archivos de producción modificados (base `app/src/main/java/com/r0ybt/arachn0de/ui/`): `AppRoot.kt`, `ProjectScreen.kt`, `NodeComponents.kt`, `PersonComponents.kt`, `ProjectComponents.kt`, `SprintComponents.kt`. Nuevos: `DetailPresentation.kt`, `CompletionControlColors.kt`.
+
+Pruebas (base `app/src/test/java/com/r0ybt/arachn0de/`): nuevo `ui/DogfoodingPresentationTest.kt`; ampliado `NavigationTest.kt`; ajustados `ui/DogfoodingChromeMoveTest.kt`, `ui/NotesUiTest.kt`, `ui/SprintUiTest.kt` y `ui/ExplicitLayerUiTest.kt`. Los ajustes conservan sus escenarios: los mensajes reflejan los requisitos nuevos, se desplaza hasta el contenido y se espera que las acciones estén habilitadas antes de usarlas. La prueba nueva de presentación usa gráficos nativos para medir texto y saltos de línea reales.
+
+Validación: **41 casos distintos correctos** entre ejecuciones dirigidas: navegación profunda/reapertura/Atrás/recreación, cinco escenarios nuevos de presentación, Sprint, notas, capas, Calendario, Atención, tarjetas compactas e integración del encuadre de avatar. Incluye responsables con 1, 3 y 20 Personas y controles con las cinco paletas. `assembleDebug` y `git diff --check` correctos. No se ejecuta la suite global.
+
+Se mantienen Room **20**, contenedor `.arachnode` **v2** y JSON **v12**. No hay nuevas tablas, preferencias, archivos privados ni datos persistentes; backup y limpieza mantienen su contrato y límites. No se modifica RELEASING.md ni el protocolo de release en este bloque. Se conservan los cambios previos, sin commit, push ni release.
+
+Pendiente para la prueba física conjunta: títulos largos y tamaño de texto grande en pantalla pequeña; accesibilidad y contraste durante pulsación/deshabilitado; desplazamiento del detalle con numerosos responsables; vuelta a la raíz al reabrir desde Proyectos y acceso directo desde Calendario; estados y colores especiales de Sprint. Las pruebas automatizadas no sustituyen esa inspección visual en el celular.

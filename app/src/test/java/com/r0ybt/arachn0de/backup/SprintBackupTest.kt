@@ -20,12 +20,12 @@ class SprintBackupTest {
     })
     @Test fun v9RoundTripKeepsEmptySprintAndEveryWorkState() {
         val data=data();val bytes=BackupJson.encode(data)
-        assertEquals(9,JSONObject(String(bytes)).getInt("dataVersion"));assertEquals(data,BackupJson.decode(bytes))
+        assertEquals(12,JSONObject(String(bytes)).getInt("dataVersion"));assertEquals(data,BackupJson.decode(bytes))
     }
     @Test fun v8RestoresNormalModeAndBinaryCompletion() {
         val historical=data().copy(nodes=data().nodes.map { it.copy(sprintMode=false,workState=null) })
         val json=JSONObject(String(BackupJson.encode(historical))).apply {
-            put("dataVersion",8)
+            put("dataVersion",8); for (personIndex in 0 until getJSONArray("persons").length()) { getJSONArray("persons").getJSONObject(personIndex).apply { remove("avatarZoom"); remove("avatarX"); remove("avatarY") } }; remove("technologies"); remove("nodeTechnologies"); remove("projectTechnologies"); remove("technologyIcons"); remove("attachmentFiles"); remove("nodeAttachments"); remove("projectAttachments")
             val rows=getJSONArray("nodes");for(i in 0 until rows.length()) { rows.getJSONObject(i).remove("sprintMode");rows.getJSONObject(i).remove("workState") }
         }
         assertEquals(historical,BackupJson.decode(json.toString().toByteArray()))

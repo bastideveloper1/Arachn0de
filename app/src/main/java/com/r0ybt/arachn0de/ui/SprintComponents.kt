@@ -15,10 +15,7 @@ import com.r0ybt.arachn0de.ui.theme.SemanticColors
 
 @Composable
 internal fun SprintProgressCard(percentage: Double?) {
-    if (percentage == null) {
-        Text("Contenedor vacío", color = Arachn0deColors.TextSecondary, fontSize = 12.sp)
-        return
-    }
+    if (percentage == null) return
     Card(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(8.dp),
         colors = CardDefaults.cardColors(containerColor = Arachn0deColors.Surface)) {
         Column(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 12.dp)) {

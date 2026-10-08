@@ -75,46 +75,8 @@ import com.r0ybt.arachn0de.ui.theme.ContentTypography
 import com.r0ybt.arachn0de.R
 
 @Composable
-internal fun EmptyLayerState() {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = Arachn0deColors.Surface.copy(alpha = 0.96f)),
-        shape = RoundedCornerShape(8.dp),
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(20.dp),
-            verticalArrangement = Arrangement.Center,
-            horizontalAlignment = Alignment.CenterHorizontally,
-        ) {
-            Text(
-                text = "Esta capa está vacía",
-                color = Arachn0deColors.TextPrimary,
-                fontSize = ContentTypography.ScopeTitle,
-                fontWeight = FontWeight.SemiBold,
-                modifier = Modifier.fillMaxWidth(),
-                textAlign = TextAlign.Center,
-            )
-            Spacer(modifier = Modifier.height(10.dp))
-            Text(
-                text = "Añade un elemento para empezar a construir la siguiente capa.",
-                color = Arachn0deColors.TextSecondary,
-                fontSize = ContentTypography.Summary,
-                modifier = Modifier.fillMaxWidth(),
-                textAlign = TextAlign.Center,
-            )
-
-        }
-    }
-}
-
-@Composable
 internal fun NodeProgressCard(progress: NodeProgress) {
-    if (progress.state == NodeProgressState.NO_WORK) {
-        Text("Contenedor vacío", color = Arachn0deColors.TextSecondary, fontSize = 12.sp)
-        return
-    }
+    if (progress.state == NodeProgressState.NO_WORK) return
 
     val pending = progress.total - progress.completed
     val progressFraction = if (progress.total == 0) 0f else progress.percentage / 100f
@@ -197,7 +159,8 @@ internal fun NodeCard(
     val sprintPhase = node.workState
     val sprintFinal = sprintPhase != null && sprintPhase.next() == sprintPhase
     val checkMarked = if (sprintPhase != null) sprintFinal else node.isCompleted
-    val completedTint = if (node.isCompleted) Arachn0deColors.Completed else Arachn0deColors.Primary
+    val checkEnabled = !stateBusy && (sprintPhase == null || !sprintFinal)
+    val checkColors = completionControlColors(sprintPhase != null, node.isCompleted, checkEnabled)
     val noPending = node.isStructural && progress != null && !progress.hasPending
     val leadingColumnWidth = when {
         selecting || canToggleComplete -> 48.dp
@@ -277,7 +240,7 @@ internal fun NodeCard(
                             Spacer(modifier = Modifier.height(6.dp))
                             if (progress.state == NodeProgressState.NO_WORK) {
                                 Text(
-                                    text = "Contenedor vacío",
+                                    text = layerContentMessage(hasChildren, progress) ?: "No hay tareas por realizar",
                                     color = Arachn0deColors.TextSecondary,
                                     fontSize = ContentTypography.SmallMetadata,
                                 )
@@ -330,6 +293,9 @@ internal fun NodeCard(
                             )
                         }
                     }
+                }
+                Box(Modifier.padding(start = 24.dp + leadingColumnWidth, end = 12.dp)) {
+                    TechnologyOwnerControl(node.id, false, node.title)
                 }
                 if (sprintPhase != null || responsiblePeople.isNotEmpty() || tags.isNotEmpty() ||
                     node.effectivePriority != com.r0ybt.arachn0de.domain.model.Priority.NONE || (!node.isStructural && (node.startAt != null || node.dueAt != null))) Column(
@@ -389,7 +355,7 @@ internal fun NodeCard(
                 else if (canToggleComplete) {
                     IconButton(
                         onClick = onToggleComplete,
-                        enabled = sprintPhase == null || (!stateBusy && !sprintFinal),
+                        enabled = checkEnabled,
                         modifier = Modifier
                             .size(48.dp)
                             .semantics {
@@ -400,19 +366,19 @@ internal fun NodeCard(
                                 stateDescription = if (checkMarked) "Completada" else "Pendiente"
                             }
                             .clip(RoundedCornerShape(10.dp))
-                            .background(if (checkMarked) completedTint else Arachn0deColors.ControlSurface),
+                            .background(if (checkMarked) checkColors.fill else Arachn0deColors.ControlSurface),
                     ) {
                         if (checkMarked) {
                             Icon(
                                 imageVector = Icons.Default.Check,
                                 contentDescription = null,
-                                tint = Arachn0deColors.OnPrimary,
+                                tint = checkColors.mark,
                             )
                         } else {
                             Box(
                                 modifier = Modifier
                                     .size(14.dp)
-                                    .border(2.dp, Arachn0deColors.TextSecondary, RoundedCornerShape(4.dp)),
+                                    .border(2.dp, checkColors.border, RoundedCornerShape(4.dp)),
                             )
                         }
                     }

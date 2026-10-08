@@ -50,8 +50,8 @@ class NotesUiTest {
         compose.waitUntil(10_000) { runBlocking { app.nodeRepository.getNode(task)!!.purpose == NodePurpose.NOTE } }
         compose.onAllNodesWithContentDescription("Nota").assertCountEquals(1)
         compose.onNodeWithContentDescription("Completar: Dated task").assertDoesNotExist()
-        compose.onNodeWithText("Dated task").performClick()
-        await("Nota · Convierte en capa para añadir hijos")
+        compose.onNodeWithText("Dated task").performSemanticsAction(androidx.compose.ui.semantics.SemanticsActions.OnClick) { it() }
+        scroll("Nota · Convierte en capa para añadir hijos"); await("Nota · Convierte en capa para añadir hijos")
         compose.onNodeWithText("Nuevo elemento").assertIsNotEnabled()
         compose.onNodeWithTag("nodes-list").performScrollToNode(hasContentDescription("Opciones del elemento")); compose.onNodeWithContentDescription("Opciones del elemento").performClick(); compose.onNodeWithText("Editar").performClick()
         compose.onNodeWithText("Inicio").assertDoesNotExist()
@@ -67,8 +67,10 @@ class NotesUiTest {
     @Test fun noteCreationSelectionAndDraftSurviveRestoration() {
         val restorer = StateRestorationTester(compose)
         openProject(restorer)
+        compose.waitUntil(10_000) { compose.onAllNodes(hasText("Nuevo elemento") and isEnabled()).fetchSemanticsNodes().isNotEmpty() }
         compose.onNodeWithText("Nuevo elemento").performClick()
-        compose.onNodeWithText("Nota").performClick()
+        await("Título")
+        compose.onNodeWithText("Nota").performScrollTo().performClick()
         compose.onNodeWithText("Título").performTextInput("New note")
         compose.onNodeWithText("Descripción").performTextInput("Note content")
         restorer.emulateSavedInstanceStateRestore()
@@ -87,7 +89,7 @@ class NotesUiTest {
         compose.setContent { Arachn0deTheme { AppSafeArea { AppRoot(app.projectRepository, app.nodeRepository) { 100L } } } }
         await("Contiene 1 vencida")
         runBlocking { app.nodeRepository.convertPurpose(task, NodePurpose.NOTE) }
-        await("Contenedor vacío")
+        await("No hay tareas por realizar")
         compose.onNodeWithText("Contiene 1 vencida").assertDoesNotExist()
         compose.onNodeWithContentDescription("Abrir menú").performClick()
         compose.onNodeWithText("Atención").performClick()

@@ -26,7 +26,15 @@ class ExplicitLayerUiTest {
         } }
         override fun after() { app.database.close() }
     }).around(compose)
-    private fun await(text:String)=compose.waitUntil(10000) { org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle();compose.onAllNodesWithText(text).fetchSemanticsNodes().isNotEmpty() }
+    private fun await(text:String) {
+        compose.waitUntil(10000) {
+            org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle()
+            if (text in listOf("Empty", "Action", "Source") && compose.onAllNodesWithTag("nodes-list").fetchSemanticsNodes().isNotEmpty() && compose.onAllNodes(isDialog()).fetchSemanticsNodes().isEmpty()) {
+                runCatching { compose.onNodeWithTag("nodes-list").performScrollToNode(hasText(text)) }
+            }
+            compose.onAllNodesWithText(text).fetchSemanticsNodes().isNotEmpty()
+        }
+    }
     @Test fun emptyLayerOpensWithoutCompletionAndAcceptsNewTask() {
         await("Target");compose.onNodeWithText("Target").performClick();await("Empty")
         compose.onNodeWithTag("nodes-list").performScrollToNode(hasText("Empty"))
@@ -71,7 +79,7 @@ class ExplicitLayerUiTest {
     @Test fun pendingActionConvertsAutomaticallyWhenCreatingFirstChild() {
         val task=runBlocking { app.nodeRepository.createNode(target.id,null,"Action") }
         await("Target");compose.onNodeWithText("Target").performClick();await("Action")
-        compose.onNodeWithTag("nodes-list").performScrollToNode(hasText("Action"));compose.onNodeWithText("Action").performClick()
+        compose.onNodeWithTag("nodes-list").performScrollToNode(hasText("Action"));compose.onNodeWithText("Action").performSemanticsAction(androidx.compose.ui.semantics.SemanticsActions.OnClick) { it() }
         compose.onNodeWithText("Nuevo elemento").assertIsEnabled().performClick()
         await("Título")
         compose.onNodeWithText("Título").performScrollTo().performTextInput("First child")

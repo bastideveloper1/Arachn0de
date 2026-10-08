@@ -15,19 +15,19 @@ internal object BackupJson {
     fun encode(data: BackupData): ByteArray {
         data.validate()
         // Bound user text before constructing JSON, which otherwise could exhaust the heap.
-        val textBytes = data.tags.sumOf { it.name.toByteArray().size.toLong() + it.normalizedName.toByteArray().size } + data.projects.sumOf { it.name.toByteArray().size.toLong() + it.description.toByteArray().size } +
+        val textBytes = data.technologies.sumOf { it.name.toByteArray().size.toLong() + it.id.toByteArray().size + (it.iconFile?.toByteArray()?.size ?: 0) } + data.attachmentFiles.sumOf { it.originalName.toByteArray().size.toLong() + it.storageName.toByteArray().size + it.id.toByteArray().size + it.mimeType.toByteArray().size + it.sha256.toByteArray().size } + data.tags.sumOf { it.name.toByteArray().size.toLong() + it.normalizedName.toByteArray().size } + data.projects.sumOf { it.name.toByteArray().size.toLong() + it.description.toByteArray().size } +
             data.nodes.sumOf { it.title.toByteArray().size.toLong() + it.description.toByteArray().size } +
             data.persons.sumOf { it.name.toByteArray().size.toLong() } + data.recurrenceRules.sumOf { it.title.toByteArray().size.toLong() + it.description.toByteArray().size } +
             data.creationDefaults.sumOf { it.id.toByteArray().size.toLong() + (it.projectId?.toByteArray()?.size ?: 0) + (it.nodeId?.toByteArray()?.size ?: 0) } +
             data.defaultsTags.sumOf { it.defaultsId.toByteArray().size.toLong() + it.tagId.toByteArray().size } +
             data.defaultsPeople.sumOf { it.defaultsId.toByteArray().size.toLong() + it.personId.toByteArray().size }
-        require(textBytes <= BackupLimits.PAYLOAD_BYTES / 2) { "El contenido supera el límite de backup v1." }
+        require(textBytes <= BackupLimits.PAYLOAD_BYTES / 2) { "El contenido supera el límite de metadatos del backup." }
         fun obj(vararg values: Pair<String, Any?>) = JSONObject().apply { values.forEach { (key, value) -> put(key, value ?: JSONObject.NULL) } }
         val json = obj(
-            "dataVersion" to 9, "appVersion" to data.appVersion, "createdAt" to data.createdAt,
+            "dataVersion" to 12, "appVersion" to data.appVersion, "createdAt" to data.createdAt,
             "projects" to JSONArray(data.projects.map { obj("id" to it.id, "name" to it.name, "description" to it.description, "position" to it.position, "createdAt" to it.createdAt, "updatedAt" to it.updatedAt) }),
             "nodes" to JSONArray(data.nodes.map { obj("id" to it.id, "projectId" to it.projectId, "parentId" to it.parentId, "title" to it.title, "description" to it.description, "isCompleted" to it.isCompleted, "position" to it.position, "createdAt" to it.createdAt, "updatedAt" to it.updatedAt, "startAt" to it.startAt, "dueAt" to it.dueAt, "purpose" to it.purpose, "amountMinor" to it.amountMinor, "currencyCode" to it.currencyCode, "priority" to it.priority, "creationGroupId" to it.creationGroupId, "sprintMode" to it.sprintMode, "workState" to it.workState) }),
-            "persons" to JSONArray(data.persons.map { obj("id" to it.id, "name" to it.name, "avatarFile" to it.avatarFile) }),
+            "persons" to JSONArray(data.persons.map { obj("id" to it.id, "name" to it.name, "avatarFile" to it.avatarFile, "avatarZoom" to it.avatarZoom, "avatarX" to it.avatarX, "avatarY" to it.avatarY) }),
             "assignments" to JSONArray(data.assignments.map { obj("nodeId" to it.nodeId, "personId" to it.personId) }),
             "recurrenceRules" to JSONArray(data.recurrenceRules.map { obj("id" to it.id, "projectId" to it.projectId, "parentId" to it.parentId, "title" to it.title, "description" to it.description, "amountMinor" to it.amountMinor, "currencyCode" to it.currencyCode, "startDay" to it.startDay, "frequency" to it.frequency, "interval" to it.interval, "endDay" to it.endDay, "nextIndex" to it.nextIndex, "status" to it.status, "zoneId" to it.zoneId, "dueMinute" to it.dueMinute, "startOffsetMillis" to it.startOffsetMillis, "priority" to it.priority) }),
             "recurrenceOccurrences" to JSONArray(data.recurrenceOccurrences.map { obj("ruleId" to it.ruleId, "day" to it.day, "nodeId" to it.nodeId) }),
@@ -42,10 +42,17 @@ internal object BackupJson {
                 "startMinute" to it.startMinute,"dueRule" to it.dueRule,"dueNumber" to it.dueNumber,"dueMinute" to it.dueMinute) }),
             "defaultsTags" to JSONArray(data.defaultsTags.map { obj("defaultsId" to it.defaultsId,"tagId" to it.tagId) }),
             "defaultsPeople" to JSONArray(data.defaultsPeople.map { obj("defaultsId" to it.defaultsId,"personId" to it.personId) }),
+            "attachmentFiles" to JSONArray(data.attachmentFiles.map { obj("id" to it.id, "storageName" to it.storageName, "originalName" to it.originalName, "mimeType" to it.mimeType, "byteSize" to it.byteSize, "width" to it.width, "height" to it.height, "sha256" to it.sha256, "createdAt" to it.createdAt, "lifecycleState" to it.lifecycleState) }),
+            "nodeAttachments" to JSONArray(data.nodeAttachments.map { obj("nodeId" to it.nodeId, "attachmentId" to it.attachmentId) }),
+            "projectAttachments" to JSONArray(data.projectAttachments.map { obj("projectId" to it.projectId, "attachmentId" to it.attachmentId) }),
+            "technologies" to JSONArray(data.technologies.map { obj("id" to it.id, "name" to it.name, "iconFile" to it.iconFile) }),
+            "nodeTechnologies" to JSONArray(data.nodeTechnologies.map { obj("nodeId" to it.nodeId, "technologyId" to it.technologyId) }),
+            "projectTechnologies" to JSONArray(data.projectTechnologies.map { obj("projectId" to it.projectId, "technologyId" to it.technologyId) }),
+            "technologyIcons" to JSONArray(data.technologyIcons.toSortedMap().map { (name, bytes) -> obj("name" to name, "png" to Base64.encodeToString(bytes, Base64.NO_WRAP)) }),
             "avatars" to JSONArray(data.avatars.toSortedMap().map { (name, bytes) -> obj("name" to name, "png" to Base64.encodeToString(bytes, Base64.NO_WRAP)) }),
         )
         return json.toString().toByteArray(Charsets.UTF_8).also {
-            require(it.size <= BackupLimits.PAYLOAD_BYTES) { "El backup supera el límite de 16 MiB de v1." }
+            require(it.size <= BackupLimits.PAYLOAD_BYTES) { "El backup supera el límite de 16 MiB de metadatos." }
         }
     }
 
@@ -58,10 +65,9 @@ internal object BackupJson {
             value as? JSONObject ?: error("Backup no es un objeto.")
         }
         val version = root.integer("dataVersion")
-        require(version in 1L..9L) { "Versión de datos no compatible." }
+        require(version in 1L..12L) { "Versión de datos no compatible." }
         val baseFields = arrayOf("dataVersion", "appVersion", "createdAt", "projects", "nodes", "persons", "assignments", "avatars")
-        root.fields(*(baseFields + (if (version >= 2L) arrayOf("recurrenceRules", "recurrenceOccurrences", "recurrenceAssignments") else emptyArray()) + (if (version >= 3L) arrayOf("tags", "nodeTags", "recurrenceTags") else emptyArray()) + (if (version >= 4L) arrayOf("nodeEvents") else emptyArray()) + (if (version >= 7L) arrayOf("creationDefaults","defaultsTags","defaultsPeople") else emptyArray())))
-        require(version in 1L..9L) { "Versión de datos no compatible." }
+        root.fields(*(baseFields + (if (version >= 2L) arrayOf("recurrenceRules", "recurrenceOccurrences", "recurrenceAssignments") else emptyArray()) + (if (version >= 3L) arrayOf("tags", "nodeTags", "recurrenceTags") else emptyArray()) + (if (version >= 4L) arrayOf("nodeEvents") else emptyArray()) + (if (version >= 7L) arrayOf("creationDefaults","defaultsTags","defaultsPeople") else emptyArray()) + (if (version >= 10L) arrayOf("attachmentFiles", "nodeAttachments", "projectAttachments") else emptyArray()) + (if (version >= 11L) arrayOf("technologies", "nodeTechnologies", "projectTechnologies", "technologyIcons") else emptyArray())))
         val projects = root.records("projects").map { row ->
             row.fields("id", "name", "description", "position", "createdAt", "updatedAt")
             ProjectEntity(row.string("id"), row.string("name"), row.string("description"), row.position(), row.integer("createdAt"), row.integer("updatedAt"))
@@ -77,8 +83,11 @@ internal object BackupJson {
             it.copy(purpose="LAYER")
         } else it } else rawNodes
         val persons = root.records("persons").map { row ->
-            row.fields("id", "name", "avatarFile")
-            PersonEntity(row.string("id"), row.string("name"), row.nullableString("avatarFile"))
+            row.fields(*(arrayOf("id", "name", "avatarFile") + if (version >= 12) arrayOf("avatarZoom", "avatarX", "avatarY") else emptyArray()))
+            PersonEntity(row.string("id"), row.string("name"), row.nullableString("avatarFile"),
+                if (version >= 12) row.finiteFloat("avatarZoom") else 1f,
+                if (version >= 12) row.finiteFloat("avatarX") else 0f,
+                if (version >= 12) row.finiteFloat("avatarY") else 0f)
         }
         val assignments = root.records("assignments").map { row ->
             row.fields("nodeId", "personId")
@@ -119,24 +128,44 @@ internal object BackupJson {
         }
         val defaultsTags=if(version<7) emptyList() else root.records("defaultsTags").map { it.fields("defaultsId","tagId");CreationDefaultsTagEntity(it.string("defaultsId"),it.string("tagId")) }
         val defaultsPeople=if(version<7) emptyList() else root.records("defaultsPeople").map { it.fields("defaultsId","personId");CreationDefaultsPersonEntity(it.string("defaultsId"),it.string("personId")) }
-        var avatarBytes = 0L
-        val avatars = linkedMapOf<String, ByteArray>()
-        root.records("avatars").forEach { row ->
-            row.fields("name", "png")
-            val name = row.string("name")
-            require(name !in avatars && BackupLimits.avatarName.matches(name)) { "Nombre de avatar inválido o repetido." }
-            val png = row.string("png")
-            require(png.length <= (BackupLimits.AVATAR_BYTES + 2) / 3 * 4) { "Avatar demasiado grande." }
-            val decoded = Base64.decode(png, Base64.NO_WRAP)
-            require(Base64.encodeToString(decoded, Base64.NO_WRAP) == png) { "Codificación de avatar inválida." }
-            avatarBytes += decoded.size
-            require(avatarBytes <= BackupLimits.TOTAL_AVATAR_BYTES) { "Avatares demasiado grandes." }
-            avatars[name] = decoded
+        val attachmentFiles = if (version < 10) emptyList() else root.records("attachmentFiles").map {
+            it.fields("id", "storageName", "originalName", "mimeType", "byteSize", "width", "height", "sha256", "createdAt", "lifecycleState")
+            AttachmentFileEntity(it.string("id"), it.string("storageName"), it.string("originalName"), it.string("mimeType"), it.integer("byteSize"), it.intValue("width"), it.intValue("height"), it.string("sha256"), it.integer("createdAt"), it.string("lifecycleState"))
         }
-        return BackupData(root.string("appVersion"), root.integer("createdAt"), projects, nodes, persons, assignments, avatars, rules, occurrences, recurrenceAssignments, tags, nodeTags, recurrenceTags, nodeEvents, defaults, defaultsTags, defaultsPeople).also { it.validate() }
+        val nodeAttachments = if (version < 10) emptyList() else root.records("nodeAttachments").map { it.fields("nodeId", "attachmentId"); NodeAttachmentEntity(it.string("nodeId"), it.string("attachmentId")) }
+        val projectAttachments = if (version < 10) emptyList() else root.records("projectAttachments").map { it.fields("projectId", "attachmentId"); ProjectAttachmentEntity(it.string("projectId"), it.string("attachmentId")) }
+        val technologies = if (version < 11) emptyList() else root.records("technologies").map {
+            it.fields("id", "name", "iconFile"); TechnologyEntity(it.string("id"), it.string("name"), it.nullableString("iconFile"))
+        }
+        val nodeTechnologies = if (version < 11) emptyList() else root.records("nodeTechnologies").map {
+            it.fields("nodeId", "technologyId"); NodeTechnologyEntity(it.string("nodeId"), it.string("technologyId"))
+        }
+        val projectTechnologies = if (version < 11) emptyList() else root.records("projectTechnologies").map {
+            it.fields("projectId", "technologyId"); ProjectTechnologyEntity(it.string("projectId"), it.string("technologyId"))
+        }
+        var imageBytes = 0L
+        fun pngs(key: String): Map<String, ByteArray> {
+            val images = linkedMapOf<String, ByteArray>()
+            root.records(key).forEach { row ->
+                row.fields("name", "png")
+                val name = row.string("name")
+                require(name !in images && BackupLimits.avatarName.matches(name)) { "Nombre de imagen inválido o repetido." }
+                val png = row.string("png")
+                require(png.length <= (BackupLimits.AVATAR_BYTES + 2) / 3 * 4) { "Imagen demasiado grande." }
+                val decoded = Base64.decode(png, Base64.NO_WRAP)
+                require(Base64.encodeToString(decoded, Base64.NO_WRAP) == png) { "Codificación de imagen inválida." }
+                imageBytes += decoded.size
+                require(imageBytes <= BackupLimits.TOTAL_AVATAR_BYTES) { "Avatares e iconos demasiado grandes." }
+                images[name] = decoded
+            }
+            return images
+        }
+        val avatars = pngs("avatars")
+        val technologyIcons = if (version < 11) emptyMap() else pngs("technologyIcons")
+        return BackupData(root.string("appVersion"), root.integer("createdAt"), projects, nodes, persons, assignments, avatars, rules, occurrences, recurrenceAssignments, tags, nodeTags, recurrenceTags, nodeEvents, defaults, defaultsTags, defaultsPeople, attachmentFiles, nodeAttachments, projectAttachments, technologies = technologies, nodeTechnologies = nodeTechnologies, projectTechnologies = projectTechnologies, technologyIcons = technologyIcons).also { it.validate() }
     }
 
-    private fun readValue(reader: JsonReader, depth: Int): Any {
+    private fun readValue(reader: JsonReader, depth: Int, framingNumber: Boolean = false): Any {
         require(depth <= 8) { "Estructura demasiado profunda." }
         return when (reader.peek()) {
             JsonToken.BEGIN_OBJECT -> JSONObject().apply {
@@ -145,7 +174,7 @@ internal object BackupJson {
                     require(length() < 32) { "Demasiados campos." }
                     val key = reader.nextName()
                     require(!has(key)) { "Campo duplicado." }
-                    put(key, readValue(reader, depth + 1))
+                    put(key, readValue(reader, depth + 1, key in setOf("avatarZoom", "avatarX", "avatarY")))
                 }
                 reader.endObject()
             }
@@ -158,7 +187,11 @@ internal object BackupJson {
                 reader.endArray()
             }
             JsonToken.STRING -> reader.nextString()
-            JsonToken.NUMBER -> reader.nextString().toLongOrNull() ?: error("Número entero inválido o fuera de rango.")
+            JsonToken.NUMBER -> {
+                val token = reader.nextString()
+                if (framingNumber) token.toDoubleOrNull()?.also { require(it.isFinite()) } ?: error("Encuadre numérico inválido.")
+                else token.toLongOrNull() ?: error("Número entero inválido o fuera de rango.")
+            }
             JsonToken.BOOLEAN -> reader.nextBoolean()
             JsonToken.NULL -> { reader.nextNull(); JSONObject.NULL }
             else -> error("Estructura JSON inválida.")
@@ -171,6 +204,10 @@ internal object BackupJson {
     private fun JSONObject.nullableLong(key: String) = if (get(key) == JSONObject.NULL) null else integer(key)
     private fun JSONObject.nullableString(key: String) = if (get(key) == JSONObject.NULL) null else string(key)
     private fun JSONObject.intValue(key: String): Int = integer(key).also { require(it in Int.MIN_VALUE..Int.MAX_VALUE) }.toInt()
+    private fun JSONObject.finiteFloat(key: String): Float {
+        val value = get(key) as? Number ?: error("Número inválido: $key")
+        return value.toFloat().also { require(it.isFinite()) }
+    }
     private fun JSONObject.boolean(key:String):Boolean = get(key) as? Boolean ?: error("Boolean inválido: $key")
     private fun JSONObject.nullableInt(key:String):Int? = if(get(key)==JSONObject.NULL) null else intValue(key)
     private fun JSONObject.position(): Int = intValue("position")

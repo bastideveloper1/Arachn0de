@@ -35,7 +35,7 @@ class AttachmentMigrationTest {
         sql.execSQL("INSERT INTO projects VALUES ('p','Project','Literal description',0,1,2)")
         sql.execSQL("INSERT INTO nodes VALUES ('n','p',NULL,'Task','Text [[arachnode:image:literal]]',0,0,1,2,NULL,NULL,'ACTION',NULL,NULL,'NONE',NULL,0,NULL)")
         fun snapshot(database: androidx.sqlite.db.SupportSQLiteDatabase) = tables.associateWith { table ->
-            database.query("SELECT * FROM `$table` ORDER BY rowid").use { cursor ->
+            database.query("SELECT ${if (table == "persons") "id, name, avatarFile" else "*"} FROM `$table` ORDER BY rowid").use { cursor ->
                 buildList { while (cursor.moveToNext()) add((0 until cursor.columnCount).map { if (cursor.isNull(it)) null else cursor.getString(it) }) }
             }
         }
@@ -43,7 +43,7 @@ class AttachmentMigrationTest {
         val db = Arachn0deDatabase.create(context)
         try {
             val migrated = db.openHelper.writableDatabase
-            assertEquals(18, migrated.version); assertEquals(before, snapshot(migrated))
+            assertEquals(20, migrated.version); assertEquals(before, snapshot(migrated))
             assertTrue(db.attachmentDao().files().isEmpty())
             val id = "00000000-0000-0000-0000-000000000001"
             val row = AttachmentFileEntity(id, "$id.png", "same.png", "image/png", 10, 1, 1, "hash", 1)

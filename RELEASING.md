@@ -162,3 +162,17 @@ Si faltan credenciales, ejecutar localmente el bloque Bash de «Credenciales
 locales» y después `./gradlew assembleRelease --console=plain
 --no-configuration-cache`. No compartir contraseñas en el chat. Sin APK nuevo
 firmado/verificado no generar ni publicar SHA256SUMS de v0.2.4.
+
+## Lista de verificación de persistencia y backup
+
+Antes de preparar los assets de un release, revisar el **Contrato de persistencia y backup** de ARCHITECTURE.md:
+
+- [ ] Todas las tablas, columnas, preferencias, configuraciones, archivos y relaciones nuevos tienen exportación y restauración implementadas; las exclusiones temporales están documentadas.
+- [ ] El respaldo incluye los bytes necesarios para reconstruir imágenes e iconos en una instalación vacía, sin rutas del dispositivo de origen.
+- [ ] El formato está versionado y los respaldos anteriores siguen siendo legibles.
+- [ ] Pasaron pruebas dirigidas de round-trip, integridad, archivos faltantes/corruptos y fallo de restauración sin pérdida del estado previo.
+- [ ] Las migraciones necesarias preservan los datos existentes; se documentan límites y resultados de compilación/pruebas.
+
+- [ ] Verificar el contrato de liberación de archivos: última referencia, reservas, cancelación, caché acotada y recuperación de limpieza pendiente.
+
+Si hay datos nuevos que el backup no puede recuperar, la función no está terminada y no debe darse por lista para release. Esta revisión complementa las comprobaciones existentes; no modifica el protocolo de firma, versionado o publicación ni autoriza commit, push o tags.

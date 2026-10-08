@@ -35,7 +35,7 @@ class PersonRepositoryTest {
     }
     private fun open() {
         db = Arachn0deDatabase.create(context)
-        people = PersonRepository(db, AvatarStore(context))
+        people = PersonRepository(db, AvatarStore(context, syncDirectory = com.r0ybt.arachn0de.backup.BackupFixture::syncDirectory))
         nodes = NodeRepository(db)
     }
     @After fun cleanup() { db.close(); context.deleteDatabase("arachn0de.db"); File(context.filesDir, "avatars").deleteRecursively() }
@@ -127,7 +127,7 @@ class PersonRepositoryTest {
         open()
         val oldProject = db.projectDao().getById("project")!!
         val oldNode = nodes.getNode("node")!!
-        assertEquals(18, db.openHelper.readableDatabase.version)
+        assertEquals(20, db.openHelper.readableDatabase.version)
         assertEquals("Original", oldProject.name)
         assertEquals(8, oldProject.position)
         assertEquals(100L, oldProject.createdAt)

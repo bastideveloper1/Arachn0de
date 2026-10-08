@@ -11,7 +11,7 @@ import kotlinx.coroutines.sync.withLock
 /** DB owns confirmed relations; durable store reservations own pending editor imports. */
 class AttachmentRepository(private val database: Arachn0deDatabase, private val store: AttachmentStore) {
     private val dao = database.attachmentDao()
-    companion object { private val fileOperations = Mutex() }
+    companion object { internal val fileOperations = Mutex() }
 
     suspend fun import(uri: Uri, draftId: String): AttachmentFileEntity = withContext(Dispatchers.IO) {
         fileOperations.withLock {
@@ -150,7 +150,7 @@ class AttachmentRepository(private val database: Arachn0deDatabase, private val 
 
     suspend fun cleanup() = withContext(Dispatchers.IO) {
         fileOperations.withLock {
-            store.recover(dao.files())
+            store.recover(dao.files(), store.backupProtectedNames())
             for (file in dao.files()) {
                 database.withTransaction {
                     if (dao.references(file.id) > 0) store.release(file.id)

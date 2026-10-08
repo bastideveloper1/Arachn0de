@@ -29,7 +29,7 @@ open class AttachmentStore(context: Context, private val syncDirectory: (File) -
         return File(root, name)
     }
     open fun delete(name: String): Boolean = file(name).let {
-        if (!it.exists()) true else if (it.delete()) { syncDirectory(root); true } else false
+        if (!it.exists()) true else if (it.delete()) { syncDirectory(root); PrivateImageCache.invalidate(it); true } else false
     }
 
     suspend fun import(uri: Uri, draftId: String): AttachmentFileEntity {
@@ -84,14 +84,21 @@ open class AttachmentStore(context: Context, private val syncDirectory: (File) -
     }
 
     /** Run only while imports are serialized. Known reservations are never expired by age. */
-    fun recover(known: List<AttachmentFileEntity>) {
-        val names = known.mapTo(hashSetOf()) { it.storageName }
-        staging.listFiles().orEmpty().filter { it.extension == "part" }.forEach { it.delete() }
-        root.listFiles().orEmpty().filter { it.isFile && it.name !in names }.forEach { file ->
-            if (file.name.matches(Regex("[a-f0-9-]{36}\\.(png|jpg)")) && delete(file.name)) release(file.nameWithoutExtension)
+    fun recover(known: List<AttachmentFileEntity>, protected: Set<String> = emptySet()) {
+        require(root.canonicalFile == File(context.filesDir.canonicalFile, "attachments") && staging.canonicalFile == File(root.canonicalFile, "staging")) { "Directorio de adjuntos fuera del almacenamiento controlado." }
+        val names = known.mapTo(hashSetOf()) { it.storageName } + protected
+        val ids = known.mapTo(hashSetOf()) { it.id }
+        val rootFiles = root.listFiles().orEmpty().filter { it.isFile && it.canonicalFile.parentFile == root.canonicalFile }
+        fun canonicalId(file: File) = runCatching { uuid(file.nameWithoutExtension); true }.getOrDefault(false)
+        staging.listFiles().orEmpty().filter { it.isFile && it.extension == "part" && canonicalId(it) && it.canonicalFile.parentFile == staging.canonicalFile }.forEach { check(it.delete()) }
+        rootFiles.filter { it.name !in names }.forEach { file ->
+            if (file.name.matches(Regex("[a-f0-9-]{36}\\.(png|jpg)")) && canonicalId(file) && delete(file.name)) release(file.nameWithoutExtension)
         }
-        staging.listFiles().orEmpty().filter { it.extension == "lease" && known.none { row -> row.id == it.nameWithoutExtension } && root.listFiles().orEmpty().none { file -> file.nameWithoutExtension == it.nameWithoutExtension } }.forEach { it.delete() }
+        val remaining = root.listFiles().orEmpty().mapTo(hashSetOf()) { it.nameWithoutExtension }
+        staging.listFiles().orEmpty().filter { it.isFile && it.extension == "lease" && canonicalId(it) && it.nameWithoutExtension !in ids && it.nameWithoutExtension !in remaining }.forEach { check(it.delete()) }
     }
+    fun backupProtectedNames() = com.r0ybt.arachn0de.backup.BackupAttachmentFiles(context).recorded()
+
 }
 
 private fun syncAttachmentDirectory(directory: File) {

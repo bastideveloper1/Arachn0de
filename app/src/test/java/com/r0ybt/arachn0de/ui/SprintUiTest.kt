@@ -145,7 +145,7 @@ class SprintUiTest {
         compose.onNodeWithText("Progreso").assertDoesNotExist()
         runBlocking { tasks.forEach { app.nodeRepository.deleteNode(it.id) } }
         scroll("CAPA 1")
-        compose.onAllNodesWithText("Contenedor vacío").onFirst().assertIsDisplayed()
+        scroll("No hay tareas por realizar");compose.onAllNodesWithText("No hay tareas por realizar").onFirst().assertIsDisplayed()
         compose.onNodeWithText("Progreso Sprint",substring=true).assertDoesNotExist()
     }
 

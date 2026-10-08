@@ -38,7 +38,7 @@ internal object DrawerWidthPolicy {
 internal fun AppIdentityDrawer(onDismiss: () -> Unit, onPeople: (() -> Unit)? = null,
     onAttention: (() -> Unit)? = null, onCalendar: (() -> Unit)? = null,
     onObligations: (() -> Unit)? = null, onAbout: (() -> Unit)? = null,
-    onAppearance: (() -> Unit)? = null, onProjects: (() -> Unit)? = null, projectsSelected: Boolean = false) {
+    onGame: (() -> Unit)? = null, onAppearance: (() -> Unit)? = null, onProjects: (() -> Unit)? = null, projectsSelected: Boolean = false, onTechnologies: (() -> Unit)? = null) {
     BackHandler(onBack = onDismiss)
     BoxWithConstraints(Modifier.fillMaxSize()) {
         val compact = DrawerWidthPolicy.fullWidth(maxWidth)
@@ -77,12 +77,18 @@ internal fun AppIdentityDrawer(onDismiss: () -> Unit, onPeople: (() -> Unit)? = 
                 icon = { Icon(Icons.Default.Payments, null) }, onClick = { navigate(it) }, modifier = Modifier.heightIn(min = 48.dp)) }
             onPeople?.let { NavigationDrawerItem(label = { Text("Personas") }, selected = false,
                 icon = { Icon(Icons.Default.People, null) }, onClick = { navigate(it) }, modifier = Modifier.heightIn(min = 48.dp)) }
+            onTechnologies?.let { NavigationDrawerItem(label = { Text("Tecnologías") }, selected = false,
+                icon = { Icon(Icons.Default.Code, null) }, onClick = { navigate(it) }, modifier = Modifier.heightIn(min = 48.dp)) }
             HorizontalDivider(Modifier.padding(vertical = 8.dp))
             Text("Aplicación", style = MaterialTheme.typography.labelLarge, color = Arachn0deColors.TextSecondary)
             onAppearance?.let { NavigationDrawerItem(label = { Text("Apariencia") }, selected = false,
                 icon = { Icon(Icons.Default.Palette, null) }, onClick = { navigate(it) }, modifier = Modifier.heightIn(min = 48.dp)) }
             onAbout?.let { NavigationDrawerItem(label = { Text("Acerca de") }, selected = false,
                 icon = { Icon(Icons.Default.Info, null) }, onClick = { navigate(it) }, modifier = Modifier.heightIn(min = 48.dp)) }
+            HorizontalDivider(Modifier.padding(vertical = 8.dp))
+            Text("Experimental", style = MaterialTheme.typography.labelLarge, color = Arachn0deColors.TextSecondary)
+            onGame?.let { NavigationDrawerItem(label = { Text("Juego") }, selected = false,
+                onClick = { navigate(it) }, modifier = Modifier.heightIn(min = 48.dp)) }
             Text("v${BuildConfig.VERSION_NAME}", style = MaterialTheme.typography.bodySmall, color = Arachn0deColors.TextSecondary)
         }
     }

@@ -107,6 +107,25 @@ class NavigationTest {
         compose.onNodeWithTag("nodes-list").assertDoesNotExist()
     }
 
+    @Test fun reopeningProjectFromDrawerAfterThreeLevelsStartsAtRootAndBackStillWorks() {
+        openProject()
+        compose.onNodeWithText("Nivel uno").performClick(); awaitText("Nivel dos")
+        compose.onNodeWithText("Nivel dos").performClick(); awaitText("Tarea final")
+        compose.onNodeWithText("Tarea final").performClick()
+        compose.onNodeWithTag("nodes-list").performScrollToNode(hasTestTag("detail-scope-title"))
+        compose.onNodeWithTag("detail-scope-title").assertTextEquals("Tarea final")
+        compose.onNodeWithContentDescription("Abrir menú").performClick()
+        compose.onNodeWithText("Proyectos").performScrollTo().performClick()
+        openProject()
+        compose.onNodeWithContentDescription("Volver a la capa anterior").assertDoesNotExist()
+        compose.onNodeWithText("Nivel dos").assertDoesNotExist()
+        compose.onNodeWithTag("detail-scope-title").assertTextEquals("Proyecto navegación")
+        compose.onNodeWithText("Nivel uno").performClick(); awaitText("Nivel dos")
+        back(); awaitText("Nivel uno")
+        compose.onNodeWithContentDescription("Volver a la capa anterior").assertDoesNotExist()
+        back(); awaitText("Proyectos")
+    }
+
     @Test fun deletedLayerRestoresToNearestExistingAncestor() {
         openProject()
         compose.onNodeWithText("Nivel uno").performTouchInput { click() }

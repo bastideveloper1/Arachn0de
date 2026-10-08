@@ -430,11 +430,13 @@ class NodeRepository(
         val tags = ids.chunked(500).flatMap { database.tagDao().tagsForNodes(it) }.groupBy { it.nodeId }
         val people = ids.chunked(500).flatMap { database.personDao().assignmentsForNodes(it) }.groupBy { it.nodeId }
         val events = ids.chunked(500).flatMap { database.nodeEventDao().eventsForNodes(it) }.groupBy { it.nodeId }
+        val technologies = ids.chunked(500).flatMap { database.technologyDao().forNodes(it) }.groupBy { it.nodeId }
         com.r0ybt.arachn0de.domain.model.CreationUndo(ids.map { rows.getValue(it).toNode(it in parents) },
             ids.associateWith { tags[it].orEmpty().map { row -> row.tagId }.toSet() },
             ids.associateWith { people[it].orEmpty().map { row -> row.personId }.toSet() },
             ids.associateWith { events[it].orEmpty().map { row -> row.toEvent() } },
-            ids.associateWith { id -> database.attachmentDao().forNode(id).map { it.attachmentId }.toSet() }.filterValues { it.isNotEmpty() })
+            ids.associateWith { id -> database.attachmentDao().forNode(id).map { it.attachmentId }.toSet() }.filterValues { it.isNotEmpty() },
+            ids.associateWith { id -> technologies[id].orEmpty().map { it.technologyId }.toSet() }.filterValues { it.isNotEmpty() })
     }
 
     suspend fun deleteSelected(projectId: String, selected: Set<String>): Int = database.withTransaction {

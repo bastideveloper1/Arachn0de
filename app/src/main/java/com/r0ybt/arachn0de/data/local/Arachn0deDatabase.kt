@@ -7,8 +7,9 @@ import androidx.room.RoomDatabase
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 
-@Database(entities = [ProjectEntity::class, NodeEntity::class, PersonEntity::class, NodePersonEntity::class, RecurrenceRuleEntity::class, RecurrenceOccurrenceEntity::class, RecurrencePersonEntity::class, TagEntity::class, NodeTagEntity::class, RecurrenceTagEntity::class, NodeEventEntity::class, CreationDefaultsEntity::class, CreationDefaultsTagEntity::class, CreationDefaultsPersonEntity::class, AttachmentFileEntity::class, NodeAttachmentEntity::class, ProjectAttachmentEntity::class], version = 18, exportSchema = true)
+@Database(entities = [ProjectEntity::class, NodeEntity::class, PersonEntity::class, NodePersonEntity::class, RecurrenceRuleEntity::class, RecurrenceOccurrenceEntity::class, RecurrencePersonEntity::class, TagEntity::class, NodeTagEntity::class, RecurrenceTagEntity::class, NodeEventEntity::class, CreationDefaultsEntity::class, CreationDefaultsTagEntity::class, CreationDefaultsPersonEntity::class, AttachmentFileEntity::class, NodeAttachmentEntity::class, ProjectAttachmentEntity::class, TechnologyEntity::class, NodeTechnologyEntity::class, ProjectTechnologyEntity::class], version = 20, exportSchema = true)
 abstract class Arachn0deDatabase : RoomDatabase() {
+    abstract fun technologyDao(): TechnologyDao
     abstract fun attachmentDao(): AttachmentDao
     abstract fun creationDefaultsDao(): CreationDefaultsDao
     abstract fun projectDao(): ProjectDao
@@ -26,7 +27,7 @@ abstract class Arachn0deDatabase : RoomDatabase() {
             Arachn0deDatabase::class.java,
             "arachn0de.db",
         )
-            .addMigrations(MIGRATION_1_2, NodeMigration2To3, ProjectMigration3To4, PersonMigration4To5, TaskDatesMigration5To6, NodePurposeMigration6To7, ObligationMigration7To8, RecurrenceMigration8To9, TagMigration9To10, NodeEventMigration10To11, PriorityMigration11To12, CreationGroupMigration12To13, CreationDefaultsMigration13To14, ExplicitLayerMigration14To15, SprintMigration15To16, SprintMigration16To17, AttachmentMigration17To18)
+            .addMigrations(MIGRATION_1_2, NodeMigration2To3, ProjectMigration3To4, PersonMigration4To5, TaskDatesMigration5To6, NodePurposeMigration6To7, ObligationMigration7To8, RecurrenceMigration8To9, TagMigration9To10, NodeEventMigration10To11, PriorityMigration11To12, CreationGroupMigration12To13, CreationDefaultsMigration13To14, ExplicitLayerMigration14To15, SprintMigration15To16, SprintMigration16To17, AttachmentMigration17To18, TechnologyMigration18To19, AvatarMigration19To20)
             .addCallback(object : Callback() {
                 override fun onCreate(db: SupportSQLiteDatabase) {
                     AttachmentInvariants.install(db)

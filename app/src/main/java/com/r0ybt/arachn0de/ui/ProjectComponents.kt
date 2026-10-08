@@ -300,6 +300,7 @@ internal fun ProjectCard(
                         fontSize = ContentTypography.Description,
                     )
                 }
+                TechnologyOwnerControl(project.id, true, project.name)
                 AttentionIndicator(attention)
                 if (progress != null) {
                     val pending = progress.total - progress.completed
@@ -307,7 +308,7 @@ internal fun ProjectCard(
                     when (progress.state) {
                         NodeProgressState.NO_WORK -> {
                             Text(
-                                text = "Contenedor vacío",
+                                text = "No hay tareas por realizar",
                                 color = Arachn0deColors.TextSecondary,
                                 fontSize = ContentTypography.SmallMetadata,
                                 fontWeight = FontWeight.Normal,

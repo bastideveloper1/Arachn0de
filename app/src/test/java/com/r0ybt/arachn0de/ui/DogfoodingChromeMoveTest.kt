@@ -36,7 +36,13 @@ class DogfoodingChromeMoveTest {
         } }
         override fun after() { app.database.close() }
     }).around(compose)
-    private fun await(text:String)=compose.waitUntil(10000) { org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle();compose.onAllNodesWithText(text).fetchSemanticsNodes().isNotEmpty() }
+    private fun await(text:String) {
+        if (text in listOf("Bugs", "Actualizador", "CAPA 1", "CAPA 2")) {
+            compose.waitUntil(10000) { compose.onAllNodesWithTag("nodes-list").fetchSemanticsNodes().isNotEmpty() }
+            compose.onNodeWithTag("nodes-list").performScrollToNode(hasText(text))
+        }
+        compose.waitUntil(10000) { org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle();compose.onAllNodesWithText(text).fetchSemanticsNodes().isNotEmpty() }
+    }
     private fun title(text:String)=compose.onNodeWithTag("app-bar-title").assertTextEquals(text)
     @Test fun projectTitleSurvivesDeepNavigationRestorationAndSwitching() {
         val restoration=StateRestorationTester(compose)

@@ -57,7 +57,7 @@ class BackupRepositoryTest {
         repo.restore(input)
         val restored = repo.snapshot()
         BackupFixture.assertData(stateA, restored)
-        assertEquals(18, db.openHelper.readableDatabase.version)
+        assertEquals(20, db.openHelper.readableDatabase.version)
         assertEquals(stateA.nodes.map { it.id }.toSet(), nodeRepo.observeAllState().first().nodesById.keys)
         assertEquals(restored.persons.first { it.id == "r" }.avatarFile, restored.persons.first { it.id == "s" }.avatarFile)
         assertFalse(File(context.filesDir, "avatars/${BackupFixture.avatar}").exists())

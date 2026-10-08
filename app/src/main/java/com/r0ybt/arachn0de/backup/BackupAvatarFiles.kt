@@ -6,12 +6,19 @@ import android.system.OsConstants
 import java.io.File
 import java.io.FileOutputStream
 import org.json.JSONArray
+import com.r0ybt.arachn0de.data.local.ImageFileLifecycle
+import com.r0ybt.arachn0de.data.local.PrivateImageCache
 import org.json.JSONObject
 
 /** Unique new PNGs are durable before Room can reference them. Old files are never overwritten. */
-internal class BackupAvatarFiles(context: Context, private val syncDirectory: (File) -> Unit = ::syncBackupDirectory) {
-    private val directory = File(context.filesDir, "avatars")
-    private val journal = File(context.filesDir, "backup-restore-journal.json")
+internal class BackupAvatarFiles(context: Context, directoryName: String, journalName: String,
+    internal val syncDirectory: (File) -> Unit = ::syncBackupDirectory) {
+    constructor(context: Context, syncDirectory: (File) -> Unit = ::syncBackupDirectory) :
+        this(context, "avatars", "backup-restore-journal", syncDirectory)
+    init { require(directoryName in setOf("avatars", "technology-icons")); require(journalName in setOf("backup-restore-journal", "technology-icon-journal")) }
+    private val lifecycle = ImageFileLifecycle(context, directoryName, syncDirectory)
+    private val directory = File(context.filesDir, directoryName)
+    private val journal = File(context.filesDir, "$journalName.json")
     private fun file(name: String): File {
         require(BackupLimits.avatarName.matches(name))
         return File(directory, name)
@@ -23,7 +30,7 @@ internal class BackupAvatarFiles(context: Context, private val syncDirectory: (F
     }
     fun record(names: Set<String>) {
         require(names.all { BackupLimits.avatarName.matches(it) })
-        val temporary = File(journal.parentFile, "backup-restore-journal.part")
+        val temporary = File(journal.parentFile, "${journal.nameWithoutExtension}.part")
         durableWrite(temporary, JSONObject().put("files", JSONArray(names.sorted())).toString().toByteArray())
         check(temporary.renameTo(journal)) { "No se pudo preparar la restauración." }
         syncDirectory(requireNotNull(journal.parentFile))
@@ -35,17 +42,22 @@ internal class BackupAvatarFiles(context: Context, private val syncDirectory: (F
         durableWrite(image, bytes)
     }
     fun finishStaging() { if (directory.isDirectory) syncDirectory(directory) }
+    fun hasJournal() = journal.exists() || File(journal.parentFile, "${journal.nameWithoutExtension}.part").exists()
     fun recorded(): Set<String> {
         if (!journal.exists()) return emptySet()
         require(journal.length() <= 8L * 1024 * 1024) { "Diario de restauración inválido." }
         val array = JSONObject(journal.readText()).getJSONArray("files")
         return (0 until array.length()).map { array.getString(it).also { name -> require(BackupLimits.avatarName.matches(name)) } }.toSet()
     }
-    fun delete(name: String) { val image = file(name); check(!image.exists() || image.delete()) }
+    fun delete(name: String) = lifecycle.remove(name) {
+        val image = file(name); check(!image.exists() || image.delete())
+        if (directory.isDirectory) syncDirectory(directory)
+        PrivateImageCache.invalidate(image)
+    }
     fun clearJournal() {
         if (directory.isDirectory) syncDirectory(directory)
         check(!journal.exists() || journal.delete())
-        val temporary = File(journal.parentFile, "backup-restore-journal.part")
+        val temporary = File(journal.parentFile, "${journal.nameWithoutExtension}.part")
         check(!temporary.exists() || temporary.delete())
         syncDirectory(requireNotNull(journal.parentFile))
     }
@@ -55,7 +67,7 @@ internal fun durableWrite(file: File, bytes: ByteArray) {
     FileOutputStream(file).use { output -> output.write(bytes); output.flush(); output.fd.sync() }
 }
 
-private fun syncBackupDirectory(directory: File) {
+internal fun syncBackupDirectory(directory: File) {
     val descriptor = Os.open(directory.path, OsConstants.O_RDONLY, 0)
     try { Os.fsync(descriptor) } finally { Os.close(descriptor) }
 }

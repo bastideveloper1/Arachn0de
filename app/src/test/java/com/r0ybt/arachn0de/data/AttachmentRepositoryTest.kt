@@ -156,12 +156,12 @@ class AttachmentRepositoryTest {
         assertEquals("", db.nodeDao().getById(node.id)!!.description)
         assertTrue(store.reserved(file.id))
     }
-    @Test fun backupCreationAndRestoreAreBlockedWithoutLosingAttachments() = runBlocking {
+    @Test fun backupCapturesConfirmedAttachmentsWithoutModifyingThem() = runBlocking {
         val backup = BackupRepository(db, context)
-        val old = backup.snapshot()
         val file = imported(); attachments.associateNode(node.id, file.id)
-        assertTrue(runCatching { backup.snapshot() }.exceptionOrNull()!!.message!!.contains("adjuntos"))
-        assertTrue(runCatching { backup.restore(old) }.exceptionOrNull()!!.message!!.contains("adjuntos"))
+        val data = backup.snapshot()
+        assertEquals(listOf(file), data.attachmentFiles)
+        assertEquals(listOf(NodeAttachmentEntity(node.id, file.id)), data.nodeAttachments)
         assertEquals(1, db.attachmentDao().references(file.id)); assertTrue(store.file(file.storageName).exists())
     }
     @Test fun markerParserPreservesUnknownAndEscapedText() {

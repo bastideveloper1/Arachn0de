@@ -23,12 +23,25 @@ internal data class BackupData(
     val creationDefaults: List<CreationDefaultsEntity> = emptyList(),
     val defaultsTags: List<CreationDefaultsTagEntity> = emptyList(),
     val defaultsPeople: List<CreationDefaultsPersonEntity> = emptyList(),
+    val attachmentFiles: List<AttachmentFileEntity> = emptyList(),
+    val nodeAttachments: List<NodeAttachmentEntity> = emptyList(),
+    val projectAttachments: List<ProjectAttachmentEntity> = emptyList(),
+    // Private operation-local files, never serialized as paths.
+    val attachmentContents: Map<String, java.io.File> = emptyMap(),
+    val inspectionDirectory: java.io.File? = null,
+    val technologies: List<TechnologyEntity> = emptyList(),
+    val nodeTechnologies: List<NodeTechnologyEntity> = emptyList(),
+    val projectTechnologies: List<ProjectTechnologyEntity> = emptyList(),
+    val technologyIcons: Map<String, ByteArray> = emptyMap(),
 )
 
 internal object BackupLimits {
     const val PAYLOAD_BYTES = 16 * 1024 * 1024
     const val AVATAR_BYTES = 1024 * 1024
     const val TOTAL_AVATAR_BYTES = 8 * 1024 * 1024
+    const val ATTACHMENT_BYTES = 20L * 1024 * 1024
+    const val TOTAL_ATTACHMENT_BYTES = 2L * 1024 * 1024 * 1024
+    val attachmentName = Regex("[a-f0-9-]{36}\\.(png|jpg)")
     const val RECORDS = 100_000
     val avatarName = Regex("[a-f0-9-]{36}\\.png")
 }
@@ -36,7 +49,7 @@ internal object BackupLimits {
 /** Validate before staging or deleting anything; return parent-first order without recursion. */
 internal fun BackupData.validate(): List<NodeEntity> {
     require(appVersion.isNotBlank() && appVersion.length <= 128 && createdAt >= 0) { "Metadatos de backup inválidos." }
-    require(projects.size.toLong() + nodes.size + persons.size + assignments.size + recurrenceRules.size + recurrenceOccurrences.size + recurrenceAssignments.size + tags.size + nodeTags.size + recurrenceTags.size + nodeEvents.size + creationDefaults.size + defaultsTags.size + defaultsPeople.size <= BackupLimits.RECORDS) { "Demasiados registros en el backup." }
+    require(projects.size.toLong() + nodes.size + persons.size + assignments.size + recurrenceRules.size + recurrenceOccurrences.size + recurrenceAssignments.size + tags.size + nodeTags.size + recurrenceTags.size + nodeEvents.size + creationDefaults.size + defaultsTags.size + defaultsPeople.size + attachmentFiles.size + nodeAttachments.size + projectAttachments.size + technologies.size + nodeTechnologies.size + projectTechnologies.size <= BackupLimits.RECORDS) { "Demasiados registros en el backup." }
     fun unique(ids: List<String>): Set<String> {
         require(ids.all { it.isNotBlank() && it.length <= 256 }) { "Identidad inválida." }
         return ids.toSet().also { require(it.size == ids.size) { "Identidades duplicadas." } }
@@ -122,10 +135,36 @@ internal fun BackupData.validate(): List<NodeEntity> {
         com.r0ybt.arachn0de.data.repository.CreationDefaultsCodec.decode(row,
             defaultTagsById[row.id].orEmpty().mapTo(hashSetOf()) { it.tagId },defaultPeopleById[row.id].orEmpty().mapTo(hashSetOf()) { it.personId })
     }
+    persons.forEach { com.r0ybt.arachn0de.domain.model.AvatarFraming(it.avatarZoom, it.avatarX, it.avatarY).validate() }
     val names = persons.mapNotNull { it.avatarFile }.toSet()
     require(names == avatars.keys && names.all { BackupLimits.avatarName.matches(it) }) { "Referencias de avatar inválidas." }
     require(avatars.values.sumOf { it.size.toLong() } <= BackupLimits.TOTAL_AVATAR_BYTES) { "Avatares demasiado grandes." }
     avatars.values.forEach { validateAvatar(it) }
+    val attachmentIds = unique(attachmentFiles.map { it.id })
+    require(attachmentFiles.map { it.storageName }.toSet().size == attachmentFiles.size) { "Nombres de adjunto duplicados." }
+    attachmentFiles.forEach {
+        require(BackupLimits.attachmentName.matches(it.storageName) && java.util.UUID.fromString(it.storageName.substringBefore('.')).toString() == it.storageName.substringBefore('.')) { "Nombre de adjunto inválido." }
+        require(java.util.UUID.fromString(it.id).toString() == it.id && it.originalName.isNotBlank() && it.originalName.length <= 4096) { "Metadatos de adjunto inválidos." }
+        require(it.lifecycleState == "READY" && it.byteSize in 1..BackupLimits.ATTACHMENT_BYTES && it.createdAt >= 0 && it.width in 1..32000 && it.height in 1..32000) { "Metadatos de adjunto inválidos." }
+        require(it.mimeType == if (it.storageName.endsWith(".png")) "image/png" else "image/jpeg") { "Tipo de adjunto inválido." }
+        require(it.sha256.matches(Regex("[a-f0-9]{64}"))) { "Hash de adjunto inválido." }
+    }
+    require(attachmentFiles.sumOf { it.byteSize } <= BackupLimits.TOTAL_ATTACHMENT_BYTES) { "Adjuntos demasiado grandes." }
+    require(nodeAttachments.toSet().size == nodeAttachments.size && nodeAttachments.all { it.nodeId in nodeIds && it.attachmentId in attachmentIds }) { "Asociación de adjunto inválida." }
+    require(projectAttachments.toSet().size == projectAttachments.size && projectAttachments.all { it.projectId in projectIds && it.attachmentId in attachmentIds }) { "Asociación de adjunto inválida." }
+    require((nodeAttachments.map { it.attachmentId } + projectAttachments.map { it.attachmentId }).toSet() == attachmentIds) { "Adjunto sin propietario." }
+    val nodeLinks = nodeAttachments.groupBy { it.nodeId }.mapValues { (_, rows) -> rows.mapTo(hashSetOf()) { it.attachmentId } }
+    val projectLinks = projectAttachments.groupBy { it.projectId }.mapValues { (_, rows) -> rows.mapTo(hashSetOf()) { it.attachmentId } }
+    nodes.forEach { node -> require(com.r0ybt.arachn0de.domain.model.AttachmentReferences.ids(node.description).all { id -> id in nodeLinks[node.id].orEmpty() }) { "Referencia de adjunto rota en tarea: ${node.title}" } }
+    projects.forEach { project -> require(com.r0ybt.arachn0de.domain.model.AttachmentReferences.ids(project.description).all { id -> id in projectLinks[project.id].orEmpty() }) { "Referencia de adjunto rota en proyecto: ${project.name}" } }
+    val technologyIds = unique(technologies.map { it.id })
+    require(technologies.all { it.name.isNotBlank() }) { "Nombre de tecnología vacío." }
+    val iconNames = technologies.mapNotNull { it.iconFile }.toSet()
+    require(iconNames == technologyIcons.keys && iconNames.all { BackupLimits.avatarName.matches(it) }) { "Referencias de iconos de tecnología inválidas." }
+    require(avatars.values.sumOf { it.size.toLong() } + technologyIcons.values.sumOf { it.size.toLong() } <= BackupLimits.TOTAL_AVATAR_BYTES) { "Avatares e iconos demasiado grandes." }
+    technologyIcons.values.forEach { validateAvatar(it) }
+    require(nodeTechnologies.toSet().size == nodeTechnologies.size && nodeTechnologies.all { it.nodeId in nodeIds && it.technologyId in technologyIds }) { "Asociación de tecnología con nodo inválida." }
+    require(projectTechnologies.toSet().size == projectTechnologies.size && projectTechnologies.all { it.projectId in projectIds && it.technologyId in technologyIds }) { "Asociación de tecnología con proyecto inválida." }
     return ordered
 }
 

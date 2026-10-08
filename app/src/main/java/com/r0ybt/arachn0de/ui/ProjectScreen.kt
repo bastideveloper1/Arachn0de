@@ -101,6 +101,7 @@ internal fun ProjectNodeScreen(
     onOpenCalendar: () -> Unit = {},
     onOpenObligations: () -> Unit = {},
     onOpenAbout: () -> Unit = {},
+    onOpenGame: () -> Unit = {},
     onOpenAppearance: () -> Unit = {},
     onBackToObligations: (() -> Unit)? = null,
     onBackToCalendar: (() -> Unit)? = null,
@@ -110,6 +111,7 @@ internal fun ProjectNodeScreen(
     onOpenProjects: () -> Unit = onBackToProjects,
     sortPreferences: NodeSortPreferences = rememberSaveable(project.id, saver = NodeSortPreferences.Saver) { NodeSortPreferences() },
     projectRepository: com.r0ybt.arachn0de.data.repository.ProjectRepository = (androidx.compose.ui.platform.LocalContext.current.applicationContext as com.r0ybt.arachn0de.Arachn0deApplication).projectRepository,
+    onOpenTechnologies: () -> Unit = {},
 ) {
     val pendingOpenNode by rememberUpdatedState(openNodeId)
     val handleOpenNode by rememberUpdatedState(onOpenNodeHandled)
@@ -347,15 +349,7 @@ internal fun ProjectNodeScreen(
                                         }
                                         Spacer(modifier = Modifier.width(8.dp))
                                     }
-                                    Text(
-                                        text = currentNode?.title ?: "Proyecto raíz",
-                                        maxLines = 2,
-                                        overflow = TextOverflow.Ellipsis,
-                                        color = Arachn0deColors.TextPrimary,
-                                        fontSize = ContentTypography.ScopeTitle,
-                                        fontWeight = FontWeight.SemiBold,
-                                        modifier = Modifier.weight(1f),
-                                    )
+                                    Spacer(Modifier.weight(1f))
                                     IconButton(onClick = { showSortMenu = true }, modifier = Modifier.size(48.dp).semantics { stateDescription="Orden: ${sortMode.label}" + if(sortMode!=NodeSortMode.MANUAL) "; arrastre deshabilitado" else "" }) {
                                         Icon(Icons.AutoMirrored.Filled.Sort, "Ordenar")
                                     }
@@ -370,7 +364,9 @@ internal fun ProjectNodeScreen(
                                     }
                                 }
 
+                                DetailScopeTitle(currentNode?.title ?: project.name)
                                 Spacer(modifier = Modifier.height(8.dp))
+                                if (currentNode == null) Text("Proyecto raíz", color = Arachn0deColors.TextSecondary, fontSize = 12.sp)
 
                                 if (currentNode != null) {
                                     Row(
@@ -431,6 +427,7 @@ internal fun ProjectNodeScreen(
                                     Spacer(modifier = Modifier.height(12.dp))
                                 }
 
+                                TechnologyOwnerControl(currentNode?.id ?: project.id, currentNode == null, currentNode?.title ?: project.name)
                                 if (currentNode != null) {
                                     androidx.compose.foundation.layout.FlowRow(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                         if(currentNode.workState != null) SecondaryAction("Estado: ${currentNode.workState.label}", { changingWorkStateId = currentNode.id }, enabled = !isSubmittingNode)
@@ -444,7 +441,7 @@ internal fun ProjectNodeScreen(
                                     TaskDateIndicator(currentNode, now)
                                     TagChips(tagState.forNode(currentNode.id))
                                     if (responsibleByNode[currentNode.id].orEmpty().isNotEmpty()) Spacer(modifier = Modifier.height(12.dp))
-                                    ResponsibleAvatars(responsibleByNode[currentNode.id].orEmpty())
+                                    ResponsiblePeopleDetail(responsibleByNode[currentNode.id].orEmpty())
                                     Spacer(modifier = Modifier.height(12.dp))
                                 }
 
@@ -489,8 +486,9 @@ internal fun ProjectNodeScreen(
                             }
                         } else {
                         if (currentNodes == null) item { Text("Cargando orden…") }
-                        else if (currentNodes.orEmpty().isEmpty()) {
-                            item(key = "empty-layer", contentType = "empty") { if (currentNode == null || currentNode.isStructural) EmptyLayerState() }
+                        else if (currentNode == null || currentNode.isStructural) {
+                            val message = layerContentMessage(currentNodes.orEmpty().isNotEmpty(), currentProgress ?: projectState.projectProgressById[project.id])
+                            if (message != null) item(key = "layer-status", contentType = "empty") { LayerContentStatus(message) }
                         }
                         if (sprintScope && filterActive) {
                             if (filteredRows == null) item { Text("Cargando resultados…") }
@@ -653,7 +651,7 @@ internal fun ProjectNodeScreen(
                         .fillMaxSize(),
                 ) {
                     Box(Modifier.fillMaxSize().background(Arachn0deColors.Scrim.copy(alpha = 0.45f)).clickable { showDrawer = false }.clearAndSetSemantics {})
-                    AppIdentityDrawer(onDismiss = { showDrawer = false }, onProjects = onOpenProjects, projectsSelected = true, onPeople = { showDrawer = false; onOpenPeople() }, onAttention = { showDrawer = false; onOpenAttention() }, onCalendar = { showDrawer = false; onOpenCalendar() }, onObligations = { showDrawer = false; onOpenObligations() }, onAppearance = { showDrawer = false; onOpenAppearance() }, onAbout = { showDrawer = false; onOpenAbout() })
+                    AppIdentityDrawer(onDismiss = { showDrawer = false }, onProjects = onOpenProjects, projectsSelected = true, onPeople = { showDrawer = false; onOpenPeople() }, onTechnologies = { showDrawer = false; onOpenTechnologies() }, onAttention = { showDrawer = false; onOpenAttention() }, onCalendar = { showDrawer = false; onOpenCalendar() }, onObligations = { showDrawer = false; onOpenObligations() }, onAppearance = { showDrawer = false; onOpenAppearance() }, onGame = { showDrawer = false; onOpenGame() }, onAbout = { showDrawer = false; onOpenAbout() })
                 }
             }
         }

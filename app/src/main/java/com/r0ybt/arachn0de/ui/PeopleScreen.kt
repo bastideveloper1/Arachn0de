@@ -15,6 +15,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.r0ybt.arachn0de.data.repository.PersonRepository
+import com.r0ybt.arachn0de.domain.model.AvatarFraming
 import com.r0ybt.arachn0de.domain.model.Person
 import com.r0ybt.arachn0de.ui.state.LoadState
 import com.r0ybt.arachn0de.ui.state.PersonActions
@@ -33,18 +34,26 @@ internal fun PeopleScreen(repository: PersonRepository, onBack: () -> Unit) {
     var isNew by rememberSaveable { mutableStateOf(false) }
     var name by rememberSaveable { mutableStateOf("") }
     var avatar by rememberSaveable { mutableStateOf<String?>(null) }
+    var zoom by rememberSaveable { mutableFloatStateOf(1f) }
+    var frameX by rememberSaveable { mutableFloatStateOf(0f) }
+    var frameY by rememberSaveable { mutableFloatStateOf(0f) }
+    var cropOpen by rememberSaveable { mutableStateOf(false) }
+    var pendingPhoto by rememberSaveable { mutableStateOf<String?>(null) }
+    fun framing() = AvatarFraming(zoom, frameX, frameY)
+    LaunchedEffect(editorId, pendingPhoto) { editorId?.let { repository.retainAvatar(pendingPhoto, it) } }
+    LaunchedEffect(editorId, avatar) { editorId?.let { repository.retainAvatar(avatar, it) } }
     var deletingId by rememberSaveable { mutableStateOf<String?>(null) }
     val busy = actions.operation.busy
     fun discardDraft() {
         val file = avatar
-        editorId = null
-        scope.launch { repository.discardAvatar(file) }
+        val owner = editorId
+        editorId = null; cropOpen = false
+        val pending = pendingPhoto; pendingPhoto = null
+        scope.launch { repository.discardAvatar(file, owner); repository.discardAvatar(pending, owner) }
     }
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
         if (uri != null && editorId != null) actions.import(uri) { imported ->
-            val old = avatar
-            avatar = imported
-            scope.launch { repository.discardAvatar(old) }
+            pendingPhoto = imported; cropOpen = true
         }
     }
     BackHandler { if (!busy) { if (editorId != null) discardDraft() else if (deletingId != null) deletingId = null else onBack() } }
@@ -54,7 +63,7 @@ internal fun PeopleScreen(repository: PersonRepository, onBack: () -> Unit) {
                 Text("Personas", style = MaterialTheme.typography.headlineSmall)
                 TextButton(enabled = !busy, onClick = onBack) { Text("Volver") }
             }
-            Button(enabled = !busy, onClick = { editorId = UUID.randomUUID().toString(); isNew = true; name = ""; avatar = null }) { Text("Nueva Persona") }
+            Button(enabled = !busy, onClick = { editorId = UUID.randomUUID().toString(); isNew = true; name = ""; avatar = null; zoom = 1f; frameX = 0f; frameY = 0f }) { Text("Nueva Persona") }
             if (people.isEmpty()) Text("Aún no hay Personas.")
             LazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 items(people, key = { it.id }) { person ->
@@ -63,7 +72,7 @@ internal fun PeopleScreen(repository: PersonRepository, onBack: () -> Unit) {
                             PersonAvatar(person)
                             Spacer(Modifier.width(8.dp))
                             Text(person.name, modifier = Modifier.weight(1f))
-                            TextButton(enabled = !busy, onClick = { editorId = person.id; isNew = false; name = person.name; avatar = person.avatarFile }) { Text("Editar") }
+                            TextButton(enabled = !busy, onClick = { editorId = person.id; isNew = false; name = person.name; avatar = person.avatarFile; zoom = person.avatarZoom; frameX = person.avatarX; frameY = person.avatarY }) { Text("Editar") }
                             TextButton(enabled = !busy, onClick = { deletingId = person.id }) { Text("Eliminar") }
                         }
                     }
@@ -80,17 +89,28 @@ internal fun PeopleScreen(repository: PersonRepository, onBack: () -> Unit) {
                 Column(Modifier.verticalScroll(rememberScrollState())) {
                     OutlinedTextField(name, { name = it }, label = { Text("Nombre") }, enabled = !busy, singleLine = true)
                     Spacer(Modifier.height(8.dp))
-                    PersonAvatar(Person(id, name.ifBlank { "?" }, avatar))
+                    PersonAvatar(Person(id, name.ifBlank { "?" }, avatar, zoom, frameX, frameY))
                     TextButton(enabled = !busy, onClick = { picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) }) { Text("Seleccionar avatar") }
+                    if (avatar != null) TextButton(enabled = !busy, onClick = { cropOpen = true }) { Text("Ajustar encuadre") }
                     if (avatar != null) TextButton(enabled = !busy, onClick = {
-                        val old = avatar; avatar = null
-                        scope.launch { repository.discardAvatar(old) }
+                        val old = avatar; val owner = editorId; avatar = null; zoom = 1f; frameX = 0f; frameY = 0f
+                        scope.launch { repository.discardAvatar(old, owner) }
                     }) { Text("Quitar avatar") }
                 }
             },
-            confirmButton = { TextButton(enabled = !busy && name.isNotBlank(), onClick = { actions.save(id, name, avatar, isNew) { editorId = null } }) { Text("Guardar") } },
+            confirmButton = { TextButton(enabled = !busy && name.isNotBlank(), onClick = { actions.save(id, name, avatar, isNew, framing()) { editorId = null; scope.launch { repository.discardAvatar(avatar, id) } } }) { Text("Guardar") } },
             dismissButton = { TextButton(enabled = !busy, onClick = { discardDraft() }) { Text("Cancelar") } },
         )
+    }
+    if (cropOpen) (pendingPhoto ?: avatar)?.let { file ->
+        AvatarEditor(file, if (pendingPhoto != null) AvatarFraming() else framing(), onConfirm = { value ->
+            val old = avatar; val owner = editorId
+            pendingPhoto?.let { avatar = it; pendingPhoto = null; scope.launch { repository.discardAvatar(old, owner) } }
+            zoom = value.zoom; frameX = value.x; frameY = value.y; cropOpen = false
+        }, onCancel = {
+            val pending = pendingPhoto; val owner = editorId; pendingPhoto = null; cropOpen = false
+            scope.launch { repository.discardAvatar(pending, owner) }
+        })
     }
     deletingId?.let { id ->
         AlertDialog(

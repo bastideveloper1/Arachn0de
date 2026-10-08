@@ -12,7 +12,7 @@ internal class BackupDocuments(private val resolver: ContentResolver) {
         require(uri.scheme == "content") { "URI de documento inválida." }
         try {
             // Verify our private artifact before handing any bytes to the selected provider.
-            file.inputStream().use { BackupContainer.read(it) }
+            file.inputStream().use { BackupContainer.readBackup(it) }
             file.inputStream().use { input ->
                 requireNotNull(resolver.openOutputStream(uri, "wt")) { "No se pudo abrir el destino." }.use { output ->
                     val buffer = ByteArray(32 * 1024)

@@ -111,6 +111,6 @@ class BackupUiTest {
         shadowOf(compose.activity.contentResolver).registerOutputStream(uri, bytes)
         compose.runOnUiThread { compose.activity.activityResultRegistry.dispatchResult(launched.requestCode, Activity.RESULT_OK, Intent().setData(uri)) }
         compose.waitUntil(10_000) { compose.onAllNodesWithText("Backup guardado correctamente.").fetchSemanticsNodes().isNotEmpty() }
-        assertTrue(BackupJson.decode(BackupContainer.read(ByteArrayInputStream(bytes.toByteArray()))).projects.isEmpty())
+        assertTrue(runBlocking { BackupContainer.readBackup(ByteArrayInputStream(bytes.toByteArray())) }.projects.isEmpty())
     }
 }

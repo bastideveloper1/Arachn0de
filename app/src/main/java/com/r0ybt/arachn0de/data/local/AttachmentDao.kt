@@ -17,5 +17,11 @@ interface AttachmentDao {
     @Query("DELETE FROM project_attachments WHERE projectId = :owner AND attachmentId = :id") suspend fun detachProject(owner: String, id: String)
     @Query("UPDATE attachment_files SET lifecycleState = 'DELETE_PENDING' WHERE id = :id AND lifecycleState = 'READY'") suspend fun pending(id: String)
     @Query("DELETE FROM attachment_files WHERE id = :id") suspend fun delete(id: String)
+    @Query("SELECT * FROM node_attachments") suspend fun nodeAttachments(): List<NodeAttachmentEntity>
+    @Query("SELECT * FROM project_attachments") suspend fun projectAttachments(): List<ProjectAttachmentEntity>
+    @Query("DELETE FROM node_attachments") suspend fun clearNodes()
+    @Query("DELETE FROM project_attachments") suspend fun clearProjects()
+    @Query("DELETE FROM attachment_files") suspend fun clearFiles()
+    @Query("SELECT COUNT(*) FROM attachment_files WHERE storageName = :name") suspend fun storageReferences(name: String): Int
     @Query("SELECT EXISTS(SELECT 1 FROM attachment_files)") suspend fun hasFiles(): Boolean
 }

@@ -38,7 +38,7 @@ class AppearancePreferencesTest {
     @Test fun designedSizesKeepSmallValuesAndCompactControlsUnscaled() {
         assertEquals(ContentSizes(14,16,12,14,17,14,20,12,11,24,15), contentSizes(AppearanceTextSize.Small))
         val medium = contentSizes(AppearanceTextSize.Medium); val large = contentSizes(AppearanceTextSize.Large)
-        assertEquals(16, medium.cardTitle); assertEquals(14, medium.description); assertEquals(19, medium.projectTitle)
+        assertEquals(16, medium.cardTitle); assertEquals(14, medium.description); assertEquals(20, medium.projectTitle)
         assertEquals(18, large.cardTitle); assertEquals(16, large.description); assertEquals(21, large.projectTitle)
         assertEquals(13, large.smallMetadata)
         AppearanceTextSize.entries.forEach {

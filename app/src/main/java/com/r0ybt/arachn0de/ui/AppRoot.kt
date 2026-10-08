@@ -35,7 +35,9 @@ private fun AppRootContent(projectRepository: ProjectRepository, nodeRepository:
     val personRepository = (androidx.compose.ui.platform.LocalContext.current.applicationContext as com.r0ybt.arachn0de.Arachn0deApplication).personRepository
     val screenStates = androidx.compose.runtime.saveable.rememberSaveableStateHolder()
     var showAppearance by rememberSaveable { mutableStateOf(false) }
+    var showGame by rememberSaveable { mutableStateOf(false) }
     var showAbout by rememberSaveable { mutableStateOf(false) }
+    var showTechnologies by rememberSaveable { mutableStateOf(false) }
     var showPeople by rememberSaveable { mutableStateOf(false) }
     var showObligations by rememberSaveable { mutableStateOf(false) }
     var returnToObligations by rememberSaveable { mutableStateOf(false) }
@@ -92,7 +94,7 @@ private fun AppRootContent(projectRepository: ProjectRepository, nodeRepository:
     val projectProgressById = projects.orEmpty().associate { project ->
         project.id to (allState.projectProgressById[project.id] ?: NodeProgress(project.id, 0, 0, 0, NodeProgressState.NO_WORK))
     }
-    val globalView = !showAppearance && !showAbout && !showPeople && (showObligations || showCalendar || showAttention || selectedProjectId == null)
+    val globalView = !showGame && !showAppearance && !showAbout && !showPeople && !showTechnologies && (showObligations || showCalendar || showAttention || selectedProjectId == null)
     val now = if (globalView) rememberTaskScreenNow(allState.nodes, clock, onRefresh = { zoneId = java.util.TimeZone.getDefault().id }) else 0L
     val calendar = if (showCalendar) {
         val snapshot by com.r0ybt.arachn0de.ui.state.rememberCalendar(allState, zoneId)
@@ -104,12 +106,21 @@ private fun AppRootContent(projectRepository: ProjectRepository, nodeRepository:
     } else null
 
     val selectedProject = projects?.firstOrNull { it.id == selectedProjectId }
-    if (showAppearance) {
+    if (showGame) {
+        screenStates.SaveableStateProvider("game") {
+            com.r0ybt.arachn0de.game.GameScreen(onBack = { showGame = false })
+        }
+    } else if (showAppearance) {
         screenStates.SaveableStateProvider("appearance") {
             AppearanceScreen(onBack = { showAppearance = false })
         }
     } else if (showAbout) {
         screenStates.SaveableStateProvider("about") { AboutScreen(onBack = { showAbout = false }, onRestored = onRestored) }
+    } else if (showTechnologies) {
+        screenStates.SaveableStateProvider("technologies") {
+            val repository = (androidx.compose.ui.platform.LocalContext.current.applicationContext as com.r0ybt.arachn0de.Arachn0deApplication).technologyRepository
+            TechnologiesScreen(repository) { showTechnologies = false }
+        }
     } else if (showPeople) {
         screenStates.SaveableStateProvider("people") { PeopleScreen(personRepository) { showPeople = false } }
     } else if (showObligations) {
@@ -171,20 +182,22 @@ private fun AppRootContent(projectRepository: ProjectRepository, nodeRepository:
             projects = projects.orEmpty(),
             projectProgressById = projectProgressById,
             projectAttentionById = attention?.byProjectId.orEmpty(),
-            onOpenProject = { selectedProjectId = it.id; returnToAttention = false; returnToCalendar = false; returnToObligations = false },
+            onOpenProject = { screenStates.removeState("project:${it.id}"); openNodeId = null; selectedProjectId = it.id; returnToAttention = false; returnToCalendar = false; returnToObligations = false },
             onOpenPeople = { showPeople = true },
+            onOpenTechnologies = { showTechnologies = true },
             onOpenAttention = { showAttention = true },
             onOpenCalendar = { showCalendar = true },
             onOpenObligations = { showObligations = true },
             onOpenAppearance = { showAppearance = true },
             onOpenAbout = { showAbout = true },
+            onOpenGame = { showGame = true },
         )
     } else if (selectedProject != null) {
         screenStates.SaveableStateProvider("project:${selectedProject.id}") {
             ProjectNodeScreen(
                 project = selectedProject,
                 sortPreferences = sortPreferences,
-                onOpenProjects = { selectedProjectId = null; openNodeId = null; returnToCalendar = false; returnToAttention = false; returnToObligations = false },
+                onOpenProjects = { screenStates.removeState("project:${selectedProject.id}"); selectedProjectId = null; openNodeId = null; returnToCalendar = false; returnToAttention = false; returnToObligations = false },
                 nodeRepository = nodeRepository,
                 projectRepository = projectRepository,
                 personRepository = personRepository,
@@ -192,11 +205,13 @@ private fun AppRootContent(projectRepository: ProjectRepository, nodeRepository:
                 openNodeId = openNodeId,
                 onOpenNodeHandled = { openNodeId = null },
                 onOpenPeople = { showPeople = true },
+                onOpenTechnologies = { showTechnologies = true },
                 onOpenAttention = { showAttention = true },
                 onOpenCalendar = { showCalendar = true },
                 onOpenObligations = { showObligations = true },
                 onOpenAppearance = { showAppearance = true },
                 onOpenAbout = { showAbout = true },
+                onOpenGame = { showGame = true },
                 onBackToObligations = if (returnToObligations) ({
                     screenStates.removeState("project:${selectedProject.id}")
                     selectedProjectId = null; openNodeId = null

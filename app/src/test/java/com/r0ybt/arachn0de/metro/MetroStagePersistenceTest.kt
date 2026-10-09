@@ -70,7 +70,7 @@ class MetroStagePersistenceTest {
     @Test fun historicalV1AndV2AreReadableAndStopBeforeAutomaticTransferWithoutRewritingOnRead()=runBlocking<Unit> {
         seed();val snapshot=repo.snapshot();val net=snapshot.preferences.network
         val raw=JSONObject(MetroCodec.journey(snapshot.journeys.single().data))
-        raw.getJSONArray("sessions").getJSONObject(0).remove("control");raw.put("version",2)
+        raw.getJSONArray("sessions").getJSONObject(0).remove("control");raw.getJSONArray("sessions").getJSONObject(0).remove("routeArchives");raw.put("version",2)
         val v2=MetroCodec.journey(raw.toString(),net)
         assertNull(v2.active!!.control);assertNotNull(MetroTracking.position(v2.active!!,time(99_000_000)).waiting)
         raw.put("version",1);raw.getJSONArray("sessions").getJSONObject(0).remove("automatic")

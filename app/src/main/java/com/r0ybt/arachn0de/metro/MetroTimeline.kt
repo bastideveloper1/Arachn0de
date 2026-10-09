@@ -16,12 +16,19 @@ import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.IntOffset
 import com.r0ybt.arachn0de.ui.theme.Arachn0deColors
+import com.r0ybt.arachn0de.ui.theme.AppearancePalette
+import com.r0ybt.arachn0de.ui.theme.LocalAppearancePalette
 import androidx.compose.ui.unit.dp
 import kotlin.math.roundToInt
+
+internal fun metroStationColors(palette:AppearancePalette,emphasized:Boolean)=
+    (if(emphasized) palette.raised else palette.surface) to palette.text
 
 internal val MetroRed=Color(0xffff7369)
 internal val MetroGreen=Color(0xff69d695)
@@ -33,7 +40,7 @@ internal data class MetroTimelineNode(val station: String, val line: String, val
 @Composable
 internal fun MetroVerticalTimeline(
     rows: List<MetroTimelineNode>, net: MetroNetwork, modifier: Modifier = Modifier,
-    preferences: MetroPreferences? = null, list: LazyListState = rememberLazyListState(),
+    preferences: MetroPreferences? = null, selectedStation:String?=null, list: LazyListState = rememberLazyListState(),
     progress: Pair<Int,Float>? = null, avatar: (@Composable ()->Unit)? = null,
     onStation: (String)->Unit, extra: @Composable (Int)->Unit = {}
 ) {
@@ -47,9 +54,10 @@ internal fun MetroVerticalTimeline(
             itemsIndexed(rows,key={ i,row->"$i:${row.station}:${row.line}" }) { index,row->
                 val line=net.lines.getValue(row.line)
                 val classification=line.express.getOrNull(line.stations.indexOf(row.station))
+                val cardColors=metroStationColors(LocalAppearancePalette.current,row.emphasized || row.station==selectedStation)
                 val complete=progress!=null && index<progress.first
                 val fraction=if(progress?.first==index) progress.second else 0f
-                Row(Modifier.fillMaxWidth().testTag("metro-row-$index").drawBehind {
+                Row(Modifier.fillMaxWidth().testTag("metro-row-$index").semantics {selected=row.station==selectedStation}.drawBehind {
                     val color=Color(line.color)
                     val top=if(index==0) nodeInset else 0f
                     val bottom=if(index==rows.lastIndex) nodeInset else size.height
@@ -77,8 +85,8 @@ internal fun MetroVerticalTimeline(
                 }) {
                     Spacer(Modifier.width(48.dp))
                     OutlinedCard(Modifier.weight(1f).padding(bottom=6.dp),
-                        shape=RoundedCornerShape(14.dp),border=BorderStroke(1.dp,if(row.emphasized) Color(line.color) else MaterialTheme.colorScheme.outlineVariant),
-                        colors=CardDefaults.outlinedCardColors(containerColor=if(row.emphasized) Arachn0deColors.SurfaceRaised else Arachn0deColors.Surface)) {
+                        shape=RoundedCornerShape(14.dp),border=BorderStroke(1.dp,if(row.station==selectedStation) MaterialTheme.colorScheme.primary else if(row.emphasized) Color(line.color) else MaterialTheme.colorScheme.outlineVariant),
+                        colors=CardDefaults.outlinedCardColors(containerColor=cardColors.first,contentColor=cardColors.second)) {
                         Column(Modifier.padding(horizontal=12.dp,vertical=10.dp).heightIn(min=40.dp)) {
                             Column(Modifier.fillMaxWidth().heightIn(min=48.dp).clickable {onStation(row.station)}) {
                             Row(verticalAlignment=Alignment.CenterVertically) {
@@ -86,6 +94,7 @@ internal fun MetroVerticalTimeline(
                                 if(classification!=null) Column(Modifier.padding(start=6.dp)) {MetroClassification(classification)}
                                 Text("›",Modifier.padding(start=6.dp),style=MaterialTheme.typography.titleLarge)
                             }
+                            if(row.station==selectedStation) Text("Estación seleccionada",style=MaterialTheme.typography.labelSmall)
                             LineBadges(net,row.station)
                             if(row.station in preferences?.restrictions?.closed.orEmpty()) Text("Cerrada a pasajeros",color=MetroRed,style=MaterialTheme.typography.labelMedium)
                             if(row.station in preferences?.restrictions?.avoided.orEmpty()) Text("Preferencia: evitar",style=MaterialTheme.typography.labelMedium)

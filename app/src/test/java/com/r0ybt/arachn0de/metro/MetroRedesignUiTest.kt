@@ -63,7 +63,7 @@ class MetroRedesignUiTest {
     private fun screen() {compose.setContent {Arachn0deTheme {Surface(Modifier.fillMaxSize()) {MetroScreen(emptyList(),emptyList(),onBack={})}}};await {exists("Planificar viaje")}}
     @Test fun explorerClassificationContextRestrictionsAndNormalizedPickerOnSmallScreen() {
         screen();capture("01-inicio")
-        compose.onNodeWithText("Explorar").performClick();capture("02-explorar")
+        compose.onNodeWithText("Líneas").performClick();capture("02-explorar")
         compose.onNodeWithText("San Pablo").performClick();capture("03-estacion")
         compose.onNodeWithText("Estoy aquí").assertDoesNotExist();compose.onNodeWithText("Cerrar para pasajeros").assertDoesNotExist()
         compose.onNodeWithText("Usar como origen").performClick()
@@ -71,8 +71,9 @@ class MetroRedesignUiTest {
         compose.onNodeWithText("Buscar estación").performTextInput(" NUNOA ")
         compose.onNodeWithText("Ñuñoa").assertExists();compose.onNodeWithText("Ñuñoa").performClick()
         compose.onNodeWithText("Buscar ruta").performScrollTo().performClick();capture("05-planificar")
-        compose.onNodeWithText("Iniciar viaje").assertExists()
-        compose.onNodeWithText("Explorar").performClick();compose.onNodeWithText("L2").performClick()
+        compose.onNodeWithTag("metro-planning").performScrollToNode(hasText("Iniciar viaje"))
+        compose.onNodeWithText("Iniciar viaje").assertIsDisplayed()
+        compose.onNodeWithText("Líneas").performClick();compose.onNodeWithText("L2").performClick()
         compose.onNodeWithText("Vespucio Norte").assertExists();compose.onAllNodesWithText("Roja").onFirst().assertExists();compose.onAllNodesWithText("Verde").onFirst().assertExists()
         capture("06-roja-verde")
         compose.onNodeWithText("Inicio").performClick();compose.onNodeWithText("Gestionar restricciones").performScrollTo().performClick();capture("07-restricciones")
@@ -151,6 +152,7 @@ class MetroRedesignUiTest {
         await {runBlocking {app.metroRepository.snapshot().journeys.single().data.active!!.events.any {it.kind=="CONFIRM"}}}
         assertNotNull(app.metroRepository.snapshot().journeys.single().data.active!!.pausedAt)
         compose.onNode(hasText("Los Héroes") and hasClickAction()).performClick()
+        compose.onNodeWithText("Corrección avanzada").performClick()
         compose.onNodeWithText("Estoy entre estaciones (desde aquí, aproximado)").performScrollTo().performClick()
         await {runBlocking {app.metroRepository.snapshot().journeys.single().data.active!!.events.last().kind=="BETWEEN"}}
         val row=compose.onNodeWithTag("metro-row-0").fetchSemanticsNode().boundsInRoot

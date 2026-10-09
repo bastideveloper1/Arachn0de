@@ -96,11 +96,16 @@ import com.r0ybt.arachn0de.ui.state.EditorDraft
         var destination by rememberSaveable {mutableStateOf(initial?.stops?.last())}
         var vias by rememberSaveable {mutableStateOf(initial?.stops?.drop(1)?.dropLast(1).orEmpty())}
         var express by rememberSaveable {mutableStateOf(initial?.express ?: false)}
+        var scheduled by rememberSaveable {mutableStateOf(initial?.departure!=null)}
+        var departure by rememberSaveable {mutableLongStateOf(initial?.departure ?: System.currentTimeMillis())}
         var routeChanged by rememberSaveable {mutableStateOf(false)}
         var picker by rememberSaveable {mutableStateOf<Int?>(null)}
         var travelerPicker by rememberSaveable {mutableStateOf(false)}
         val restrictions=p?.restrictions ?: MetroRestrictions()
-        val route=remember(origin,destination,vias,express,restrictions,routeChanged) {if(!routeChanged && draft.metroJourneyId!=null && initial!=null) initial else if(origin!=null && destination!=null) MetroPlanner.plan(net,listOf(origin!!)+vias+destination!!,express,restrictions) else null}
+        val stops=if(origin!=null && destination!=null) listOf(origin!!)+vias+destination!! else null
+        val route=if(!routeChanged && draft.metroJourneyId!=null && initial!=null) initial
+            else if(scheduled) scheduledMetroPlan(net,stops,departure,restrictions).route
+            else remember(stops,express,restrictions) {stops?.let {MetroPlanner.plan(net,it,express,restrictions)}}
         val linkValid=draft.metroJourneyId==null || selected!=null && selected.row.revision==draft.metroJourneyRevision && (selected.row.nodeId==null || selected.row.nodeId==draft.id)
         LaunchedEffect(route,linkValid) {
             onValidity(route!=null && linkValid)
@@ -125,8 +130,11 @@ import com.r0ybt.arachn0de.ui.state.EditorDraft
                 Spacer(Modifier.width(6.dp))
                 OutlinedButton(enabled=enabled && origin!=null && destination!=null,onClick={routeChanged=true;val old=origin;origin=destination;destination=old;vias=vias.reversed()}) {Text("Invertir")}
             }
-            Row {FilterChip(selected=!express,enabled=enabled,onClick={routeChanged=true;express=false},label={Text("Normal")});Spacer(Modifier.width(6.dp));FilterChip(selected=express,enabled=enabled,onClick={routeChanged=true;express=true},label={Text("Expresa")})}
+            Row {FilterChip(selected=!scheduled && !express,enabled=enabled,onClick={routeChanged=true;scheduled=false;express=false},label={Text("Normal")});Spacer(Modifier.width(6.dp));FilterChip(selected=!scheduled && express,enabled=enabled,onClick={routeChanged=true;scheduled=false;express=true},label={Text("Expresa")})}
             Text("Servicio elegido manualmente; verifica el horario.",style=MaterialTheme.typography.labelSmall)
+            FilterChip(selected=scheduled,enabled=enabled,onClick={scheduled=!scheduled;routeChanged=true},label={Text("Simular horario de referencia")})
+            if(scheduled) MetroDepartureField(departure) {departure=it;routeChanged=true}
+            if(scheduled) Text("Referencia histórica; festivos, vigencia y excepciones no confirmados.",style=MaterialTheme.typography.bodySmall)
             val people by remember(app) {app.personRepository.observePeople()}.collectAsState(emptyList())
             OutlinedButton(enabled=enabled,onClick={travelerPicker=true}) {Text("Persona viajera: ${people.firstOrNull {it.id==draft.templateTraveler}?.name ?: "Sin Persona"}")}
             if(travelerPicker) AlertDialog(onDismissRequest={travelerPicker=false},title={Text("Persona viajera")},text={androidx.compose.foundation.lazy.LazyColumn {

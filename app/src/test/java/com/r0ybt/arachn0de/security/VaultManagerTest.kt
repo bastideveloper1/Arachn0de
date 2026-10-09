@@ -36,19 +36,23 @@ class VaultManagerTest {
             val p=main.projects.createProject("Principal Metro")
             val task=main.nodes.createNode(p.id,null,"Principal",creationId="same-metro-node")
             val net=main.metro.snapshot().preferences.network
-            val plan=com.r0ybt.arachn0de.metro.MetroPlanner.plan(net,listOf("las-parcelas","los-dominicos"),false,com.r0ybt.arachn0de.metro.MetroRestrictions())!!
+            val referenceWall=java.time.LocalDateTime.parse("2026-10-09T12:00").atZone(java.time.ZoneId.of("America/Santiago")).toInstant().toEpochMilli()
+            val plan=com.r0ybt.arachn0de.metro.MetroPlanner.planAt(net,listOf("las-parcelas","los-dominicos"),referenceWall,com.r0ybt.arachn0de.metro.MetroRestrictions())!!
             val id=main.metro.savePlan(plan,task.id)
-            val time=com.r0ybt.arachn0de.metro.MetroTime(1_000_000,100_000,1)
+            val time=com.r0ybt.arachn0de.metro.MetroTime(referenceWall,100_000,1)
             main.metro.begin(id,main.metro.snapshot().journeys.single().row.revision,time)
             main.metro.tracking(id,main.metro.snapshot().journeys.single().row.revision) {com.r0ybt.arachn0de.metro.MetroStages.arrive(it,time)}
             main.metro.tracking(id,main.metro.snapshot().journeys.single().row.revision) {com.r0ybt.arachn0de.metro.MetroStages.beginTransfer(it,time)}
+            val current=main.metro.snapshot().journeys.single()
+            main.metro.changeDestination(id,current.row.revision,current.data.active!!.confirmed!!,"republica",time)
             val backups=com.r0ybt.arachn0de.backup.BackupRepository(main.database,main.context,
                 com.r0ybt.arachn0de.backup.BackupAvatarFiles(main.context,BackupFixture::syncDirectory))
             val protected=backups.create("metro-backup-fixture".toCharArray())
             val inspection=backups.inspect(SecureFiles.input(protected),"metro-backup-fixture".toCharArray())
             backups.restore(inspection);backups.discard(inspection);backups.discardPending(protected.name)
-            assertEquals(com.r0ybt.arachn0de.metro.MetroPhase.TRANSFERRING,main.metro.snapshot().journeys.single().data.active!!.control!!.phase)
+            assertEquals(com.r0ybt.arachn0de.metro.MetroPhase.READY,main.metro.snapshot().journeys.single().data.active!!.control!!.phase)
             assertNotNull(main.metro.snapshot().journeys.single().data.active!!.control!!.undo)
+            assertEquals(1,main.metro.snapshot().journeys.single().data.active!!.routeArchives.size)
             val before=main.metro.snapshot()
             assertEquals(before,main.metro.snapshot())
             vault.createSecondary("main-metro-fixture".toCharArray(),"secondary-metro-fixture".toCharArray())

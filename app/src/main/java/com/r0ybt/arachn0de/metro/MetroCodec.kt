@@ -55,13 +55,15 @@ internal object MetroCodec {
     }
     private fun JSONObject.fields(vararg expected: String) { require(keys().asSequence().all { it in expected }) }
     private fun route(r: MetroRoute) = obj("network" to r.networkVersion,"stops" to JSONArray(r.stops),"express" to r.express,"steps" to JSONArray(r.steps.map { s ->
-        obj("from" to s.from,"to" to s.to,"line" to s.line,"direction" to s.direction,"service" to s.service.name,"kind" to s.kind.name,"nextLine" to s.nextLine) }))
+        obj("from" to s.from,"to" to s.to,"line" to s.line,"direction" to s.direction,"service" to s.service.name,"kind" to s.kind.name,"nextLine" to s.nextLine) })).apply {r.departure?.let {put("departure",it)}}
     private fun route(o: JSONObject, snapshot: MetroNetwork): MetroRoute {
         val net = MetroCatalogRevision.forRoute(snapshot,o.string("network"))
-        o.fields("network","stops","express","steps")
+        if(o.has("departure")) o.fields("network","stops","express","steps","departure") else o.fields("network","stops","express","steps")
         val r=MetroRoute(o.string("network"),strings(o.getJSONArray("stops")),o.bool("express"),objects(o.getJSONArray("steps")).map { s ->
             s.fields("from","to","line","direction","service","kind","nextLine")
-            MetroStep(s.string("from"),s.string("to"),s.string("line"),s.int("direction"),MetroService.valueOf(s.string("service")),MetroStepKind.valueOf(s.string("kind")),s.string("nextLine")) })
+            MetroStep(s.string("from"),s.string("to"),s.string("line"),s.int("direction"),MetroService.valueOf(s.string("service")),MetroStepKind.valueOf(s.string("kind")),s.string("nextLine")) },if(o.has("departure")) o.long("departure") else null)
+        require(r.departure==null || r.departure in 0..Long.MAX_VALUE-r.minutes*60_000L && r.express)
+        require(!mixed(r) || r.departure!=null)
         require(r.networkVersion==net.version && r.stops.size in 2..32 && r.stops.all { it in net.stations } && r.steps.size <= 4096)
         if(r.steps.isEmpty()) require(r.stops.distinct().size==1)
         else {
@@ -73,7 +75,7 @@ internal object MetroCodec {
                 val next=r.steps.getOrNull(i+1)
                 require(s.direction in setOf(-1,1) && s.from in line.stations && s.to in line.stations && s.nextLine in net.lines)
                 require(s.service==MetroService.NORMAL || r.express && line.express.isNotEmpty())
-                require(!r.express || line.express.isEmpty() || s.service!=MetroService.NORMAL)
+                // v5 can mix normal and express stages according to their arrival time.
                 if(s.kind==MetroStepKind.RIDE) {
                     require(line.stations.getOrNull(line.stations.indexOf(s.from)+s.direction)==s.to && s.nextLine==s.line)
                     if(previous==null || previous.kind!=MetroStepKind.RIDE) require(net.stops(s.from,s.line,s.service))
@@ -89,38 +91,54 @@ internal object MetroCodec {
                 }
             }
         }
+        if(r.departure!=null) {
+            var wall=r.departure
+            require(r.steps.all {step->val valid=MetroSchedule().permits(step,wall);wall+=step.minutes*60_000L;valid}) {"Servicio incompatible con el horario de referencia de la ruta."}
+        }
         require(r.steps.filter { it.kind==MetroStepKind.WAYPOINT }.map { it.to }==r.stops.drop(1).dropLast(1))
         return r
     }
-    fun journey(j: MetroJourneyData) = obj("version" to 3,"plan" to route(j.plan),"sessions" to JSONArray(j.sessions.map { s ->
-        obj("control" to MetroControlCodec.encode(s.control),"id" to s.id,"route" to route(s.route),"originalRoute" to route(s.originalRoute),"personId" to s.personId,"startElapsed" to s.startElapsed,"startBoot" to s.startBoot,"pausedElapsed" to s.pausedElapsed,"pausedBoot" to s.pausedBoot,"realMillis" to s.realMillis,"routeHistory" to JSONArray(s.routeHistory.map { route(it) }),"historyElapsedTrusted" to s.historyElapsedTrusted,"automatic" to s.automatic,"start" to s.start,"anchorWall" to s.anchorWall,"anchorElapsed" to s.anchorElapsed,"boot" to s.boot,"offset" to s.offset,
+    private fun scheduled(r:MetroRoute)=r.departure!=null
+    private fun mixed(r:MetroRoute)=r.express && r.steps.any {it.service==MetroService.NORMAL && it.line in setOf("L2","L4","L5")}
+    fun journey(j: MetroJourneyData):String = obj("version" to if(scheduled(j.plan) || j.sessions.any {s->scheduled(s.route) || scheduled(s.originalRoute) || s.routeHistory.any(::scheduled)}) 5 else 4,"plan" to route(j.plan),"sessions" to JSONArray(j.sessions.map { s ->
+        obj("routeArchives" to JSONArray(s.routeArchives.map {a->JSONObject(journey(MetroJourneyData(a.route,listOf(a))))}),"control" to MetroControlCodec.encode(s.control),"id" to s.id,"route" to route(s.route),"originalRoute" to route(s.originalRoute),"personId" to s.personId,"startElapsed" to s.startElapsed,"startBoot" to s.startBoot,"pausedElapsed" to s.pausedElapsed,"pausedBoot" to s.pausedBoot,"realMillis" to s.realMillis,"routeHistory" to JSONArray(s.routeHistory.map { route(it) }),"historyElapsedTrusted" to s.historyElapsedTrusted,"automatic" to s.automatic,"start" to s.start,"anchorWall" to s.anchorWall,"anchorElapsed" to s.anchorElapsed,"boot" to s.boot,"offset" to s.offset,
             "pausedAt" to s.pausedAt,"pausedMillis" to s.pausedMillis,"ended" to s.ended,"confirmed" to s.confirmed,"uncertain" to s.uncertain,
             "events" to JSONArray(s.events.map { e->obj("kind" to e.kind,"at" to e.at,"offset" to e.offset,"station" to e.station) })) })).toString()
-    fun journey(raw: String, net: MetroNetwork,allowUndo:Boolean=true): MetroJourneyData {
-        val o=boundedObject(raw); val version=o.int("version"); require(version in 1..3) {"Versión de viaje Metro no compatible."};o.fields("version","plan","sessions")
+    fun journey(raw: String, net: MetroNetwork,allowUndo:Boolean=true,allowArchives:Boolean=true): MetroJourneyData {
+        val o=boundedObject(raw); val version=o.int("version"); require(version in 1..5) {"Versión de viaje Metro no compatible."};o.fields("version","plan","sessions")
         val j=MetroJourneyData(route(o.getJSONObject("plan"),net),objects(o.getJSONArray("sessions")).map { s->
-            require(version<3 || s.has("control"))
-            s.fields("id","route","originalRoute","personId","start","anchorWall","anchorElapsed","boot","offset","pausedAt","pausedMillis","ended","confirmed","uncertain","events","startElapsed","startBoot","pausedElapsed","pausedBoot","realMillis","routeHistory","historyElapsedTrusted",*((if(version>=2) arrayOf("automatic") else emptyArray())+(if(version>=3) arrayOf("control") else emptyArray())))
+            require(version<3 || s.has("control"));require(version<4 || s.has("routeArchives"))
+            s.fields("id","route","originalRoute","personId","start","anchorWall","anchorElapsed","boot","offset","pausedAt","pausedMillis","ended","confirmed","uncertain","events","startElapsed","startBoot","pausedElapsed","pausedBoot","realMillis","routeHistory","historyElapsedTrusted",*((if(version>=2) arrayOf("automatic") else emptyArray())+(if(version>=3) arrayOf("control") else emptyArray())+(if(version>=4) arrayOf("routeArchives") else emptyArray())))
             MetroSession(s.string("id"),route(s.getJSONObject("route"),net),s.long("start"),s.long("anchorWall"),s.long("anchorElapsed"),s.int("boot"),s.long("offset"),s.nullLong("pausedAt"),
                 s.long("pausedMillis"),s.nullLong("ended"),s.nullString("confirmed"),objects(s.getJSONArray("events")).map { e->e.fields("kind","at","offset","station");MetroEvent(e.string("kind"),e.long("at"),e.long("offset"),e.nullString("station")) },s.bool("uncertain"),if(s.has("originalRoute")) route(s.getJSONObject("originalRoute"),net) else route(s.getJSONObject("route"),net),if(s.has("personId")) s.nullString("personId") else null,
                 if(s.has("startElapsed")) s.long("startElapsed") else s.long("anchorElapsed"), if(s.has("startBoot")) s.int("startBoot") else s.int("boot"),
                 if(s.has("pausedElapsed")) s.nullLong("pausedElapsed") else null, if(s.has("pausedBoot")) s.nullLong("pausedBoot")?.also { require(it in 0..Int.MAX_VALUE) }?.toInt() else null,
-                if(s.has("realMillis")) s.nullLong("realMillis") else null, if(s.has("routeHistory")) objects(s.getJSONArray("routeHistory")).map { route(it,net) } else emptyList(),if(s.has("historyElapsedTrusted")) s.bool("historyElapsedTrusted") else true,if(version>=2) s.bool("automatic") else false).let {session->if(version>=3 && !s.isNull("control")) session.copy(control=MetroControlCodec.decode(s.getJSONObject("control"),session,net,allowUndo)) else session} })
+                if(s.has("realMillis")) s.nullLong("realMillis") else null, if(s.has("routeHistory")) objects(s.getJSONArray("routeHistory")).map { route(it,net) } else emptyList(),if(s.has("historyElapsedTrusted")) s.bool("historyElapsedTrusted") else true,if(version>=2) s.bool("automatic") else false).let {session->if(version>=3 && !s.isNull("control")) session.copy(control=MetroControlCodec.decode(s.getJSONObject("control"),session,net,allowUndo)) else session}.let {session->
+                val archives=if(version>=4) objects(s.getJSONArray("routeArchives")).map {a->
+                    require(allowArchives);journey(a.toString(),net,allowUndo=false,allowArchives=false).sessions.single().also {old->
+                        require(old.id==session.id && old.start==session.start && old.startElapsed==session.startElapsed && old.startBoot==session.startBoot && old.originalRoute==session.originalRoute && old.control?.undo==null && old.routeArchives.isEmpty())
+                    }
+                } else emptyList()
+                session.copy(routeArchives=archives)
+            } })
         require(j.sessions.size <= 1000 && j.sessions.map { it.id }.distinct().size==j.sessions.size)
         require(j.sessions.dropLast(1).all { it.ended!=null })
         j.sessions.forEach { s->
+            require(version>=4 || s.control?.phase!=MetroPhase.READY && s.events.none {it.kind=="DESTINATION"})
+            require(s.routeArchives.size<=s.routeHistory.size && s.routeArchives.map {it.route}==s.routeHistory.takeLast(s.routeArchives.size))
             require(s.realMillis==null || s.ended!=null)
             require(s.ended==null || s.pausedAt==null)
             require((s.pausedElapsed==null)==(s.pausedBoot==null) && (s.pausedElapsed==null || s.pausedAt!=null))
             require(s.events.isNotEmpty() && s.events.first().kind=="BOARD" && s.events.first().offset==0L)
             require((s.events.last().kind=="ARRIVED")== (s.ended!=null))
-            require(s.events.all { it.kind in setOf("BOARD","PAUSE","RESUME","CONFIRM","BETWEEN","REPLAN","ARRIVED","STAGE_ARRIVED","BEGIN_TRANSFER","NEXT_LINE","UNDO_ARRIVAL") || it.kind.matches(Regex("PASS_[0-9]{1,4}")) && it.kind.substringAfter("PASS_").toInt()<4096 })
+            require(s.events.all { it.kind in setOf("BOARD","PAUSE","RESUME","CONFIRM","BETWEEN","REPLAN","ARRIVED","STAGE_ARRIVED","BEGIN_TRANSFER","NEXT_LINE","UNDO_ARRIVAL","DESTINATION") || it.kind.matches(Regex("PASS_[0-9]{1,4}")) && it.kind.substringAfter("PASS_").toInt()<4096 })
             require(s.startElapsed>=0 && s.startBoot>=0 && (s.pausedElapsed==null || s.pausedElapsed>=0) && (s.realMillis==null || s.realMillis>=0) && s.routeHistory.size<=128)
             require(s.personId==null || s.personId.isNotBlank() && s.personId.length<=128)
             require(s.id.isNotBlank() && s.id.length<=128 && s.start>=0 && s.anchorWall>=0 && s.anchorElapsed>=0 && s.boot>=0 && s.pausedMillis>=0)
             require(s.offset in 0..s.route.minutes*60_000L && (s.ended==null || s.ended>=0) && (s.pausedAt==null || s.pausedAt>=0) && (s.confirmed==null || s.confirmed in net.stations))
             require(s.events.size<=4096 && s.events.all { it.at>=0 && it.offset in 0..(4096L*4*60_000) && it.kind.length in 1..64 && (it.station==null || it.station in net.stations) })
         }
+        if(version<5) require(!scheduled(j.plan) && j.sessions.none {scheduled(it.route) || scheduled(it.originalRoute) || it.routeHistory.any(::scheduled)})
         return j
     }
 }

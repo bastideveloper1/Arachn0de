@@ -24,10 +24,10 @@ class MetroStageUiTest {
     private val app get()=compose.activity.application as Arachn0deApplication
     @After fun close() {MetroNavigation.requests.value=null;app.database.close()}
     private fun exists(text:String)=compose.onAllNodesWithText(text).fetchSemanticsNodes().isNotEmpty()
-    private fun await(block:()->Boolean)=compose.waitUntil(15000) {
+    private fun await(block:()->Boolean) {try {compose.waitUntil(15000) {
         org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle()
         androidx.compose.runtime.snapshots.Snapshot.sendApplyNotifications();compose.mainClock.advanceTimeByFrame();block()
-    }
+    }} catch(e:Throwable) {compose.onRoot(useUnmergedTree=true).printToLog("MetroStageFailure");println(compose.onRoot(useUnmergedTree=true).printToString());throw e}}
     private suspend fun seed(combination:Boolean=true):String {
         val net=app.metroRepository.snapshot().preferences.planningNetwork
         val stops=if(combination) listOf("las-parcelas","los-dominicos") else listOf("los-heroes","republica")
@@ -44,7 +44,7 @@ class MetroStageUiTest {
         compose.onNodeWithText("Pausar").performClick();await {exists("Reanudar")}
         compose.onNodeWithText("Llegué").performClick();await {exists("Deshacer llegada")}
         assertNotNull(repo.snapshot().journeys.single().data.active!!.pausedAt)
-        compose.onNodeWithText("Deshacer llegada").performClick();await {exists("Reanudar")}
+        compose.onNodeWithText("Deshacer llegada").performClick();await {runBlocking {repo.snapshot().journeys.single().data.active?.control?.phase==MetroPhase.RIDING} && exists("Reanudar")}
         compose.onNodeWithText("Reanudar").performClick();await {exists("Pausar")}
         compose.onNodeWithText("Llegué").performClick();await {exists("Iniciar combinación")}
         compose.onNodeWithText("Iniciar combinación").performClick();await {exists("Comenzar siguiente línea")}

@@ -28,7 +28,7 @@ internal object MetroActivity {
         val s=j.data.active ?: return if(j.data.sessions.lastOrNull()?.ended!=null) "Finalizado" else "Pendiente"
         if(s.pausedAt!=null) return "Pausado"
         if(MetroStages.control(s).phase==MetroPhase.RIDING && MetroTracking.position(s,time).uncertain) return "Esperando confirmar posición"
-        return when(MetroStages.control(s).phase) {MetroPhase.ARRIVED->"Esperando continuación";MetroPhase.TRANSFERRING->"Combinando";MetroPhase.RIDING->if(MetroTracking.position(s,time).waiting!=null) "Esperando confirmar llegada" else "Activo"}
+        return when(MetroStages.control(s).phase) {MetroPhase.READY->if(MetroStages.control(s).transferStarted!=null) "Combinando" else "Esperando embarque";MetroPhase.ARRIVED->"Esperando continuación";MetroPhase.TRANSFERRING->"Combinando";MetroPhase.RIDING->if(MetroTracking.position(s,time).waiting!=null) "Esperando confirmar llegada" else "Activo"}
     }
     fun summary(j:MetroJourney,net:MetroNetwork,time:MetroTime):String {
         val route=j.data.active?.route ?: j.data.plan

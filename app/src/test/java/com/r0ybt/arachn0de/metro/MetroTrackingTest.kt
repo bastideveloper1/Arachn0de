@@ -26,19 +26,19 @@ class MetroTrackingTest {
         s=MetroTracking.resume(s,time(330_000));assertEquals(MetroStepKind.WAYPOINT,MetroTracking.position(s,time(900_000)).waiting)
         s=MetroTracking.confirm(s,"d",time(910_000));assertEquals("d",MetroTracking.position(s,time(920_000)).station);assertNull(s.ended)
     }
-    @Test fun betweenStationsIsApproximateAndRebootOrClockChangesFreezeWithWarning() {
+    @Test fun betweenStationsIsApproximateAndRebootFreezesWhileCivilClockDoesNotInvalidateElapsed() {
         var s=MetroTracking.start(route,time(0));assertEquals(60_000L,MetroTracking.confirm(s,"a",time(0),between=true).offset);s=MetroTracking.confirm(s,"b",time(30_000),between=true)
         assertNull(s.confirmed);assertEquals(.5f,MetroTracking.position(s,time(30_000)).fraction)
         assertTrue(MetroTracking.position(s,time(60_000,2)).uncertain)
         assertEquals(s.offset,MetroTracking.position(s,time(60_000,2)).offset)
-        assertTrue(MetroTracking.position(s,MetroTime(9_000_000,160_000,1)).uncertain)
+        assertFalse(MetroTracking.position(s,MetroTime(9_000_000,160_000,1)).uncertain)
         s=MetroTracking.confirm(s,"c",time(60_000,2));assertFalse(MetroTracking.position(s,time(60_000,2)).uncertain)
     }
-    @Test fun clockRollbackDoesNotLosePauseOrRealMonotonicDurationAndResumeKeepsUncertainty() {
+    @Test fun clockRollbackDoesNotLosePauseOrRealMonotonicDuration() {
         var s=MetroTracking.pause(MetroTracking.start(route,time(0)),time(20_000))
         val rolled=MetroTime(500_000,160_000,1)
         assertEquals(60_000L,MetroTracking.totalMillis(s,rolled));assertEquals(40_000L,MetroTracking.currentPauseMillis(s,rolled))
-        s=MetroTracking.resume(s,rolled);assertTrue(s.uncertain);assertEquals(40_000L,s.pausedMillis)
+        s=MetroTracking.resume(s,rolled);assertFalse(s.uncertain);assertEquals(40_000L,s.pausedMillis)
         s=MetroTracking.confirm(s,"a",rolled);assertFalse(s.uncertain)
         val finished=MetroTracking.finish(s,rolled);assertEquals(60_000L,MetroTracking.totalMillis(finished,time(999_000)))
     }

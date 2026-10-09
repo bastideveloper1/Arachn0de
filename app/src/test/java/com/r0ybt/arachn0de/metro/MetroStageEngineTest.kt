@@ -53,6 +53,7 @@ class MetroStageEngineTest {
         s=MetroStages.undoArrival(s,time(800_000));assertEquals(pausedAt,s.pausedAt);assertEquals(30_000L,s.offset)
         assertEquals(30_000L,MetroTracking.position(s,time(999_000)).offset)
         s=MetroTracking.resume(s,time(1_000_000));assertEquals(60_000L,MetroTracking.position(s,time(1_030_000)).offset)
+        assertEquals(60_000L,MetroStages.railMillis(s,time(1_030_000)))
     }
     @Test fun undoWhileCombiningRestoresOriginalStageAndRemovesTransitionRecords() {
         val initial=MetroTracking.start(multiple,time(0))

@@ -31,12 +31,12 @@ class MetroUiTest {
     @Test fun explorerFullScreenKeepsStationContextAndHomeAfterSavedStateRestore() {
         val restoration=StateRestorationTester(compose)
         restoration.setContent {Arachn0deTheme {MetroScreen(emptyList(),emptyList(),onBack={})}}
-        await {exists("Explorar")};compose.onNodeWithText("Explorar").performClick()
+        await {exists("Líneas")};compose.onNodeWithText("Líneas").performClick()
         compose.onNodeWithText("San Pablo").performClick();compose.onNodeWithText("Asignar Casa").performClick()
         await {exists("San Pablo · Casa")}
-        compose.onNodeWithText("Ampliar").performClick();compose.onNodeWithText("Inicio").assertDoesNotExist()
-        restoration.emulateSavedInstanceStateRestore();await {exists("Reducir")}
-        compose.onAllNodesWithText("Reducir")[0].performClick();compose.onNodeWithText("Inicio").assertExists()
+        compose.onNodeWithContentDescription("Ampliar mapa").performClick();compose.onNodeWithText("Inicio").assertDoesNotExist()
+        restoration.emulateSavedInstanceStateRestore();await {compose.onAllNodesWithContentDescription("Contraer mapa").fetchSemanticsNodes().isNotEmpty()}
+        compose.onNodeWithContentDescription("Contraer mapa").performClick();compose.onNodeWithText("Inicio").assertExists()
         assertEquals("san-pablo",runBlocking {app.metroRepository.snapshot().preferences.home})
     }
     @Test fun directHereCorrectionAndFixedPauseRemainFunctionalFullScreenAndRestore()=runBlocking<Unit> {
@@ -46,7 +46,7 @@ class MetroUiTest {
         val restoration=StateRestorationTester(compose)
         restoration.setContent {Arachn0deTheme {MetroScreen(emptyList(),emptyList(),onBack={})}}
         await {exists("Pausar")};compose.onNodeWithText("Pausar").performClick()
-        await {exists("Reanudar")};compose.onNodeWithText("Ampliar").performClick()
+        await {exists("Reanudar")};compose.onNodeWithContentDescription("Ampliar mapa").performClick()
         compose.onNodeWithText("Reanudar").assertIsDisplayed()
         compose.onNodeWithText("Los Héroes").performClick();compose.onNodeWithText("Estoy aquí").performClick()
         await {runBlocking {repo.snapshot().journeys.single().data.active!!.events.any {it.kind=="CONFIRM"}}}
@@ -62,7 +62,7 @@ class MetroUiTest {
         repo.begin(id,repo.snapshot().journeys.single().row.revision,metroTime(compose.activity))
         var token by androidx.compose.runtime.mutableStateOf(0L)
         compose.setContent {Arachn0deTheme {MetroScreen(emptyList(),emptyList(),requestToken=token,onBack={})}}
-        await {exists("Pausar")};compose.onNodeWithText("Explorar").performClick()
+        await {exists("Pausar")};compose.onNodeWithText("Líneas").performClick()
         compose.onNodeWithText("Pausar").assertDoesNotExist()
         compose.runOnIdle {token=1L};await {exists("Pausar")};compose.onNodeWithText("Pausar").assertIsDisplayed()
     }

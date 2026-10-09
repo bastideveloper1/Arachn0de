@@ -28,12 +28,13 @@ internal object MetroControlCodec {
         require(o.get("clockTrusted") is Boolean)
         val c=MetroControl(index(o,"firstStep"),time(o.getJSONObject("since")),number(o,"pauseBaseline"),MetroPhase.valueOf(o.getString("phase")),number(o,"heldMillis"),if(o.isNull("transferStarted")) null else time(o.getJSONObject("transferStarted")),records,undo,o.getBoolean("clockTrusted"))
         require(c.firstStep in 0..s.route.steps.size && c.pauseBaseline<=s.pausedMillis)
-        require((c.transferStarted!=null)==(c.phase==MetroPhase.TRANSFERRING))
+        require(if(c.phase==MetroPhase.READY) true else (c.transferStarted!=null)==(c.phase==MetroPhase.TRANSFERRING))
         require(records.all {it.firstStep<=it.boundary && it.boundary<=4096})
         val boundary=s.route.steps.indices.firstOrNull {it>=c.firstStep && s.route.steps[it].kind!=MetroStepKind.RIDE} ?: s.route.steps.size
         val lower=MetroStages.offset(s.route,c.firstStep);val upper=MetroStages.offset(s.route,boundary)
         require(s.offset in lower..upper)
-        if(c.phase!=MetroPhase.RIDING) {
+        if(c.phase==MetroPhase.READY) require(c.firstStep==0 && s.offset==0L && s.confirmed==s.route.stops.first() && s.ended==null)
+        else if(c.phase!=MetroPhase.RIDING) {
             require(c.records.isNotEmpty() && s.offset==upper && c.records.last().boundary==boundary)
             require(s.confirmed==(s.route.steps.getOrNull(boundary)?.from ?: s.route.stops.last()))
         }

@@ -46,12 +46,25 @@ internal class MetroRepository(private val db: Arachn0deDatabase, context: Conte
         require(data.active==null)
         val row=requireNotNull(dao.journey(id)); require(row.enabled)
         if(row.nodeId!=null) { val task=requireNotNull(db.nodeDao().getById(row.nodeId)); require(task.purpose=="ACTION" && !db.nodeDao().hasChildren(task.projectId,task.id)) }
-        val net=preferences().network
+        val p=preferences();val net=p.network
+        if(data.plan.departure!=null) {
+            val actual=MetroPlanner.planAt(p.planningNetwork,data.plan.stops,time.wall,p.restrictions)
+            require(actual?.steps==data.plan.steps) {"El horario de referencia cambió. Recalcula y revisa el plan antes de iniciar."}
+        }
         require(dao.journeys().none { MetroCodec.journey(it.payload,net).active!=null }) { "Ya existe un seguimiento activo." }
         data.copy(sessions=data.sessions+MetroTracking.start(data.plan,time).copy(personId=row.personId))
     }
     suspend fun tracking(id: String,revision: Long,action: (MetroSession)->MetroSession)=act(id,revision) { data ->
         val active=requireNotNull(data.active); data.copy(sessions=data.sessions.dropLast(1)+action(active))
+    }
+    suspend fun changeDestination(id:String,revision:Long,station:String,destination:String,time:MetroTime,expected:MetroRoute?=null)=act(id,revision) {data->
+        val active=requireNotNull(data.active)
+        val p=preferences()
+        val route=(if(active.route.departure!=null) MetroPlanner.planAt(p.planningNetwork,listOf(station,destination),time.wall,p.restrictions) else MetroPlanner.plan(p.planningNetwork,listOf(station,destination),active.route.express,p.restrictions))
+            ?: error("No existe ruta disponible; se conserva el recorrido anterior.")
+        if(expected!=null) require(route.steps==expected.steps && route.stops==expected.stops) {"La propuesta cambió. Revisa de nuevo el recorrido antes de confirmarlo."}
+        if(active.route.copy(departure=route.departure)==route && active.control?.phase==MetroPhase.READY && active.confirmed==station) return@act data
+        data.copy(plan=route,sessions=data.sessions.dropLast(1)+MetroDestination.change(active,route,station,time))
     }
     suspend fun undoArrival(id:String,revision:Long,time:MetroTime):Boolean=act(id,revision) {data->
         val latest=requireNotNull(data.sessions.lastOrNull())

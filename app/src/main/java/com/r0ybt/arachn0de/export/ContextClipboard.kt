@@ -10,6 +10,8 @@ class ContextClipboard(context: Context) {
     fun copy(text: String) {
         require(text.isNotBlank())
         require(text.length <= NodeExportSnapshot.MAX_TEXT_CHARS)
-        clipboard.setPrimaryClip(ClipData.newPlainText("Contexto de Arachn0de", text))
+        val clip=ClipData.newPlainText("Contexto de Arachn0de",text)
+        clip.description.extras=android.os.PersistableBundle().apply {putBoolean("android.content.extra.IS_SENSITIVE",true)}
+        clipboard.setPrimaryClip(clip)
     }
 }

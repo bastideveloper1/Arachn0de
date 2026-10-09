@@ -50,3 +50,20 @@ import com.r0ybt.arachn0de.ui.state.EditorDraft
         }
     }, onFailure = { Text(it.message ?: "Revisa los parámetros.", color = MaterialTheme.colorScheme.error) })
 }
+
+/** Fit complete controls by available width and font scale; never leave an empty column. */
+@Composable
+internal fun AdaptiveFormRow(fields: List<@Composable () -> Unit>, minFieldWidth: androidx.compose.ui.unit.Dp = 180.dp) {
+    val fontScale = androidx.compose.ui.platform.LocalDensity.current.fontScale.coerceAtLeast(1f)
+    BoxWithConstraints(Modifier.fillMaxWidth()) {
+        if (maxWidth >= minFieldWidth * fontScale * fields.size + 8.dp * (fields.size - 1)) {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                fields.forEach { field -> Column(Modifier.weight(1f)) { field() } }
+            }
+        } else {
+            Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                fields.forEach { it() }
+            }
+        }
+    }
+}

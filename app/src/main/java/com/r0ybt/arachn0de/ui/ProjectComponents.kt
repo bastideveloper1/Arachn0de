@@ -53,8 +53,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
-import com.r0ybt.arachn0de.domain.model.NodeProgress
-import com.r0ybt.arachn0de.domain.model.NodeProgressState
+import com.r0ybt.arachn0de.domain.model.ProjectCardAlerts
 import com.r0ybt.arachn0de.domain.model.Project
 import com.r0ybt.arachn0de.ui.theme.Arachn0deColors
 import com.r0ybt.arachn0de.ui.theme.ContentTypography
@@ -165,7 +164,7 @@ internal fun EmptyProjectsState(onCreateProject: () -> Unit) {
 @Composable
 internal fun ProjectList(
     projects: List<Project>,
-    projectProgressById: Map<String, NodeProgress>,
+    projectAlertsById: Map<String, ProjectCardAlerts>,
     onCreateProject: () -> Unit,
     onEdit: (Project) -> Unit,
     onDelete: (Project) -> Unit,
@@ -174,11 +173,11 @@ internal fun ProjectList(
     reorderBusy: Boolean = false,
     reorderError: String? = null,
     listState: LazyListState = rememberLazyListState(),
-    projectAttentionById: Map<String, com.r0ybt.arachn0de.domain.model.AttentionSummary> = emptyMap(),
     onMoveInside: (Project) -> Unit = {},
     onCopy: (Project, Boolean) -> Unit = { _, _ -> },
     canCopy: Boolean = true,
     canCopyDescendants: Boolean = true,
+    onPhoto: (Project) -> Unit = {},
 ) {
     val order = projects.map { it.id }
     val drag = rememberDragReorderState(listState, "project:", mapOf(false to order), reorderBusy, reorderError) { source, target, _ ->
@@ -197,11 +196,11 @@ internal fun ProjectList(
             ProjectCard(
                 project = project,
                 onMoveInside = { onMoveInside(project) },
+                onPhoto = { onPhoto(project) },
                 onCopy = { descendants -> onCopy(project,descendants) },
                 canCopy = canCopy,
                 canCopyDescendants = canCopyDescendants,
-                progress = projectProgressById[project.id],
-                attention = projectAttentionById[project.id],
+                alerts = projectAlertsById[project.id] ?: ProjectCardAlerts(),
                 onOpen = { onOpenProject(project) },
                 onEdit = { onEdit(project) },
                 onDelete = { onDelete(project) },
@@ -233,17 +232,17 @@ internal fun ProjectList(
 @Composable
 internal fun ProjectCard(
     project: Project,
-    progress: NodeProgress?,
+    alerts: ProjectCardAlerts,
     onOpen: () -> Unit,
     onEdit: () -> Unit,
     onDelete: () -> Unit,
     modifier: Modifier = Modifier,
     dragging: Boolean = false,
-    attention: com.r0ybt.arachn0de.domain.model.AttentionSummary? = null,
     onMoveInside: () -> Unit = {},
     onCopy: (Boolean) -> Unit = {},
     canCopy: Boolean = true,
     canCopyDescendants: Boolean = true,
+    onPhoto: () -> Unit = {},
 ) {
     var showActions by remember { mutableStateOf(false) }
     Card(
@@ -253,27 +252,17 @@ internal fun ProjectCard(
             .fillMaxWidth()
             .border(1.dp, Arachn0deColors.Outline.copy(alpha = 0.85f), RoundedCornerShape(8.dp))
             .zIndex(if (dragging) 1f else 0f)
-            .clickable(onClick = onOpen),
+            .testTag("project-card:${project.id}")
+            .clickable(onClickLabel = "Abrir proyecto", onClick = onOpen),
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 12.dp, vertical = 8.dp),
+                .heightIn(min = 56.dp)
+                .padding(horizontal = 10.dp, vertical = 4.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Box(
-                modifier = Modifier
-                    .size(40.dp)
-                    .clip(RoundedCornerShape(12.dp))
-                    .background(Arachn0deColors.Primary),
-                contentAlignment = Alignment.Center,
-            ) {
-                Text(
-                    text = project.name.take(1).uppercase(Locale.getDefault()),
-                    color = Arachn0deColors.OnPrimary,
-                    fontWeight = FontWeight.Bold,
-                )
-            }
+            ProjectIdentityIcon(project)
             Spacer(modifier = Modifier.width(12.dp))
             Column(
                 modifier = Modifier
@@ -285,56 +274,11 @@ internal fun ProjectCard(
                     color = Arachn0deColors.TextPrimary,
                     fontSize = ContentTypography.ProjectTitle,
                     fontWeight = FontWeight.SemiBold,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
                     softWrap = true,
+                    modifier = Modifier.testTag("project-title:${project.id}"),
                 )
-                if (project.description.isNotBlank()) {
-                    Spacer(modifier = Modifier.height(4.dp))
-                    AttachmentText(
-                        text = project.description,
-                        color = Arachn0deColors.TextSecondary,
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis,
-                        softWrap = true,
-                        fontSize = ContentTypography.Description,
-                    )
-                }
-                TechnologyOwnerControl(project.id, true, project.name)
-                AttentionIndicator(attention)
-                if (progress != null) {
-                    val pending = progress.total - progress.completed
-                    Spacer(modifier = Modifier.height(6.dp))
-                    when (progress.state) {
-                        NodeProgressState.NO_WORK -> {
-                            Text(
-                                text = "No hay tareas por realizar",
-                                color = Arachn0deColors.TextSecondary,
-                                fontSize = ContentTypography.SmallMetadata,
-                                fontWeight = FontWeight.Normal,
-                            )
-                        }
-                        else -> {
-                            Column {
-                                Text(
-                                    text = "${progress.percentage}% · $pending de ${progress.total} pendientes",
-                                    color = Arachn0deColors.Accent,
-                                    fontSize = ContentTypography.SmallMetadata,
-                                    fontWeight = FontWeight.SemiBold,
-                                )
-                                Spacer(modifier = Modifier.height(6.dp))
-                                androidx.compose.material3.LinearProgressIndicator(
-                                    progress = { if (progress.total == 0) 0f else progress.percentage / 100f },
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .height(4.dp),
-                                    color = Arachn0deColors.PathHighlight,
-                                    trackColor = Arachn0deColors.ControlSurface,
-                                )
-                            }
-                        }
-                    }
-                }
+                ProjectAlerts(alerts)
+
             }
 
             IconButton(onClick = { showActions = true }, modifier = Modifier.size(48.dp)) {
@@ -344,15 +288,38 @@ internal fun ProjectCard(
     }
     if (showActions) {
         ActionMenu(project.name,{ showActions = false }) {
+            ActionMenuItem("Fotografía", Icons.Default.Image, { showActions = false; onPhoto() })
             ActionMenuItem("Editar",Icons.Default.Edit,{ showActions = false; onEdit() },
                 Modifier.semantics { contentDescription = "Editar proyecto" })
-            ActionMenuItem("Mover dentro de…",Icons.Default.AccountTree,{ showActions=false;onMoveInside() })
+            ActionMenuItem("Convertir en capa",Icons.Default.AccountTree,{ showActions=false;onMoveInside() })
             ActionMenuItem("Copiar",Icons.Default.ContentCopy,{ showActions = false; onCopy(false) },enabled=canCopy)
             ActionMenuItem("Copiar con descendientes",Icons.Default.AccountTree,{ showActions = false; onCopy(true) },enabled=canCopy && canCopyDescendants)
             androidx.compose.material3.HorizontalDivider()
             ActionMenuItem("Eliminar",Icons.Default.Delete,{ showActions = false; onDelete() },
                 Modifier.semantics { contentDescription = "Eliminar proyecto" },destructive=true)
         }
+    }
+}
+
+@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+@Composable
+private fun ProjectAlerts(alerts: ProjectCardAlerts) {
+    if (alerts.highPriority == 0 && alerts.dueToday == 0) return
+    androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+        if (alerts.highPriority > 0) ProjectAlert(Icons.Default.PriorityHigh,
+            if (alerts.highPriority == 1) "1 prioritaria" else "${alerts.highPriority} prioritarias",
+            com.r0ybt.arachn0de.ui.theme.SemanticColors.HighPriority)
+        if (alerts.dueToday > 0) ProjectAlert(Icons.Default.Today,
+            if (alerts.dueToday == 1) "1 vence hoy" else "${alerts.dueToday} vencen hoy",
+            com.r0ybt.arachn0de.ui.theme.SemanticColors.Upcoming)
+    }
+}
+
+@Composable
+private fun ProjectAlert(icon: androidx.compose.ui.graphics.vector.ImageVector, label: String, color: androidx.compose.ui.graphics.Color) {
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+        Icon(icon, contentDescription = null, tint = color, modifier = Modifier.size(16.dp))
+        Text(label, color = color, fontSize = ContentTypography.SmallMetadata)
     }
 }
 

@@ -1,0 +1,794 @@
+{
+  "version": "santiago-2024-02-beta1-r1",
+  "checkedAt": "2026-10-09",
+  "sources": [
+    "https://www.red.cl/mapas-y-horarios/metro/",
+    "https://www.red.cl/wp-content/uploads/2025/07/metrored_servicios_2023_07_19.pdf",
+    "https://www.metro.cl/el-viaje/ruta-expresa",
+    "https://www.metro.cl/images/mapa_ruta_expresa_l2.png?v=2024020601",
+    "https://www.metro.cl/images/mapa_ruta_expresa_l4.png?v=2024020601",
+    "https://www.metro.cl/images/mapa_ruta_expresa_l5_2024.png?v=2024020601"
+  ],
+  "stations": [
+    {
+      "id": "san-pablo",
+      "name": "San Pablo"
+    },
+    {
+      "id": "neptuno",
+      "name": "Neptuno"
+    },
+    {
+      "id": "pajaritos",
+      "name": "Pajaritos"
+    },
+    {
+      "id": "las-rejas",
+      "name": "Las Rejas"
+    },
+    {
+      "id": "ecuador",
+      "name": "Ecuador"
+    },
+    {
+      "id": "san-alberto-hurtado",
+      "name": "San Alberto Hurtado"
+    },
+    {
+      "id": "universidad-de-santiago",
+      "name": "Universidad de Santiago"
+    },
+    {
+      "id": "estacion-central",
+      "name": "Estación Central"
+    },
+    {
+      "id": "union-latinoamericana",
+      "name": "Unión Latinoamericana"
+    },
+    {
+      "id": "republica",
+      "name": "República"
+    },
+    {
+      "id": "los-heroes",
+      "name": "Los Héroes"
+    },
+    {
+      "id": "la-moneda",
+      "name": "La Moneda"
+    },
+    {
+      "id": "universidad-de-chile",
+      "name": "Universidad de Chile"
+    },
+    {
+      "id": "santa-lucia",
+      "name": "Santa Lucía"
+    },
+    {
+      "id": "universidad-catolica",
+      "name": "Universidad Católica"
+    },
+    {
+      "id": "baquedano",
+      "name": "Baquedano"
+    },
+    {
+      "id": "salvador",
+      "name": "Salvador"
+    },
+    {
+      "id": "manuel-montt",
+      "name": "Manuel Montt"
+    },
+    {
+      "id": "pedro-de-valdivia",
+      "name": "Pedro de Valdivia"
+    },
+    {
+      "id": "los-leones",
+      "name": "Los Leones"
+    },
+    {
+      "id": "tobalaba",
+      "name": "Tobalaba"
+    },
+    {
+      "id": "el-golf",
+      "name": "El Golf"
+    },
+    {
+      "id": "alcantara",
+      "name": "Alcántara"
+    },
+    {
+      "id": "escuela-militar",
+      "name": "Escuela Militar"
+    },
+    {
+      "id": "manquehue",
+      "name": "Manquehue"
+    },
+    {
+      "id": "hernando-de-magallanes",
+      "name": "Hernando de Magallanes"
+    },
+    {
+      "id": "los-dominicos",
+      "name": "Los Dominicos"
+    },
+    {
+      "id": "vespucio-norte",
+      "name": "Vespucio Norte"
+    },
+    {
+      "id": "zapadores",
+      "name": "Zapadores"
+    },
+    {
+      "id": "dorsal",
+      "name": "Dorsal"
+    },
+    {
+      "id": "einstein",
+      "name": "Einstein"
+    },
+    {
+      "id": "cementerios",
+      "name": "Cementerios"
+    },
+    {
+      "id": "cerro-blanco",
+      "name": "Cerro Blanco"
+    },
+    {
+      "id": "patronato",
+      "name": "Patronato"
+    },
+    {
+      "id": "puente-cal-y-canto",
+      "name": "Puente Cal y Canto"
+    },
+    {
+      "id": "santa-ana",
+      "name": "Santa Ana"
+    },
+    {
+      "id": "toesca",
+      "name": "Toesca"
+    },
+    {
+      "id": "parque-o-higgins",
+      "name": "Parque O’Higgins"
+    },
+    {
+      "id": "rondizzoni",
+      "name": "Rondizzoni"
+    },
+    {
+      "id": "franklin",
+      "name": "Franklin"
+    },
+    {
+      "id": "el-llano",
+      "name": "El Llano"
+    },
+    {
+      "id": "san-miguel",
+      "name": "San Miguel"
+    },
+    {
+      "id": "lo-vial",
+      "name": "Lo Vial"
+    },
+    {
+      "id": "departamental",
+      "name": "Departamental"
+    },
+    {
+      "id": "ciudad-del-nino",
+      "name": "Ciudad del Niño"
+    },
+    {
+      "id": "lo-ovalle",
+      "name": "Lo Ovalle"
+    },
+    {
+      "id": "el-parron",
+      "name": "El Parrón"
+    },
+    {
+      "id": "la-cisterna",
+      "name": "La Cisterna"
+    },
+    {
+      "id": "el-bosque",
+      "name": "El Bosque"
+    },
+    {
+      "id": "observatorio",
+      "name": "Observatorio"
+    },
+    {
+      "id": "copa-lo-martinez",
+      "name": "Copa Lo Martínez"
+    },
+    {
+      "id": "hospital-el-pino",
+      "name": "Hospital El Pino"
+    },
+    {
+      "id": "plaza-quilicura",
+      "name": "Plaza Quilicura"
+    },
+    {
+      "id": "lo-cruzat",
+      "name": "Lo Cruzat"
+    },
+    {
+      "id": "ferrocarril",
+      "name": "Ferrocarril"
+    },
+    {
+      "id": "los-libertadores",
+      "name": "Los Libertadores"
+    },
+    {
+      "id": "cardenal-caro",
+      "name": "Cardenal Caro"
+    },
+    {
+      "id": "vivaceta",
+      "name": "Vivaceta"
+    },
+    {
+      "id": "conchali",
+      "name": "Conchalí"
+    },
+    {
+      "id": "plaza-chacabuco",
+      "name": "Plaza Chacabuco"
+    },
+    {
+      "id": "hospitales",
+      "name": "Hospitales"
+    },
+    {
+      "id": "plaza-de-armas",
+      "name": "Plaza de Armas"
+    },
+    {
+      "id": "parque-almagro",
+      "name": "Parque Almagro"
+    },
+    {
+      "id": "matta",
+      "name": "Matta"
+    },
+    {
+      "id": "irarrazaval",
+      "name": "Irarrázaval"
+    },
+    {
+      "id": "monsenor-eyzaguirre",
+      "name": "Monseñor Eyzaguirre"
+    },
+    {
+      "id": "nunoa",
+      "name": "Ñuñoa"
+    },
+    {
+      "id": "chile-espana",
+      "name": "Chile-España"
+    },
+    {
+      "id": "villa-frei",
+      "name": "Villa Frei"
+    },
+    {
+      "id": "plaza-egana",
+      "name": "Plaza Egaña"
+    },
+    {
+      "id": "fernando-castillo-velasco",
+      "name": "Fernando Castillo Velasco"
+    },
+    {
+      "id": "cristobal-colon",
+      "name": "Cristóbal Colón"
+    },
+    {
+      "id": "francisco-bilbao",
+      "name": "Francisco Bilbao"
+    },
+    {
+      "id": "principe-de-gales",
+      "name": "Príncipe de Gales"
+    },
+    {
+      "id": "simon-bolivar",
+      "name": "Simón Bolívar"
+    },
+    {
+      "id": "los-orientales",
+      "name": "Los Orientales"
+    },
+    {
+      "id": "grecia",
+      "name": "Grecia"
+    },
+    {
+      "id": "los-presidentes",
+      "name": "Los Presidentes"
+    },
+    {
+      "id": "quilin",
+      "name": "Quilín"
+    },
+    {
+      "id": "las-torres",
+      "name": "Las Torres"
+    },
+    {
+      "id": "macul",
+      "name": "Macul"
+    },
+    {
+      "id": "vicuna-mackenna",
+      "name": "Vicuña Mackenna"
+    },
+    {
+      "id": "vicente-valdes",
+      "name": "Vicente Valdés"
+    },
+    {
+      "id": "rojas-magallanes",
+      "name": "Rojas Magallanes"
+    },
+    {
+      "id": "trinidad",
+      "name": "Trinidad"
+    },
+    {
+      "id": "san-jose-de-la-estrella",
+      "name": "San José de la Estrella"
+    },
+    {
+      "id": "los-quillayes",
+      "name": "Los Quillayes"
+    },
+    {
+      "id": "elisa-correa",
+      "name": "Elisa Correa"
+    },
+    {
+      "id": "hospital-sotero-del-rio",
+      "name": "Hospital Sótero del Río"
+    },
+    {
+      "id": "protectora-de-la-infancia",
+      "name": "Protectora de la Infancia"
+    },
+    {
+      "id": "las-mercedes",
+      "name": "Las Mercedes"
+    },
+    {
+      "id": "plaza-de-puente-alto",
+      "name": "Plaza de Puente Alto"
+    },
+    {
+      "id": "santa-julia",
+      "name": "Santa Julia"
+    },
+    {
+      "id": "la-granja",
+      "name": "La Granja"
+    },
+    {
+      "id": "santa-rosa",
+      "name": "Santa Rosa"
+    },
+    {
+      "id": "san-ramon",
+      "name": "San Ramón"
+    },
+    {
+      "id": "plaza-de-maipu",
+      "name": "Plaza de Maipú"
+    },
+    {
+      "id": "santiago-bueras",
+      "name": "Santiago Bueras"
+    },
+    {
+      "id": "del-sol",
+      "name": "Del Sol"
+    },
+    {
+      "id": "monte-tabor",
+      "name": "Monte Tabor"
+    },
+    {
+      "id": "las-parcelas",
+      "name": "Las Parcelas"
+    },
+    {
+      "id": "laguna-sur",
+      "name": "Laguna Sur"
+    },
+    {
+      "id": "barrancas",
+      "name": "Barrancas"
+    },
+    {
+      "id": "pudahuel",
+      "name": "Pudahuel"
+    },
+    {
+      "id": "lo-prado",
+      "name": "Lo Prado"
+    },
+    {
+      "id": "blanqueado",
+      "name": "Blanqueado"
+    },
+    {
+      "id": "gruta-de-lourdes",
+      "name": "Gruta de Lourdes"
+    },
+    {
+      "id": "quinta-normal",
+      "name": "Quinta Normal"
+    },
+    {
+      "id": "cumming",
+      "name": "Cumming"
+    },
+    {
+      "id": "bellas-artes",
+      "name": "Bellas Artes"
+    },
+    {
+      "id": "parque-bustamante",
+      "name": "Parque Bustamante"
+    },
+    {
+      "id": "santa-isabel",
+      "name": "Santa Isabel"
+    },
+    {
+      "id": "nuble",
+      "name": "Ñuble"
+    },
+    {
+      "id": "rodrigo-de-araya",
+      "name": "Rodrigo de Araya"
+    },
+    {
+      "id": "carlos-valdovinos",
+      "name": "Carlos Valdovinos"
+    },
+    {
+      "id": "camino-agricola",
+      "name": "Camino Agrícola"
+    },
+    {
+      "id": "san-joaquin",
+      "name": "San Joaquín"
+    },
+    {
+      "id": "pedrero",
+      "name": "Pedrero"
+    },
+    {
+      "id": "mirador",
+      "name": "Mirador"
+    },
+    {
+      "id": "bellavista-de-la-florida",
+      "name": "Bellavista de La Florida"
+    },
+    {
+      "id": "cerrillos",
+      "name": "Cerrillos"
+    },
+    {
+      "id": "lo-valledor",
+      "name": "Lo Valledor"
+    },
+    {
+      "id": "presidente-pedro-aguirre-cerda",
+      "name": "Presidente Pedro Aguirre Cerda"
+    },
+    {
+      "id": "bio-bio",
+      "name": "Bío Bío"
+    },
+    {
+      "id": "estadio-nacional",
+      "name": "Estadio Nacional"
+    },
+    {
+      "id": "ines-de-suarez",
+      "name": "Inés de Suárez"
+    }
+  ],
+  "lines": [
+    {
+      "id": "L1",
+      "color": "E2231A",
+      "stations": [
+        "san-pablo",
+        "neptuno",
+        "pajaritos",
+        "las-rejas",
+        "ecuador",
+        "san-alberto-hurtado",
+        "universidad-de-santiago",
+        "estacion-central",
+        "union-latinoamericana",
+        "republica",
+        "los-heroes",
+        "la-moneda",
+        "universidad-de-chile",
+        "santa-lucia",
+        "universidad-catolica",
+        "baquedano",
+        "salvador",
+        "manuel-montt",
+        "pedro-de-valdivia",
+        "los-leones",
+        "tobalaba",
+        "el-golf",
+        "alcantara",
+        "escuela-militar",
+        "manquehue",
+        "hernando-de-magallanes",
+        "los-dominicos"
+      ],
+      "express": []
+    },
+    {
+      "id": "L2",
+      "color": "F9B800",
+      "stations": [
+        "vespucio-norte",
+        "zapadores",
+        "dorsal",
+        "einstein",
+        "cementerios",
+        "cerro-blanco",
+        "patronato",
+        "puente-cal-y-canto",
+        "santa-ana",
+        "los-heroes",
+        "toesca",
+        "parque-o-higgins",
+        "rondizzoni",
+        "franklin",
+        "el-llano",
+        "san-miguel",
+        "lo-vial",
+        "departamental",
+        "ciudad-del-nino",
+        "lo-ovalle",
+        "el-parron",
+        "la-cisterna",
+        "el-bosque",
+        "observatorio",
+        "copa-lo-martinez",
+        "hospital-el-pino"
+      ],
+      "express": [
+        "C",
+        "C",
+        "R",
+        "V",
+        "R",
+        "V",
+        "R",
+        "C",
+        "C",
+        "C",
+        "V",
+        "R",
+        "V",
+        "C",
+        "R",
+        "V",
+        "R",
+        "V",
+        "R",
+        "C",
+        "V",
+        "C",
+        "R",
+        "V",
+        "R",
+        "C"
+      ]
+    },
+    {
+      "id": "L3",
+      "color": "8D4925",
+      "stations": [
+        "plaza-quilicura",
+        "lo-cruzat",
+        "ferrocarril",
+        "los-libertadores",
+        "cardenal-caro",
+        "vivaceta",
+        "conchali",
+        "plaza-chacabuco",
+        "hospitales",
+        "puente-cal-y-canto",
+        "plaza-de-armas",
+        "universidad-de-chile",
+        "parque-almagro",
+        "matta",
+        "irarrazaval",
+        "monsenor-eyzaguirre",
+        "nunoa",
+        "chile-espana",
+        "villa-frei",
+        "plaza-egana",
+        "fernando-castillo-velasco"
+      ],
+      "express": []
+    },
+    {
+      "id": "L4",
+      "color": "344DA3",
+      "stations": [
+        "tobalaba",
+        "cristobal-colon",
+        "francisco-bilbao",
+        "principe-de-gales",
+        "simon-bolivar",
+        "plaza-egana",
+        "los-orientales",
+        "grecia",
+        "los-presidentes",
+        "quilin",
+        "las-torres",
+        "macul",
+        "vicuna-mackenna",
+        "vicente-valdes",
+        "rojas-magallanes",
+        "trinidad",
+        "san-jose-de-la-estrella",
+        "los-quillayes",
+        "elisa-correa",
+        "hospital-sotero-del-rio",
+        "protectora-de-la-infancia",
+        "las-mercedes",
+        "plaza-de-puente-alto"
+      ],
+      "express": [
+        "C",
+        "V",
+        "C",
+        "R",
+        "V",
+        "C",
+        "R",
+        "V",
+        "R",
+        "V",
+        "R",
+        "C",
+        "C",
+        "C",
+        "V",
+        "R",
+        "V",
+        "R",
+        "C",
+        "C",
+        "V",
+        "R",
+        "C"
+      ]
+    },
+    {
+      "id": "L4A",
+      "color": "00A6D2",
+      "stations": [
+        "vicuna-mackenna",
+        "santa-julia",
+        "la-granja",
+        "santa-rosa",
+        "san-ramon",
+        "la-cisterna"
+      ],
+      "express": []
+    },
+    {
+      "id": "L5",
+      "color": "009B6D",
+      "stations": [
+        "plaza-de-maipu",
+        "santiago-bueras",
+        "del-sol",
+        "monte-tabor",
+        "las-parcelas",
+        "laguna-sur",
+        "barrancas",
+        "pudahuel",
+        "san-pablo",
+        "lo-prado",
+        "blanqueado",
+        "gruta-de-lourdes",
+        "quinta-normal",
+        "cumming",
+        "santa-ana",
+        "plaza-de-armas",
+        "bellas-artes",
+        "baquedano",
+        "parque-bustamante",
+        "santa-isabel",
+        "irarrazaval",
+        "nuble",
+        "rodrigo-de-araya",
+        "carlos-valdovinos",
+        "camino-agricola",
+        "san-joaquin",
+        "pedrero",
+        "mirador",
+        "bellavista-de-la-florida",
+        "vicente-valdes"
+      ],
+      "express": [
+        "C",
+        "R",
+        "V",
+        "R",
+        "V",
+        "C",
+        "R",
+        "C",
+        "C",
+        "V",
+        "R",
+        "V",
+        "R",
+        "V",
+        "C",
+        "C",
+        "C",
+        "C",
+        "R",
+        "V",
+        "C",
+        "C",
+        "R",
+        "V",
+        "R",
+        "C",
+        "V",
+        "R",
+        "C",
+        "C"
+      ]
+    },
+    {
+      "id": "L6",
+      "color": "A63795",
+      "stations": [
+        "cerrillos",
+        "lo-valledor",
+        "presidente-pedro-aguirre-cerda",
+        "franklin",
+        "bio-bio",
+        "nuble",
+        "estadio-nacional",
+        "nunoa",
+        "ines-de-suarez",
+        "los-leones"
+      ],
+      "express": []
+    }
+  ]
+}

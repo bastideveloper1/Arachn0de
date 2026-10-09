@@ -31,9 +31,9 @@ import kotlin.math.roundToInt
 
 /** Same geometry for the editor, list, selectors and responsible avatars. */
 @Composable
-internal fun FramedAvatar(bitmap: Bitmap, framing: AvatarFraming, modifier: Modifier = Modifier) {
+internal fun FramedAvatar(bitmap: Bitmap, framing: AvatarFraming, modifier: Modifier = Modifier, shape: androidx.compose.ui.graphics.Shape = CircleShape) {
     val image = remember(bitmap) { bitmap.asImageBitmap() }
-    Canvas(modifier.clip(CircleShape)) {
+    Canvas(modifier.clip(shape)) {
         drawFramedAvatar(image, framing)
     }
 }
@@ -44,21 +44,23 @@ internal fun DrawScope.drawFramedAvatar(image: ImageBitmap, framing: AvatarFrami
 }
 
 @Composable
-internal fun AvatarEditor(file: String, initial: AvatarFraming, onConfirm: (AvatarFraming) -> Unit, onCancel: () -> Unit) {
+internal fun AvatarEditor(file: String, initial: AvatarFraming, onConfirm: (AvatarFraming) -> Unit, onCancel: () -> Unit, directoryName: String = "avatars", title: String = "Encuadrar avatar",
+    shape: androidx.compose.ui.graphics.Shape = CircleShape) {
     val context = LocalContext.current
-    val bitmap by produceState<Bitmap?>(null, file) { value = withContext(Dispatchers.IO) { runCatching { AvatarStore(context).read(file) }.getOrNull() } }
+    val storageContext=privateStorageContext(context)
+    val bitmap by produceState<Bitmap?>(null, file, directoryName) { value = withContext(Dispatchers.IO) { runCatching { AvatarStore(storageContext, directoryName).read(file) }.getOrNull() } }
     var zoom by rememberSaveable(file) { mutableFloatStateOf(initial.zoom) }
     var x by rememberSaveable(file) { mutableFloatStateOf(initial.x) }
     var y by rememberSaveable(file) { mutableFloatStateOf(initial.y) }
     fun set(value: AvatarFraming) { zoom = value.zoom; x = value.x; y = value.y }
-    AlertDialog(onDismissRequest = onCancel, title = { Text("Encuadrar avatar") }, text = {
+    AlertDialog(onDismissRequest = onCancel, title = { Text(title) }, text = {
         Column(Modifier.verticalScroll(rememberScrollState())) {
             bitmap?.let { image ->
                 FramedAvatar(image, AvatarFraming(zoom, x, y), Modifier.size(240.dp).semantics { contentDescription = "Vista previa del avatar" }.pointerInput(file, image) {
                     detectTransformGestures { centroid, pan, factor, _ ->
                         set(AvatarFraming(zoom, x, y).transform(image.width.toFloat(), image.height.toFloat(), size.width.toFloat(), pan.x, pan.y, factor, centroid.x, centroid.y))
                     }
-                })
+                }, shape = shape)
                 Text("Arrastra la fotografía o pellizca para ajustar el zoom.")
                 Row {
                     TextButton(onClick = { set(AvatarFraming(zoom, x, y).transform(image.width.toFloat(), image.height.toFloat(), 240f, 0f, 0f, 1 / 1.2f)) }, enabled = zoom > 1f) { Text("Alejar") }

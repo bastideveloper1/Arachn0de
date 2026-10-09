@@ -31,7 +31,7 @@ class CreationGroupBackupTest {
         nodes.createBatch("p",null,"second",listOf(spec))
         val before=backup.snapshot()
         val encoded=BackupJson.encode(before)
-        assertEquals(12,JSONObject(encoded.toString(Charsets.UTF_8)).getInt("dataVersion"))
+        assertEquals(17, JSONObject(encoded.toString(Charsets.UTF_8)).getInt("dataVersion"))
         backup.restore(BackupJson.decode(encoded))
         val after=backup.snapshot()
         assertEquals(before.copy(createdAt=after.createdAt),after)
@@ -46,7 +46,7 @@ class CreationGroupBackupTest {
         val before=backup.snapshot()
         for(version in 1..5) {
             val json=JSONObject(BackupJson.encode(before).toString(Charsets.UTF_8)).apply {
-                put("dataVersion",version); for (personIndex in 0 until getJSONArray("persons").length()) { getJSONArray("persons").getJSONObject(personIndex).apply { remove("avatarZoom"); remove("avatarX"); remove("avatarY") } }; remove("technologies"); remove("nodeTechnologies"); remove("projectTechnologies"); remove("technologyIcons"); remove("attachmentFiles"); remove("nodeAttachments"); remove("projectAttachments"); for(i in 0 until getJSONArray("nodes").length()) { getJSONArray("nodes").getJSONObject(i).remove("sprintMode"); getJSONArray("nodes").getJSONObject(i).remove("workState") }; for(i in 0 until getJSONArray("nodes").length()) { val row=getJSONArray("nodes").getJSONObject(i);if(row.getString("purpose")=="LAYER") row.put("purpose","ACTION") }; remove("creationDefaults"); remove("defaultsTags"); remove("defaultsPeople")
+                put("dataVersion",version); BackupFixture.removeSprintFields(this); remove("metroPreferences"); remove("metroJourneys"); remove("gameSession"); remove("conversionRoots"); remove("conversionPeople"); remove("conversionTags"); remove("conversionEvents"); remove("conversionWorkStates"); remove("nodeSortPreferences"); remove("imageFiles"); remove("projectPhotos"); remove("projectPhotoImages"); for (personIndex in 0 until getJSONArray("persons").length()) { getJSONArray("persons").getJSONObject(personIndex).apply { remove("avatarZoom"); remove("avatarX"); remove("avatarY") } }; remove("technologies"); remove("nodeTechnologies"); remove("projectTechnologies"); remove("technologyIcons"); remove("attachmentFiles"); remove("nodeAttachments"); remove("projectAttachments"); for(i in 0 until getJSONArray("nodes").length()) { getJSONArray("nodes").getJSONObject(i).remove("sprintMode"); getJSONArray("nodes").getJSONObject(i).remove("workState") }; for(i in 0 until getJSONArray("nodes").length()) { val row=getJSONArray("nodes").getJSONObject(i);if(row.getString("purpose")=="LAYER") row.put("purpose","ACTION") }; remove("creationDefaults"); remove("defaultsTags"); remove("defaultsPeople")
                 for(i in 0 until getJSONArray("nodes").length()) getJSONArray("nodes").getJSONObject(i).remove("creationGroupId")
                 if(version<5) for(key in listOf("nodes","recurrenceRules")) for(i in 0 until getJSONArray(key).length()) getJSONArray(key).getJSONObject(i).remove("priority")
                 if(version<4) remove("nodeEvents")

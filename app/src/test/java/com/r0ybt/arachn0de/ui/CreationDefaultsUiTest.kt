@@ -17,7 +17,7 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 
-@RunWith(RobolectricTestRunner::class) @Config(sdk=[28])
+@RunWith(RobolectricTestRunner::class) @Config(application=com.r0ybt.arachn0de.security.LegacyUiTestApplication::class,sdk=[28])
 class CreationDefaultsUiTest {
     private val compose=createAndroidComposeRule<ComponentActivity>()
     private lateinit var app:Arachn0deApplication
@@ -89,7 +89,7 @@ class CreationDefaultsUiTest {
         runBlocking { app.nodeRepository.creationDefaults.save(DefaultsScope.Global,CreationDefaults(obligation=DefaultValue.Own(true),priority=DefaultValue.Own(Priority.HIGH),start=DefaultValue.Own(DefaultDate(DefaultDateKind.TOMORROW)),due=DefaultValue.Own(DefaultDate(DefaultDateKind.TODAY)))) }
         open();settings();choose("Moneda","USD");choose("Tipo","Nota")
         recreateHost();await("Guardar valores predeterminados")
-        compose.onNodeWithTag("defaults-choice:Tipo").performScrollTo().assert(hasText("Elegido aquí · Nota"))
+        compose.onNodeWithTag("defaults-choice:Tipo").performScrollTo().assert(hasText("Aquí · Nota"))
         save();assertEquals(NodePurpose.NOTE,runBlocking { app.nodeRepository.creationDefaults.configuration(DefaultsScope.Global).effective.purpose })
         fresh();compose.onNodeWithText("Título").performTextInput("Nueva nota");compose.onNodeWithText("Crear").performClick()
         compose.waitUntil(10000) { runBlocking { app.nodeRepository.getProjectNodes(project.id).any { it.title=="Nueva nota" } } }
@@ -119,7 +119,7 @@ class CreationDefaultsUiTest {
         open();fresh();compose.onNodeWithText("Título").performTextInput("Borrador anterior");compose.onNodeWithText("Cerrar").performClick()
         settings();choose("Tipo","Nota");save();fresh()
         compose.onNodeWithText("Borrador anterior").assertExists();compose.onNodeWithText("Tarea").assertExists()
-        compose.onNodeWithText("Descartar").performScrollTo().performClick();compose.onNodeWithText("Descartar borrador").performClick()
+        compose.onNodeWithText("Descartar borrador").performScrollTo().performClick();compose.onAllNodesWithText("Descartar borrador").onLast().performClick()
         fresh();compose.onNodeWithText("Nota").assertExists()
     }
     @Test fun invalidDayAndHourBlockSaveAndCorrectionPersistsRules() {

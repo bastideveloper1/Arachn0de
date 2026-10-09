@@ -24,8 +24,9 @@ import com.r0ybt.arachn0de.ui.theme.Arachn0deColors
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
-internal fun AttachmentDescriptionEditor(draft: EditorDraft, enabled: Boolean, project: Boolean = false,
+internal fun AttachmentDescriptionEditor(draft: EditorDraft, enabled: Boolean, project: Boolean = false, focusRequester: androidx.compose.ui.focus.FocusRequester? = null,
     repository: com.r0ybt.arachn0de.data.repository.AttachmentRepository = (LocalContext.current.applicationContext as Arachn0deApplication).attachmentRepository) {
     val scope = rememberCoroutineScope()
     val files by remember(repository) { repository.observeFiles() }.collectAsState(emptyList())
@@ -41,6 +42,7 @@ internal fun AttachmentDescriptionEditor(draft: EditorDraft, enabled: Boolean, p
         } catch (cancelled: CancellationException) { throw cancelled }
         catch (_: Exception) { draft.attachmentError = "No se pudieron recuperar las imágenes. Cierra y reabre el editor." }
     }
+    LaunchedEffect(restored, focusRequester) { if (restored) focusRequester?.requestFocus() }
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.PickMultipleVisualMedia(10)) { uris ->
         if (uris.size > 10) draft.attachmentError = "Selecciona como máximo 10 imágenes cada vez."
         else if (uris.isNotEmpty()) scope.launch {
@@ -60,15 +62,16 @@ internal fun AttachmentDescriptionEditor(draft: EditorDraft, enabled: Boolean, p
         if (draft.editDescription(value)) inputValue = value
         else draft.attachmentError = "Para quitar una imagen, toca su referencia y usa Quitar en el visor."
     }, enabled = enabled && restored && !draft.attachmentBusy,
-        transformation = AttachmentVisualTransformation(byId), onReference = { viewingAt = it })
-    Row {
+        focusRequester = focusRequester, transformation = AttachmentVisualTransformation(byId), onReference = { viewingAt = it })
+    val supportsMode = project || draft.id != null || (!draft.batchEnabled && draft.recurrenceFrequency == "NONE")
+    FlowRow(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
         DescriptionParser.Format.entries.forEach { format ->
             val name = when (format) {
                 DescriptionParser.Format.Bold -> "Negrita"
                 DescriptionParser.Format.Italic -> "Cursiva"
                 DescriptionParser.Format.Underline -> "Subrayado"
             }
-            TextButton(modifier = Modifier.width(40.dp).semantics { contentDescription = name },
+            TextButton(modifier = Modifier.sizeIn(minWidth = 48.dp, minHeight = 48.dp).semantics { contentDescription = name },
                 enabled = enabled && restored && !draft.attachmentBusy && draft.descriptionSelectionStart != draft.descriptionSelectionEnd,
                 onClick = {
                     if (!draft.toggleDescriptionFormat(format)) draft.attachmentError = "Selecciona texto o una referencia completa para aplicar formato."
@@ -79,11 +82,10 @@ internal fun AttachmentDescriptionEditor(draft: EditorDraft, enabled: Boolean, p
                     textDecoration = if (format == DescriptionParser.Format.Underline) TextDecoration.Underline else null)
             }
         }
-    }
-    val supportsMode = project || draft.id != null || (!draft.batchEnabled && draft.recurrenceFrequency == "NONE")
-    TextButton(enabled = enabled && restored && !draft.attachmentBusy && supportsMode,
-        onClick = { picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) }) {
-        Text(if (draft.attachmentBusy) "Importando imágenes…" else "Adjuntar imagen", color = Arachn0deColors.Accent)
+        TextButton(enabled = enabled && restored && !draft.attachmentBusy && supportsMode,
+            onClick = { picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) }) {
+            Text(if (draft.attachmentBusy) "Importando imágenes…" else "Imagen", color = Arachn0deColors.Accent)
+        }
     }
     if (!supportsMode) Text("En lotes o recurrencias, añade las imágenes a cada elemento después de crearlo.", style = MaterialTheme.typography.bodySmall)
     var labelAt by remember(draft.attachmentDraftId) { mutableStateOf<Int?>(null) }

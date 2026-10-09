@@ -1,5 +1,11 @@
 # Publicar Arachn0de manualmente
 
+Preparación vigente para WhatsApp: **0.3.0 / 9**, mismo `applicationId` y firma oficial. La referencia local `release-assets/Arachn0de-v0.2.5.apk` declara **0.2.5 / 7** y su certificado coincide con el SHA-256 oficial documentado abajo. El checkout anterior declaraba **0.2.5-beta-test1 / 8**. El incremento MINOR corresponde a las nuevas funcionalidades compatibles. Los apartados de v0.2.4 que siguen conservan el protocolo histórico, no la versión objetivo actual.
+
+Desde una terminal Bash local, ejecutar `bash release-assets/preparar-apk-0.3.0.sh`. Detecta ruta y alias desde las variables/propiedades existentes; en su ausencia reutiliza la copia usada para 0.2.5, `~/.local/share/arachn0de/signing/arachn0de-release.jks`, y su alias `arachn0de-release`. También reconoce `firma.jks` en el home o en la carpeta local de firma; si falta el alias lo identifica mediante lectura del certificado oficial, sin crear ni configurar claves. Solicita únicamente ambas contraseñas mediante `read -s`; Enter en la segunda usa la contraseña real del keystore. Exporta las cuatro variables del mecanismo existente solo para la sesión, compila Release sin caché de configuración y borra las variables de contraseñas al terminar. No introducir contraseñas en el chat ni en argumentos de comandos. No crea claves ni modifica datos de Android.
+
+El helper verifica firma, certificado oficial, identificador, versión/código, ausencia de debuggable e integridad del APK; informa qué PNG faltan antes de compilar y después inspecciona su inclusión. Solo tras verificar copia a `release-assets/Arachn0de-v0.3.0.apk`, con checksum propio, sin reemplazar APKs históricas. Es un archivo local ignorado por Git. No envía archivos ni publica; tampoco repite pruebas, lint ni compilaciones Debug ya verificadas. Los cinco PNG definitivos `pantano.png`, `pastoseco.png`, `terrenocueva.png`, `paredcueva.png`, `araña.png` están incorporados sin modificación en `app/src/main/assets/game/`. La versión sigue en 0.3.0 / 9. Las credenciales se introducen localmente; no se ha ejecutado la firma ni hay una APK 0.3.0 firmada/verificada todavía.
+
 Repositorio y canal oficial: https://github.com/bastideveloper1/Arachn0de.
 Este documento prepara v0.2.4 Beta (Room 16 / Backup lógico 9); no autoriza commit, push, tag ni publicación. El updater interno ya fue validado físicamente en v0.2.1 → v0.2.2.
 
@@ -176,3 +182,21 @@ Antes de preparar los assets de un release, revisar el **Contrato de persistenci
 - [ ] Verificar el contrato de liberación de archivos: última referencia, reservas, cancelación, caché acotada y recuperación de limpieza pendiente.
 
 Si hay datos nuevos que el backup no puede recuperar, la función no está terminada y no debe darse por lista para release. Esta revisión complementa las comprobaciones existentes; no modifica el protocolo de firma, versionado o publicación ni autoriza commit, push o tags.
+
+
+## Metro Beta 1 (dogfooding, sin release automático)
+
+Se conserva applicationId `com.r0ybt.arachn0de`, versión 0.3.0 / 9 y la configuración de firma oficial. Este sprint genera únicamente `assembleDebug`: una APK debug no puede actualizar una instalación con la firma release. No desinstalar ni borrar datos para resolver esa diferencia. Probar la Beta sobre una instalación debug compatible o en otro dispositivo/perfil; un futuro release firmado necesita autorización y seguir el protocolo anterior.
+
+Antes de distribuir Metro, comprobar migración 23→24, backup v16 y restauración de versiones anteriores, acciones de notificación, pausa con pantalla bloqueada, corrección directa, Personas y regreso tras terminar el proceso. La verificación física de bloqueo, gestión de batería del fabricante, force-stop, reinicio y Android recientes requiere dogfooding en el equipo real; las pruebas JVM no acreditan esas políticas del dispositivo.
+
+El APK release firmado existente en `release-assets/Arachn0de-v0.3.0.apk` precede a Metro. No confundirlo con la nueva Beta debug ni anunciar Metro como incluido en ese artefacto.
+
+
+## Verificación adicional del sprint de seguridad (sin release)
+
+Se conserva 0.3.0 / 9, applicationId y firma oficial. Room 26 añade preferencias privadas y el backup JSON 18 añade preferencias/identidad dentro de ANBACK01 autenticado. Los lectores históricos permanecen; una versión anterior de la app no puede abrir el almacén cifrado ni bajar Room 26. No probar un downgrade sobre datos nuevos.
+
+Antes de una futura distribución autorizada, comprobar en Android real `NativeVaultTest`, migración de una copia representativa, contraseña/cambio/señuelo, bytes de bases/WAL/imágenes/temporales, interrupción/falta de espacio, round-trip de backup y regreso desde segundo plano/SAF. Las pruebas nativas compiladas pero no ejecutadas no acreditan la migración física ni el comportamiento del fabricante. Ver resultados reales y limitaciones en `SECURITY_SPRINT.md`.
+
+Este sprint permite únicamente compilación debug y de su APK de pruebas, sin instalación, firma release, commit, push o publicación. El APK release anterior permanece anterior a este sprint.

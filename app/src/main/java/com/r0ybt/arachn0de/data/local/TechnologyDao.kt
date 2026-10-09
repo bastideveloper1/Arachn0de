@@ -6,12 +6,12 @@ import kotlinx.coroutines.flow.Flow
 @Dao
 interface TechnologyDao {
     @Query("SELECT * FROM technologies ORDER BY name COLLATE NOCASE, id") fun observeCatalog(): Flow<List<TechnologyEntity>>
-    @Query("SELECT * FROM node_technologies") fun observeNodes(): Flow<List<NodeTechnologyEntity>>
-    @Query("SELECT * FROM project_technologies") fun observeProjects(): Flow<List<ProjectTechnologyEntity>>
+    @Query("SELECT * FROM node_technologies ORDER BY nodeId, position, technologyId") fun observeNodes(): Flow<List<NodeTechnologyEntity>>
+    @Query("SELECT * FROM project_technologies ORDER BY projectId, position, technologyId") fun observeProjects(): Flow<List<ProjectTechnologyEntity>>
     @Query("SELECT * FROM technologies ORDER BY id") suspend fun catalog(): List<TechnologyEntity>
-    @Query("SELECT * FROM node_technologies ORDER BY nodeId, technologyId") suspend fun nodes(): List<NodeTechnologyEntity>
+    @Query("SELECT * FROM node_technologies ORDER BY nodeId, position, technologyId") suspend fun nodes(): List<NodeTechnologyEntity>
     @Query("SELECT * FROM node_technologies WHERE nodeId IN (:ids)") suspend fun forNodes(ids: List<String>): List<NodeTechnologyEntity>
-    @Query("SELECT * FROM project_technologies ORDER BY projectId, technologyId") suspend fun projects(): List<ProjectTechnologyEntity>
+    @Query("SELECT * FROM project_technologies ORDER BY projectId, position, technologyId") suspend fun projects(): List<ProjectTechnologyEntity>
     @Query("SELECT * FROM technologies WHERE id = :id") suspend fun get(id: String): TechnologyEntity?
     @Insert suspend fun insert(row: TechnologyEntity)
     @Update suspend fun update(row: TechnologyEntity): Int

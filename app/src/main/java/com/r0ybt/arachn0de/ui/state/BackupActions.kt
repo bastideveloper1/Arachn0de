@@ -20,8 +20,8 @@ internal class BackupActions(
         private set
 
     suspend fun recover() { runCatching { repository.recover() } }
-    private fun run(error: String, work: suspend () -> Unit) {
-        if (busy) return
+    private fun run(error: String, onCompletion:()->Unit={}, work: suspend () -> Unit) {
+        if (busy) { onCompletion();return }
         busy = true
         notice = null
         scope.launch(Dispatchers.Main.immediate) {
@@ -31,10 +31,11 @@ internal class BackupActions(
             catch (_: Exception) { notice = error }
             catch (_: OutOfMemoryError) { notice = "No hay memoria suficiente para procesar este backup." }
             finally { busy = false }
-        }
+        }.invokeOnCompletion { onCompletion() }
     }
-    fun create(ready: (File) -> Unit) = run("No se pudo crear el backup. Revisa el espacio disponible; los datos actuales se conservan.") {
-        val file = repository.create()
+    fun create(ready:(File)->Unit)=create(null,ready)
+    fun create(password:CharArray?,ready: (File) -> Unit) = run("No se pudo crear el backup. Revisa el espacio disponible; los datos actuales se conservan.",onCompletion={password?.fill('\u0000')}) {
+        val file = try { repository.create(password) } finally { password?.fill('\u0000') }
         try { ready(file) } catch (failure: Exception) { runCatching { repository.discardPending(file.name) }; throw failure }
     }
     fun save(name: String, uri: Uri) = run("No se pudo guardar el backup. Si quedó un archivo incompleto en el destino, elimínalo y vuelve a intentarlo.") {
@@ -45,10 +46,10 @@ internal class BackupActions(
         } finally { runCatching { repository.discardPending(file.name) } }
     }
     fun cancelSave(name: String?) { name?.let { runCatching { repository.discardPending(it) } } }
-    fun inspect(uri: Uri) = run("No se pudo validar el backup: puede estar dañado, ser incompatible o superar los límites admitidos. No se han cambiado los datos actuales.") {
+    fun inspect(uri: Uri,password:CharArray?=null) = run("No se pudo validar el backup: puede estar dañado, ser incompatible o superar los límites admitidos. No se han cambiado los datos actuales.",onCompletion={password?.fill('\u0000')}) {
         repository.discard(candidate)
         candidate = null
-        candidate = documents.read(repository, uri)
+        candidate = try { documents.read(repository, uri,password) } finally { password?.fill('\u0000') }
     }
     fun noticeSelectionFailed() { notice = "Android no pudo abrir el selector de archivos. Vuelve a intentarlo." }
     fun dismiss() { if (!busy) { repository.discard(candidate); candidate = null } }

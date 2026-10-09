@@ -1,5 +1,6 @@
 package com.r0ybt.arachn0de.data.local
 
+import com.r0ybt.arachn0de.security.SecureFiles
 import android.content.Context
 import android.graphics.BitmapFactory
 import android.net.Uri
@@ -22,7 +23,7 @@ open class AttachmentStore(context: Context, private val syncDirectory: (File) -
     fun release(id: String) {
         if (lease(id).exists()) { check(lease(id).delete()); syncDirectory(staging) }
     }
-    fun reservations(draftId: String): Set<String> = staging.listFiles().orEmpty().filter { it.extension == "lease" && it.readText() == draftId }.map { it.nameWithoutExtension }.toSet()
+    fun reservations(draftId: String): Set<String> = staging.listFiles().orEmpty().filter { it.extension == "lease" && SecureFiles.text(it) == draftId }.map { it.nameWithoutExtension }.toSet()
     fun file(name: String): File {
         require(name.matches(Regex("[a-f0-9-]{36}\\.(png|jpg)")))
         uuid(name.substringBefore('.'))
@@ -39,13 +40,13 @@ open class AttachmentStore(context: Context, private val syncDirectory: (File) -
         val part = File(staging, "$id.part")
         var published: File? = null
         try {
-            FileOutputStream(lease(id)).use { it.write(draftId.toByteArray()); it.fd.sync() }
+            SecureFiles.output(lease(id)).use { it.write(draftId.toByteArray()); it.flush() }
             syncDirectory(staging)
             val digest = MessageDigest.getInstance("SHA-256")
             var size = 0L
             context.contentResolver.openInputStream(uri).use { input ->
                 requireNotNull(input) { "Imagen no disponible." }
-                FileOutputStream(part).use { output ->
+                SecureFiles.output(part).use { output ->
                     val buffer = ByteArray(8192)
                     while (true) {
                         currentCoroutineContext().ensureActive()
@@ -55,19 +56,19 @@ open class AttachmentStore(context: Context, private val syncDirectory: (File) -
                         require(size <= 20L * 1024 * 1024) { "La imagen supera 20 MiB." }
                         output.write(buffer, 0, count); digest.update(buffer, 0, count)
                     }
-                    output.fd.sync()
+                    output.flush()
                 }
             }
             val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-            BitmapFactory.decodeFile(part.path, bounds)
+            SecureFiles.decoded(part, bounds)
             val mime = bounds.outMimeType
             require(mime == "image/png" || mime == "image/jpeg") { "Solo se admiten PNG y JPEG." }
             require(bounds.outWidth in 1..32000 && bounds.outHeight in 1..32000) { "Imagen inválida." }
-            val signature = part.inputStream().use { input -> ByteArray(8).also { require(input.read(it) == 8) } }
+            val signature = SecureFiles.input(part).use { input -> ByteArray(8).also { require(input.read(it) == 8) } }
             require(if (mime == "image/png") signature.contentEquals(byteArrayOf(-119,80,78,71,13,10,26,10)) else signature[0] == (-1).toByte() && signature[1] == (-40).toByte()) { "Imagen inválida." }
             var sample = 1
             while (bounds.outWidth / sample > 512 || bounds.outHeight / sample > 512) sample *= 2
-            requireNotNull(BitmapFactory.decodeFile(part.path, BitmapFactory.Options().apply { inSampleSize = sample })) { "Imagen inválida." }.recycle()
+            requireNotNull(SecureFiles.decoded(part, BitmapFactory.Options().apply { inSampleSize = sample })) { "Imagen inválida." }.recycle()
             val original = runCatching { context.contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor -> if (cursor.moveToFirst()) cursor.getString(0) else null } }.getOrNull()?.takeIf { it.isNotBlank() } ?: (if (uri.scheme == "file") uri.lastPathSegment?.substringAfterLast('/')?.takeIf { it.isNotBlank() } else null) ?: "imagen.${if (mime == "image/png") "png" else "jpg"}"
             val name = "$id.${if (mime == "image/png") "png" else "jpg"}"
             published = file(name)

@@ -35,9 +35,9 @@ internal class NodeActions(private val repository: NodeRepository, private val s
     }
     fun saveGroup(draft: EditorDraft, members: Set<String>, editDates: Boolean, onSuccess: () -> Unit) = operation.submit("No se pudo actualizar el grupo. Se conservan tus cambios; revisa sus miembros y capacidades.", {
         val patch = draft.sharedPatch()
-        suspend fun write(description: String) = repository.updateGroup(requireNotNull(draft.id),
+        suspend fun write(description: String) = repository.withEditorAssignments(requireNotNull(draft.id),draft.technologyIds.takeIf {draft.technologiesLoaded},draft.templateMetroCatalog,draft.templateMetroPlan,draft.templateTraveler,draft.metroJourneyId,draft.metroJourneyRevision) { repository.updateGroup(requireNotNull(draft.id),
             patch.copy(description = patch.description?.let { description }), members, draft.title.trim(), description, draft.activeStart, draft.activeDue,
-            editDates, draft.obligation(), draft.financialRemovalConfirmed, draft.tagIds.toSet(), draft.priority, draft.responsibleIds.toSet())
+            editDates, draft.obligation(), draft.financialRemovalConfirmed, draft.tagIds.toSet(), draft.priority, draft.responsibleIds.toSet()) }
         if (attachments == null) write(draft.description.trim())
         else attachments.saveNodeDraft(draft.attachmentDraftId, if (patch.description != null) members.toList() else listOf(requireNotNull(draft.id)),
             draft.description.trim(), draft.removedAttachmentIds.toSet(), ::write)
@@ -46,14 +46,14 @@ internal class NodeActions(private val repository: NodeRepository, private val s
     fun save(projectId: String, parentId: String?, id: String?, title: String, description: String, creationId: String = UUID.randomUUID().toString(), startAt: Long? = null, dueAt: Long? = null, editDates: Boolean = true, purpose: com.r0ybt.arachn0de.domain.model.NodePurpose = com.r0ybt.arachn0de.domain.model.NodePurpose.ACTION, obligation: com.r0ybt.arachn0de.domain.model.Obligation? = null, removeObligation: Boolean = false, responsibleIds: Set<String> = emptySet(), tagIds: Set<String> = emptySet(), priority: com.r0ybt.arachn0de.domain.model.Priority = com.r0ybt.arachn0de.domain.model.Priority.NONE, editResponsible: Boolean = false, attachmentDraft: EditorDraft? = null, onSuccess: () -> Unit) {
         var created: CreationUndo? = null
         operation.submit("No se pudo guardar el elemento. Tus cambios siguen en el formulario.", {
-            suspend fun write(description: String): Boolean {
-                return if (id == null) { created = repository.createNodeWithUndo(projectId, parentId, title, description, creationId, startAt.takeIf { purpose == com.r0ybt.arachn0de.domain.model.NodePurpose.ACTION }, dueAt.takeIf { purpose == com.r0ybt.arachn0de.domain.model.NodePurpose.ACTION }, purpose, obligation, responsibleIds, tagIds, if (purpose == com.r0ybt.arachn0de.domain.model.NodePurpose.ACTION) priority else com.r0ybt.arachn0de.domain.model.Priority.NONE); true }
+            suspend fun write(description: String): Boolean = repository.withEditorAssignments(id ?: creationId, attachmentDraft?.technologyIds?.takeIf { attachmentDraft.technologiesLoaded }, attachmentDraft?.templateMetroCatalog, attachmentDraft?.templateMetroPlan, attachmentDraft?.templateTraveler,attachmentDraft?.metroJourneyId,attachmentDraft?.metroJourneyRevision) {
+                if (id == null) { created = repository.createNodeWithUndo(projectId, parentId, title, description, creationId, startAt.takeIf { purpose == com.r0ybt.arachn0de.domain.model.NodePurpose.ACTION }, dueAt.takeIf { purpose == com.r0ybt.arachn0de.domain.model.NodePurpose.ACTION }, purpose, obligation, responsibleIds, tagIds, if (purpose == com.r0ybt.arachn0de.domain.model.NodePurpose.ACTION) priority else com.r0ybt.arachn0de.domain.model.Priority.NONE); true }
                 else repository.updateEditor(id, title, description, startAt, dueAt, obligation, removeObligation, editDates, tagIds, if (editDates) priority else null, if (editResponsible) responsibleIds else null)
             }
             val result = if (attachments != null && attachmentDraft != null) attachments.saveNodeDraft(
                 attachmentDraft.attachmentDraftId, listOf(id ?: creationId), description, attachmentDraft.removedAttachmentIds.toSet(), ::write)
                 else write(description)
-            if (created != null) created = repository.captureCreation(listOf(creationId))
+            if (created != null) created = if(attachmentDraft?.templateMetroPlan!=null) null else repository.captureCreation(listOf(creationId))
             result
         }, { onSuccess(); created?.let { showCreated(it) } })
     }

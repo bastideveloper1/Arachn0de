@@ -15,7 +15,7 @@ import org.robolectric.annotation.Config
 import java.text.DateFormat
 import java.util.*
 
-@RunWith(RobolectricTestRunner::class) @Config(sdk=[28])
+@RunWith(RobolectricTestRunner::class) @Config(application=com.r0ybt.arachn0de.security.LegacyUiTestApplication::class,sdk=[28])
 class NodeHistoryUiTest {
     @get:Rule val compose=createComposeRule()
     private fun node(money: Boolean=false) = Node("n","p",null,"Item","",true,0,1,1,false,obligation=if (money) Obligation(15000,"CLP") else null)

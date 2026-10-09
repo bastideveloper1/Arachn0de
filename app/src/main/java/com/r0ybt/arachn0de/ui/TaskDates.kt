@@ -90,30 +90,32 @@ internal fun TaskDatesEditor(draft: EditorDraft, enabled: Boolean, picker: TaskD
     var initialInstant by picker::initialInstant
     var invalidLocalTime by picker::invalidLocalTime
     val context = LocalContext.current
-    Column {
-        (if (includeStart) listOf("Inicio" to draft.startAt, "Vencimiento" to draft.dueAt) else listOf("Vencimiento" to draft.dueAt)).forEach { (label, value) ->
-            val active = if (label == "Inicio") draft.startEnabled else draft.dueEnabled
-            if (progressive) FormToggle(if (label == "Inicio") "Fecha de inicio" else "Vencimiento", active, enabled) {
-                if (label == "Inicio") draft.startEnabled = it else draft.dueEnabled = it
-                if (!it && picker.field == label) picker.field = null
-            }
-            if (!progressive || active) Row(Modifier.fillMaxWidth()) {
-                TextButton(enabled = enabled, modifier = Modifier.weight(1f), onClick = {
-                    initialInstant = value ?: System.currentTimeMillis()
-                    val initial = Calendar.getInstance().apply { timeInMillis = initialInstant }
-                    val defaultMinute = if (draft.id == null && value == null) {
-                        if (label == "Inicio") draft.defaultStartMinute else draft.defaultDueMinute
-                    } else null
-                    picker.hour = defaultMinute?.div(60) ?: initial.get(Calendar.HOUR_OF_DAY)
-                    picker.minute = defaultMinute?.rem(60) ?: initial.get(Calendar.MINUTE)
-                    timeStage = false; selectedDay = null; invalidLocalTime = false; field = label
-                }) { Text("$label: ${value?.let(::formatTaskDate) ?: "Sin fecha"}") }
-                if (value != null) TextButton(enabled = enabled, onClick = {
-                    if (label == "Inicio") { draft.startAt = null; if (progressive) draft.startEnabled = false } else { draft.dueAt = null; if (progressive) draft.dueEnabled = false }
-                }) { Text("Quitar $label") }
+    AdaptiveFormRow((if (includeStart) listOf("Inicio" to draft.startAt, "Vencimiento" to draft.dueAt) else listOf("Vencimiento" to draft.dueAt)).map { (label, value) ->
+        {
+            Column {
+                val active = if (label == "Inicio") draft.startEnabled else draft.dueEnabled
+                if (progressive) FormToggle(label, active, enabled) {
+                    if (label == "Inicio") draft.startEnabled = it else draft.dueEnabled = it
+                    if (!it && picker.field == label) picker.field = null
+                }
+                if (!progressive || active) Row(Modifier.fillMaxWidth()) {
+                    TextButton(enabled = enabled, modifier = Modifier.weight(1f), onClick = {
+                        initialInstant = value ?: System.currentTimeMillis()
+                        val initial = Calendar.getInstance().apply { timeInMillis = initialInstant }
+                        val defaultMinute = if (draft.id == null && value == null) {
+                            if (label == "Inicio") draft.defaultStartMinute else draft.defaultDueMinute
+                        } else null
+                        picker.hour = defaultMinute?.div(60) ?: initial.get(Calendar.HOUR_OF_DAY)
+                        picker.minute = defaultMinute?.rem(60) ?: initial.get(Calendar.MINUTE)
+                        timeStage = false; selectedDay = null; invalidLocalTime = false; field = label
+                    }) { Text("$label: ${value?.let(::formatTaskDate) ?: "Sin fecha"}") }
+                    if (value != null) TextButton(enabled = enabled, onClick = {
+                        if (label == "Inicio") { draft.startAt = null; if (progressive) draft.startEnabled = false } else { draft.dueAt = null; if (progressive) draft.dueEnabled = false }
+                    }) { Text("Quitar $label") }
+                }
             }
         }
-    }
+    })
     if (field != null) {
         val initial = Calendar.getInstance().apply { timeInMillis = initialInstant }
         if (!timeStage) {

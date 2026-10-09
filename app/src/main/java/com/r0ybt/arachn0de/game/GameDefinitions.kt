@@ -79,15 +79,16 @@ object GameVision {
             val range = GameDefinitions.objects.getValue(obj.type).remoteVision
             if (range > 0 && definition.ability == obj.type) result.addAll(directional(map, obj.tileId, range, range))
         }
+        if (player.eyeTurns > 0) result.addAll(distances(map, player.tileId, GameExpansion.EYE_RADIUS).keys)
         return result
     }
     fun visiblePlayers(session: GameSession, map: GameMap, playerId: String): List<GamePlayer> {
         val visible = visibleTiles(session, map, playerId)
-        return session.players.filter { it.id !in session.ranking && (it.id == playerId || it.tileId in visible) }
+        return session.players.filter { (it.id !in session.ranking || session.phase == TurnPhase.RESULT && it.id == session.currentPlayer.id) && (it.id == playerId || it.tileId in visible) }
     }
     fun visibleObjects(session: GameSession, map: GameMap, playerId: String): List<BoardObject> {
         val visible = visibleTiles(session, map, playerId)
-        return session.objects.filter { it.active && (it.ownerPlayerId == playerId || it.tileId in visible) }
+        return session.objects.filter { it.active && it.tileId in visible }
     }
 }
 

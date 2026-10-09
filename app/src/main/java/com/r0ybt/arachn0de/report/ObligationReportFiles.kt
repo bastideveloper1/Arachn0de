@@ -1,5 +1,6 @@
 package com.r0ybt.arachn0de.report
 
+import com.r0ybt.arachn0de.security.SecureFiles
 import android.content.ClipData
 import android.content.Context
 import android.content.Intent
@@ -38,7 +39,7 @@ class ObligationReportFiles(private val context: Context) {
         internal fun publish(file: File, write: (OutputStream) -> Unit) {
             val part = File(file.parentFile, "${file.name}.part")
             try {
-                part.outputStream().use(write)
+                SecureFiles.output(part).use(write)
                 if (part.length() == 0L || !part.renameTo(file)) throw IOException("PNG publication failed")
             } catch (failure: Throwable) {
                 part.delete()
@@ -80,7 +81,12 @@ class ObligationReportFiles(private val context: Context) {
     }
 
     fun shareIntent(file: File): Intent {
-        val uri = FileProvider.getUriForFile(context, "${context.packageName}.reports", checkedFile(file))
+        val checked=checkedFile(file)
+        val uri = if(SecureFiles.protected(checked)) {
+            SecureFiles.requireActive(checked)
+            Uri.Builder().scheme("content").authority("${context.packageName}.reports").appendPath("v1")
+                .appendPath(SecureFiles.ownerId(checked).toString()).appendPath(checked.name).build()
+        } else FileProvider.getUriForFile(context, "${context.packageName}.reports", checked)
         return Intent(Intent.ACTION_SEND).apply {
             type = MIME
             putExtra(Intent.EXTRA_STREAM, uri)
@@ -103,7 +109,7 @@ class ObligationReportFiles(private val context: Context) {
     suspend fun save(file: File, uri: Uri) = withContext(Dispatchers.IO) {
         require(uri.scheme == "content") { "Invalid document URI" }
         try {
-            checkedFile(file).inputStream().use { input ->
+            SecureFiles.input(checkedFile(file)).use { input ->
                 val output = context.contentResolver.openOutputStream(uri, "wt") ?: throw IOException("Document unavailable")
                 output.use {
                     val buffer = ByteArray(32 * 1024)

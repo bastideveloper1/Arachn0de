@@ -89,7 +89,7 @@ class AttachmentBackupTest {
     @Test fun oldV9BackupRestoresOverCurrentAttachments() = runBlocking {
         seed(2)
         val json = JSONObject(BackupJson.encode(BackupFixture.empty()).toString(Charsets.UTF_8)).apply {
-            put("dataVersion", 9); for (personIndex in 0 until getJSONArray("persons").length()) { getJSONArray("persons").getJSONObject(personIndex).apply { remove("avatarZoom"); remove("avatarX"); remove("avatarY") } }; remove("technologies"); remove("nodeTechnologies"); remove("projectTechnologies"); remove("technologyIcons"); remove("attachmentFiles"); remove("nodeAttachments"); remove("projectAttachments")
+            put("dataVersion", 9); BackupFixture.removeSprintFields(this); remove("metroPreferences"); remove("metroJourneys"); remove("gameSession"); remove("conversionRoots"); remove("conversionPeople"); remove("conversionTags"); remove("conversionEvents"); remove("conversionWorkStates"); remove("nodeSortPreferences"); remove("imageFiles"); remove("projectPhotos"); remove("projectPhotoImages"); for (personIndex in 0 until getJSONArray("persons").length()) { getJSONArray("persons").getJSONObject(personIndex).apply { remove("avatarZoom"); remove("avatarX"); remove("avatarY") } }; remove("technologies"); remove("nodeTechnologies"); remove("projectTechnologies"); remove("technologyIcons"); remove("attachmentFiles"); remove("nodeAttachments"); remove("projectAttachments")
         }.toString().toByteArray()
         val archive = ByteArrayOutputStream().also { BackupContainer.write(json, it) }.toByteArray()
         val data = repo.inspect(archive.inputStream())

@@ -26,7 +26,7 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 
-@RunWith(RobolectricTestRunner::class) @Config(sdk=[28])
+@RunWith(RobolectricTestRunner::class) @Config(application=com.r0ybt.arachn0de.security.LegacyUiTestApplication::class,sdk=[28])
 class VisualActionsNavigationTest {
     @get:Rule val compose=createAndroidComposeRule<MainActivity>()
     @After fun close() { (compose.activity.application as Arachn0deApplication).database.close() }

@@ -65,8 +65,8 @@ android {
         applicationId = "com.r0ybt.arachn0de"
         minSdk = 24
         targetSdk = 36
-        versionCode = 8
-        versionName = "0.2.5-beta-test1"
+        versionCode = 9
+        versionName = "0.3.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -108,6 +108,8 @@ room {
 }
 
 dependencies {
+    implementation("org.bouncycastle:bcprov-jdk15to18:1.86")
+    implementation("net.zetetic:sqlcipher-android:4.19.1@aar")
     implementation(libs.androidx.room.runtime)
     implementation(libs.kotlinx.coroutines.core)
     ksp(libs.androidx.room.compiler)

@@ -28,28 +28,88 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.r0ybt.arachn0de.R
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 
 internal val ParchmentInk = Color(0xFF34200E)
 
 @Composable
-internal fun GameScreen(onBack: () -> Unit) {
+internal fun GameScreen(onBack: () -> Unit, clock: () -> Long = { System.currentTimeMillis() }) {
     val context = LocalContext.current.applicationContext
-    val storage = remember(context) { context.getSharedPreferences("experimental_game", android.content.Context.MODE_PRIVATE) }
-    val map = FirstGameMap.value
-    var snapshot by rememberSaveable { mutableStateOf(storage.getString("session", "") ?: "") }
+    val database = (context as com.r0ybt.arachn0de.Arachn0deApplication).database
+    val repository = remember(database) { GameStateRepository(database) }
+    val scope = rememberCoroutineScope()
+    val saved by remember(repository) { repository.observe() }.collectAsState(initial = null)
     var page by rememberSaveable { mutableStateOf("home") }
-    val session = remember(snapshot) { GameSessionCodec.decode(snapshot, map) }
-    fun update(s: GameSession) { snapshot = GameSessionCodec.encode(s) }
-    // Always read the latest authoritative phase, including two taps before recomposition.
-    fun act(action: (GameSession) -> GameSession) {
-        val latest = GameSessionCodec.decode(snapshot, map) ?: return
-        try { update(action(latest)) } catch (_: IllegalArgumentException) { /* Stale/disabled action. */ }
+    var viewerId by rememberSaveable { mutableStateOf<String?>(null) }
+    var error by remember { mutableStateOf<String?>(null) }
+    var starting by remember { mutableStateOf(false) }
+    var countdown by remember { mutableIntStateOf(10) }
+    val currentRevision = saved?.revision
+    val session = saved?.session
+    val map = session?.board ?: FirstGameMap.value
+    val lifecycle = LocalLifecycleOwner.current.lifecycle
+    var resumed by remember(lifecycle) { mutableStateOf(lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) }
+    DisposableEffect(lifecycle) {
+        val observer = LifecycleEventObserver { _, _ -> resumed = lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED) }
+        lifecycle.addObserver(observer); onDispose { lifecycle.removeObserver(observer) }
     }
-    LaunchedEffect(snapshot) { storage.edit().putString("session", snapshot).apply() }
-    LaunchedEffect(page, snapshot) {
-        if (page == "board" && session?.phase == TurnPhase.MOVING) {
-            delay(300)
-            act { if (it.phase == TurnPhase.MOVING) GameRules.step(it, map) else it }
+    fun act(action: (GameSession) -> GameSession) {
+        val revision = currentRevision ?: return
+        scope.launch { try { repository.act(revision, action) } catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled } catch (_: Exception) { error = "No se pudo guardar la acción. La partida anterior se conserva; reintenta." } }
+    }
+    val viewer = session?.players?.firstOrNull { it.id == viewerId && it.control == PlayerControl.HUMAN }
+        ?: session?.players?.firstOrNull { it.control == PlayerControl.HUMAN }
+        ?: session?.players?.firstOrNull()
+    LaunchedEffect(page, saved?.revision, resumed) {
+        val game = session ?: return@LaunchedEffect
+        if (page != "board" || !resumed) return@LaunchedEffect
+        when (game.phase) {
+            TurnPhase.MOVING -> { delay(60); act { GameExpansion.planStep(it, map) } }
+            TurnPhase.RESOLVING -> { withFrameNanos { }; withFrameNanos { }; act { GameExpansion.resolveLanding(it, map) } }
+            TurnPhase.RESULT -> {
+                if (game.resultDeadline == null) {
+                    delay(if (game.combat != null) 1800 else 900)
+                    act { GameExpansion.presentResult(it, clock()) }
+                } else {
+                    while (true) {
+                        val left = (game.resultDeadline - clock()).coerceAtLeast(0)
+                        countdown = ((left + 999) / 1000).toInt()
+                        if (left == 0L) { act { GameExpansion.continueTurn(it, map) }; break }
+                        delay(minOf(left, 200))
+                    }
+                }
+            }
+            else -> Unit
+        }
+    }
+    LaunchedEffect(page, saved?.revision, resumed, session?.currentPlayer?.control) {
+        val game = session ?: return@LaunchedEffect
+        if (page != "board" || !resumed || game.currentPlayer.control == PlayerControl.HUMAN) return@LaunchedEffect
+        delay(550)
+        val view = GameBots.observe(game, map)
+        when (game.phase) {
+            TurnPhase.HANDOFF -> act(GameRules::beginTurn)
+            TurnPhase.DAMAGE -> act(GameRules::acknowledgeDamage)
+            TurnPhase.REST -> act(GameExpansion::rest)
+            TurnPhase.READY -> {
+                val placement = GameBots.placement(view)
+                when {
+                    GameBots.useEye(view) -> act { GameExpansion.explore(it, map) }
+                    placement != null -> act(GameRules::startPlacement)
+                    else -> act { GameRules.roll(it, GameRules.rollD6()) }
+                }
+            }
+            TurnPhase.PLACING -> {
+                val place = GameBots.placement(view) ?: view.legalPlacements.firstOrNull()
+                if (game.selectedPlacementTile != null) act { GameRules.confirmPlacement(it, map) }
+                else if (place != null) act { GameRules.selectPlacement(it, map, place) } else act(GameRules::cancelPlacement)
+            }
+            TurnPhase.CHOOSING_ROUTE -> { val choice = GameBots.route(view, map.tiles.getValue(game.currentPlayer.tileId).next); act { GameExpansion.planStep(it, map, choice) } }
+            TurnPhase.COMBAT -> act { GameExpansion.combat(it, map, GameRules.rollD6(), GameRules.rollD6()) }
+            else -> Unit
         }
     }
     fun back() { if (page == "home") onBack() else page = "home" }
@@ -67,28 +127,44 @@ internal fun GameScreen(onBack: () -> Unit) {
                         color = if (castle) Color.White else MaterialTheme.colorScheme.onSurface)
                 }
                 when {
-                    page == "setup" -> GameSetup { names, characters, laps -> update(GameRules.newGame(names, characters, map, laps)); page = "board" }
+                    page == "setup" -> GameSetup(starting) { names, characters, laps, controls ->
+                        if (!starting) { starting = true; scope.launch {
+                            try { repository.start(GameRules.newGame(names, characters, GameMapGenerator.generate(kotlin.random.Random.nextLong()), laps, controls)); page = "board" }
+                            catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
+                            catch (_: Exception) { error = "No se pudo crear la partida. Reintenta." }
+                            finally { starting = false }
+                        } }
+                    }
                     page == "board" && session != null -> when (session.phase) {
-                        TurnPhase.HANDOFF -> GameHandoff(session, onBegin = { act(GameRules::beginTurn) }, onHome = { page = "home" })
+                        TurnPhase.HANDOFF -> GameHandoff(session, onBegin = { viewerId = session.currentPlayer.id; act(GameRules::beginTurn) }, onHome = { page = "home" })
                         TurnPhase.WON -> GameResults(session) { page = "home" }
                         else -> GameBoard(session, map, onRoll = { act { GameRules.roll(it, GameRules.rollD6()) } },
                             onAbility = { act(GameRules::startPlacement) }, onTile = { id -> act { GameRules.selectPlacement(it, map, id) } },
-                            onConfirm = { act { GameRules.confirmPlacement(it, map) } }, onCancel = { act(GameRules::cancelPlacement) })
+                            onConfirm = { act { GameRules.confirmPlacement(it, map) } }, onCancel = { act(GameRules::cancelPlacement) },
+                            viewerId = viewer?.id ?: session.currentPlayer.id, active = resumed,
+                            onArrived = { act { GameExpansion.arrive(it, map) } }, onEye = { act { GameExpansion.explore(it, map) } },
+                            onRoute = { id -> act { GameExpansion.planStep(it, map, id) } },
+                            onCombat = { act { GameExpansion.combat(it, map, GameRules.rollD6(), GameRules.rollD6()) } },
+                            onContinue = { act { GameExpansion.continueTurn(it, map) } }, countdown = countdown, animationRevision = saved!!.revision)
                     }
                     else -> Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally) {
-                        GameArtButton("Nueva partida", onClick = { page = "setup" })
+                        if (saved == null) Text("Cargando partida…")
+                        GameArtButton("Nueva partida", enabled = saved != null, onClick = { page = "setup" })
                         if (session != null) GameArtButton(if (session.phase == TurnPhase.WON) "Ver resultado" else "Continuar partida", onClick = { page = "board" })
                     }
                 }
             }
-            if (page == "board" && session != null) {
+            if (error != null) AlertDialog(onDismissRequest = { error = null }, title = { Text("Partida conservada") }, text = { Text(error!!) }, confirmButton = { TextButton(onClick = { error = null }) { Text("Entendido") } })
+            if (page == "board" && session != null && resumed) {
                 when (session.phase) {
-                    TurnPhase.ROLLING -> DiceOverlay(requireNotNull(session.lastRoll)) { act(GameRules::finishRoll) }
-                    TurnPhase.DAMAGE -> GameRules.currentDamage(session)?.let { event ->
+                    TurnPhase.ROLLING -> if (session.currentPlayer.control == PlayerControl.HUMAN || session.currentPlayer.tileId in GameVision.visibleTiles(session, map, viewer?.id ?: session.currentPlayer.id))
+                        key(saved!!.revision) { DiceOverlay(requireNotNull(session.lastRoll)) { act(GameExpansion::finishRoll) } }
+                    else HiddenBotRoll(saved!!.revision) { act(GameExpansion::finishRoll) }
+                    TurnPhase.DAMAGE -> if (session.currentPlayer.control == PlayerControl.HUMAN) GameRules.currentDamage(session)?.let { event ->
                         val attacker = session.players.first { it.id == event.attackerId }
-                        key(event.id) { DamageOverlay(event, attacker) { act(GameRules::acknowledgeDamage) } }
+                        key(event.id) { DamageOverlay(event, attacker, attackerVisible = attacker.id in GameVision.visiblePlayers(session, map, session.currentPlayer.id).map { it.id }) { act(GameRules::acknowledgeDamage) } }
                     }
-                    TurnPhase.REST -> GameRestOverlay(session.currentPlayer) { act(GameRules::rest) }
+                    TurnPhase.REST -> if (session.currentPlayer.control == PlayerControl.HUMAN) GameRestOverlay(session.currentPlayer) { act(GameExpansion::rest) }
                     else -> Unit
                 }
             }
@@ -113,10 +189,11 @@ internal fun GameArtButton(label: String, enabled: Boolean = true, modifier: Mod
 }
 
 @Composable
-private fun GameSetup(onStart: (List<String>, List<RatCharacter>, Int) -> Unit) {
+private fun GameSetup(starting: Boolean = false, onStart: (List<String>, List<RatCharacter>, Int, List<PlayerControl>) -> Unit) {
     var count by rememberSaveable { mutableIntStateOf(2) }
     var laps by rememberSaveable { mutableIntStateOf(1) }
     var names by rememberSaveable { mutableStateOf(listOf("Jugador 1", "Jugador 2", "Jugador 3", "Jugador 4")) }
+    var controls by rememberSaveable { mutableStateOf(List(4) { "HUMAN" }) }
     var choices by rememberSaveable { mutableStateOf(listOf("KNIGHT", "MAGE", "HUNTRESS", "NECROMANCER")) }
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Text("Cantidad de jugadores", color = Color.White, style = MaterialTheme.typography.titleMedium)
@@ -133,6 +210,11 @@ private fun GameSetup(onStart: (List<String>, List<RatCharacter>, Int) -> Unit) 
                 label = { Text("Nombre (máximo 16 caracteres)") }, singleLine = true,
                 colors = OutlinedTextFieldDefaults.colors(focusedTextColor = Color.White, unfocusedTextColor = Color.White,
                     focusedLabelColor = Color.White, unfocusedLabelColor = Color.White), modifier = Modifier.fillMaxWidth())
+            PlayerControl.entries.chunked(2).forEach { options -> Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                options.forEach { control -> FilterChip(selected = controls[index] == control.name,
+                    onClick = { controls = controls.mapIndexed { i, value -> if (i == index) control.name else value } },
+                    label = { Text(control.label) }, modifier = Modifier.weight(1f).testTag("control-$index-${control.name}")) }
+            } }
             RatCharacter.entries.chunked(3).forEach { row ->
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                     row.forEach { character ->
@@ -150,8 +232,8 @@ private fun GameSetup(onStart: (List<String>, List<RatCharacter>, Int) -> Unit) 
                 }
             }
         }
-        GameArtButton("Comenzar partida", enabled = names.take(count).all { it.trim().isNotEmpty() } && choices.take(count).distinct().size == count,
-            modifier = Modifier.fillMaxWidth()) { onStart(names.take(count), choices.take(count).map(RatCharacter::valueOf), laps) }
+        GameArtButton("Comenzar partida", enabled = !starting && names.take(count).all { it.trim().isNotEmpty() } && choices.take(count).distinct().size == count,
+            modifier = Modifier.fillMaxWidth()) { onStart(names.take(count), choices.take(count).map(RatCharacter::valueOf), laps, controls.take(count).map(PlayerControl::valueOf)) }
     }
 }
 
@@ -161,8 +243,10 @@ private fun ColumnScope.GameHandoff(session: GameSession, onBegin: () -> Unit, o
         Text("Turno de ${session.currentPlayer.name}", color = Color.White, style = MaterialTheme.typography.headlineSmall)
         Image(painterResource(session.currentPlayer.character.art().normalSprite), session.currentPlayer.character.label, Modifier.size(180.dp), contentScale = ContentScale.Fit)
         Text(session.currentPlayer.character.label, color = Color.White)
-        Text("Pasa el teléfono a ${session.currentPlayer.name}", color = Color.White)
-        GameArtButton("Comenzar turno", onClick = onBegin)
+        if (session.currentPlayer.control == PlayerControl.HUMAN) {
+            Text("Pasa el teléfono a ${session.currentPlayer.name}", color = Color.White)
+            GameArtButton("Comenzar turno", onClick = onBegin)
+        } else Text("Bot preparando su turno…", color = Color.White)
         TextButton(onClick = onHome) { Text("Inicio del juego", color = Color.White) }
     }
 }
@@ -180,4 +264,9 @@ private fun ColumnScope.GameResults(session: GameSession, onHome: () -> Unit) {
         }
         GameArtButton("Inicio del juego", onClick = onHome)
     }
+}
+
+@Composable
+private fun HiddenBotRoll(revision: Long, onFinished: () -> Unit) {
+    LaunchedEffect(revision) { delay(DiceAnimation.delays.sum() + 300); onFinished() }
 }

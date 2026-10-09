@@ -20,7 +20,7 @@ import org.robolectric.annotation.Config
 import java.util.concurrent.atomic.AtomicLong
 
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk = [28])
+@Config(application=com.r0ybt.arachn0de.security.LegacyUiTestApplication::class,sdk = [28])
 class AttentionUiTest {
     private val compose = createComposeRule()
     private lateinit var app: Arachn0deApplication
@@ -68,7 +68,9 @@ class AttentionUiTest {
     @Test fun indicatorsProjectionNavigationAndSavedRouteUseRealNodeAndAncestors() {
         val restoration = StateRestorationTester(compose)
         mount(restoration)
-        awaitText("Contiene 1 vencida"); awaitText("Contiene 1 próxima")
+        awaitText("Personal"); awaitText("1 vence hoy")
+        compose.onNodeWithText("Contiene 1 vencida").assertDoesNotExist()
+        compose.onNodeWithText("Contiene 1 próxima").assertDoesNotExist()
         val before = runBlocking { app.nodeRepository.getProjectNodes(project) }
         openAttention()
         compose.onNodeWithTag("attention-task:$urgent").assert(hasText("Personal › Salud › Tratamiento"))

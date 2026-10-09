@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.3.0 — Preparación para distribución manual
+
+Versión Android `0.3.0`, código `9`, posterior al código `8` del build de pruebas. Firma oficial e identificador conservados; APK pendiente de introducir credenciales localmente, sin publicación.
+
+- Formularios y edición directa; tarjetas compactas de proyectos, fotografías y conversión reversible Proyecto ↔ Capa.
+- Juego offline ampliado: bots, rutas alternativas, pantanos, cuevas, araña, combate por dados, niebla individual y Ojo de exploración; finalización visual y espera de turnos corregidas.
+- Room 23 y backup lógico 15 preservan productividad y partida; lectura de respaldos históricos.
+- Incorporados los cinco PNG definitivos del tablero, con transparencia y proporciones originales; la araña se dibuja como entidad independiente.
+
 ## 0.2.4 — Beta en preparación
 
 Versión Android `0.2.4`, código `6`. Sin publicación en esta preparación.

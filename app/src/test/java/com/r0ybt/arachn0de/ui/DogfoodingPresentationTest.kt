@@ -27,7 +27,7 @@ import org.robolectric.annotation.GraphicsMode
 
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk = [28])
+@Config(application=com.r0ybt.arachn0de.security.LegacyUiTestApplication::class,sdk = [28])
 class DogfoodingPresentationTest {
     private val compose = createComposeRule()
     private lateinit var app: Arachn0deApplication

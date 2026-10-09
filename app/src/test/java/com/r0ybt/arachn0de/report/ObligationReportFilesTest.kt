@@ -16,7 +16,7 @@ import java.io.IOException
 import java.io.OutputStream
 
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk = [24, 28])
+@Config(sdk = [24, 28],application=android.app.Application::class)
 class ObligationReportFilesTest {
     private val context: Context get() = ApplicationProvider.getApplicationContext()
     private fun file(): File {

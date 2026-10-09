@@ -1,5 +1,6 @@
 package com.r0ybt.arachn0de.backup
 
+import com.r0ybt.arachn0de.security.SecureFiles
 import android.content.Context
 import com.r0ybt.arachn0de.data.local.AttachmentFileEntity
 import java.io.*
@@ -31,13 +32,13 @@ internal suspend fun copyBackupAttachment(row: AttachmentFileEntity, input: Inpu
 
 internal suspend fun verifyBackupAttachment(row: AttachmentFileEntity, file: File) {
     try {
-        require(file.isFile && file.length() == row.byteSize) { "Tamaño inválido." }
-        file.inputStream().use { copyBackupAttachment(row, it, object : OutputStream() {
+        require(file.isFile && SecureFiles.size(file) == row.byteSize) { "Tamaño inválido." }
+        SecureFiles.input(file).use { copyBackupAttachment(row, it, object : OutputStream() {
             override fun write(b: Int) {}
             override fun write(b: ByteArray, off: Int, len: Int) {}
         }) }
         val bounds = android.graphics.BitmapFactory.Options().apply { inJustDecodeBounds = true }
-        android.graphics.BitmapFactory.decodeFile(file.path, bounds)
+        SecureFiles.decoded(file, bounds)
         require(bounds.outMimeType == row.mimeType && bounds.outWidth == row.width && bounds.outHeight == row.height) { "Imagen incompatible con sus metadatos." }
     } catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
     catch (failure: Exception) { throw AttachmentBackupException("No se puede incluir o recuperar el adjunto «${row.originalName}»: falta, no es accesible o está dañado.", failure) }
@@ -60,18 +61,18 @@ internal class BackupAttachmentFiles(context: Context, private val syncDirectory
     }
     fun recorded(): Set<String> {
         if (!journal.exists()) return emptySet()
-        require(journal.length() <= 8L * 1024 * 1024)
-        val list = JSONObject(journal.readText()).getJSONArray("files")
+        require(SecureFiles.size(journal) <= 8L * 1024 * 1024)
+        val list = JSONObject(SecureFiles.text(journal)).getJSONArray("files")
         return (0 until list.length()).map { list.getString(it).also { name -> require(BackupLimits.attachmentName.matches(name)) } }.toSet()
     }
     suspend fun stage(row: AttachmentFileEntity, source: File, name: String) {
         check(root.isDirectory || root.mkdirs())
         val target = file(name)
         check(!target.exists())
-        source.inputStream().use { input -> FileOutputStream(target).use { output ->
+        SecureFiles.input(source).use { input -> SecureFiles.output(target).use { output ->
             copyBackupAttachment(row, input, output)
             require(input.read() == -1) { "Contenido adicional en adjunto." }
-            output.flush(); output.fd.sync()
+            output.flush(); output.flush()
         } }
     }
     fun finishStaging() { if (root.isDirectory) syncDirectory(root) }

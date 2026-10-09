@@ -139,12 +139,12 @@ class AttachmentRepository(private val database: Arachn0deDatabase, private val 
             }
             // A committed save must not become a failed editor save due to deferred file cleanup.
             withContext(NonCancellable) {
-                reserved.forEach { id -> runCatching { store.release(id) }.onFailure { android.util.Log.e("Attachments", "Reservation cleanup deferred", it) } }
+                reserved.forEach { id -> runCatching { store.release(id) }.onFailure { android.util.Log.w("Attachments", "Reservation cleanup deferred") } }
             }
             result
         }
         try { cleanup() } catch (cancelled: CancellationException) { throw cancelled }
-        catch (failure: Exception) { android.util.Log.e("Attachments", "File cleanup deferred", failure) }
+        catch (failure: Exception) { android.util.Log.w("Attachments", "File cleanup deferred") }
         result
     }
 

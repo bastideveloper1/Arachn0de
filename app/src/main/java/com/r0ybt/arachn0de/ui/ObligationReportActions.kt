@@ -21,7 +21,7 @@ import java.util.Locale
 @Composable
 internal fun ObligationReportActions(snapshot: FinancialSnapshot?, projects: List<Project>, personName: String?, locale: Locale) {
     val context = LocalContext.current
-    val files = remember(context) { ObligationReportFiles(context.applicationContext) }
+    val files = remember(context) { ObligationReportFiles((context.applicationContext as? com.r0ybt.arachn0de.Arachn0deApplication)?.privateContext ?: context.applicationContext) }
     val scope = rememberCoroutineScope()
     var busy by remember { mutableStateOf(false) }
     var readyName by rememberSaveable { mutableStateOf<String?>(null) }

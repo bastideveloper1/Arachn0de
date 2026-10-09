@@ -79,7 +79,7 @@ class LargeListsTest {
             Arachn0deTheme {
                 ProjectList(
                     projects = projects,
-                    projectProgressById = emptyMap(),
+                    projectAlertsById = emptyMap(),
                     onCreateProject = {},
                     onEdit = {},
                     onDelete = {},

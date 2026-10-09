@@ -15,7 +15,7 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 
-@RunWith(RobolectricTestRunner::class) @Config(sdk=[28])
+@RunWith(RobolectricTestRunner::class) @Config(application=com.r0ybt.arachn0de.security.LegacyUiTestApplication::class,sdk=[28])
 class ExplicitLayerUiTest {
     private val compose=createAndroidComposeRule<MainActivity>()
     private lateinit var app:Arachn0deApplication;private lateinit var source:Project;private lateinit var target:Project;private lateinit var empty:Node
@@ -49,32 +49,29 @@ class ExplicitLayerUiTest {
     @Test fun projectOverflowConfirmsMoveAndConvertedEmptyLayerIsNavigableWithoutRestart() {
         await("Source");compose.onNodeWithText("Source").performClick();await("Nuevo elemento")
         compose.onNodeWithContentDescription("Opciones del proyecto").performScrollTo().performClick()
-        compose.onNodeWithText("Mover dentro de…").performScrollTo().performClick();await("Elige otro proyecto")
+        compose.onNodeWithText("Convertir en capa").performScrollTo().performClick();await("Elige otro proyecto")
         compose.onNode(hasText("Target") and hasAnyAncestor(isDialog())).performClick();await("En la raíz del proyecto")
-        await("Empty");compose.onNodeWithText("Empty").performClick();await("Mover proyecto")
+        await("Empty");compose.onNodeWithText("Empty").performClick();await("Confirmar conversión")
         compose.onNodeWithText("Cancelar") // Both selector and confirmation retain cancel actions.
         assertNotNull(runBlocking { app.projectRepository.getProject(source.id) })
-        compose.onNodeWithText("Mover").performClick()
+        compose.onNodeWithText("Convertir").performClick()
         compose.waitUntil(10000) { runBlocking { app.projectRepository.getProject(source.id)==null } }
-        await("Target");compose.onNodeWithText("Target").performClick();await("Empty")
-        compose.onNodeWithTag("nodes-list").performScrollToNode(hasText("Empty"));compose.onNodeWithText("Empty").performClick();await("Source")
-        compose.onNodeWithTag("nodes-list").performScrollToNode(hasText("Source"));compose.onNodeWithText("Source").performClick()
         await("CAPA 2");compose.onNodeWithText("Nuevo elemento").assertIsEnabled()
     }
     @Test fun dashboardMenuMovesToProjectRootAndConfirmationCanBeCancelled() {
         await("Source")
         compose.onNodeWithTag("projects-list").performScrollToNode(hasText("Source"))
         compose.onNode(hasContentDescription("Opciones del proyecto") and hasAnyAncestor(hasText("Source"))).performClick()
-        compose.onNodeWithText("Mover dentro de…").performScrollTo().performClick();await("Elige otro proyecto")
+        compose.onNodeWithText("Convertir en capa").performScrollTo().performClick();await("Elige otro proyecto")
         compose.onNode(hasText("Target") and hasAnyAncestor(isDialog())).performClick();await("En la raíz del proyecto")
-        compose.onNodeWithText("En la raíz del proyecto").performClick();await("Mover proyecto")
+        compose.onNodeWithText("En la raíz del proyecto").performClick();await("Confirmar conversión")
         compose.onAllNodesWithText("Cancelar").onLast().performClick()
         assertNotNull(runBlocking { app.projectRepository.getProject(source.id) })
-        compose.onNodeWithText("En la raíz del proyecto").performClick();compose.onNodeWithText("Mover").performClick()
+        compose.onNodeWithText("En la raíz del proyecto").performClick();compose.onNodeWithText("Convertir").performClick()
         compose.waitUntil(10000) { runBlocking { app.projectRepository.getProject(source.id)==null } }
         val converted=runBlocking { app.nodeRepository.getProjectNodes(target.id).single { it.title=="Source" } }
         assertEquals(NodePurpose.LAYER,converted.purpose);assertNull(converted.parentId)
-        compose.onNodeWithText("Source").assertDoesNotExist()
+        await("CAPA 1"); compose.onNodeWithContentDescription("Opciones del elemento").assertExists()
     }
     @Test fun pendingActionConvertsAutomaticallyWhenCreatingFirstChild() {
         val task=runBlocking { app.nodeRepository.createNode(target.id,null,"Action") }

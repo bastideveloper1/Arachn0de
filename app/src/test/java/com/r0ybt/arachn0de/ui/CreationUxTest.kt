@@ -19,7 +19,7 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 
-@RunWith(RobolectricTestRunner::class) @Config(sdk=[28])
+@RunWith(RobolectricTestRunner::class) @Config(application=com.r0ybt.arachn0de.security.LegacyUiTestApplication::class,sdk=[28])
 class CreationUxTest {
     private val compose = createComposeRule()
     private lateinit var app: Arachn0deApplication
@@ -92,10 +92,10 @@ class CreationUxTest {
         click("Nota"); compose.onNodeWithTag("obligation-enabled").assertDoesNotExist(); compose.onNodeWithTag("priority-selector").assertDoesNotExist()
         click("Tarea"); compose.onNodeWithText("Monto").performScrollTo().assert(hasText("25000"))
         compose.runOnIdle { draft.startAt=100; draft.dueAt=200; draft.tagIds=listOf("tag"); draft.responsibleIds=listOf("person"); draft.priority=Priority.HIGH }
-        option("Fecha de inicio"); option("Vencimiento")
+        option("Inicio"); option("Vencimiento")
         restoration.emulateSavedInstanceStateRestore()
         compose.runOnIdle { assertEquals("3",draft.recurrenceInterval); assertEquals("MONTHLY",draft.recurrenceFrequency); assertEquals(100L,draft.startAt); assertEquals(200L,draft.dueAt); assertNull(draft.activeStart); assertNull(draft.activeDue); assertEquals(listOf("tag"),draft.tagIds); assertEquals(Priority.HIGH,draft.priority) }
-        option("Fecha de inicio"); option("Vencimiento"); option("Recurrente"); option("Crear varios")
+        option("Inicio"); option("Vencimiento"); option("Recurrente"); option("Crear varios")
         input("Cantidad","12"); click("Al final"); input("Número inicial","4")
         compose.onNodeWithTag("option:Recurrente").performScrollTo().assertIsNotEnabled()
         option("Crear varios"); option("Crear varios"); restoration.emulateSavedInstanceStateRestore()
@@ -104,10 +104,11 @@ class CreationUxTest {
 
     @Test fun emptyFormClosesQuietlyAndExplicitDiscardClearsSignificantWork() {
         appContent(); await("Project"); click("Project"); await("Nuevo elemento"); click("Nuevo elemento")
-        compose.onNodeWithText("Descartar").assertDoesNotExist(); click("Cerrar"); click("Nuevo elemento")
-        input("Título","Unsaved"); click("Descartar"); click("Continuar editando")
+        await("Título") // Defaults resolve asynchronously before the form is mounted.
+        compose.onNodeWithText("Descartar borrador").assertDoesNotExist(); click("Cerrar"); click("Nuevo elemento"); await("Título")
+        input("Título","Unsaved"); click("Descartar borrador"); click("Continuar editando")
         compose.onNodeWithText("Título").performScrollTo().assert(hasText("Unsaved"))
-        click("Descartar"); compose.onNodeWithText("Descartar borrador").performClick(); click("Nuevo elemento")
+        click("Descartar borrador"); compose.onAllNodesWithText("Descartar borrador").onLast().performClick(); click("Nuevo elemento"); await("Título")
         compose.onNodeWithText("Título").assert(hasText("")); assertTrue(runBlocking { app.database.nodeEventDao().all().isEmpty() })
     }
 
@@ -120,7 +121,7 @@ class CreationUxTest {
             }
         }
         compose.onNodeWithText("Crear").assertIsDisplayed()
-        compose.onNodeWithText("Descartar").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("Descartar borrador").performScrollTo().assertIsDisplayed()
         compose.onNodeWithText("Título").performScrollTo().assertIsDisplayed()
     }
 }

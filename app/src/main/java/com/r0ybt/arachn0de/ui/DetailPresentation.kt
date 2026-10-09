@@ -1,5 +1,7 @@
 package com.r0ybt.arachn0de.ui
 
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Text
@@ -14,8 +16,9 @@ import com.r0ybt.arachn0de.ui.theme.Arachn0deColors
 import com.r0ybt.arachn0de.ui.theme.ContentTypography
 
 @Composable
-internal fun DetailScopeTitle(title: String) {
-    Text(title, modifier = Modifier.fillMaxWidth().padding(top = 6.dp).testTag("detail-scope-title"),
+internal fun DetailScopeTitle(title: String, onEdit: (() -> Unit)? = null) {
+    Text(title, modifier = Modifier.fillMaxWidth().padding(top = 6.dp).testTag("detail-scope-title").heightIn(min = 48.dp)
+        .then(if (onEdit != null) Modifier.clickable(onClickLabel = "Editar título", onClick = onEdit) else Modifier),
         color = Arachn0deColors.TextPrimary, fontSize = ContentTypography.ProjectTitle, fontWeight = FontWeight.SemiBold)
 }
 

@@ -1,5 +1,7 @@
 package com.r0ybt.arachn0de.ui
 
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.withLock
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.Surface
@@ -35,6 +37,10 @@ private fun AppRootContent(projectRepository: ProjectRepository, nodeRepository:
     val personRepository = (androidx.compose.ui.platform.LocalContext.current.applicationContext as com.r0ybt.arachn0de.Arachn0deApplication).personRepository
     val screenStates = androidx.compose.runtime.saveable.rememberSaveableStateHolder()
     var showAppearance by rememberSaveable { mutableStateOf(false) }
+    var showMetro by rememberSaveable { mutableStateOf(false) }
+    var metroRequestToken by rememberSaveable { mutableStateOf(0L) }
+    var metroNodeId by rememberSaveable { mutableStateOf<String?>(null) }
+    LaunchedEffect(Unit) { com.r0ybt.arachn0de.metro.MetroNavigation.requests.collect { request -> if(request!=null) { metroNodeId=request.nodeId;metroRequestToken=request.token;showMetro=true;com.r0ybt.arachn0de.metro.MetroNavigation.requests.value=null } } }
     var showGame by rememberSaveable { mutableStateOf(false) }
     var showAbout by rememberSaveable { mutableStateOf(false) }
     var showTechnologies by rememberSaveable { mutableStateOf(false) }
@@ -49,10 +55,17 @@ private fun AppRootContent(projectRepository: ProjectRepository, nodeRepository:
     var showAttention by rememberSaveable { mutableStateOf(false) }
     var returnToAttention by rememberSaveable { mutableStateOf(false) }
     var openNodeId by rememberSaveable { mutableStateOf<String?>(null) }
-    val sortContext = androidx.compose.ui.platform.LocalContext.current.applicationContext
-    val sortPreferences = remember(sortContext) {
-        com.r0ybt.arachn0de.ui.state.NodeSortPreferences(storage = sortContext.getSharedPreferences("node_sort_preferences", android.content.Context.MODE_PRIVATE))
+    val sortContext = androidx.compose.ui.platform.LocalContext.current.applicationContext as com.r0ybt.arachn0de.Arachn0deApplication
+    val sortScope = androidx.compose.runtime.rememberCoroutineScope()
+    val sortRepository = remember(sortContext) { com.r0ybt.arachn0de.data.repository.NodeSortPreferenceRepository(sortContext.database) }
+    val sortMutex = remember { kotlinx.coroutines.sync.Mutex() }
+    val sortPreferences = remember(sortRepository) {
+        com.r0ybt.arachn0de.ui.state.NodeSortPreferences(onWrite = { context, mode ->
+            sortScope.launch { sortMutex.withLock { sortRepository.set(context, mode?.name) } }
+        })
     }
+    LaunchedEffect(sortRepository) { sortRepository.observe().collect { sortPreferences.replace(it) } }
+    val conversionScope = androidx.compose.runtime.rememberCoroutineScope()
     val projectsListState = rememberLazyListState()
     var selectedProjectId by rememberSaveable { mutableStateOf<String?>(null) }
     var projects by remember(projectRepository) { mutableStateOf<List<Project>?>(null) }
@@ -91,22 +104,27 @@ private fun AppRootContent(projectRepository: ProjectRepository, nodeRepository:
             financialPeopleLoad.collect(personRepository.observePeople()) { people = it; financialPeopleLoaded = true }
         }
     }
-    val projectProgressById = projects.orEmpty().associate { project ->
-        project.id to (allState.projectProgressById[project.id] ?: NodeProgress(project.id, 0, 0, 0, NodeProgressState.NO_WORK))
-    }
-    val globalView = !showGame && !showAppearance && !showAbout && !showPeople && !showTechnologies && (showObligations || showCalendar || showAttention || selectedProjectId == null)
-    val now = if (globalView) rememberTaskScreenNow(allState.nodes, clock, onRefresh = { zoneId = java.util.TimeZone.getDefault().id }) else 0L
+    val globalView = !showMetro && !showGame && !showAppearance && !showAbout && !showPeople && !showTechnologies && (showObligations || showCalendar || showAttention || selectedProjectId == null)
+    val projectsView = globalView && !showCalendar && !showObligations && !showAttention
+    val now = if (globalView) rememberTaskScreenNow(allState.nodes, clock, onRefresh = { zoneId = java.util.TimeZone.getDefault().id }, dayOnly = projectsView) else 0L
     val calendar = if (showCalendar) {
         val snapshot by com.r0ybt.arachn0de.ui.state.rememberCalendar(allState, zoneId)
         snapshot
     } else null
-    val attention = if (globalView && !showCalendar && !showObligations) {
+    val attention = if (globalView && showAttention) {
         val state by rememberAttention(allState, now, zoneId)
         state
     } else null
 
+    val projectAlerts = if (projectsView) {
+        val alerts by com.r0ybt.arachn0de.ui.state.rememberProjectCardAlerts(allState, now, zoneId)
+        alerts
+    } else emptyMap()
+
     val selectedProject = projects?.firstOrNull { it.id == selectedProjectId }
-    if (showGame) {
+    if (showMetro) {
+        screenStates.SaveableStateProvider("metro:${metroNodeId ?: "main"}") { com.r0ybt.arachn0de.metro.MetroScreen(allState.nodes,projects.orEmpty(),metroNodeId,requestToken=metroRequestToken,onBack={showMetro=false;metroNodeId=null}) }
+    } else if (showGame) {
         screenStates.SaveableStateProvider("game") {
             com.r0ybt.arachn0de.game.GameScreen(onBack = { showGame = false })
         }
@@ -180,8 +198,9 @@ private fun AppRootContent(projectRepository: ProjectRepository, nodeRepository:
             repository = projectRepository,
             listState = projectsListState,
             projects = projects.orEmpty(),
-            projectProgressById = projectProgressById,
-            projectAttentionById = attention?.byProjectId.orEmpty(),
+            projectAlertsById = projectAlerts,
+            conversionScope = conversionScope,
+            onConverted = { id, node -> screenStates.removeState("project:$id"); selectedProjectId = id; openNodeId = node; returnToAttention = false; returnToCalendar = false; returnToObligations = false },
             onOpenProject = { screenStates.removeState("project:${it.id}"); openNodeId = null; selectedProjectId = it.id; returnToAttention = false; returnToCalendar = false; returnToObligations = false },
             onOpenPeople = { showPeople = true },
             onOpenTechnologies = { showTechnologies = true },
@@ -191,11 +210,14 @@ private fun AppRootContent(projectRepository: ProjectRepository, nodeRepository:
             onOpenAppearance = { showAppearance = true },
             onOpenAbout = { showAbout = true },
             onOpenGame = { showGame = true },
+            onOpenMetro = { metroNodeId=null;metroRequestToken=0L;showMetro=true },
         )
     } else if (selectedProject != null) {
         screenStates.SaveableStateProvider("project:${selectedProject.id}") {
             ProjectNodeScreen(
                 project = selectedProject,
+                conversionScope = conversionScope,
+                onConverted = { id, node -> screenStates.removeState("project:$id"); selectedProjectId = id; openNodeId = node; returnToAttention = false; returnToCalendar = false; returnToObligations = false },
                 sortPreferences = sortPreferences,
                 onOpenProjects = { screenStates.removeState("project:${selectedProject.id}"); selectedProjectId = null; openNodeId = null; returnToCalendar = false; returnToAttention = false; returnToObligations = false },
                 nodeRepository = nodeRepository,
@@ -212,6 +234,7 @@ private fun AppRootContent(projectRepository: ProjectRepository, nodeRepository:
                 onOpenAppearance = { showAppearance = true },
                 onOpenAbout = { showAbout = true },
                 onOpenGame = { showGame = true },
+            onOpenMetro = { metroNodeId=null;metroRequestToken=0L;showMetro=true },
                 onBackToObligations = if (returnToObligations) ({
                     screenStates.removeState("project:${selectedProject.id}")
                     selectedProjectId = null; openNodeId = null

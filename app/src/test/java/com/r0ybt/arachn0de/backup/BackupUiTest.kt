@@ -23,12 +23,13 @@ import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk = [28])
+@Config(application=com.r0ybt.arachn0de.security.LegacyUiTestApplication::class,sdk = [28])
 class BackupUiTest {
     @get:Rule val compose = createAndroidComposeRule<MainActivity>()
     private val app get() = compose.activity.application as Arachn0deApplication
     private fun setup(onRestored: () -> Unit = {}) {
-        val repo = BackupRepository(app.database, app, BackupAvatarFiles(app, BackupFixture::syncDirectory))
+        val protected=com.r0ybt.arachn0de.security.VaultContext(app,app.security.current.value!!.access).also {it.database=app.database}
+        val repo = BackupRepository(app.database, protected, BackupAvatarFiles(protected, BackupFixture::syncDirectory))
         compose.runOnUiThread { compose.activity.setContent { Arachn0deTheme { Column { BackupSection(onRestored, repo) } } } }
     }
     private fun select(bytes: ByteArray) {
@@ -38,6 +39,7 @@ class BackupUiTest {
         val launched = shadowOf(compose.activity).nextStartedActivityForResult
         assertEquals(Intent.ACTION_OPEN_DOCUMENT, launched.intent.action)
         compose.runOnUiThread { compose.activity.activityResultRegistry.dispatchResult(launched.requestCode, Activity.RESULT_OK, Intent().setData(uri)) }
+        compose.onNodeWithText("Validar backup").performClick()
     }
     @Test fun validSelectionRequiresConfirmationCancelDoesNothingAndConfirmedEmptyRestoreReplacesData() {
         val project = runBlocking { app.projectRepository.createProject("Estado actual") }
@@ -77,6 +79,7 @@ class BackupUiTest {
         compose.onNodeWithText("Restaurar backup").performScrollTo().performClick()
         val launched = shadowOf(compose.activity).nextStartedActivityForResult
         compose.runOnUiThread { compose.activity.activityResultRegistry.dispatchResult(launched.requestCode, Activity.RESULT_OK, Intent().setData(uri)) }
+        compose.onNodeWithText("Validar backup").performClick()
         compose.waitUntil(10_000) { compose.onAllNodesWithText("Reemplazar y restaurar").fetchSemanticsNodes().isNotEmpty() }
         compose.onNodeWithText("Reemplazar y restaurar").performClick()
         compose.waitUntil(10_000) { compose.onAllNodesWithText("Recuperado").fetchSemanticsNodes().isNotEmpty() }
@@ -102,6 +105,9 @@ class BackupUiTest {
     @Test fun creatingBackupLaunchesSafOnlyAfterArtifactExistsAndReportsSuccessfulSave() {
         setup()
         compose.onNodeWithText("Crear backup").performClick()
+        compose.onNodeWithText("Contraseña").performTextInput("backup-ui-password")
+        compose.onNodeWithText("Confirmar contraseña").performTextInput("backup-ui-password")
+        compose.onNodeWithText("Crear backup cifrado").performClick()
         compose.waitUntil(10_000) { shadowOf(compose.activity).peekNextStartedActivityForResult() != null }
         val launched = shadowOf(compose.activity).nextStartedActivityForResult
         assertEquals(Intent.ACTION_CREATE_DOCUMENT, launched.intent.action)
@@ -111,6 +117,8 @@ class BackupUiTest {
         shadowOf(compose.activity.contentResolver).registerOutputStream(uri, bytes)
         compose.runOnUiThread { compose.activity.activityResultRegistry.dispatchResult(launched.requestCode, Activity.RESULT_OK, Intent().setData(uri)) }
         compose.waitUntil(10_000) { compose.onAllNodesWithText("Backup guardado correctamente.").fetchSemanticsNodes().isNotEmpty() }
-        assertTrue(runBlocking { BackupContainer.readBackup(ByteArrayInputStream(bytes.toByteArray())) }.projects.isEmpty())
+        val plain=ByteArrayOutputStream()
+        com.r0ybt.arachn0de.security.EncryptedBackup.read(ByteArrayInputStream(bytes.toByteArray()),plain,"backup-ui-password".toCharArray())
+        assertTrue(runBlocking { BackupContainer.readBackup(ByteArrayInputStream(plain.toByteArray())) }.projects.isEmpty())
     }
 }

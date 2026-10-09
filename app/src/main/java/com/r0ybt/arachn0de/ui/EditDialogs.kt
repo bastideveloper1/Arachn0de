@@ -42,14 +42,21 @@ internal fun NodeDialog(
     onDismiss: () -> Unit,
     onSave: (String, String) -> Unit,
     editDates: Boolean = true,
+    initialField: String? = null,
+    hasUnsavedChanges: Boolean = draft.hasWork,
     people: List<com.r0ybt.arachn0de.domain.model.Person> = emptyList(),
     peopleLoaded: Boolean = true,
     tagRepository: com.r0ybt.arachn0de.data.repository.TagRepository? = null,
     onDiscard: () -> Unit = onDismiss,
+    templateEditing: Boolean = false,
+    extraFields: @Composable () -> Unit = {},
+    extraValid: Boolean = true,
 ) {
+    var metroValid by remember(draft.creationId) {mutableStateOf(true)}
     val hasImages = com.r0ybt.arachn0de.domain.model.AttachmentReferences.ids(draft.description).isNotEmpty()
     val imageModeValid = draft.id != null || !hasImages || (!draft.batchEnabled && draft.recurrenceFrequency == "NONE")
     var confirmDiscard by rememberSaveable(draft.creationId) { mutableStateOf(false) }
+    val specializedCreationValid = !(draft.id==null && (draft.batchEnabled || draft.recurrenceFrequency!="NONE") && (draft.technologyIds.isNotEmpty() || draft.templateMetroPlan!=null))
     val datesValid = !editDates || draft.purpose != NodePurpose.ACTION ||
         ((!draft.startEnabled || draft.batchEnabled || draft.startAt != null) && (!draft.dueEnabled || draft.dueAt != null))
     val batchValid = draft.purpose == NodePurpose.LAYER || !draft.batchEnabled || runCatching { com.r0ybt.arachn0de.domain.model.NodeBatchGenerator.generate(draft.batchDraft().parameters(), java.util.TimeZone.getDefault()) }.isSuccess
@@ -60,11 +67,12 @@ internal fun NodeDialog(
     var title by draft::title
     var description by draft::description
     val titleFocusRequester = remember { FocusRequester() }
+    val descriptionFocusRequester = remember { FocusRequester() }
     val keyboardController = LocalSoftwareKeyboardController.current
     val shouldAutoFocusForNewNode = draft.id == null && title.isEmpty() && description.isEmpty()
 
-    LaunchedEffect(draft.id, title, description) {
-        if (shouldAutoFocusForNewNode) {
+    LaunchedEffect(draft.attachmentDraftId, initialField) {
+        if (shouldAutoFocusForNewNode || initialField == "title") {
             titleFocusRequester.requestFocus()
             keyboardController?.show()
         }
@@ -75,10 +83,9 @@ internal fun NodeDialog(
         titleContentColor = Arachn0deColors.TextPrimary,
         textContentColor = Arachn0deColors.TextSecondary,
         onDismissRequest = if (isSubmitting) ({}) else onDismiss,
-        title = { Text(if (draft.id == null) "Nuevo elemento" else "Editar elemento") },
+        title = { Text(if(templateEditing) "Guardar plantilla" else if (draft.id == null) "Nuevo elemento" else "Editar elemento") },
         text = {
-            Column(modifier = Modifier.verticalScroll(rememberSaveable(draft.creationId, saver = androidx.compose.foundation.ScrollState.Saver) { androidx.compose.foundation.ScrollState(0) }), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                FormSection("General")
+            Column(modifier = Modifier.verticalScroll(rememberSaveable(draft.creationId, saver = androidx.compose.foundation.ScrollState.Saver) { androidx.compose.foundation.ScrollState(0) }), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedTextField(
                     value = title,
                     onValueChange = { if (!isSubmitting) title = it },
@@ -91,14 +98,28 @@ internal fun NodeDialog(
                         .focusRequester(titleFocusRequester),
                     enabled = !isSubmitting,
                 )
-                AttachmentDescriptionEditor(draft, !isSubmitting)
-                if (draft.id == null) FormChoices(listOf(NodePurpose.ACTION to "Tarea", NodePurpose.NOTE to "Nota", NodePurpose.LAYER to "Capa"), draft.purpose, !isSubmitting) { draft.purpose = it }
+                if(draft.id==null) SavedTemplatesAccess(draft,!isSubmitting && !draft.attachmentBusy)
+                extraFields()
+                com.r0ybt.arachn0de.metro.MetroDraftFields(draft,!isSubmitting) {metroValid=it}
+                if(templateEditing) OutlinedTextField(description,{description=it},label={Text("Descripción")},modifier=Modifier.fillMaxWidth())
+                else AttachmentDescriptionEditor(draft, !isSubmitting, focusRequester = descriptionFocusRequester.takeIf { initialField == "description" })
+                DraftTechnologies(draft,!isSubmitting)
+                if(!specializedCreationValid) Text("Las tecnologías ordenadas y el plan Metro requieren creación individual. Desactiva Crear varios / Recurrente o quita estas propiedades para continuar.",color=Arachn0deColors.Destructive)
+                if (draft.id == null || templateEditing) FormChoices((if(templateEditing) listOf(NodePurpose.ACTION to "Tarea", NodePurpose.NOTE to "Nota") else listOf(NodePurpose.ACTION to "Tarea", NodePurpose.NOTE to "Nota", NodePurpose.LAYER to "Capa")), draft.purpose, !isSubmitting) { draft.purpose = it }
                 else Text("Tipo: ${when(draft.purpose) { NodePurpose.NOTE -> "Nota";NodePurpose.ACTION -> "Tarea";NodePurpose.LAYER -> "Capa" }}")
+                AdaptiveFormRow(buildList {
+                    if (editDates && draft.purpose == NodePurpose.ACTION) add({ PrioritySelector(draft.priority, { draft.priority = checkNotNull(it) }, enabled = !isSubmitting) })
+                    add({
+                        androidx.compose.material3.OutlinedButton(enabled = !isSubmitting && peopleLoaded, onClick = { draft.showResponsible = true }) {
+                            Text("Responsables (${draft.responsibleIds.size})")
+                        }
+                    })
+                })
+                tagRepository?.let { repo -> val state by remember(repo) { repo.observe() }.collectAsState(initial = com.r0ybt.arachn0de.domain.model.TagState())
+                    TagSelector(state.tags, draft.tagIds.toSet(), { draft.tagIds = it.toList() }, repository = repo, enabled = !isSubmitting) }
                 if (editDates && draft.purpose == NodePurpose.ACTION) {
-                    FormSection("Pago")
-                    ObligationFields(draft, enabled = !isSubmitting)
-                    FormSection("Planificación")
-                    TaskDatesEditor(draft, enabled = !isSubmitting, picker = datePicker, includeStart = !draft.batchEnabled, progressive = true)
+                    if(!templateEditing) FormSection("Planificación")
+                    if(!templateEditing) TaskDatesEditor(draft, enabled = !isSubmitting, picker = datePicker, includeStart = !draft.batchEnabled, progressive = true)
                     if (!datesValid) Text("Elige una fecha para cada opción activada o desactívala.", color = Arachn0deColors.Destructive)
                     if (draft.id == null) {
                         FormToggle("Recurrente", draft.recurrenceFrequency != "NONE", !isSubmitting && (!draft.batchEnabled || draft.recurrenceFrequency != "NONE")) { draft.toggleRecurrence(it) }
@@ -109,12 +130,9 @@ internal fun NodeDialog(
                         Text("El vencimiento no puede ser anterior al inicio. Corrige las fechas para guardar.", color = Arachn0deColors.Destructive)
                     }
                 }
-                FormSection("Organización")
-                if (editDates && draft.purpose == NodePurpose.ACTION) PrioritySelector(draft.priority, { draft.priority = checkNotNull(it) }, enabled = !isSubmitting)
-                tagRepository?.let { repo -> val state by remember(repo) { repo.observe() }.collectAsState(initial = com.r0ybt.arachn0de.domain.model.TagState())
-                    TagSelector(state.tags, draft.tagIds.toSet(), { draft.tagIds = it.toList() }, repository = repo, enabled = !isSubmitting) }
-                androidx.compose.material3.OutlinedButton(enabled = !isSubmitting && peopleLoaded, onClick = { draft.showResponsible = true }) {
-                    Text("Responsables (${draft.responsibleIds.size})")
+                if (editDates && draft.purpose == NodePurpose.ACTION) {
+                    FormSection("Pago")
+                    ObligationFields(draft, enabled = !isSubmitting)
                 }
                 if (draft.id == null && draft.purpose != NodePurpose.LAYER) {
                     FormSection("Creación")
@@ -122,7 +140,7 @@ internal fun NodeDialog(
                     if (draft.purpose == NodePurpose.ACTION && draft.recurrenceFrequency != "NONE") Text("Una regla recurrente y un lote finito son modalidades distintas. Desactiva Recurrente para crear varios.", style = androidx.compose.material3.MaterialTheme.typography.bodySmall)
                     if (draft.batchEnabled) CreationBatchFields(draft, !isSubmitting)
                 }
-                if (draft.hasWork) DestructiveAction("Descartar", { confirmDiscard = true }, enabled = !isSubmitting && !draft.attachmentBusy)
+                if (hasUnsavedChanges || draft.technologyEdited || draft.metroEdited) DestructiveAction(if (draft.id == null) "Descartar borrador" else "Descartar cambios", { confirmDiscard = true }, enabled = !isSubmitting && !draft.attachmentBusy)
                 Text(
                     text = if(draft.purpose==NodePurpose.LAYER) "Una capa admite elementos y permanece como capa aunque esté vacía." else if (draft.purpose == NodePurpose.NOTE) "Una nota conserva información. Para añadir hijos, conviértela primero en capa." else if (draft.financialEnabled) "Para convertir en capa, confirma primero quitar los datos de pago." else "Para añadir elementos, convierte la tarea en capa desde ⋮.",
                     color = Arachn0deColors.TextSecondary,
@@ -132,7 +150,7 @@ internal fun NodeDialog(
         },
         confirmButton = {
             androidx.compose.material3.Button(
-                enabled = !isSubmitting && draft.attachmentsLoaded && !draft.attachmentBusy && imageModeValid && !(draft.batchEnabled && draft.purpose == NodePurpose.ACTION && draft.recurrenceFrequency != "NONE") && batchValid && datesValid && peopleLoaded && financialValid && recurrenceValid && title.trim().isNotEmpty() && TitleLimits.count(title) <= TitleLimits.NODE &&
+                enabled = metroValid && extraValid && specializedCreationValid && !isSubmitting && draft.attachmentsLoaded && !draft.attachmentBusy && imageModeValid && !(draft.batchEnabled && draft.purpose == NodePurpose.ACTION && draft.recurrenceFrequency != "NONE") && batchValid && datesValid && peopleLoaded && financialValid && recurrenceValid && title.trim().isNotEmpty() && TitleLimits.count(title) <= TitleLimits.NODE &&
                     (!editDates || draft.purpose != NodePurpose.ACTION || draft.batchEnabled || draft.activeStart == null || draft.activeDue == null || draft.activeDue!! >= draft.activeStart!!),
                 onClick = {
                     val cleanTitle = title.trim()
@@ -146,14 +164,18 @@ internal fun NodeDialog(
             }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss, enabled = !isSubmitting) {
-                Text("Cerrar")
+            TextButton(onClick = {
+                if (initialField == null) onDismiss()
+                else if (hasUnsavedChanges || draft.technologyEdited || draft.metroEdited) confirmDiscard = true
+                else onDiscard()
+            }, enabled = !isSubmitting && !draft.attachmentBusy) {
+                Text(if (initialField != null) "Cancelar" else "Cerrar")
             }
         },
     )
-    if (confirmDiscard) AlertDialog(onDismissRequest = { confirmDiscard = false }, title = { Text("¿Descartar borrador?") },
-        text = { Text("Se eliminarán los cambios de este formulario.") },
-        confirmButton = { DestructiveAction("Descartar borrador", onDiscard) },
+    if (confirmDiscard) AlertDialog(onDismissRequest = { confirmDiscard = false }, title = { Text(if (draft.id == null) "¿Descartar borrador?" else "¿Descartar cambios?") },
+        text = { Text("Se eliminarán los cambios de este formulario. El contenido guardado se conserva.") },
+        confirmButton = { DestructiveAction(if (draft.id == null) "Descartar borrador" else "Descartar cambios", onDiscard) },
         dismissButton = { TextButton(onClick = { confirmDiscard = false }) { Text("Continuar editando") } })
     if (draft.showResponsible && peopleLoaded) ResponsibleDialog(
         nodeId = draft.creationId, people = people, assigned = people.filter { it.id in draft.responsibleIds }, busy = isSubmitting,

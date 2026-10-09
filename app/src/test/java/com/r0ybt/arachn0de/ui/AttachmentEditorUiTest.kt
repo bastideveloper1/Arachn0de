@@ -29,7 +29,7 @@ import org.robolectric.annotation.GraphicsMode
 import java.io.File
 
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk = [28])
+@Config(application=com.r0ybt.arachn0de.security.LegacyUiTestApplication::class,sdk = [28])
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class AttachmentEditorUiTest {
     @get:Rule val compose = createAndroidComposeRule<ComponentActivity>()
@@ -70,7 +70,7 @@ class AttachmentEditorUiTest {
                 } ?: Button(onClick = { store.open(null) { error("Draft must survive") } }) { Text("Reopen draft") }
             }
         }
-        compose.onNodeWithText("Adjuntar imagen").assertIsEnabled().performClick()
+        compose.onNodeWithText("Imagen").assertIsEnabled().performClick()
         val started = Shadows.shadowOf(compose.activity).nextStartedActivityForResult
         assertNotNull(started)
         val first = input()
@@ -180,7 +180,7 @@ class AttachmentEditorUiTest {
         val file = runBlocking { repo.import(Uri.fromFile(input()), "label-draft") }
         val draft = EditorDraft(null, null, "Task", "${AttachmentReferences.token(file.id)} ${AttachmentReferences.token(file.id, "Otro uso")}", attachmentDraftId = "label-draft")
         compose.setContent { Column { AttachmentDescriptionEditor(draft, true, repository = repo) } }
-        await("Adjuntar imagen")
+        await("Imagen")
         fun setLabel(label: String) {
             openReference(draft, 0)
             compose.onNodeWithText("Editar nombre").performClick()
@@ -206,7 +206,7 @@ class AttachmentEditorUiTest {
     @Test fun formattingButtonsApplyAndRemoveSelectedText() {
         val draft = EditorDraft(null, null, "Task", "Texto normal")
         compose.setContent { Column { AttachmentDescriptionEditor(draft, true, repository = repository) } }
-        await("Adjuntar imagen")
+        await("Imagen")
         compose.onNodeWithContentDescription("Negrita").assertIsNotEnabled()
         compose.onNode(hasSetTextAction()).performTextInputSelection(androidx.compose.ui.text.TextRange(0, 5))
         compose.onNodeWithContentDescription("Negrita").performClick()
@@ -329,7 +329,7 @@ class AttachmentEditorUiTest {
         val second = runBlocking { repo.import(Uri.fromFile(input()), "duplicate-draft") }
         val draft = EditorDraft(null, null, "Task", "${AttachmentReferences.token(first.id, "Gráfico")} ${AttachmentReferences.token(second.id, "Gráfico")}", attachmentDraftId = "duplicate-draft")
         compose.setContent { Column { AttachmentDescriptionEditor(draft, true, repository = repo) } }
-        await("Adjuntar imagen")
+        await("Imagen")
         val secondAt = AttachmentReferences.matches(draft.description).last().range.first
         openReference(draft, secondAt)
         compose.onNodeWithText("Editar nombre").performClick()

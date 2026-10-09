@@ -22,7 +22,7 @@ internal fun rememberTaskScreenNow(nodes: List<Node>, clock: () -> Long = System
 
 /** Refresh display environment even when an injected clock returns the same instant. */
 @Composable
-internal fun rememberTaskScreenNow(nodes: List<Node>, clock: () -> Long, onRefresh: () -> Unit): Long {
+internal fun rememberTaskScreenNow(nodes: List<Node>, clock: () -> Long, onRefresh: () -> Unit, dayOnly: Boolean = false): Long {
     val context = LocalContext.current
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     val readClock by rememberUpdatedState(clock)
@@ -42,13 +42,17 @@ internal fun rememberTaskScreenNow(nodes: List<Node>, clock: () -> Long, onRefre
         }
         onDispose { context.unregisterReceiver(receiver) }
     }
-    LaunchedEffect(lifecycle, nodes, clockChange) {
+    LaunchedEffect(lifecycle, nodes, clockChange, dayOnly) {
         lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) {
             while (isActive) {
                 val instant = readClock()
                 now = instant
                 refreshEnvironment()
-                val next = nodes.mapNotNull { TaskTemporal.nextTransition(it, instant) }.minOrNull()
+                val next = if (dayOnly) {
+                    val zone = java.util.TimeZone.getDefault()
+                    com.r0ybt.arachn0de.domain.model.TemporalRanges.day(
+                        com.r0ybt.arachn0de.domain.model.CalendarDates.localDay(instant, zone), zone).endExclusive
+                } else nodes.mapNotNull { TaskTemporal.nextTransition(it, instant) }.minOrNull()
                 // Also recheck wall-clock changes at most once a minute while foregrounded.
                 val until = next?.let { if (instant < 0 && it > Long.MAX_VALUE + instant) 60_000L else it - instant }
                 delay(until?.coerceIn(1L, 60_000L) ?: 60_000L)

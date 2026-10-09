@@ -1,5 +1,6 @@
 package com.r0ybt.arachn0de.data.local
 
+import com.r0ybt.arachn0de.security.SecureFiles
 import android.content.Context
 import com.r0ybt.arachn0de.backup.BackupLimits
 import com.r0ybt.arachn0de.backup.durableWrite
@@ -10,7 +11,7 @@ import java.util.UUID
 /** Caller holds the shared file mutex and verifies committed DB references before removal. */
 internal class ImageFileLifecycle(context: Context, directoryName: String,
     private val sync: (File) -> Unit = ::syncBackupDirectory, private val now: () -> Long = System::currentTimeMillis) {
-    init { require(directoryName in setOf("avatars", "technology-icons")) }
+    init { require(directoryName in setOf("avatars", "technology-icons", "project-photos")) }
     private val privateRoot = context.filesDir.canonicalFile
     private val root = File(context.filesDir, directoryName)
     private val markers = File(context.filesDir, "image-lifecycle/$directoryName")
@@ -61,7 +62,7 @@ internal class ImageFileLifecycle(context: Context, directoryName: String,
                 else {
                     val orphan = marker(name, "orphan")
                     if (!orphan.exists()) write(orphan, now().toString())
-                    else if (orphan.length() <= 32 && now() - (orphan.readText().toLongOrNull() ?: now()) >= ORPHAN_GRACE_MS && now() - file.lastModified() >= ORPHAN_GRACE_MS) delete(name)
+                    else if (SecureFiles.size(orphan) <= 32 && now() - (SecureFiles.text(orphan).toLongOrNull() ?: now()) >= ORPHAN_GRACE_MS && now() - file.lastModified() >= ORPHAN_GRACE_MS) delete(name)
                 }
             } else if (name.matches(Regex("import-[a-zA-Z0-9-]+\\.tmp"))) {
                 // Imports are serialized; a remaining recognized .tmp is an interrupted operation.

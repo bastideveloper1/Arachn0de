@@ -1,8 +1,24 @@
 # Respaldo offline de Arachn0de
 
-La extensión sigue siendo `.arachnode`. El esquema actual es Room 20 (migraciones 18→19 para tecnologías y 19→20 para encuadres); no cambia el protocolo de release.
+La extensión sigue siendo `.arachnode`. El esquema actual es Room **26**, con la cadena histórica completa de migraciones. La versión comercial sigue siendo **0.3.0 / 9** y el protocolo de firma no cambia.
 
-## Contenedor v2 y datos v12
+## Seguridad local: formato actual
+
+Toda exportación desde un almacén protegido usa la envoltura autenticada **ANBACK01**, con su propia contraseña, UUID, salt y clave aleatoria. El payload conserva el contenedor v2 y sus manifiestos/SHA-256. Los backups antiguos sin cifrar se importan mediante la validación y confirmación existentes; nunca se exporta un backup nuevo sin contraseña desde un almacén protegido.
+
+JSON **18** añade `privatePreferences` (namespaces y valores tipados), `storeId` (UUID portable o null para fuentes históricas) y `storeKind` (`primary`/`secondary`). No transporta contraseñas ni claves del almacén. Los lectores admiten JSON 1–18 y contenedores v1/v2. Una fuente histórica sin preferencias ni identidad puede conservar JSON 17. Todas las exportaciones de sesiones protegidas incluyen su identidad y emiten 18. Versiones antiguas rechazan explícitamente el nuevo formato.
+
+Las preferencias se restauran en la tabla Room `private_preferences` dentro de la misma transacción que los demás datos. Las cachés de preferencias se recargan tras el commit. Room 25→26 solo añade esa tabla; conserva todas las anteriores. No se serializan rutas absolutas.
+
+Una sesión principal acepta backups principales, incluidos los históricos; una sesión señuelo acepta exclusivamente backups señuelo. La comprobación sucede antes de mostrar metadatos o extraer multimedia. El UUID de origen se conserva en el archivo como procedencia; restaurar en otro dispositivo principal no requiere el mismo UUID local. Los backups nunca transfieren claves de autenticación ni crean automáticamente otro almacén.
+
+La contraseña del backup se requiere al inspeccionar ANBACK01. Contraseña errónea, corrupción, truncación, registros cambiados de orden y contenido extra fallan antes de reemplazar datos. La inspección, los blobs, los diarios y los contenedores pendientes se almacenan cifrados con la clave de la sesión; SAF recibe únicamente el backup portable cifrado. SHA-256 por sí solo no se presenta como protección criptográfica.
+
+Parámetros y especificación binaria: [SECURITY_DESIGN.md](SECURITY_DESIGN.md). No se añade un límite de capacidad al cifrado por streams; siguen vigentes los límites estructurales históricos de los formatos e importadores descritos abajo. La prueba de volumen contempla 100 Personas y 500 Tecnologías con imágenes.
+
+Las secciones siguientes describen también los formatos históricos y sus migraciones.
+
+## Contenedor v2 y datos v16
 
 Todos los enteros del contenedor usan big endian. El encabezado conserva la estructura de v1:
 
@@ -11,12 +27,13 @@ Todos los enteros del contenedor usan big endian. El encabezado conserva la estr
 - Codificación: int32 `0` (JSON UTF-8).
 - Longitud del JSON: int64 (1 a 16 MiB).
 - SHA-256 del encabezado anterior y el JSON: 32 bytes.
-- JSON de datos v12.
-- Bytes originales de cada adjunto, en el orden de `attachmentFiles`, exactamente `byteSize` bytes por archivo. No se permite contenido adicional.
+- JSON de datos v16.
+- Bytes originales de cada adjunto, en el orden de `attachmentFiles`, exactamente `byteSize` bytes por archivo.
+- Bytes PNG de `imageFiles`, en el orden del manifiesto, exactamente `byteSize` bytes por imagen. No se permite contenido adicional.
 
 El JSON conserva los campos de v9, incluidos los avatares PNG en base64. Datos v10 añadió `attachmentFiles`, `nodeAttachments` y `projectAttachments`; datos v11 añade `technologies`, `nodeTechnologies`, `projectTechnologies` y `technologyIcons`. Cada archivo incluye su identidad, nombre portable de almacenamiento, nombre original, MIME, tamaño, dimensiones, SHA-256, fecha y estado. Las rutas del dispositivo nunca se serializan.
 
-El lector sigue admitiendo contenedor v1 y datos v1–v11, con las conversiones anteriores. Las aplicaciones antiguas rechazan explícitamente el nuevo contenedor. Los nuevos respaldos necesitan esta implementación para restaurarse.
+El lector sigue admitiendo contenedor v1 y datos v1–v15, con las conversiones anteriores. Las aplicaciones antiguas rechazan explícitamente los datos JSON 16. Los nuevos respaldos necesitan esta implementación para restaurarse.
 
 ## Consistencia y recuperación
 
@@ -30,7 +47,7 @@ Si falla antes del commit, Room revierte y la limpieza elimina únicamente los n
 
 ## Límites
 
-Se mantienen los límites anteriores para JSON, avatares y registros. Los iconos de tecnologías comparten con los avatares el máximo agregado de 8 MiB; cada imagen PNG es de hasta 1 MiB y 512×512. Tecnologías y asociaciones cuentan para el máximo de 100.000 registros. Adjuntos: 20 MiB por archivo, 2 GiB en total. Actualmente Arachn0de permite adjuntos PNG/JPEG; este cambio respalda todos los tipos existentes y no añade tipos de importación nuevos. La operación necesita espacio temporal para el archivo de backup y, al restaurar, para los adjuntos inspeccionados y sus nuevas copias, además de los archivos antiguos hasta el commit.
+JSON: 16 MiB y 100.000 registros; se mantienen las validaciones estrictas de estructura, jerarquía y referencias. Los nuevos backups transportan las imágenes mediante streaming: máximo agregado de 1 GiB; cada PNG sigue limitado a 1 MiB y 512×512, con validación de contenido y SHA-256. El formato histórico con base64 y la captura diagnóstica `snapshot()` conservan el máximo agregado de 8 MiB. La exportación normal `create()` no usa esa captura en memoria. Tecnologías y asociaciones cuentan para el máximo de 100.000 registros. Adjuntos: 20 MiB por archivo, 2 GiB en total. Actualmente Arachn0de permite adjuntos PNG/JPEG; este cambio respalda todos los tipos existentes y no añade tipos de importación nuevos. La operación necesita espacio temporal para el archivo de backup y, al restaurar, para los adjuntos inspeccionados y sus nuevas copias, además de los archivos antiguos hasta el commit.
 
 ## Archivos de esta implementación
 
@@ -165,3 +182,84 @@ Pruebas existentes actualizadas:
 - `ui/theme/AppearancePreferencesTest.kt`
 
 Validación del bloque: **159 ejecuciones dirigidas correctas**, incluidas 15 nuevas ejecuciones de encuadres/migración/editor. Cubren 100 Personas con avatar, persistencia al reabrir, parámetros compartidos en responsables, píxeles del renderer común, arrastre y continuidad geométrica, zoom accesible, centrado/restablecimiento, cancelación en ambas etapas, reemplazo, rollback, backup/restauración tras eliminar archivos privados originales, lectores históricos v1–v11 y limpieza. `assembleDebug` y `git diff --check` correctos. No se ejecuta la suite global ni se genera release. La respuesta de gestos y apariencia en el celular quedan para la prueba conjunta solicitada.
+
+## Fotografías de proyectos: datos v13 / Room 21
+
+La migración 20→21 agrega `project_photos` sin modificar registros existentes. Cada recurso tiene `id`, un propietario `projectId` o `nodeId`, `file` portable y `photoZoom`, `photoX`, `photoY`. La asociación a un nodo conserva el recurso oculto en el traslado existente hacia una capa; no se añade conversión nueva. Las filas sin propietario son registros operativos de limpieza pendiente y no se exportan.
+
+`projectPhotos` incluye asociaciones confirmadas y `projectPhotoImages` incluye entradas `{name, png}` con bytes PNG en base64, una por archivo compartido. Se valida propietario único existente, nodo de propósito LAYER, identidades, encuadre, nombres portables y correspondencia exacta de bytes. Datos v1–v12 restauran fotografías vacías. El contenedor sigue en v2.
+
+Las imágenes completas normalizadas se guardan en `files/project-photos`; el encuadre no recorta el original. Se reutilizan el límite de importación de 20 MiB, la normalización hasta 512 píxeles, los límites PNG y el máximo agregado de imágenes de 8 MiB. La caché privada compartida de miniaturas permanece acotada a 4 MiB y es regenerable, excluida del backup.
+
+Edición, exportación, restauración y limpieza usan el bloqueo común. `project-photo-journal` registra staging y sustituciones durables; las reservas y marcas de limpieza viven en `image-lifecycle/project-photos`, sin caducidad por antigüedad. Solo se elimina un archivo después del commit y cuando carece de referencias y reservas. Cancelar libera exclusivamente las reservas del editor. Fallos de limpieza tras commit se reintentan al reiniciar y no convierten un guardado confirmado en fallo.
+
+Inventario del Bloque 4A (base `app/src/main/java/com/r0ybt/arachn0de/`):
+
+- Nuevos: `domain/model/ProjectPhoto.kt`; `data/local/ProjectPhotoEntity.kt`, `ProjectPhotoDao.kt`, `ProjectPhotoStore.kt`, `ProjectPhotoMigration20To21.kt`; `data/repository/ProjectPhotoRepository.kt`; `ui/ProjectPhotoComponents.kt`.
+- Integración: `Arachn0deApplication.kt`; `domain/model/Project.kt`; `data/local/Arachn0deDatabase.kt`, `ProjectDao.kt`, `AvatarStore.kt`, `ImageFileLifecycle.kt`; `data/repository/ProjectRepository.kt`, `ProjectNestingRepository.kt`; `ui/AvatarEditor.kt`, `ProjectComponents.kt`, `ProjectsScreen.kt`, `ProjectScreen.kt`; `backup/BackupAvatarFiles.kt`, `BackupData.kt`, `BackupJson.kt`, `BackupRepository.kt`.
+- Esquema: `app/schemas/com.r0ybt.arachn0de.data.local.Arachn0deDatabase/21.json`.
+- Pruebas nuevas: `data/ProjectPhotoRepositoryTest.kt`, `ProjectPhotoMigrationTest.kt`, `backup/ProjectPhotoBackupTest.kt`, `ui/ProjectPhotoUiTest.kt`; actualización de expectativas Room y fixtures JSON históricos existentes.
+- Documentación: `ARCHITECTURE.md` y `BACKUP_FORMAT.md`. Sin cambios en el protocolo de `RELEASING.md`.
+
+## Datos v14: conversión reversible y ordenación
+
+Room 22 añade `conversion_roots`, `conversion_people`, `conversion_tags`, `conversion_events`, `conversion_work_states` y `node_sort_preferences`. El JSON incluye las correspondientes listas `conversionRoots`, `conversionPeople`, `conversionTags`, `conversionEvents`, `conversionWorkStates` y `nodeSortPreferences`. Cada raíz tiene exactamente un propietario confirmado: Proyecto o nodo LAYER. Las relaciones ocultas solo pertenecen a raíces que actualmente son Proyecto; los estados Sprint ocultos solo corresponden a tareas directas de ese Proyecto. La validación comprueba propietarios, identidades, estados, tipos y referencias antes de sustituir datos. Las versiones anteriores inicializan estas listas vacías.
+
+Se conservan identidades preferidas para ambas representaciones, posiciones y propiedades exclusivas de la raíz. No se serializa una copia antigua del árbol: los descendientes, títulos y relaciones vigentes son los datos reales. Las fotografías ocultas permanecen en `projectPhotos`, con propietario nodo, encuadre y bytes incluidos. Las preferencias de ordenación migran de SharedPreferences a Room y desde esta versión participan de la captura transaccional y la restauración.
+
+`imageFiles` contiene únicamente directorio lógico (`avatars`, `technology-icons` o `project-photos`), nombre UUID portable, tamaño y SHA-256. No contiene rutas del dispositivo. Los bytes siguen a los adjuntos en el contenedor v2; el encabezado no cambia. Las aplicaciones anteriores rechazan JSON 14. El lector actual conserva soporte para JSON 1–13 e imágenes históricas en base64. La inspección extrae y verifica una imagen cada vez; la restauración usa el staging, diarios, reservas y bloqueo común existentes. Se requiere espacio para contenedor, inspección y copias nuevas además de los archivos anteriores hasta el commit.
+
+Producción nueva: `data/local/ConversionEntities.kt`, `data/local/ConversionMigration21To22.kt`, `data/repository/NodeSortPreferenceRepository.kt` y `backup/BackupImageFiles.kt`. Se amplían `ProjectNestingRepository`, `ProjectRepository`, `NodeRepository`, `Arachn0deDatabase`, `BackupData`, `BackupJson`, `BackupContainer` y `BackupRepository`. Pruebas nuevas: `ProjectConversionTest`, `ProjectConversionMigrationTest`, `ProjectConversionBackupTest`, `ProjectConversionUiTest` y fixture `ConversionFixture`.
+
+
+## Juego offline: datos v15, Room 23
+
+`gameSession` es null cuando no hay partida; en otro caso contiene el JSON completo y validado de `GameSessionCodec` v3 (lector de partidas v1/v2/v3). Incluye mapa y semilla, terrenos y paredes, jugadores y dificultades, posiciones e historial del recorrido, objetos/habilidades particulares, pantanos, araña y combate, exploración individual y Ojo, fases pendientes, movimiento y vencimiento del resultado. Una partida antigua conserva el tablero original; no se regenera desde su semilla.
+
+El payload de partida está limitado a 256 KiB, con tipos estrictos, sin claves duplicadas ni referencias rotas; la estructura del mapa generado debe ser contigua, conectada y sin ciclos. Cuenta como un registro y su texto cuenta para el límite de metadatos. Una partida corrupta impide exportar o restaurar antes de reemplazar datos. La captura de `game_state` y productividad es una transacción; su restauración comparte la misma transacción de sustitución y revierte ambos ante fallos o cancelación. La revisión CAS local se incrementa, no se importa desde el respaldo, para rechazar acciones antiguas.
+
+Los backups v1–v14 producen ausencia de partida: se escribe una fila vacía durable que impide resucitar la antigua preferencia `experimental_game/session`. La migración 22→23 importa esa preferencia válida una sola vez. Una preferencia corrupta no es jugable; su texto original se conserva en la preferencia histórica. La partida confirmada vigente reside exclusivamente en Room.
+
+Los PNG del tablero son recursos estáticos empaquetados en el APK y no se serializan como archivos personales. La carga mantiene como máximo cinco bitmaps de ≤512×512 en memoria, sin caché persistente ni archivos de juego que liberar. No se añaden exclusiones de archivos privados ni rutas absolutas.
+
+
+## Metro de Santiago Beta 1: datos v16, Room 24
+
+La migración aditiva 23→24 crea `metro_preferences` y `metro_journeys`, sin modificar tablas existentes. Las preferencias contienen una copia íntegra y versionada del catálogo offline, Casa, favoritos, cierres de pasajeros, preferencias de evitar e interrupciones físicas. Guardar el catálogo con los datos permite restaurar rutas históricas sin reinterpretarlas según un catálogo posterior.
+
+El manifiesto incorpora `metroPreferences` (payload JSON nullable) y `metroJourneys` (id, nodeId nullable, personId nullable, enabled, payload, revision). Una asociación por tarea; las referencias Room a tareas y Personas usan SET NULL al eliminar el original y permiten conservar el viaje de forma independiente. No se copian avatares: sus bytes y encuadres se exportan mediante el mecanismo existente de Personas.
+
+Cada payload de viaje incluye el plan completo y sesiones con ID, ruta activa y original, Persona viajera, anclas de reloj civil/monotónico y arranque, inicio, pausa, tiempo pausado, confirmaciones, correcciones, cambios de recorrido y finalización explícita. Las estadísticas se derivan de estos valores; no son datos ficticios ni modifican el coste global por tramo.
+
+Validación previa: UTF-8 acotado a 1 MiB por payload, estructura/profundidad/listas/números y duplicación de claves, catálogo coherente, identificadores, segmentos adyacentes, dirección/servicio, combinaciones y paradas, referencias a tareas y Personas, revisiones no negativas y una sola sesión activa. Las exportaciones capturan todo en la transacción existente. La restauración valida antes de sustituir y usa la misma transacción y protocolo durable de archivos; cualquier fallo conserva los datos anteriores. Sube las revisiones para rechazar acciones antiguas de notificaciones y marca las sesiones importadas como inciertas: el usuario debe confirmar su posición antes de retomar la estimación. Se conservan las pausas y el historial. Las duraciones recuperadas usan reloj civil cuando las referencias monotónicas proceden de una restauración o de otro arranque; se muestra esta limitación y no se interpreta el contador monotónico de otro dispositivo como duración real.
+
+Los lectores históricos v1–v15 producen preferencias y viajes Metro vacíos. No hay nuevos archivos privados, reservas ni copias multimedia que liberar. Eliminar un viaje inactivo elimina sus datos e historial Metro; volver a modo normal conserva esos datos y todas las propiedades de la tarea. No se permite eliminar o desactivar un viaje mientras tenga seguimiento activo.
+
+
+### Revisiones del catálogo Metro original y r1
+
+La corrección de referencia r1 cambia únicamente Rodrigo de Araya (R), Carlos Valdovinos (V), Camino Agrícola (R) y San Joaquín (C) en L5. No modifica el snapshot persistido ni el formato v16. `MetroCatalogRevision` reconoce ambas definiciones completas por su versión y huella de estaciones/líneas y resuelve la versión específica de cada ruta. Los planes nuevos usan r1; el historial y las sesiones originales conservan su definición. La regla determinista debe permanecer disponible para restaurar backups con ambas revisiones sin consultar Internet. Las revisiones o huellas desconocidas no se convierten por conjetura. La Beta anterior puede rechazar una ruta r1, pues no conoce esa revisión. La prueba dirigida restaura un backup mixto en una base vacía y comprueba conservación de rutas, pausa, eventos y preferencias. Detalles en METRO_MASTER_VALIDATION.md.
+
+## Guardados y orden de Tecnologías: datos v17 / Room 25
+
+La migración aditiva 24→25 añade `position` a `node_technologies` y `project_technologies`, y crea `saved_templates`. El JSON v17 exige posición entera no negativa en las asociaciones y `savedTemplates` con `{id,name,payload}`. El contenedor continúa en v2. Los lectores de datos 1–16 producen biblioteca vacía y reconstruyen el orden de asignaciones que mostraba el catálogo anterior (nombre con NOCASE ASCII e ID).
+
+El payload de plantilla v1 tiene estructura estricta y acotada; contiene configuración reutilizable, reglas relativas de fechas/horas, referencias de Personas/Tecnologías/Etiquetas y, opcionalmente, catálogo y plan Metro sin sesiones. Las referencias de entidades eliminadas se conservan como configuración y se informan/omiten al aplicar; nunca se insertan relaciones inválidas. No se copian identidad de tarea, estados completados, eventos, historial de pagos, progreso, sesiones ni reglas recurrentes. Se rechazan identidades de plantilla repetidas, listas duplicadas, tipos/rangos inválidos, claves JSON duplicadas y planes con sesiones. Captura/restauración usa la transacción existente y valida antes de sustituir; el rollback conserva la biblioteca anterior.
+
+Las plantillas no poseen archivos ni rutas del dispositivo: las imágenes de Personas y Tecnologías siguen perteneciendo a sus catálogos y participan del backup existente. Los adjuntos de descripción se excluyen expresamente al guardar como plantilla; no se crean referencias a bytes ausentes. Edición/eliminación de una plantilla libera solo su fila, sin borrar medios de otras entidades. Detalles del sprint y validación en SPRINT_PRE_RELEASE.md.
+
+### Rediseño Metro: avance automático y payload de viaje v2
+
+Room permanece en **25**, JSON de backup en **17** y contenedor en **2**. No se añaden tablas, archivos ni preferencias. El payload interno de viaje pasa a **v2** y exige `automatic` booleano por sesión. Los viajes nuevos avanzan automáticamente por los tramos de 2 minutos, combinaciones/cambios de 4 minutos y paradas intermedias sin duración de permanencia. Alcanzar el destino no finaliza la sesión ni completa la tarea. Pausa, correcciones, historial y recuperación incierta se conservan.
+
+El lector admite payloads de viaje v1 y v2: las sesiones v1 reciben `automatic=false`, conservando su comportamiento histórico hasta que el usuario pulse «Activar avance automático». La activación conserva anclas, pausa, historial e incertidumbre. Las preferencias Metro siguen usando payload v1. Los lectores de la Beta anterior rechazan el payload de viaje v2; no se promete restaurar backups nuevos con aplicaciones anteriores.
+
+El snapshot y la restauración existentes incluyen el booleano dentro del payload íntegro; restaurar sigue marcando sesiones activas como inciertas antes de permitir su avance. Se verifican round-trip, compatibilidad v1, tipos/campos/versiones inválidos, preservación de sesión activa al editar el plan de una tarea y rechazo de un backup corrupto sin sustituir datos. Los borradores y plantillas contienen solo planes, nunca sesiones ni historiales; no añaden archivos al ciclo de limpieza.
+
+### Cierre Metro: asociación y edición desde el formulario normal
+
+Se reutiliza `metro_journeys.nodeId`: un viaje independiente se vincula a la nueva tarjeta sin copiarlo, conservando ID, modo activo/desactivado, sesiones, eventos, pausas y rutas históricas. Un viaje de otra tarjeta no se traslada ni duplica implícitamente. La revisión guardada en el borrador se comprueba dentro de la misma transacción de creación/edición; un vínculo concurrente, viaje eliminado, revisión obsoleta o plan incompleto falla antes de dejar una tarjeta parcial.
+
+El formulario edita solo configuración; las sesiones permanecen en el repositorio. Cambiar el plan no reemplaza una sesión activa. Cambiar la Persona viajera actualiza su referencia activa mediante la misma lógica de persistencia, sin copiar archivos. Un guardado de metadatos conserva un plan histórico aunque el catálogo o las restricciones actuales lo afecten. El backup v17 y payload Metro v2 ya incluyen los vínculos y todo su contenido: no hay migración, tabla ni archivo nuevo. Prueba dirigida verifica exportación/restauración con nueva asociación en Subcapa y una sesión activa, además de rollback ante conflictos.
+
+El estado temporal del editor añade un prefijo opcional `__metro_link_v1` con identidad/revisión y baseline Metro. El lector conserva los formatos anteriores, sin vínculo por defecto. Este estado no es dato confirmado ni se exporta a backups; al aplicar Guardados se limpia la referencia al viaje original y se conserva solo el plan reutilizable.

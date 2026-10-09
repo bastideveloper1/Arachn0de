@@ -1,0 +1,731 @@
+{
+  "L1": [
+    {
+      "name": "San Pablo",
+      "express": "",
+      "combination": "L5"
+    },
+    {
+      "name": "Neptuno",
+      "express": "",
+      "combination": null
+    },
+    {
+      "name": "Pajaritos",
+      "express": "",
+      "combination": null
+    },
+    {
+      "name": "Las Rejas",
+      "express": "",
+      "combination": null
+    },
+    {
+      "name": "Ecuador",
+      "express": "",
+      "combination": null
+    },
+    {
+      "name": "San Alberto Hurtado",
+      "express": "",
+      "combination": null
+    },
+    {
+      "name": "Universidad de Santiago",
+      "express": "",
+      "combination": null
+    },
+    {
+      "name": "Estación Central",
+      "express": "",
+      "combination": null
+    },
+    {
+      "name": "Unión Latinoamericana",
+      "express": "",
+      "combination": null
+    },
+    {
+      "name": "República",
+      "express": "",
+      "combination": null
+    },
+    {
+      "name": "Los Héroes",
+      "express": "",
+      "combination": "L2"
+    },
+    {
+      "name": "La Moneda",
+      "express": "",
+      "combination": null
+    },
+    {
+      "name": "Universidad de Chile",
+      "express": "",
+      "combination": "L3"
+    },
+    {
+      "name": "Santa Lucía",
+      "express": "",
+      "combination": null
+    },
+    {
+      "name": "Universidad Católica",
+      "express": "",
+      "combination": null
+    },
+    {
+      "name": "Baquedano",
+      "express": "",
+      "combination": "L5"
+    },
+    {
+      "name": "Salvador",
+      "express": "",
+      "combination": null
+    },
+    {
+      "name": "Manuel Montt",
+      "express": "",
+      "combination": null
+    },
+    {
+      "name": "Pedro de Valdivia",
+      "express": "",
+      "combination": null
+    },
+    {
+      "name": "Los Leones",
+      "express": "",
+      "combination": "L6"
+    },
+    {
+      "name": "Tobalaba",
+      "express": "",
+      "combination": "L4"
+    },
+    {
+      "name": "El Golf",
+      "express": "",
+      "combination": null
+    },
+    {
+      "name": "Alcántara",
+      "express": "",
+      "combination": null
+    },
+    {
+      "name": "Escuela Militar",
+      "express": "",
+      "combination": null
+    },
+    {
+      "name": "Manquehue",
+      "express": "",
+      "combination": null
+    },
+    {
+      "name": "Hernando de Magallanes",
+      "express": "",
+      "combination": null
+    },
+    {
+      "name": "Los Dominicos",
+      "express": "",
+      "combination": null
+    }
+  ],
+  "L2": [
+    {
+      "name": "Vespucio Norte",
+      "express": "C",
+      "combination": null
+    },
+    {
+      "name": "Zapadores",
+      "express": "C",
+      "combination": null
+    },
+    {
+      "name": "Dorsal",
+      "express": "R",
+      "combination": null
+    },
+    {
+      "name": "Einstein",
+      "express": "V",
+      "combination": null
+    },
+    {
+      "name": "Cementerios",
+      "express": "R",
+      "combination": null
+    },
+    {
+      "name": "Cerro Blanco",
+      "express": "V",
+      "combination": null
+    },
+    {
+      "name": "Patronato",
+      "express": "R",
+      "combination": null
+    },
+    {
+      "name": "Puente Cal y Canto",
+      "express": "C",
+      "combination": "L3"
+    },
+    {
+      "name": "Santa Ana",
+      "express": "C",
+      "combination": "L5"
+    },
+    {
+      "name": "Los Héroes",
+      "express": "C",
+      "combination": "L1"
+    },
+    {
+      "name": "Toesca",
+      "express": "V",
+      "combination": null
+    },
+    {
+      "name": "Parque O’Higgins",
+      "express": "R",
+      "combination": null
+    },
+    {
+      "name": "Rondizzoni",
+      "express": "V",
+      "combination": null
+    },
+    {
+      "name": "Franklin",
+      "express": "C",
+      "combination": "L6"
+    },
+    {
+      "name": "El Llano",
+      "express": "R",
+      "combination": null
+    },
+    {
+      "name": "San Miguel",
+      "express": "V",
+      "combination": null
+    },
+    {
+      "name": "Lo Vial",
+      "express": "R",
+      "combination": null
+    },
+    {
+      "name": "Departamental",
+      "express": "V",
+      "combination": null
+    },
+    {
+      "name": "Ciudad del Niño",
+      "express": "R",
+      "combination": null
+    },
+    {
+      "name": "Lo Ovalle",
+      "express": "C",
+      "combination": null
+    },
+    {
+      "name": "El Parrón",
+      "express": "V",
+      "combination": null
+    },
+    {
+      "name": "La Cisterna",
+      "express": "C",
+      "combination": "L4A"
+    },
+    {
+      "name": "El Bosque",
+      "express": "R",
+      "combination": null
+    },
+    {
+      "name": "Observatorio",
+      "express": "V",
+      "combination": null
+    },
+    {
+      "name": "Copa Lo Martínez",
+      "express": "R",
+      "combination": null
+    },
+    {
+      "name": "Hospital El Pino",
+      "express": "C",
+      "combination": null
+    }
+  ],
+  "L3": [
+    {
+      "name": "Plaza Quilicura",
+      "express": "",
+      "combination": null
+    },
+    {
+      "name": "Lo Cruzat",
+      "express": "",
+      "combination": null
+    },
+    {
+      "name": "Ferrocarril",
+      "express": "",
+      "combination": null
+    },
+    {
+      "name": "Los Libertadores",
+      "express": "",
+      "combination": null
+    },
+    {
+      "name": "Cardenal Caro",
+      "express": "",
+      "combination": null
+    },
+    {
+      "name": "Vivaceta",
+      "express": "",
+      "combination": null
+    },
+    {
+      "name": "Conchalí",
+      "express": "",
+      "combination": null
+    },
+    {
+      "name": "Plaza Chacabuco",
+      "express": "",
+      "combination": null
+    },
+    {
+      "name": "Hospitales",
+      "express": "",
+      "combination": null
+    },
+    {
+      "name": "Puente Cal y Canto",
+      "express": "",
+      "combination": "L2"
+    },
+    {
+      "name": "Plaza de Armas",
+      "express": "",
+      "combination": "L5"
+    },
+    {
+      "name": "Universidad de Chile",
+      "express": "",
+      "combination": "L1"
+    },
+    {
+      "name": "Parque Almagro",
+      "express": "",
+      "combination": null
+    },
+    {
+      "name": "Matta",
+      "express": "",
+      "combination": null
+    },
+    {
+      "name": "Irarrázaval",
+      "express": "",
+      "combination": "L5"
+    },
+    {
+      "name": "Monseñor Eyzaguirre",
+      "express": "",
+      "combination": null
+    },
+    {
+      "name": "Ñuñoa",
+      "express": "",
+      "combination": "L6"
+    },
+    {
+      "name": "Chile-España",
+      "express": "",
+      "combination": null
+    },
+    {
+      "name": "Villa Frei",
+      "express": "",
+      "combination": null
+    },
+    {
+      "name": "Plaza Egaña",
+      "express": "",
+      "combination": "L4"
+    },
+    {
+      "name": "Fernando Castillo Velasco",
+      "express": "",
+      "combination": null
+    }
+  ],
+  "L4": [
+    {
+      "name": "Tobalaba",
+      "express": "C",
+      "combination": "L1"
+    },
+    {
+      "name": "Cristóbal Colón",
+      "express": "V",
+      "combination": null
+    },
+    {
+      "name": "Francisco Bilbao",
+      "express": "C",
+      "combination": null
+    },
+    {
+      "name": "Príncipe de Gales",
+      "express": "R",
+      "combination": null
+    },
+    {
+      "name": "Simón Bolívar",
+      "express": "V",
+      "combination": null
+    },
+    {
+      "name": "Plaza Egaña",
+      "express": "C",
+      "combination": "L3"
+    },
+    {
+      "name": "Los Orientales",
+      "express": "R",
+      "combination": null
+    },
+    {
+      "name": "Grecia",
+      "express": "V",
+      "combination": null
+    },
+    {
+      "name": "Los Presidentes",
+      "express": "R",
+      "combination": null
+    },
+    {
+      "name": "Quilín",
+      "express": "V",
+      "combination": null
+    },
+    {
+      "name": "Las Torres",
+      "express": "R",
+      "combination": null
+    },
+    {
+      "name": "Macul",
+      "express": "C",
+      "combination": null
+    },
+    {
+      "name": "Vicuña Mackenna",
+      "express": "C",
+      "combination": "L4A"
+    },
+    {
+      "name": "Vicente Valdés",
+      "express": "C",
+      "combination": "L5"
+    },
+    {
+      "name": "Rojas Magallanes",
+      "express": "V",
+      "combination": null
+    },
+    {
+      "name": "Trinidad",
+      "express": "R",
+      "combination": null
+    },
+    {
+      "name": "San José de la Estrella",
+      "express": "V",
+      "combination": null
+    },
+    {
+      "name": "Los Quillayes",
+      "express": "R",
+      "combination": null
+    },
+    {
+      "name": "Elisa Correa",
+      "express": "C",
+      "combination": null
+    },
+    {
+      "name": "Hospital Sótero del Río",
+      "express": "C",
+      "combination": null
+    },
+    {
+      "name": "Protectora de la Infancia",
+      "express": "V",
+      "combination": null
+    },
+    {
+      "name": "Las Mercedes",
+      "express": "R",
+      "combination": null
+    },
+    {
+      "name": "Plaza de Puente Alto",
+      "express": "C",
+      "combination": null
+    }
+  ],
+  "L4A": [
+    {
+      "name": "Vicuña Mackenna",
+      "express": "",
+      "combination": "L4"
+    },
+    {
+      "name": "Santa Julia",
+      "express": "",
+      "combination": null
+    },
+    {
+      "name": "La Granja",
+      "express": "",
+      "combination": null
+    },
+    {
+      "name": "Santa Rosa",
+      "express": "",
+      "combination": null
+    },
+    {
+      "name": "San Ramón",
+      "express": "",
+      "combination": null
+    },
+    {
+      "name": "La Cisterna",
+      "express": "",
+      "combination": "L2"
+    }
+  ],
+  "L5": [
+    {
+      "name": "Plaza de Maipú",
+      "express": "C",
+      "combination": null
+    },
+    {
+      "name": "Santiago Bueras",
+      "express": "R",
+      "combination": null
+    },
+    {
+      "name": "Del Sol",
+      "express": "V",
+      "combination": null
+    },
+    {
+      "name": "Monte Tabor",
+      "express": "R",
+      "combination": null
+    },
+    {
+      "name": "Las Parcelas",
+      "express": "V",
+      "combination": null
+    },
+    {
+      "name": "Laguna Sur",
+      "express": "C",
+      "combination": null
+    },
+    {
+      "name": "Barrancas",
+      "express": "R",
+      "combination": null
+    },
+    {
+      "name": "Pudahuel",
+      "express": "C",
+      "combination": null
+    },
+    {
+      "name": "San Pablo",
+      "express": "C",
+      "combination": "L1"
+    },
+    {
+      "name": "Lo Prado",
+      "express": "V",
+      "combination": null
+    },
+    {
+      "name": "Blanqueado",
+      "express": "R",
+      "combination": null
+    },
+    {
+      "name": "Gruta de Lourdes",
+      "express": "V",
+      "combination": null
+    },
+    {
+      "name": "Quinta Normal",
+      "express": "R",
+      "combination": null
+    },
+    {
+      "name": "Cumming",
+      "express": "V",
+      "combination": null
+    },
+    {
+      "name": "Santa Ana",
+      "express": "C",
+      "combination": "L2"
+    },
+    {
+      "name": "Plaza de Armas",
+      "express": "C",
+      "combination": "L3"
+    },
+    {
+      "name": "Bellas Artes",
+      "express": "C",
+      "combination": null
+    },
+    {
+      "name": "Baquedano",
+      "express": "C",
+      "combination": "L1"
+    },
+    {
+      "name": "Parque Bustamante",
+      "express": "R",
+      "combination": null
+    },
+    {
+      "name": "Santa Isabel",
+      "express": "V",
+      "combination": null
+    },
+    {
+      "name": "Irarrázaval",
+      "express": "C",
+      "combination": "L3"
+    },
+    {
+      "name": "Ñuble",
+      "express": "C",
+      "combination": "L6"
+    },
+    {
+      "name": "Rodrigo de Araya",
+      "express": "R",
+      "combination": null
+    },
+    {
+      "name": "Carlos Valdovinos",
+      "express": "V",
+      "combination": null
+    },
+    {
+      "name": "Camino Agrícola",
+      "express": "R",
+      "combination": null
+    },
+    {
+      "name": "San Joaquín",
+      "express": "C",
+      "combination": null
+    },
+    {
+      "name": "Pedrero",
+      "express": "V",
+      "combination": null
+    },
+    {
+      "name": "Mirador",
+      "express": "R",
+      "combination": null
+    },
+    {
+      "name": "Bellavista de La Florida",
+      "express": "C",
+      "combination": null
+    },
+    {
+      "name": "Vicente Valdés",
+      "express": "C",
+      "combination": "L4"
+    }
+  ],
+  "L6": [
+    {
+      "name": "Cerrillos",
+      "express": "",
+      "combination": null
+    },
+    {
+      "name": "Lo Valledor",
+      "express": "",
+      "combination": null
+    },
+    {
+      "name": "Presidente Pedro Aguirre Cerda",
+      "express": "",
+      "combination": null
+    },
+    {
+      "name": "Franklin",
+      "express": "",
+      "combination": "L2"
+    },
+    {
+      "name": "Bío Bío",
+      "express": "",
+      "combination": null
+    },
+    {
+      "name": "Ñuble",
+      "express": "",
+      "combination": "L5"
+    },
+    {
+      "name": "Estadio Nacional",
+      "express": "",
+      "combination": null
+    },
+    {
+      "name": "Ñuñoa",
+      "express": "",
+      "combination": "L3"
+    },
+    {
+      "name": "Inés de Suárez",
+      "express": "",
+      "combination": null
+    },
+    {
+      "name": "Los Leones",
+      "express": "",
+      "combination": "L1"
+    }
+  ]
+}

@@ -20,7 +20,7 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk = [28])
+@Config(application=com.r0ybt.arachn0de.security.LegacyUiTestApplication::class,sdk = [28])
 class AppearanceUiTest {
     @get:Rule val compose = createAndroidComposeRule<ComponentActivity>()
     private fun preferences() = AppearancePreferences(compose.activity.getSharedPreferences("appearance_ui_test", 0).apply { edit().clear().commit() })
@@ -31,6 +31,8 @@ class AppearanceUiTest {
     }
     @Test fun previewRespondsToAllThemesAndSizesWithoutDatabaseWrites() {
         val prefs = preferences()
+        val app=compose.activity.application as Arachn0deApplication
+        val before=kotlinx.coroutines.runBlocking {app.backupRepository.snapshot().copy(createdAt=0)}
         var observed: androidx.compose.ui.graphics.Color? = null
         compose.setContent { Arachn0deTheme(prefs) {
             observed = Arachn0deColors.PathHighlight
@@ -50,9 +52,8 @@ class AppearanceUiTest {
         compose.onNodeWithText("Guardar").assertDoesNotExist()
         val restored = AppearancePreferences(compose.activity.getSharedPreferences("appearance_ui_test", 0))
         assertEquals(prefs.settings, restored.settings)
-        // This screen has no repository dependency; no database was opened to draw its preview.
-        val app = compose.activity.application as Arachn0deApplication
-        assertFalse(app.getDatabasePath("arachn0de.db").exists())
+        // Authentication opens the fixture DB; the preview does not change confirmed module data.
+        assertEquals(before,kotlinx.coroutines.runBlocking {app.backupRepository.snapshot().copy(createdAt=0)})
     }
     @Test fun androidFontScaleIsPreservedAndLargeRemainsScrollableOnSmallScreens() {
         val prefs = preferences().apply { setTextSize(AppearanceTextSize.Large) }
@@ -88,11 +89,10 @@ class AppearanceUiTest {
         compose.onNodeWithTag("appearance-theme:DeepMoss").assertIsSelected()
         compose.onNodeWithTag("appearance-size:Medium").performScrollTo().assertIsSelected()
     }
-    @Test fun avatarUsesRoundedSquareAtExistingSize() {
+    @Test fun avatarKeepsExistingCircularShapeAtExistingSize() {
         val outline = PersonAvatarShape.createOutline(androidx.compose.ui.geometry.Size(28f,28f), androidx.compose.ui.unit.LayoutDirection.Ltr, Density(1f))
         val rounded = outline as androidx.compose.ui.graphics.Outline.Rounded
-        assertEquals(7f, rounded.roundRect.topLeftCornerRadius.x, .01f)
-        assertTrue(rounded.roundRect.topLeftCornerRadius.x < 14f)
+        assertEquals(14f, rounded.roundRect.topLeftCornerRadius.x, .01f)
     }
     @Test fun realCardKeepsSemanticColorsFormattingLinksAndCompactSizesAcrossPalettes() {
         val prefs = preferences()

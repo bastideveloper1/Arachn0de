@@ -32,7 +32,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
-import com.r0ybt.arachn0de.domain.model.NodeProgress
+import com.r0ybt.arachn0de.domain.model.ProjectCardAlerts
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -49,8 +49,10 @@ import com.r0ybt.arachn0de.ui.state.ProjectActions
 internal fun ProjectDashboardScreen(
     repository: ProjectRepository,
     projects: List<Project>,
-    projectProgressById: Map<String, NodeProgress>,
+    projectAlertsById: Map<String, ProjectCardAlerts>,
     onOpenProject: (Project) -> Unit = {},
+    onConverted: (String, String?) -> Unit = { id, _ -> projects.firstOrNull { it.id == id }?.let(onOpenProject) },
+    conversionScope: kotlinx.coroutines.CoroutineScope = rememberCoroutineScope(),
     listState: LazyListState = rememberLazyListState(),
     onOpenPeople: () -> Unit = {},
     onOpenAttention: () -> Unit = {},
@@ -58,9 +60,9 @@ internal fun ProjectDashboardScreen(
     onOpenObligations: () -> Unit = {},
     onOpenAbout: () -> Unit = {},
     onOpenGame: () -> Unit = {},
+    onOpenMetro: () -> Unit = {},
     onOpenAppearance: () -> Unit = {},
     recurrenceContent: @Composable () -> Unit = {},
-    projectAttentionById: Map<String, com.r0ybt.arachn0de.domain.model.AttentionSummary> = emptyMap(),
     exportTree: com.r0ybt.arachn0de.domain.model.NodeTreeSnapshot = com.r0ybt.arachn0de.domain.model.NodeTreeSnapshot(emptyList()),
     copyDescendantsReady: Boolean = false,
     onOpenTechnologies: () -> Unit = {},
@@ -68,8 +70,10 @@ internal fun ProjectDashboardScreen(
     val scope = rememberCoroutineScope()
     val context = androidx.compose.ui.platform.LocalContext.current
     val copyActions = remember(context,scope) { com.r0ybt.arachn0de.ui.state.NodeCopyActions(context,scope) { (context.applicationContext as com.r0ybt.arachn0de.Arachn0deApplication).personRepository.observeAllAssignments().first() } }
+    var photoProjectId by rememberSaveable { mutableStateOf<String?>(null) }
+    projects.firstOrNull { it.id == photoProjectId }?.let { ProjectPhotoDialog(it, onClose = { photoProjectId = null }) }
     var moveProject by rememberSaveable { mutableStateOf<String?>(null) }
-    projects.firstOrNull { it.id==moveProject }?.let { moving -> ProjectMoveDialog(repository,moving,{ moveProject=null },{ moveProject=null }) }
+    projects.firstOrNull { it.id==moveProject }?.let { moving -> ProjectMoveDialog(repository,moving,{ moveProject=null },{ moveProject=null }, onConverted = { id, layer -> moveProject=null; onConverted(id, layer) }, operationScope = conversionScope) }
     val actions = remember(repository, scope) { ProjectActions(repository, scope, (context.applicationContext as com.r0ybt.arachn0de.Arachn0deApplication).attachmentRepository) }
     val drafts = rememberSaveable(saver = com.r0ybt.arachn0de.ui.state.EditorDraftStore.Saver) { com.r0ybt.arachn0de.ui.state.EditorDraftStore() }
     val draft = drafts.active
@@ -126,12 +130,12 @@ internal fun ProjectDashboardScreen(
                 } else {
                     ProjectList(
                         projects = projects,
+                        onPhoto = { photoProjectId = it.id },
                         onMoveInside = { moveProject=it.id },
                         onCopy = { project, descendants -> copyActions.copyProject(project,exportTree,descendants) },
                         canCopy = !copyActions.busy,
                         canCopyDescendants = copyDescendantsReady,
-                        projectProgressById = projectProgressById,
-                        projectAttentionById = projectAttentionById,
+                        projectAlertsById = projectAlertsById,
                         reorderBusy = actions.operation.busy,
                         reorderError = actions.operation.error,
                         listState = listState,
@@ -165,7 +169,7 @@ internal fun ProjectDashboardScreen(
                         onAttention = { showDrawer = false; onOpenAttention() },
                         onCalendar = { showDrawer = false; onOpenCalendar() },
                         onObligations = { showDrawer = false; onOpenObligations() },
-                        onAppearance = { showDrawer = false; onOpenAppearance() }, onGame = { showDrawer = false; onOpenGame() }, onAbout = { showDrawer = false; onOpenAbout() },
+                        onAppearance = { showDrawer = false; onOpenAppearance() }, onMetro = { showDrawer = false; onOpenMetro() }, onGame = { showDrawer = false; onOpenGame() }, onAbout = { showDrawer = false; onOpenAbout() },
                     )
                 }
             }

@@ -17,6 +17,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.filled.Code
+import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
@@ -142,6 +144,7 @@ internal fun NodeCard(
     now: Long = 0L,
     attention: com.r0ybt.arachn0de.domain.model.AttentionSummary? = null,
     onMakeLayer: () -> Unit = {},
+    onConvertToProject: (() -> Unit)? = null,
     onConvert: (() -> Unit) -> Unit = { done -> done() },
     canCopy: Boolean = true,
     onCopy: (Boolean) -> Unit = {},
@@ -155,6 +158,10 @@ internal fun NodeCard(
     onChangeWorkState: (() -> Unit)? = null,
     stateBusy: Boolean = false,
 ) {
+    var editingTechnologies by remember { mutableStateOf(false) }
+    var savingTemplate by remember { mutableStateOf(false) }
+    if(editingTechnologies) EditOwnerTechnologies(node.id,false) {editingTechnologies=false}
+    if(savingTemplate) SaveTaskTemplateDialog(node.id) {savingTemplate=false}
     var showContextMenu by remember { mutableStateOf(false) }
     val sprintPhase = node.workState
     val sprintFinal = sprintPhase != null && sprintPhase.next() == sprintPhase
@@ -294,10 +301,8 @@ internal fun NodeCard(
                         }
                     }
                 }
-                Box(Modifier.padding(start = 24.dp + leadingColumnWidth, end = 12.dp)) {
-                    TechnologyOwnerControl(node.id, false, node.title)
-                }
-                if (sprintPhase != null || responsiblePeople.isNotEmpty() || tags.isNotEmpty() ||
+                CompactAssignments(node.id,responsiblePeople,Modifier.padding(start = 24.dp + leadingColumnWidth, end = 12.dp))
+                if (sprintPhase != null || tags.isNotEmpty() ||
                     node.effectivePriority != com.r0ybt.arachn0de.domain.model.Priority.NONE || (!node.isStructural && (node.startAt != null || node.dueAt != null))) Column(
                     modifier = Modifier.fillMaxWidth().padding(start = 24.dp + leadingColumnWidth, end = 12.dp, top = 2.dp, bottom = 6.dp),
                 ) {
@@ -334,16 +339,13 @@ internal fun NodeCard(
                         PriorityIndicator(node)
                         TaskDateIndicator(node, now, wrap = true)
                     }
-                    if (tags.isNotEmpty() || responsiblePeople.isNotEmpty()) FlowRow(
+                    if (tags.isNotEmpty()) FlowRow(
                         modifier = Modifier.fillMaxWidth().padding(top = 2.dp),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalArrangement = Arrangement.spacedBy(2.dp),
                         itemVerticalAlignment = Alignment.CenterVertically,
                     ) {
                         TagChips(tags, compact = true)
-                        if (responsiblePeople.isNotEmpty()) Box(Modifier.padding(start = if (tags.isNotEmpty()) 8.dp else 0.dp)) {
-                            ResponsibleAvatars(responsiblePeople)
-                        }
                     }
                 }
             }
@@ -391,10 +393,14 @@ internal fun NodeCard(
         ActionMenu(node.title, { showContextMenu = false }) {
             onSelect?.let { select -> ActionMenuItem("Seleccionar", Icons.Default.CheckBox, { showContextMenu = false; select() }) }
             onChangeWorkState?.let { change -> ActionMenuItem("Cambiar estado",Icons.Default.SwapHoriz,{ showContextMenu = false; change() }, enabled = !stateBusy) }
+            if (!hasChildren && node.purpose == NodePurpose.ACTION) ActionMenuItem("Metro / modo Viaje", Icons.Default.Directions, { showContextMenu=false;com.r0ybt.arachn0de.metro.MetroNavigation.open(node.id) })
             ActionMenuItem("Editar",Icons.Default.Edit,{ showContextMenu = false; onEdit() })
+            ActionMenuItem("Editar tecnologías",Icons.Default.Code,{showContextMenu=false;editingTechnologies=true})
+            if(!node.isStructural) ActionMenuItem("Guardar como plantilla",Icons.Default.Bookmark,{showContextMenu=false;savingTemplate=true})
             onHistory?.let { history -> ActionMenuItem("Historial",Icons.Default.History,{ showContextMenu = false; history() }) }
             if (!hasChildren) ActionMenuItem(if(node.purpose != NodePurpose.ACTION) "Convertir en tarea" else "Convertir en nota",
                 Icons.Default.SwapHoriz,{ onConvert { showContextMenu = false } })
+            if(node.isStructural) onConvertToProject?.let { promote -> ActionMenuItem("Convertir en proyecto", Icons.Default.AccountTree, { showContextMenu=false;promote() }, enabled=!stateBusy) }
             if(!node.isStructural) ActionMenuItem("Convertir en capa",Icons.Default.AccountTree,{ showContextMenu=false;onMakeLayer() })
             ActionMenuItem("Responsables",Icons.Default.People,{ showContextMenu = false; onResponsible() })
             ActionMenuItem("Mover a…",Icons.Default.DriveFileMove,{ showContextMenu = false; onMove() })

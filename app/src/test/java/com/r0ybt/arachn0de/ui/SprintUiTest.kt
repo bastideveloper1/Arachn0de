@@ -15,7 +15,7 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 
-@RunWith(RobolectricTestRunner::class) @Config(sdk=[28])
+@RunWith(RobolectricTestRunner::class) @Config(application=com.r0ybt.arachn0de.security.LegacyUiTestApplication::class,sdk=[28])
 class SprintUiTest {
     private val compose=createAndroidComposeRule<MainActivity>()
     private lateinit var app:Arachn0deApplication;private lateinit var project:Project;private lateinit var layer:Node;private lateinit var task:Node

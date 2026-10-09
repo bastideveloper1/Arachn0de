@@ -31,6 +31,32 @@ class NodeRepository(
     private val database: Arachn0deDatabase,
     private val currentTimeMillis: () -> Long = System::currentTimeMillis,
 ) {
+    internal suspend fun <T> withEditorAssignments(nodeId: String, technologyIds: List<String>?, metroCatalog: String?, metroPlan: String?, traveler: String?, metroJourneyId: String? = null, metroRevision: Long? = null, work: suspend () -> T): T = database.withTransaction {
+        require((metroCatalog==null)==(metroPlan==null)) {"Completa el itinerario Metro antes de guardar."}
+        require(metroJourneyId==null || metroPlan!=null) {"El viaje seleccionado requiere su configuración."}
+        val linked=metroJourneyId?.let {id->requireNotNull(database.metroDao().journey(id)) {"El viaje seleccionado ya no existe."}.also {row->
+            require(row.revision==metroRevision) {"El viaje cambió. Reabre el formulario para revisar su configuración."}
+            require(row.nodeId==null || row.nodeId==nodeId) {"El viaje ya pertenece a otra tarjeta."}
+            val attached=database.metroDao().forNode(nodeId)
+            require(attached==null || attached.id==row.id) {"La tarjeta ya tiene otro viaje."}
+        }}
+        val result=work()
+        if(technologyIds!=null) {
+            require(technologyIds.distinct().size==technologyIds.size && technologyIds.all { database.technologyDao().get(it)!=null })
+            database.technologyDao().clearNode(nodeId);database.technologyDao().assignNodes(technologyIds.mapIndexed { index,id->com.r0ybt.arachn0de.data.local.NodeTechnologyEntity(nodeId,id,index) })
+        }
+        if(metroPlan!=null) {
+            val codec=com.r0ybt.arachn0de.metro.MetroCodec
+            val source=com.r0ybt.arachn0de.metro.MetroNetwork.decode(requireNotNull(metroCatalog))
+            val configuration=codec.journey(metroPlan,source);require(configuration.sessions.isEmpty())
+            val prefs=database.metroDao().preferences()?.let { codec.preferences(it.payload) } ?: com.r0ybt.arachn0de.metro.MetroPreferences(requireNotNull(metroCatalog))
+            val previous=linked?.let {codec.journey(it.payload,prefs.network)}
+            val route=if(previous?.plan==configuration.plan) configuration.plan else requireNotNull(com.r0ybt.arachn0de.metro.MetroPlanner.plan(prefs.planningNetwork,configuration.plan.stops,configuration.plan.express,prefs.restrictions))
+            require(linked!=null || database.metroDao().forNode(nodeId)==null) {"Reabre el formulario antes de editar el viaje existente."}
+            com.r0ybt.arachn0de.metro.MetroPlanPersistence.save(database,prefs,route,nodeId,traveler,linked?.id,preserveEnabled=linked!=null,updateActiveTraveler=true)
+        }
+        result
+    }
     val creationDefaults = CreationDefaultsRepository(database)
     val tags = TagRepository(database)
     val recurrence = RecurrenceRepository(database, currentTimeMillis)
@@ -319,6 +345,7 @@ class NodeRepository(
         val current = nodeDao.getById(id) ?: return@withTransaction false
         if (nodeDao.hasChildren(current.projectId, id)) return@withTransaction false
         if (current.purpose == purpose.name) return@withTransaction true
+        require(purpose == NodePurpose.LAYER || database.conversionDao().node(id) == null) { "Esta capa conserva propiedades de un proyecto. Conviértela en proyecto antes de cambiar su tipo." }
         require(current.amountMinor == null || removeObligation) { "Confirma la eliminación de los datos financieros." }
         val at = currentTimeMillis()
         reopenBeforeConversion(id, at)
@@ -436,7 +463,8 @@ class NodeRepository(
             ids.associateWith { people[it].orEmpty().map { row -> row.personId }.toSet() },
             ids.associateWith { events[it].orEmpty().map { row -> row.toEvent() } },
             ids.associateWith { id -> database.attachmentDao().forNode(id).map { it.attachmentId }.toSet() }.filterValues { it.isNotEmpty() },
-            ids.associateWith { id -> technologies[id].orEmpty().map { it.technologyId }.toSet() }.filterValues { it.isNotEmpty() })
+            ids.associateWith { id -> technologies[id].orEmpty().map { it.technologyId }.toSet() }.filterValues { it.isNotEmpty() },
+            ids.associateWith { id->technologies[id].orEmpty().sortedWith(compareBy({it.position},{it.technologyId})).map {it.technologyId} }.filterValues {it.isNotEmpty()})
     }
 
     suspend fun deleteSelected(projectId: String, selected: Set<String>): Int = database.withTransaction {
@@ -486,7 +514,7 @@ class NodeRepository(
     /** Refuse undo if any captured row changed, vanished or acquired children. Never delete new work. */
     suspend fun undoCreation(token: com.r0ybt.arachn0de.domain.model.CreationUndo): Boolean = database.withTransaction {
         val expected = token.nodes
-        if (expected.isEmpty()) return@withTransaction false
+        if (expected.isEmpty() || expected.any {database.metroDao().forNode(it.id)!=null}) return@withTransaction false
         val actual = runCatching { captureCreation(expected.map { it.id }) }.getOrNull() ?: return@withTransaction false
         if (expected.any { it.hasChildren } || actual != token) return@withTransaction false
         // Every captured node is still a leaf; direct chunks cannot cascade into new work.

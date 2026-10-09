@@ -88,7 +88,7 @@ class GameCorrectionTest {
         val s = ready().copy(objects = listOf(BoardObject("trap", "player-2", "tile-8", ObjectType.BEAR_TRAP),
             BoardObject("own", "player-1", "tile-24", ObjectType.BANNER)))
         assertEquals(listOf("player-1"), GameVision.visiblePlayers(s, map, "player-1").map { it.id })
-        assertEquals(listOf("own"), GameVision.visibleObjects(s, map, "player-1").map { it.id })
+        assertTrue(GameVision.visibleObjects(s, map, "player-1").isEmpty())
         assertFalse("tile-24" in GameVision.visibleTiles(s, map, "player-1"))
     }
 }

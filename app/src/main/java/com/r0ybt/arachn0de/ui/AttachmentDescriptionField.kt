@@ -11,6 +11,7 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
@@ -23,14 +24,14 @@ import com.r0ybt.arachn0de.domain.model.AttachmentReferences
 /** Keep Material's outlined decoration; hit testing uses the actual inner text coordinates. */
 @Composable
 internal fun AttachmentDescriptionField(value: TextFieldValue, onValueChange: (TextFieldValue) -> Unit,
-    enabled: Boolean, transformation: AttachmentVisualTransformation, onReference: (Int) -> Unit) {
+    enabled: Boolean, focusRequester: androidx.compose.ui.focus.FocusRequester? = null, transformation: AttachmentVisualTransformation, onReference: (Int) -> Unit) {
     val interactions = remember { MutableInteractionSource() }
     var layout by remember { mutableStateOf<TextLayoutResult?>(null) }
     val transformed = transformation.filter(AnnotatedString(value.text))
     val references = AttachmentReferences.matches(value.text).toList()
     BasicTextField(value = value, onValueChange = onValueChange, enabled = enabled,
-        modifier = Modifier.fillMaxWidth().defaultMinSize(minHeight = OutlinedTextFieldDefaults.MinHeight), interactionSource = interactions,
-        textStyle = LocalTextStyle.current.copy(color = MaterialTheme.colorScheme.onSurface),
+        modifier = (focusRequester?.let { Modifier.focusRequester(it) } ?: Modifier).fillMaxWidth().defaultMinSize(minHeight = OutlinedTextFieldDefaults.MinHeight), interactionSource = interactions,
+        textStyle = LocalTextStyle.current.copy(color = MaterialTheme.colorScheme.onSurface, fontWeight = androidx.compose.ui.text.font.FontWeight.Normal),
         cursorBrush = SolidColor(MaterialTheme.colorScheme.primary), visualTransformation = transformation,
         onTextLayout = { layout = it }, decorationBox = { inner ->
             OutlinedTextFieldDefaults.DecorationBox(value = value.text, enabled = enabled, singleLine = false,

@@ -5,6 +5,10 @@ import com.r0ybt.arachn0de.data.local.*
 import java.io.ByteArrayOutputStream
 
 internal object BackupFixture {
+    fun removeSprintFields(o:org.json.JSONObject) {
+        o.remove("savedTemplates")
+        listOf("nodeTechnologies","projectTechnologies").forEach { key->o.optJSONArray(key)?.let { rows->repeat(rows.length()) {rows.getJSONObject(it).remove("position")} } }
+    }
     // JVM directory fsync uses the host filesystem; Robolectric's ShadowLinux cannot open directories.
     fun syncDirectory(directory: java.io.File) {
         java.nio.channels.FileChannel.open(directory.toPath(), java.nio.file.StandardOpenOption.READ).use { it.force(true) }

@@ -188,7 +188,7 @@ class GameGameplayTest {
     @Test fun fogShowsNearEnemiesHidesFarEnemiesAndOwnObjectsDoNotGrantVision() {
         val s = ready().copy(objects = listOf(obj(ObjectType.BANNER, "tile-24", "player-1"), obj(ObjectType.SPIKES, "tile-23")))
         assertEquals(listOf("player-1"), GameVision.visiblePlayers(s, map, "player-1").map { it.id })
-        assertEquals(listOf(ObjectType.BANNER), GameVision.visibleObjects(s, map, "player-1").map { it.type })
+        assertTrue(GameVision.visibleObjects(s, map, "player-1").isEmpty())
         val near = s.copy(players = s.players.map { if (it.id == "player-2") it.copy(tileId = "tile-13") else it })
         assertEquals(2, GameVision.visiblePlayers(near, map, "player-1").size)
         assertFalse("tile-24" in GameVision.visibleTiles(s, map, "player-1"))

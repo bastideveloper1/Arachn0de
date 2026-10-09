@@ -1,5 +1,6 @@
 package com.r0ybt.arachn0de.ui
 
+import com.r0ybt.arachn0de.security.SecureFiles
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Matrix
@@ -32,11 +33,11 @@ import kotlin.math.min
 
 internal fun decodeAttachment(file: java.io.File): Bitmap? {
     val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-    BitmapFactory.decodeFile(file.path, bounds)
+    SecureFiles.decoded(file, bounds)
     var sample = 1
     while (bounds.outWidth / sample > 2048 || bounds.outHeight / sample > 2048) sample *= 2
-    val source = BitmapFactory.decodeFile(file.path, BitmapFactory.Options().apply { inSampleSize = sample }) ?: return null
-    val orientation = runCatching { ExifInterface(file.path).getAttributeInt(ExifInterface.TAG_ORIENTATION, 1) }.getOrDefault(1)
+    val source = SecureFiles.decoded(file, BitmapFactory.Options().apply { inSampleSize = sample }) ?: return null
+    val orientation = runCatching { SecureFiles.orientation(file) }.getOrDefault(1)
     val matrix = Matrix().apply {
         when (orientation) {
             2 -> setScale(-1f, 1f); 3 -> setRotate(180f); 4 -> setScale(1f, -1f)

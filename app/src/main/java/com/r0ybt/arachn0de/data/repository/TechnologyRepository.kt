@@ -17,18 +17,35 @@ internal data class TechnologyState(
 ) {
     fun forOwner(id: String, project: Boolean): List<TechnologyEntity> {
         val ids = (if (project) projectIds else nodeIds)[id].orEmpty()
-        return catalog.filter { it.id in ids }
+        val byId = catalog.associateBy { it.id }; return ids.mapNotNull(byId::get)
     }
 }
 
-internal class TechnologyRepository(private val database: Arachn0deDatabase, private val icons: TechnologyIconStore) {
+internal class TechnologyRepository(private val database: Arachn0deDatabase, private val icons: TechnologyIconStore, sessionScope:CoroutineScope?=null) {
     private val dao = database.technologyDao()
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-    val state = combine(dao.observeCatalog(), dao.observeNodes(), dao.observeProjects()) { catalog, nodes, projects ->
-        TechnologyState(catalog, nodes.groupBy { it.nodeId }.mapValues { (_, rows) -> rows.mapTo(hashSetOf()) { it.technologyId } },
-            projects.groupBy { it.projectId }.mapValues { (_, rows) -> rows.mapTo(hashSetOf()) { it.technologyId } }, loaded = true)
-    }.retryWhen { _, attempt -> emit(TechnologyState(failed = true)); delay(minOf(1000L * (attempt + 1), 10_000)); true }
-        .stateIn(scope, SharingStarted.WhileSubscribed(5000), TechnologyState())
+    private val scope = sessionScope ?: CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val stateUpdates=Any()
+    private val cachedState=MutableStateFlow(TechnologyState())
+    val state:StateFlow<TechnologyState> = cachedState.asStateFlow()
+    private val updates = database.invalidationTracker.createFlow("technologies", "node_technologies", "project_technologies").map {
+        database.withTransaction {
+            val catalog=dao.catalog().sortedWith(compareBy({ row->row.name.map { if(it in 'A'..'Z') it.lowercaseChar() else it }.joinToString("") },{it.id}))
+            val nodes=dao.nodes();val projects=dao.projects()
+            TechnologyState(catalog,
+                nodes.groupBy {it.nodeId}.mapValues {(_,rows)->rows.mapTo(linkedSetOf()) {it.technologyId}},
+                projects.groupBy {it.projectId}.mapValues {(_,rows)->rows.mapTo(linkedSetOf()) {it.technologyId}},loaded=true)
+        }
+    }.retryWhen { _, attempt -> delay(minOf(1000L * (attempt + 1), 10_000)); true }
+    init {
+        scope.launch {
+            cachedState.subscriptionCount.map {it>0}.distinctUntilChanged().collectLatest {subscribed ->
+                if(subscribed) updates.collect {next ->
+                    val job=currentCoroutineContext()
+                    synchronized(stateUpdates) {job.ensureActive();cachedState.value=next}
+                }
+            }
+        }
+    }
 
     private suspend fun <T> files(work: suspend () -> T): T = withContext(Dispatchers.IO) {
         AttachmentRepository.fileOperations.withLock { work() }
@@ -82,8 +99,8 @@ internal class TechnologyRepository(private val database: Arachn0deDatabase, pri
         database.withTransaction {
             val exists = if (project) database.projectDao().getById(owner) != null else database.nodeDao().getById(owner) != null
             if (!exists || ids.any { dao.get(it) == null }) return@withTransaction false
-            if (project) { dao.clearProject(owner); dao.assignProjects(ids.map { ProjectTechnologyEntity(owner, it) }) }
-            else { dao.clearNode(owner); dao.assignNodes(ids.map { NodeTechnologyEntity(owner, it) }) }
+            if (project) { dao.clearProject(owner); dao.assignProjects(ids.mapIndexed { index, id -> ProjectTechnologyEntity(owner, id, index) }) }
+            else { dao.clearNode(owner); dao.assignNodes(ids.mapIndexed { index, id -> NodeTechnologyEntity(owner, id, index) }) }
             true
         }
     }
@@ -98,5 +115,5 @@ internal class TechnologyRepository(private val database: Arachn0deDatabase, pri
         database.withTransaction { names.forEach { if (dao.iconReferences(it) == 0) icons.durable.delete(it) } }
         icons.durable.clearJournal()
     }
-    fun close() { scope.cancel() }
+    fun close() { scope.cancel();synchronized(stateUpdates) {cachedState.value=TechnologyState()} }
 }

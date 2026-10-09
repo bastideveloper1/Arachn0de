@@ -3,15 +3,19 @@ package com.r0ybt.arachn0de.game
 import kotlin.random.Random
 
 object GameRules {
-    fun newGame(names: List<String>, characters: List<RatCharacter>, map: GameMap, laps: Int = 1): GameSession {
+    fun newGame(names: List<String>, characters: List<RatCharacter>, map: GameMap, laps: Int = 1,
+        controls: List<PlayerControl> = List(names.size) { PlayerControl.HUMAN }): GameSession {
         require(names.size in 2..4 && names.size == characters.size && laps in 1..4)
         require(characters.distinct().size == characters.size)
         require(names.all { it.trim().isNotEmpty() && it.trim().length <= 16 })
-        return GameSession(map.id, names.indices.map { i ->
+        require(controls.size == names.size)
+        val game = GameSession(map.id, names.indices.map { i ->
             val definition = GameDefinitions.characters.getValue(characters[i])
             GamePlayer("player-${i + 1}", names[i].trim(), characters[i], map.start, TokenQuadrant.entries[i],
-                abilityCharges = definition.abilityUses)
-        }, targetLaps = laps)
+                abilityCharges = definition.abilityUses, control = controls[i], routeHistory = listOf(map.start))
+        }, targetLaps = laps, board = if (map.seed != null) map else null)
+        return GameExpansion.refreshVision(game.copy(spider = if (map.seed == null) null else
+            SpiderState(map.tiles.values.filter { it.terrain == Terrain.CAVE }.random(Random(map.seed)).id)), map)
     }
     fun rollD6(random: Random = Random.Default): Int = random.nextInt(1, 7)
     private fun replace(s: GameSession, p: GamePlayer) = s.copy(players = s.players.map { if (it.id == p.id) p else it })
@@ -26,7 +30,8 @@ object GameRules {
         val next = s.copy(pendingDamage = s.pendingDamage.filterNot { it.id == event.id })
         return if (currentDamage(next) != null) next else afterDamage(next)
     }
-    private fun afterDamage(s: GameSession) = s.copy(phase = if (s.currentPlayer.exhausted || s.currentPlayer.skippedTurns > 0) TurnPhase.REST else TurnPhase.READY)
+    private fun afterDamage(s: GameSession) = s.copy(phase = if (s.currentPlayer.exhausted || s.currentPlayer.skippedTurns > 0) TurnPhase.REST
+        else if (s.currentPlayer.engagedSpider && s.spider?.defeated == false) TurnPhase.COMBAT else TurnPhase.READY)
     fun rest(s: GameSession): GameSession {
         require(s.phase == TurnPhase.REST)
         val player = s.currentPlayer
@@ -88,6 +93,7 @@ object GameRules {
         return replace(s, victim.copy(health = health, exhausted = victim.exhausted || health == 0)).copy(
             pendingDamage = s.pendingDamage + event, nextEventId = s.nextEventId + 1)
     }
+    /** Synchronous simulation helper; UI uses planStep/arrive so landing follows visual arrival. */
     fun step(s: GameSession, map: GameMap): GameSession {
         require(s.mapId == map.id && s.phase == TurnPhase.MOVING && s.remainingSteps > 0)
         val destination = map.next(s.currentPlayer.tileId)
@@ -100,7 +106,7 @@ object GameRules {
         return if (destination == map.goal || moved.remainingSteps == 0 || moved.currentPlayer.exhausted || map.next(destination) == null)
             finishMovement(moved, map) else moved
     }
-    private fun finishMovement(s: GameSession, map: GameMap): GameSession {
+    internal fun finishMovement(s: GameSession, map: GameMap, deferTurn: Boolean = false): GameSession {
         var result = s.copy(remainingSteps = 0)
         val playerId = s.currentPlayer.id
         val objects = result.objects.filter { it.active && it.tileId == result.currentPlayer.tileId && it.ownerPlayerId != result.currentPlayer.id }
@@ -130,12 +136,14 @@ object GameRules {
                 result = result.copy(ranking = result.ranking + player.id, winnerId = result.winnerId ?: player.id)
                 val remaining = result.players.filter { it.id !in result.ranking }
                 if (remaining.size == 1) result = result.copy(ranking = result.ranking + remaining.single().id)
-                if (result.ranking.size == result.players.size) return result.copy(phase = TurnPhase.WON)
-            } else result = replace(result, player.copy(tileId = map.start))
+                if (result.ranking.size == result.players.size) return result.copy(phase = if (deferTurn) TurnPhase.RESULT else TurnPhase.WON,
+                    result = if (deferTurn) "Llegó a la meta." else null)
+            } else if (deferTurn) result = result.copy(lapReset = true)
+                else result = replace(result, player.copy(tileId = map.start))
         }
-        return endTurn(result)
+        return if (deferTurn) result.copy(phase = TurnPhase.RESULT, result = "Movimiento terminado.") else endTurn(result)
     }
-    private fun endTurn(s: GameSession): GameSession {
+    internal fun endTurn(s: GameSession): GameSession {
         var index = s.currentIndex
         var round = s.round
         do { index = (index + 1) % s.players.size; if (index == 0) round++ } while (s.players[index].id in s.ranking)

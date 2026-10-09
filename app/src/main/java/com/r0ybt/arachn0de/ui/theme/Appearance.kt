@@ -39,6 +39,11 @@ class AppearancePreferences(private val storage: SharedPreferences) {
         AppearanceTheme.entries.firstOrNull { it.name == storage.all[THEME] } ?: AppearanceTheme.Arachn0de,
         AppearanceTextSize.entries.firstOrNull { it.name == storage.all[TEXT] } ?: AppearanceTextSize.Small))
         private set
+    fun reload() { settings=AppearanceSettings(
+        AppearanceTheme.entries.firstOrNull {it.name==storage.all[THEME]} ?: AppearanceTheme.Arachn0de,
+        AppearanceTextSize.entries.firstOrNull {it.name==storage.all[TEXT]} ?: AppearanceTextSize.Small) }
+    fun observe(listener:android.content.SharedPreferences.OnSharedPreferenceChangeListener) {storage.registerOnSharedPreferenceChangeListener(listener)}
+    fun unobserve(listener:android.content.SharedPreferences.OnSharedPreferenceChangeListener) {storage.unregisterOnSharedPreferenceChangeListener(listener)}
     fun setTheme(theme: AppearanceTheme) { settings = settings.copy(theme = theme); storage.edit().putString(THEME, theme.name).apply() }
     fun setTextSize(size: AppearanceTextSize) { settings = settings.copy(textSize = size); storage.edit().putString(TEXT, size.name).apply() }
     companion object { const val FILE = "appearance_preferences"; private const val THEME = "theme"; private const val TEXT = "text_size" }

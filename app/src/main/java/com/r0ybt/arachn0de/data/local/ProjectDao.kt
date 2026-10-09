@@ -9,6 +9,12 @@ import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface ProjectDao {
+    @Query("SELECT projects.*, p.id AS photo_id, p.projectId AS photo_projectId, p.nodeId AS photo_nodeId, p.file AS photo_file, p.photoZoom AS photo_photoZoom, p.photoX AS photo_photoX, p.photoY AS photo_photoY FROM projects LEFT JOIN project_photos p ON p.projectId = projects.id ORDER BY projects.position, projects.createdAt, projects.id")
+    fun observeWithPhotos(): Flow<List<ProjectWithPhoto>>
+
+    @Query("SELECT projects.*, p.id AS photo_id, p.projectId AS photo_projectId, p.nodeId AS photo_nodeId, p.file AS photo_file, p.photoZoom AS photo_photoZoom, p.photoX AS photo_photoX, p.photoY AS photo_photoY FROM projects LEFT JOIN project_photos p ON p.projectId = projects.id WHERE projects.id = :id")
+    suspend fun getWithPhoto(id: String): ProjectWithPhoto?
+
     @Query("SELECT * FROM projects ORDER BY position ASC, createdAt ASC, id ASC")
     fun observeAll(): Flow<List<ProjectEntity>>
 

@@ -8,6 +8,7 @@ data class Project(
     val position: Int,
     val createdAt: Long,
     val updatedAt: Long,
+    val photo: ProjectPhoto? = null,
 ) {
     constructor(id: String, name: String, description: String, createdAt: Long, updatedAt: Long) :
         this(id, name, description, 0, createdAt, updatedAt)

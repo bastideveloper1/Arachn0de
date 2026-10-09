@@ -44,6 +44,16 @@ class TechnologyRepositoryTest {
         return repository.importIcon(Uri.fromFile(input))
     }
     private fun file(name: String) = File(context.filesDir, "technology-icons/$name")
+    @Test fun manualAssignmentOrderSurvivesReopenRemovalAndDoesNotReorderCatalogOrPeople() = runBlocking {
+        repository.save("a","Alpha",null,true);repository.save("b","Beta",null,true);repository.save("c","Gamma",null,true)
+        assertTrue(repository.assign("task",false,linkedSetOf("c","a","b")))
+        assertEquals(listOf("c","a","b"),repository.state.first {it.loaded && it.forOwner("task",false).size==3}.forOwner("task",false).map {it.id})
+        repository.close();db.close();db=Arachn0deDatabase.create(context);repository=TechnologyRepository(db,TechnologyIconStore(context,BackupFixture::syncDirectory))
+        assertEquals(listOf("c","a","b"),db.technologyDao().nodes().map {it.technologyId})
+        repository.assign("task",false,linkedSetOf("c","b"))
+        assertEquals(listOf("c","b"),db.technologyDao().nodes().map {it.technologyId});assertEquals(listOf("a","b","c"),db.technologyDao().observeCatalog().first().map {it.id})
+        assertEquals(listOf("person"),db.personDao().assignmentIds("task"))
+    }
     @Test fun createEditAndDeleteKeepOwnersAndPeopleWhileCascadingTechnologyLinks() = runBlocking {
         val name = icon()
         assertTrue(repository.save("k", " Kotlin personalizada ", name, true))

@@ -21,7 +21,7 @@ import java.util.TimeZone
 import java.util.concurrent.atomic.AtomicLong
 
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk = [28])
+@Config(application=com.r0ybt.arachn0de.security.LegacyUiTestApplication::class,sdk = [28])
 class CalendarUiTest {
     private val compose = createAndroidComposeRule<ComponentActivity>()
     private lateinit var app: Arachn0deApplication

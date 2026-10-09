@@ -22,7 +22,7 @@ import org.robolectric.annotation.Config
 import java.util.TimeZone
 
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk = [28])
+@Config(application=com.r0ybt.arachn0de.security.LegacyUiTestApplication::class,sdk = [28])
 class NodeBatchUiTest {
     private val compose = createComposeRule()
     private lateinit var app: Arachn0deApplication

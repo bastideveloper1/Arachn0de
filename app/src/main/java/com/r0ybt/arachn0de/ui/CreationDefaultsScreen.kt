@@ -82,22 +82,37 @@ private fun DefaultsEditor(repository:CreationDefaultsRepository, scope:Defaults
             Text(if(scope==DefaultsScope.Global) "Configuración" else "Valores predeterminados",style=MaterialTheme.typography.titleLarge,modifier=Modifier.weight(1f))
             TextButton(enabled=!operation.busy,onClick={ leave() }) { Text("Volver") }
         }
-        Column(Modifier.weight(1f).verticalScroll(rememberScrollState()),verticalArrangement=Arrangement.spacedBy(10.dp)) {
+        Column(Modifier.weight(1f).verticalScroll(rememberScrollState()),verticalArrangement=Arrangement.spacedBy(6.dp)) {
             Text("Valores predeterminados de creación",style=MaterialTheme.typography.titleMedium)
             Text((when(scope) { DefaultsScope.Global -> "Todos los proyectos";is DefaultsScope.Project -> "Proyecto";is DefaultsScope.Layer -> "Capa" }) + ": " + contextName)
             Text("Se aplican a las nuevas tareas y notas que crees aquí. Puedes cambiarlos al crear. No modifican tareas existentes ni borradores guardados.")
             Text(if(scope==DefaultsScope.Global) "Heredar usa el comportamiento inicial de la aplicación." else "Heredar usa la configuración general, después la del proyecto y luego la de las capas superiores. Elegir un valor aquí cambia solo esa opción.")
+            AdaptiveFormRow(listOf({
             DefaultsChoice("Tipo",own.purpose,inherited.purpose,NodePurpose.entries,{ when(it) { NodePurpose.ACTION -> "Tarea";NodePurpose.NOTE -> "Nota";NodePurpose.LAYER -> "Capa" } },!operation.busy) { own=own.copy(purpose=it) }
+            }, {
             DefaultsChoice("Obligación",own.obligation,inherited.obligation,listOf(false,true),{ if(it) "Activada" else "Desactivada" },!operation.busy) { own=own.copy(obligation=it) }
+            }), minFieldWidth=130.dp)
+            AdaptiveFormRow(listOf({
             DefaultsChoice("Moneda",own.currency,inherited.currency,listOf("CLP","USD","EUR"),{ it },!operation.busy) { own=own.copy(currency=it) }
+            }, {
             DefaultsChoice("Prioridad",own.priority,inherited.priority,Priority.entries,{ when(it) { Priority.NONE->"Ninguna";Priority.LOW->"Baja";Priority.MEDIUM->"Media";Priority.HIGH->"Alta" } },!operation.busy) { own=own.copy(priority=it) }
+            }), minFieldWidth=130.dp)
             Text("Las opciones de pago, prioridad y fechas se aplican a tareas. Si cambias una nota a tarea durante la creación, estarán disponibles.")
+            AdaptiveFormRow(listOf({
             DefaultsSet("Etiquetas",own.tags,inherited.tags,tags.map { it.id to it.name },!operation.busy) { own=own.copy(tags=it) }
+            }, {
             DefaultsSet("Responsables",own.people,inherited.people,people.map { it.id to it.name },!operation.busy) { own=own.copy(people=it) }
+            }), minFieldWidth=130.dp)
+            AdaptiveFormRow(listOf({
             DefaultsDate("Inicio",own.start,inherited.start,!operation.busy,{ validInputs["inicio"]=it }) { own=own.copy(start=it) }
+            }, {
             DefaultsHour("Hora de inicio",own.startTime,inherited.startTime,!operation.busy,{ validInputs["hora-inicio"]=it }) { own=own.copy(startTime=it) }
+            }), minFieldWidth=130.dp)
+            AdaptiveFormRow(listOf({
             DefaultsDate("Vencimiento",own.due,inherited.due,!operation.busy,{ validInputs["vencimiento"]=it }) { own=own.copy(due=it) }
+            }, {
             DefaultsHour("Hora de vencimiento",own.dueTime,inherited.dueTime,!operation.busy,{ validInputs["hora-vencimiento"]=it }) { own=own.copy(dueTime=it) }
+            }), minFieldWidth=130.dp)
             Text("Día N se ajusta al último día del mes. Para vencimiento, día N y primer lunes ya pasados pasan al mes siguiente. Sin hora se usa medianoche al aplicar una fecha predeterminada. Las horas de inicio y vencimiento se proponen también cuando eliges la fecha al crear una tarea, aunque aquí hayas elegido Sin fecha. Puedes cambiarlas para esa tarea sin modificar estos valores predeterminados.")
             TextButton(enabled=!operation.busy,onClick={ reset=true }) { Text(if(scope==DefaultsScope.Global) "Restablecer valores globales" else "Restablecer herencia") }
         }
@@ -122,9 +137,9 @@ private fun <T> DefaultsChoice(label:String,own:DefaultValue<T>,inherited:T,valu
     var expanded by remember { mutableStateOf(false) }
     Column {
         Text(label,style=MaterialTheme.typography.titleSmall)
-        Text("Si eliges Heredar: ${display(inherited)}",style=MaterialTheme.typography.bodySmall)
+        Text("Heredado: ${display(inherited)}",style=MaterialTheme.typography.bodySmall)
         Box {
-            OutlinedButton(enabled=enabled,onClick={ expanded=true },modifier=Modifier.fillMaxWidth().testTag("defaults-choice:$label")) { Text(when(own) { DefaultValue.Inherit->"Heredar · ${display(inherited)}";is DefaultValue.Own->"Elegido aquí · ${display(own.value)}" }) }
+            OutlinedButton(enabled=enabled,onClick={ expanded=true },modifier=Modifier.fillMaxWidth().testTag("defaults-choice:$label")) { Text(when(own) { DefaultValue.Inherit->"Heredar · ${display(inherited)}";is DefaultValue.Own->"Aquí · ${display(own.value)}" }) }
             DropdownMenu(expanded,onDismissRequest={ expanded=false }) {
                 DropdownMenuItem(text={ Text("Heredar") },onClick={ expanded=false;onChange(DefaultValue.Inherit) })
                 values.forEach { value -> DropdownMenuItem(text={ Text(display(value)) },onClick={ expanded=false;onChange(DefaultValue.Own(value)) }) }

@@ -1,60 +1,60 @@
 package com.r0ybt.arachn0de
 
 import android.app.Application
-import kotlinx.coroutines.launch
+import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.debounce
-import kotlinx.coroutines.isActive
-import com.r0ybt.arachn0de.data.local.Arachn0deDatabase
-import com.r0ybt.arachn0de.data.repository.NodeRepository
-import com.r0ybt.arachn0de.data.repository.ProjectRepository
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.catch
 
-/** Process-scoped dependencies. An Activity never closes the shared database. */
-@OptIn(kotlinx.coroutines.FlowPreview::class)
-class Arachn0deApplication : Application() {
-    private val attachmentScope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.IO)
-    val attachmentRepository: com.r0ybt.arachn0de.data.repository.AttachmentRepository by lazy {
-        com.r0ybt.arachn0de.data.repository.AttachmentRepository(database, com.r0ybt.arachn0de.data.local.AttachmentStore(this))
-    }
-    internal val technologyRepository by lazy {
-        com.r0ybt.arachn0de.data.repository.TechnologyRepository(database, com.r0ybt.arachn0de.data.local.TechnologyIconStore(this))
-    }
+/** Private dependencies exist only inside an authenticated, revocable store session. */
+@OptIn(FlowPreview::class)
+open class Arachn0deApplication:Application() {
+    internal val security by lazy { com.r0ybt.arachn0de.security.VaultManager(this) }
+    private val processScope=CoroutineScope(SupervisorJob()+Dispatchers.IO)
+    private val session get()=requireNotNull(security.current.value) { "Almacén bloqueado." }
+    internal val privateContext get()=session.context
+    val database get()=session.database
+    val attachmentRepository get()=session.attachments
+    internal val projectPhotoRepository get()=session.photos
+    internal val technologyRepository get()=session.technologies
+    internal val savedTemplateRepository get()=session.templates
+    internal val metroRepository get()=session.metro
+    val projectRepository get()=session.projects
+    val personRepository get()=session.people
+    internal val backupRepository get()=session.backups
+    val nodeRepository get()=session.nodes
     override fun onCreate() {
         super.onCreate()
-        if (listOf("avatars", "technology-icons", "attachments", "image-lifecycle", "backup-restore-journal.json", "technology-icon-journal.json", "backup-attachment-restore-journal.json").any { java.io.File(filesDir, it).exists() }) attachmentScope.launch { database }
-    }
-    val database: Arachn0deDatabase by lazy {
-        Arachn0deDatabase.create(this).also { db ->
-            attachmentScope.launch {
-                db.invalidationTracker.createFlow("persons", "technologies", "attachment_files", "node_attachments", "project_attachments")
-                    .debounce(500).collect { maintainStorage() }
-            }
-            attachmentScope.launch {
-                // Coalesce startup with editor state restoration; unfinished leased drafts survive.
-                kotlinx.coroutines.delay(5000)
-                while (kotlinx.coroutines.currentCoroutineContext().isActive) {
-                    maintainStorage()
-                    kotlinx.coroutines.delay(60L * 60 * 1000)
+        // No database, media or private preference is opened before authentication.
+        processScope.launch {
+            security.current.collectLatest { active ->
+                if(active==null) return@collectLatest
+                coroutineScope {
+                    suspend fun maintain() {
+                        try {
+                            active.backups.recover();active.people.cleanup();active.technologies.cleanup()
+                            active.photos.cleanup();active.attachments.cleanup()
+                        } catch(cancelled:CancellationException) { throw cancelled }
+                        catch(_:Exception) { android.util.Log.w("Storage","Limpieza pendiente; se reintentará.") }
+                    }
+                    active.scope.launch {
+                        active.database.invalidationTracker.createFlow("persons","technologies","project_photos","attachment_files","node_attachments","project_attachments")
+                            .debounce(500).catch { failure ->
+                                if(failure is CancellationException) throw failure
+                                android.util.Log.w("Storage","Observación interrumpida; recuperación pendiente.")
+                            }.collect { maintain() }
+                    }
+                    active.scope.launch { delay(5000);while(isActive) { maintain();delay(60L*60*1000) } }
+                    awaitCancellation()
                 }
             }
         }
     }
-    private suspend fun maintainStorage() {
-        try {
-            backupRepository.recover()
-            personRepository.cleanup()
-            technologyRepository.cleanup()
-            attachmentRepository.cleanup()
-        } catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
-        catch (failure: Exception) { android.util.Log.e("Storage", "Cleanup deferred until next change or periodic recovery", failure) }
-    }
-    override fun onTrimMemory(level: Int) {
+    override fun onTrimMemory(level:Int) {
         super.onTrimMemory(level)
-        if (level >= android.content.ComponentCallbacks2.TRIM_MEMORY_RUNNING_LOW) com.r0ybt.arachn0de.data.local.PrivateImageCache.clear()
+        if(level>=android.content.ComponentCallbacks2.TRIM_MEMORY_RUNNING_LOW) com.r0ybt.arachn0de.data.local.PrivateImageCache.clear()
     }
-    override fun onLowMemory() { super.onLowMemory(); com.r0ybt.arachn0de.data.local.PrivateImageCache.clear() }
-    val projectRepository by lazy { ProjectRepository(database.projectDao(),database) }
-    val personRepository by lazy { com.r0ybt.arachn0de.data.repository.PersonRepository(database, com.r0ybt.arachn0de.data.local.AvatarStore(this)) }
-    internal val backupRepository by lazy { com.r0ybt.arachn0de.backup.BackupRepository(database, this) }
-    val nodeRepository by lazy { NodeRepository(database) }
+    override fun onLowMemory() { super.onLowMemory();com.r0ybt.arachn0de.data.local.PrivateImageCache.clear() }
+    override fun onTerminate() { processScope.cancel();super.onTerminate() }
 }

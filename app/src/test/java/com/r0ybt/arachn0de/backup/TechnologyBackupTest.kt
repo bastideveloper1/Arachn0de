@@ -73,14 +73,14 @@ class TechnologyBackupTest {
             assertEquals(1, File(context.filesDir, "technology-icons").listFiles()!!.size)
             assertEquals(after.technologies.first { it.id == "python" }.iconFile, after.technologies.first { it.id == "unused" }.iconFile)
             assertTrue(after.technologyIcons.keys.all { iconFile(it).isFile })
-            assertEquals(12, JSONObject(String(BackupJson.encode(after))).getInt("dataVersion"))
+            assertEquals(17, JSONObject(String(BackupJson.encode(after))).getInt("dataVersion"))
             repo.discard(candidate)
         } finally { external.delete() }
     }
     @Test fun v10AttachmentCapableBackupRestoresWithEmptyTechnologyDefaults() = runBlocking {
         seed()
         val payload = JSONObject(String(BackupJson.encode(BackupFixture.empty()))).apply {
-            put("dataVersion", 10); for (personIndex in 0 until getJSONArray("persons").length()) { getJSONArray("persons").getJSONObject(personIndex).apply { remove("avatarZoom"); remove("avatarX"); remove("avatarY") } }; remove("technologies"); remove("nodeTechnologies"); remove("projectTechnologies"); remove("technologyIcons")
+            put("dataVersion", 10); BackupFixture.removeSprintFields(this); remove("metroPreferences"); remove("metroJourneys"); remove("gameSession"); remove("conversionRoots"); remove("conversionPeople"); remove("conversionTags"); remove("conversionEvents"); remove("conversionWorkStates"); remove("nodeSortPreferences"); remove("imageFiles"); remove("projectPhotos"); remove("projectPhotoImages"); for (personIndex in 0 until getJSONArray("persons").length()) { getJSONArray("persons").getJSONObject(personIndex).apply { remove("avatarZoom"); remove("avatarX"); remove("avatarY") } }; remove("technologies"); remove("nodeTechnologies"); remove("projectTechnologies"); remove("technologyIcons")
         }.toString().toByteArray()
         val archive = ByteArrayOutputStream().also { BackupContainer.write(payload, it) }.toByteArray().also { bytes ->
             // v2 and v1 share the header; recompute the checksum after changing its version.
@@ -102,7 +102,7 @@ class TechnologyBackupTest {
             nodes = listOf(NodeEntity("old-task", "old", null, "Old task", com.r0ybt.arachn0de.domain.model.AttachmentReferences.token(id), false, 0, 1, 2)),
             attachmentFiles = listOf(attachment), nodeAttachments = listOf(NodeAttachmentEntity("old-task", id)))
         val payload = JSONObject(String(BackupJson.encode(data))).apply {
-            put("dataVersion", 10); for (personIndex in 0 until getJSONArray("persons").length()) { getJSONArray("persons").getJSONObject(personIndex).apply { remove("avatarZoom"); remove("avatarX"); remove("avatarY") } }; remove("technologies"); remove("nodeTechnologies"); remove("projectTechnologies"); remove("technologyIcons")
+            put("dataVersion", 10); BackupFixture.removeSprintFields(this); remove("metroPreferences"); remove("metroJourneys"); remove("gameSession"); remove("conversionRoots"); remove("conversionPeople"); remove("conversionTags"); remove("conversionEvents"); remove("conversionWorkStates"); remove("nodeSortPreferences"); remove("imageFiles"); remove("projectPhotos"); remove("projectPhotoImages"); for (personIndex in 0 until getJSONArray("persons").length()) { getJSONArray("persons").getJSONObject(personIndex).apply { remove("avatarZoom"); remove("avatarX"); remove("avatarY") } }; remove("technologies"); remove("nodeTechnologies"); remove("projectTechnologies"); remove("technologyIcons")
         }.toString().toByteArray()
         val metadata = ByteArrayOutputStream().also { BackupContainer.write(payload, it) }.toByteArray().also { archive ->
             archive[13] = 2

@@ -27,7 +27,7 @@ class ProjectNestingTest {
         val id=projects.moveInside("source","target",null)
         val layer=nodes.getNode(id)!!
         assertEquals(NodePurpose.LAYER,layer.purpose);assertTrue(layer.isStructural);assertFalse(layer.hasChildren);assertEquals("Description",layer.description)
-        assertEquals(10L,layer.createdAt);assertEquals(20L,layer.updatedAt);assertEquals(sibling.position+1,layer.position);assertNotEquals("source",id)
+        assertEquals(10L,layer.createdAt);assertEquals(20L,layer.updatedAt);assertEquals(sibling.position+1,layer.position);assertEquals("source",id)
         assertNull(projects.getProject("source"));assertEquals(NodeProgressState.NO_WORK,NodeTreeSnapshot(listOf(layer)).progressById.getValue(id).state)
         val snapshot=backup.snapshot();backup.restore(BackupJson.decode(BackupJson.encode(snapshot)));assertEquals(layer,nodes.getNode(id))
     }

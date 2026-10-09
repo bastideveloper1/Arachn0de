@@ -5,6 +5,8 @@ import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.test.core.app.ApplicationProvider
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
 import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.ExternalResource
@@ -14,7 +16,7 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk = [28])
+@Config(application=com.r0ybt.arachn0de.security.LegacyUiTestApplication::class,sdk = [28])
 class PeopleUiTest {
     private val compose = createAndroidComposeRule<MainActivity>()
     private lateinit var app: Arachn0deApplication
@@ -60,7 +62,10 @@ class PeopleUiTest {
         compose.onNode(hasText("Guardar") or hasText("Crear")).performClick()
         compose.waitUntil(10_000) { runBlocking { app.personRepository.observeAssignments(project).first()[layer]?.size == 1 } }
         compose.activityRule.scenario.recreate()
-        compose.waitUntil(10_000) { compose.onAllNodesWithTag("nodes-list").fetchSemanticsNodes().isNotEmpty() }
+        assertNotNull("Recreation must retain the authenticated session",app.security.current.value)
+        assertFalse("Foreground must remove the privacy overlay",app.security.backgrounded.value)
+        try {compose.waitUntil(10_000) { compose.onAllNodesWithTag("nodes-list").fetchSemanticsNodes().isNotEmpty() }}
+        catch(failure:AssertionError) {throw AssertionError("Navigation after recreation: "+compose.onRoot().printToString(),failure)}
         compose.onNodeWithTag("nodes-list").performScrollToNode(hasContentDescription("María"))
         compose.onNodeWithContentDescription("María").assertExists()
         compose.onNodeWithContentDescription("Abrir menú").performClick()

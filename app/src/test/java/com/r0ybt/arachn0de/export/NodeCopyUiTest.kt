@@ -19,7 +19,7 @@ import org.robolectric.annotation.Config
 import org.robolectric.shadows.ShadowToast
 
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk=[28])
+@Config(application=com.r0ybt.arachn0de.security.LegacyUiTestApplication::class,sdk=[28])
 class NodeCopyUiTest {
     private val compose=createComposeRule()
     private lateinit var app:Arachn0deApplication
@@ -75,7 +75,7 @@ class NodeCopyUiTest {
         compose.onNode(hasText("Copiar este elemento") and hasAnyAncestor(isDialog())).performScrollTo().performClick()
         copied(expected(note,false))
         assertEquals(before,runBlocking{app.nodeRepository.getProjectNodes(project)})
-        assertEquals(20, app.database.openHelper.writableDatabase.version)
+        assertEquals(26, app.database.openHelper.writableDatabase.version)
     }
     @Test fun openNodeContextCopiesFromItsOwnRoot(){
         mount();compose.onNodeWithText("Bugs").performClick();await("CAPA 1")

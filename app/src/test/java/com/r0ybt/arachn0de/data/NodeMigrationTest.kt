@@ -48,7 +48,7 @@ class NodeMigrationTest {
         val root = repo.createNode("project", null, "Root",purpose=com.r0ybt.arachn0de.domain.model.NodePurpose.LAYER)
         repo.createNode("project", root.id, "Child")
         assertFalse(repo.setCompleted(root.id, true))
-        assertEquals(20, db.openHelper.readableDatabase.version)
+        assertEquals(26, db.openHelper.readableDatabase.version)
     }
 
     @Test

@@ -19,10 +19,7 @@ class ProjectRepository(
     constructor(projectDao: ProjectDao, currentTimeMillis: () -> Long) :
         this(projectDao, null, currentTimeMillis)
 
-    fun observeProjects(): Flow<List<Project>> = projectDao.observeAll().map { projects ->
-        projects.sortedWith(compareBy<ProjectEntity> { it.position }.thenBy { it.createdAt }.thenBy { it.id })
-            .map { it.toProject() }
-    }
+    fun observeProjects(): Flow<List<Project>> = projectDao.observeWithPhotos().map { rows -> rows.map { it.toProject() } }
 
     suspend fun normalizeProjectOrder() = inTransaction {
         val ordered = sortProjectsForDisplay(projectDao.getAll())
@@ -58,10 +55,13 @@ class ProjectRepository(
     suspend fun moveInside(sourceId:String,targetId:String,parentId:String?):String =
         ProjectNestingRepository(requireNotNull(database)).move(sourceId,targetId,parentId)
 
+    suspend fun convertLayerToProject(layerId: String): String =
+        ProjectNestingRepository(requireNotNull(database)).promote(layerId)
+
     suspend fun destinationLayers(projectId:String):List<com.r0ybt.arachn0de.domain.model.Node> =
         NodeRepository(requireNotNull(database),currentTimeMillis).getProjectNodes(projectId).filter { it.isStructural }
 
-    suspend fun getProject(id: String): Project? = projectDao.getById(id)?.toProject()
+    suspend fun getProject(id: String): Project? = projectDao.getWithPhoto(id)?.toProject()
 
     suspend fun createProject(
         name: String,

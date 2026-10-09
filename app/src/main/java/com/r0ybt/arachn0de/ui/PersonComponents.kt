@@ -1,6 +1,7 @@
 package com.r0ybt.arachn0de.ui
 
 import android.graphics.Bitmap
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -32,9 +33,10 @@ internal val PersonAvatarShape = androidx.compose.foundation.shape.CircleShape
 @Composable
 internal fun PersonAvatar(person: Person) {
     val context = LocalContext.current
+    val storageContext=privateStorageContext(context)
     val bitmap by produceState<Bitmap?>(null, person.avatarFile) {
         value = withContext(Dispatchers.IO) {
-            person.avatarFile?.let { runCatching { AvatarStore(context).readThumbnail(it) }.getOrNull() }
+            person.avatarFile?.let { runCatching { AvatarStore(storageContext).readThumbnail(it) }.getOrNull() }
         }
     }
     Box(Modifier.size(28.dp).clip(PersonAvatarShape).background(Arachn0deColors.ControlSurface).semantics { contentDescription = person.name }, contentAlignment = Alignment.Center) {
@@ -46,8 +48,8 @@ internal fun PersonAvatar(person: Person) {
 @Composable
 internal fun ResponsibleAvatars(people: List<Person>) {
     if (people.isEmpty()) return
-    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-        people.take(3).forEach { PersonAvatar(it) }
+    FlowRow(itemVerticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+        people.take(3).forEach { person -> var info by remember { mutableStateOf(false) }; TextButton(onClick={info=true},contentPadding=PaddingValues(4.dp)) { PersonAvatar(person) };if(info) AlertDialog(onDismissRequest={info=false},title={Text(person.name)},text={Text(people.joinToString {it.name})},confirmButton={TextButton(onClick={info=false}) {Text("Cerrar")}}) }
         if (people.size > 3) Text("+${people.size - 3}", color = Arachn0deColors.TextSecondary, fontSize = 12.sp)
     }
 }
@@ -85,16 +87,13 @@ internal fun ResponsibleDialog(nodeId: String, people: List<Person>, assigned: L
         title = { Text("Responsables") },
         text = {
             if (people.isEmpty()) Text("No hay Personas. Puedes crearlas desde Personas en el menú.")
-            else LazyColumn(Modifier.fillMaxWidth().heightIn(max = 360.dp)) {
-                items(people, key = { it.id }) { person ->
-                    Row(Modifier.fillMaxWidth().toggleable(value = person.id in selected, enabled = !busy, role = Role.Checkbox) {
-                        selected = if (it) selected + person.id else selected - person.id
-                    }.padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Checkbox(person.id in selected, onCheckedChange = null)
-                        PersonAvatar(person)
-                        Spacer(Modifier.width(8.dp))
-                        Text(person.name)
-                    }
+            else FlowRow(Modifier.fillMaxWidth().heightIn(max=360.dp).verticalScroll(androidx.compose.foundation.rememberScrollState()),
+                horizontalArrangement=Arrangement.spacedBy(6.dp),verticalArrangement=Arrangement.spacedBy(4.dp)) {
+                people.forEach { person ->
+                    InputChip(selected=person.id in selected,enabled=!busy,
+                        onClick={selected=if(person.id in selected) selected-person.id else selected+person.id},
+                        avatar={PersonAvatar(person)},label={Text(person.name,Modifier.widthIn(max=200.dp))},
+                        modifier=Modifier.heightIn(min=48.dp))
                 }
             }
         },

@@ -21,7 +21,7 @@ import org.robolectric.annotation.GraphicsMode
 import java.io.File
 
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk = [28])
+@Config(application=com.r0ybt.arachn0de.security.LegacyUiTestApplication::class,sdk = [28])
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class ObligationReportUiTest {
     private val compose = createAndroidComposeRule<ComponentActivity>()
@@ -80,7 +80,7 @@ class ObligationReportUiTest {
         compose.onNodeWithTag("obligations-list").performScrollToIndex(0)
         compose.onNodeWithText("Todo").assertIsSelected()
         compose.onNodeWithTag("generate-obligation-report").assertIsEnabled()
-        assertEquals(20, app.database.openHelper.writableDatabase.version)
+        assertEquals(26, app.database.openHelper.writableDatabase.version)
     }
     @Test fun cacheWriteFailureKeepsScreenAndFiltersAndAllowsRetry() {
         directory.writeText("block directory creation")

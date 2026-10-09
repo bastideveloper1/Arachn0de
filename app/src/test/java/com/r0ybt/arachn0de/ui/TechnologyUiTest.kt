@@ -6,6 +6,9 @@ import android.graphics.Bitmap
 import android.net.Uri
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.width
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import com.r0ybt.arachn0de.Arachn0deApplication
@@ -26,7 +29,7 @@ import java.io.File
 
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk = [28])
+@Config(application=com.r0ybt.arachn0de.security.LegacyUiTestApplication::class,sdk = [28])
 class TechnologyUiTest {
     @get:Rule val compose = createAndroidComposeRule<MainActivity>()
     private val app get() = compose.activity.application as Arachn0deApplication
@@ -82,47 +85,60 @@ class TechnologyUiTest {
         compose.onNodeWithText("Guardar").performClick()
         compose.waitUntil(10_000) { runBlocking { app.database.technologyDao().catalog().single().iconFile != old } }
         val new = runBlocking { app.database.technologyDao().catalog().single().iconFile!! }
+        compose.waitUntil(10_000) { !File(app.filesDir,"technology-icons/$old").exists() }
         assertTrue(File(app.filesDir, "technology-icons/$new").isFile); assertFalse(File(app.filesDir, "technology-icons/$old").exists())
     }
-    @Test fun ownerControlsAllowMultipleAssignmentAndConsultingSharedNames() {
-        val project = runBlocking { app.projectRepository.createProject("Project") }
-        val layer = runBlocking { app.nodeRepository.createNode(project.id, null, "Layer", purpose = com.r0ybt.arachn0de.domain.model.NodePurpose.LAYER) }
-        val task = runBlocking { app.nodeRepository.createNode(project.id, layer.id, "Task") }
-        runBlocking { repository.save("python", "Python", null, true); repository.save("docker", "Docker", null, true) }
-        compose.runOnUiThread { compose.activity.setContent { Arachn0deTheme { Column {
-            TechnologyOwnerControl(project.id, true, "Project", repository)
-            TechnologyOwnerControl(layer.id, false, "Layer", repository)
-            TechnologyOwnerControl(task.id, false, "Task", repository)
-        } } } }
-        compose.waitUntil(10_000) { compose.onAllNodesWithContentDescription("Tecnologías de Project").filter(isEnabled()).fetchSemanticsNodes().isNotEmpty() }
-        listOf("Project", "Layer", "Task").forEach { name ->
-            compose.onNodeWithContentDescription("Tecnologías de $name").performClick()
-            compose.onNodeWithText("Python").performClick(); compose.onNodeWithText("Docker").performClick()
-            compose.onNodeWithText("Guardar").performClick()
-            compose.waitUntil(10_000) { compose.onAllNodesWithText("Guardar").fetchSemanticsNodes().isEmpty() }
-        }
-        assertEquals(1, runBlocking { app.database.technologyDao().projects().map { it.projectId }.toSet().size })
-        assertEquals(4, runBlocking { app.database.technologyDao().nodes().size })
-        runBlocking { repository.save("python", "Python compartida", null, false) }
-        compose.onNodeWithContentDescription("Tecnologías de Task").performClick()
-        compose.waitUntil(10_000) { compose.onAllNodesWithText("Python compartida").fetchSemanticsNodes().isNotEmpty() }
-        compose.onNodeWithText("Python compartida").assertExists(); compose.onNodeWithText("Docker").assertExists()
+    @Test fun emptyOwnerHasNoSectionAndReadOnlyNamesNeverRemoveAssignments() {
+        val project=runBlocking {app.projectRepository.createProject("Project")}
+        val task=runBlocking {app.nodeRepository.createNode(project.id,null,"Task")}
+        compose.runOnUiThread {compose.activity.setContent {Arachn0deTheme {TechnologyOwnerControl(task.id,false,"Task",repository)}}}
+        compose.onNodeWithText("Tecnologías").assertDoesNotExist()
+        runBlocking {repository.save("python","Python",null,true);repository.assign(task.id,false,setOf("python"))}
+        compose.waitUntil(10000) {compose.onAllNodesWithContentDescription("Python").fetchSemanticsNodes().isNotEmpty()}
+        compose.onNodeWithContentDescription("Python").performClick()
+        compose.onAllNodesWithText("Python").onFirst().assertExists();compose.onNodeWithText("Quitar Python").assertDoesNotExist()
+        compose.onNodeWithText("Cerrar").performClick()
+        assertEquals(listOf("python"),runBlocking {app.database.technologyDao().nodes().map {it.technologyId}})
     }
-    @Test fun projectAndNodeCardsDisplaySharedCatalogControls() {
-        val project = runBlocking { app.projectRepository.createProject("Visible project") }
-        val node = runBlocking { app.nodeRepository.createNode(project.id, null, "Visible task") }
-        runBlocking {
-            repository.save("tool", "Herramienta visible", null, true)
-            repository.assign(project.id, true, setOf("tool")); repository.assign(node.id, false, setOf("tool"))
-        }
-        compose.runOnUiThread { compose.activity.setContent { Arachn0deTheme { Column {
-            ProjectCard(project, null, {}, {}, {})
-            NodeCard(node, null, false, true, {}, {}, {}, false, false, { _, done -> done() }, {})
-        } } } }
-        compose.waitUntil(10_000) { compose.onAllNodesWithContentDescription("Tecnologías de Visible project").filter(isEnabled()).fetchSemanticsNodes().isNotEmpty() }
-        compose.onNodeWithContentDescription("Tecnologías de Visible project").assertIsDisplayed()
-        compose.onNodeWithContentDescription("Tecnologías de Visible task").assertIsDisplayed().performClick()
-        compose.onNodeWithText("Herramienta visible").assertExists()
+    @Test fun editingUsesExplicitRemovalWhileNameOnlyShowsInformation() {
+        val technology=TechnologyEntity("tool","Python",null)
+        var selected=listOf("tool")
+        compose.runOnUiThread {compose.activity.setContent {Arachn0deTheme {
+            val ids=androidx.compose.runtime.remember {androidx.compose.runtime.mutableStateOf(selected)}
+            TechnologySelection(listOf(technology),ids.value,true) {ids.value=it;selected=it}
+        }}}
+        compose.onNodeWithText("Python").performClick();compose.onNodeWithText("Cerrar").performClick();assertEquals(listOf("tool"),selected)
+        compose.onNodeWithContentDescription("Quitar Python").performClick();assertTrue(selected.isEmpty())
+        compose.onNodeWithText("Añadir Python").performClick();assertEquals(listOf("tool"),selected)
+    }
+    @Test fun heldDragReordersSelectedTechnologiesWithoutRemovingThem() {
+        val catalog=listOf(TechnologyEntity("a","Alpha",null),TechnologyEntity("b","Beta",null),TechnologyEntity("c","Gamma",null))
+        var selected=listOf("a","b","c")
+        compose.runOnUiThread {compose.activity.setContent {Arachn0deTheme {
+            val ids=androidx.compose.runtime.remember {androidx.compose.runtime.mutableStateOf(selected)}
+            TechnologySelection(catalog,ids.value,true) {ids.value=it;selected=it}
+        }}}
+        val from=compose.onNodeWithContentDescription("Arrastrar Alpha").fetchSemanticsNode().boundsInRoot.center
+        val to=compose.onNodeWithContentDescription("Arrastrar Beta").fetchSemanticsNode().boundsInRoot.center
+        assertTrue(to.y>from.y)
+        compose.mainClock.autoAdvance=false
+        try {
+            compose.onRoot().performTouchInput {down(from);advanceEventTime(600)}
+            compose.mainClock.advanceTimeBy(650)
+            compose.onRoot().performTouchInput {moveTo(from)}
+            compose.mainClock.advanceTimeByFrame()
+            repeat(6) {step->compose.onRoot().performTouchInput {moveTo(from+(to-from)*((step+1)/6f),delayMillis=40)};compose.mainClock.advanceTimeByFrame()}
+            compose.onRoot().performTouchInput {up()}
+        } finally {compose.mainClock.autoAdvance=true}
+        compose.waitForIdle();assertEquals(listOf("b","a","c"),selected)
+    }
+    @Test fun compactOrderHiddenCountAndWrappedFullNamesFitNarrowWidth() {
+        val catalog=(1..4).map {TechnologyEntity("$it","Tecnología original número $it",null)}
+        compose.runOnUiThread {compose.activity.setContent {Arachn0deTheme {Column(Modifier.width(180.dp)) {TechnologyLabels(catalog.reversed(),true)}}}}
+        compose.onNodeWithText("+1").assertExists()
+        compose.onNodeWithContentDescription(catalog[0].name).assertDoesNotExist()
+        compose.onNodeWithContentDescription(catalog[3].name).performClick()
+        compose.onNodeWithText(catalog[3].name).assertExists();compose.onNodeWithText("Cerrar").performClick()
     }
     @Test fun navigationMenuOpensLocalTechnologyCatalog() {
         compose.onNodeWithContentDescription("Abrir menú").performClick()

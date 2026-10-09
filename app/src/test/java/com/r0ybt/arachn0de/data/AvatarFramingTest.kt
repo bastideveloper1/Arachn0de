@@ -71,11 +71,11 @@ class AvatarFramingTest {
         val row = db.personDao().get("a")!!
         assertEquals(2.25f, row.avatarZoom); assertEquals(-.2f, row.avatarX); assertEquals(.8f, row.avatarY)
         assertArrayEquals(bytes, file(row.avatarFile!!).readBytes()); assertNotEquals(old, row.avatarFile)
-        assertEquals(12, JSONObject(String(BackupJson.encode(repo.snapshot()))).getInt("dataVersion"))
+        assertEquals(17, JSONObject(String(BackupJson.encode(repo.snapshot()))).getInt("dataVersion"))
     }
     @Test fun oldV11BackupDefaultsToCenteredCoverAndInvalidFramingIsRejected() {
         val root = JSONObject(String(BackupJson.encode(BackupFixture.complete())))
-        root.put("dataVersion", 11)
+        BackupFixture.removeSprintFields(root); root.remove("metroPreferences"); root.remove("metroJourneys"); root.put("dataVersion", 11); root.remove("gameSession"); root.remove("conversionRoots"); root.remove("conversionPeople"); root.remove("conversionTags"); root.remove("conversionEvents"); root.remove("conversionWorkStates"); root.remove("nodeSortPreferences"); root.remove("imageFiles"); root.remove("projectPhotos"); root.remove("projectPhotoImages")
         val rows = root.getJSONArray("persons")
         for (i in 0 until rows.length()) rows.getJSONObject(i).apply { remove("avatarZoom"); remove("avatarX"); remove("avatarY") }
         val old = BackupJson.decode(root.toString().toByteArray())

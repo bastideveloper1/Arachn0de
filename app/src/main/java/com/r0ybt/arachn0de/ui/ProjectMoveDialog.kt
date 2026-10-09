@@ -15,7 +15,7 @@ import com.r0ybt.arachn0de.ui.state.LoadState
 import kotlinx.coroutines.flow.flow
 
 @Composable
-internal fun ProjectMoveDialog(repository:ProjectRepository,source:Project,onDismiss:()->Unit,onMoved:()->Unit) {
+internal fun ProjectMoveDialog(repository:ProjectRepository,source:Project,onDismiss:()->Unit,onMoved:()->Unit, onConverted: (String, String) -> Unit = { _, _ -> onMoved() }, operationScope: kotlinx.coroutines.CoroutineScope = rememberCoroutineScope()) {
     val projectsFlow=remember(repository) { repository.observeProjects() }
     val projects by projectsFlow.collectAsState(initial=emptyList())
     var target by rememberSaveable(source.id) { mutableStateOf<String?>(null) }
@@ -24,9 +24,11 @@ internal fun ProjectMoveDialog(repository:ProjectRepository,source:Project,onDis
     var layers by remember(target) { mutableStateOf(emptyList<Node>()) }
     val load=remember(target) { LoadState() }
     LaunchedEffect(repository,target,load.attempt) { target?.let { id -> load.collect(flow { emit(repository.destinationLayers(id)) }) { layers=it } } }
-    val scope=rememberCoroutineScope();val operation=remember(scope,repository) { OperationState(scope) }
+    val operation=remember(operationScope,repository) { OperationState(operationScope) }
+    var failureReason by remember { mutableStateOf<String?>(null) }
+    var convertedId by remember { mutableStateOf<String?>(null) }
     val destination=projects.firstOrNull { it.id==target && it.id!=source.id }
-    AlertDialog(onDismissRequest={ if(!operation.busy) onDismiss() },title={ Text("Mover dentro de…") },
+    AlertDialog(onDismissRequest={ if(!operation.busy) onDismiss() },title={ Text("Convertir en capa") },
         text={ Column(verticalArrangement=Arrangement.spacedBy(8.dp)) {
             if(target==null) {
                 Text("Elige otro proyecto")
@@ -44,10 +46,15 @@ internal fun ProjectMoveDialog(repository:ProjectRepository,source:Project,onDis
                 } }
             }
         } },confirmButton={},dismissButton={ TextButton(enabled=!operation.busy,onClick=onDismiss) { Text("Cancelar") } })
-    if(confirm) AlertDialog(onDismissRequest={ if(!operation.busy) confirm=false },title={ Text("Mover proyecto") },
-        text={ Text("${source.name} dejará de ser un proyecto independiente y se convertirá en una Capa dentro de ${layers.firstOrNull { it.id==parent }?.title ?: destination?.name ?: "el destino elegido"}.\n\nSe conservarán sus Capas, tareas y configuración. Los valores heredados usarán la configuración del nuevo destino.") },
+    if(confirm) AlertDialog(onDismissRequest={ if(!operation.busy) confirm=false },title={ Text("Confirmar conversión") },
+        text={ Text("${source.name} dejará de aparecer en Proyectos y se convertirá en una capa dentro de ${destination?.name ?: "el destino elegido"}${parent?.let { " › " + (layers.firstOrNull { row -> row.id == it }?.title ?: "capa eliminada") } ?: " › raíz"}.\n\nSe conservarán el contenido actual y las propiedades. Los valores heredados se conservarán como valores propios en la nueva raíz. Su fotografía permanecerá guardada y oculta hasta reconvertirlo en proyecto.") },
         confirmButton={ TextButton(enabled=!operation.busy && destination!=null,onClick={ operation.submit("No se pudo mover el proyecto. El contenido se conserva; revisa el destino y reintenta.",{
-            repository.moveInside(source.id,checkNotNull(target),parent);true
-        },onMoved) }) { Text("Mover") } },dismissButton={ TextButton(enabled=!operation.busy,onClick={ confirm=false }) { Text("Cancelar") } })
-    OperationErrorDialog(operation);LoadErrorDialog(load)
+            failureReason = null
+            try { convertedId = repository.moveInside(source.id,checkNotNull(target),parent); true }
+            catch (failure: IllegalArgumentException) { failureReason = failure.message; throw failure }
+        }, { onConverted(checkNotNull(target), checkNotNull(convertedId)) }) }) { Text("Convertir") } },dismissButton={ TextButton(enabled=!operation.busy,onClick={ confirm=false }) { Text("Cancelar") } })
+    if (operation.error != null) AlertDialog(onDismissRequest = operation::clearError,
+        title = { Text("No se pudo convertir") }, text = { Text(failureReason ?: checkNotNull(operation.error)) },
+        confirmButton = { TextButton(onClick = operation::clearError) { Text("Entendido") } })
+    LoadErrorDialog(load)
 }

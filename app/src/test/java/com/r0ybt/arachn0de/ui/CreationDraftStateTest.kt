@@ -62,12 +62,23 @@ class CreationDraftStateTest {
         state.toggle("9999");state.toggle("0");assertEquals(setOf("9999"),state.ids)
         state.retain(setOf("other"));assertTrue(state.ids.isEmpty())
     }
+    @Test fun templateConfigurationAndManualOrderSurviveDraftRestoration() {
+        val draft=EditorDraft(null,null,"Título","Texto").apply {
+            technologyIds=listOf("second","first");originalTechnologyIds=listOf("first","second");technologiesLoaded=true
+            templateMetroCatalog="catalog snapshot";templateMetroPlan="plan snapshot";templateTraveler="person";responsibleIds=listOf("other")
+        }
+        val stored=checkNotNull(with(EditorDraft.Saver) {scope.save(draft)})
+        val recovered=checkNotNull(EditorDraft.Saver.restore(stored))
+        assertEquals(draft.technologyIds,recovered.technologyIds);assertEquals(draft.originalTechnologyIds,recovered.originalTechnologyIds);assertTrue(recovered.technologyEdited)
+        assertEquals(draft.templateMetroCatalog,recovered.templateMetroCatalog);assertEquals(draft.templateMetroPlan,recovered.templateMetroPlan);assertEquals(draft.templateTraveler,recovered.templateTraveler)
+        assertEquals(listOf("other"),recovered.responsibleIds);assertEquals(draft.creationId,recovered.creationId)
+    }
     @Test fun previousSavedEditorFormatRemainsReadable() {
         val d=EditorDraft(null,"p","Title","Desc",startAt=100,dueAt=200,priority=Priority.HIGH).apply {
             recurrenceFrequency="YEARLY";recurrenceStart="2090-01-01";tagIds=listOf("tag");responsibleIds=listOf("person")
         }
         val current=(with(EditorDraft.Saver) { scope.save(d) } as List<*>).map { it as String }
-        val old=current.drop(5 + d.removedAttachmentIds.size).drop(3).drop(9)
+        val old=current.drop(7 + d.technologyIds.size).drop(5 + d.removedAttachmentIds.size).drop(3).drop(9)
         val restored=checkNotNull(EditorDraft.Saver.restore(old))
         assertEquals(d.creationId,restored.creationId);assertEquals(Priority.HIGH,restored.priority)
         assertEquals(100L,restored.activeStart);assertEquals(200L,restored.activeDue)
@@ -84,5 +95,17 @@ class CreationDraftStateTest {
         d.purpose=NodePurpose.NOTE
         val notes=NodeBatchGenerator.generate(d.batchDraft().parameters(),java.util.TimeZone.getTimeZone("UTC"));assertTrue(notes.all { it.dueAt==null && it.obligation==null && it.priority==Priority.NONE })
         d.purpose=NodePurpose.ACTION;assertEquals(batch.parameters(),d.batchDraft().parameters())
+    }    @Test fun metroLinkRevisionAndBaselineSurviveRestoreAndOldDraftsHaveNoLink() {
+        val d=EditorDraft(null,"layer","Viaje","").apply {
+            metroJourneyId="journey";metroJourneyRevision=7;metroOriginalPlan="old";metroOriginalTraveler="a"
+            templateMetroPlan="changed";templateMetroCatalog="catalog";templateTraveler="b"
+        }
+        val stored=checkNotNull(with(EditorDraft.Saver) {scope.save(d)})
+        val restored=checkNotNull(EditorDraft.Saver.restore(stored))
+        assertEquals("journey",restored.metroJourneyId);assertEquals(7L,restored.metroJourneyRevision);assertTrue(restored.metroEdited)
+        assertEquals("old",restored.metroOriginalPlan);assertEquals("a",restored.metroOriginalTraveler);assertEquals("layer",restored.parentId)
+        val old=checkNotNull(EditorDraft.Saver.restore((stored as List<String>).drop(5)))
+        assertNull(old.metroJourneyId);assertNull(old.metroJourneyRevision);assertEquals("changed",old.templateMetroPlan)
     }
+
 }

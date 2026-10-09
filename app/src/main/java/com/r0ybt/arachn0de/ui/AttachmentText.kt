@@ -27,7 +27,7 @@ internal fun AttachmentText(text: String, modifier: Modifier = Modifier, color: 
     overflow: TextOverflow = TextOverflow.Clip, softWrap: Boolean = true, lineHeight: TextUnit = TextUnit.Unspecified) {
     val parts = remember(text) { DescriptionParser.parse(text) }
     if (parts.none { it.imageId != null }) {
-        Text(descriptionBody(parts, emptyMap()) {}, modifier, color = color, fontSize = fontSize, style = style, maxLines = maxLines, overflow = overflow, softWrap = softWrap, lineHeight = lineHeight)
+        Text(descriptionBody(parts, emptyMap()) {}, modifier, color = color, fontSize = fontSize, style = style.copy(fontWeight = FontWeight.Normal), maxLines = maxLines, overflow = overflow, softWrap = softWrap, lineHeight = lineHeight)
         return
     }
     val app = LocalContext.current.applicationContext as Arachn0deApplication
@@ -36,7 +36,7 @@ internal fun AttachmentText(text: String, modifier: Modifier = Modifier, color: 
     LaunchedEffect(rows) { available = app.attachmentRepository.availableFiles() }
     var viewing by rememberSaveable { mutableStateOf<String?>(null) }
     val body = descriptionBody(parts, available) { viewing = it }
-    Text(body, modifier, color = color, fontSize = fontSize, style = style, maxLines = maxLines, overflow = overflow, softWrap = softWrap, lineHeight = lineHeight)
+    Text(body, modifier, color = color, fontSize = fontSize, style = style.copy(fontWeight = FontWeight.Normal), maxLines = maxLines, overflow = overflow, softWrap = softWrap, lineHeight = lineHeight)
     viewing?.let { id -> AttachmentViewer(id, app.attachmentRepository) { viewing = null } }
 }
 

@@ -27,10 +27,16 @@ internal fun AppearancePalette.materialColors(): androidx.compose.material3.Colo
 }
 
 @Composable
-fun Arachn0deTheme(preferences: AppearancePreferences? = null, content: @Composable () -> Unit) {
+fun Arachn0deTheme(preferences: AppearancePreferences? = null, locked:Boolean=false, content: @Composable () -> Unit) {
     val context = LocalContext.current.applicationContext
-    val resolved = preferences ?: remember(context) { AppearancePreferences(context.getSharedPreferences(AppearancePreferences.FILE, android.content.Context.MODE_PRIVATE)) }
-    val settings = resolved.settings
+    val privateContext=(context as? com.r0ybt.arachn0de.Arachn0deApplication)?.security?.current?.value?.context ?: context
+    val resolved = if(locked || (context is com.r0ybt.arachn0de.Arachn0deApplication && privateContext===context)) null else preferences ?: remember(privateContext) { AppearancePreferences(privateContext.getSharedPreferences(AppearancePreferences.FILE, android.content.Context.MODE_PRIVATE)) }
+    DisposableEffect(resolved) {
+        val listener=android.content.SharedPreferences.OnSharedPreferenceChangeListener {_,_->resolved?.reload()}
+        resolved?.observe(listener)
+        onDispose {resolved?.unobserve(listener)}
+    }
+    val settings = resolved?.settings ?: AppearanceSettings()
     CompositionLocalProvider(LocalAppearancePreferences provides resolved, LocalAppearancePalette provides settings.theme.palette,
         LocalContentSizes provides contentSizes(settings.textSize)) {
         MaterialTheme(colorScheme = settings.theme.palette.materialColors(), typography = appearanceTypography(settings.textSize), content = content)

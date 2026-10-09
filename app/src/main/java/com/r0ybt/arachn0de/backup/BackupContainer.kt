@@ -1,5 +1,6 @@
 package com.r0ybt.arachn0de.backup
 
+import com.r0ybt.arachn0de.security.SecureFiles
 import java.io.*
 import java.security.MessageDigest
 
@@ -46,20 +47,28 @@ internal object BackupContainer {
         data.attachmentFiles.forEach { row ->
             val file = data.attachmentContents.getValue(row.storageName)
             verifyBackupAttachment(row, file)
-            file.inputStream().use { input ->
+            SecureFiles.input(file).use { input ->
                 copyBackupAttachment(row, input, output)
                 require(input.read() == -1) { "Contenido adicional en adjunto." }
             }
         }
+        require(data.imageContents.keys == data.imageFiles.mapTo(hashSetOf()) { it.key }) { "Faltan imágenes del manifiesto." }
+        data.imageFiles.forEach { row ->
+            val file = data.imageContents.getValue(row.key); verifyImage(row, file)
+            SecureFiles.input(file).use { input -> copyImage(row, input, output); require(input.read() == -1) }
+        }
     }
 
     /** destination == null verifies a generated archive by streaming into a sink. */
-    suspend fun readBackup(input: InputStream, destination: File? = null): BackupData {
+    suspend fun readBackup(input: InputStream, destination: File? = null, acceptMetadata:(BackupData)->Unit={}): BackupData {
         val stream = DataInputStream(input)
         val (format, payload) = readPayload(stream, true)
         val data = BackupJson.decode(payload)
+        acceptMetadata(data)
         require(format == 2 || data.attachmentFiles.isEmpty()) { "El contenedor antiguo no admite adjuntos." }
+        require(format == 2 || data.imageFiles.isEmpty()) { "El contenedor antiguo no admite imágenes por streaming." }
         val files = linkedMapOf<String, File>()
+        val images = linkedMapOf<String, File>()
         try {
             data.attachmentFiles.forEach { row ->
                 if (destination == null) {
@@ -71,14 +80,26 @@ internal object BackupContainer {
                     val target = File(destination, row.storageName)
                     check(target.createNewFile())
                     files[row.storageName] = target
-                    FileOutputStream(target).use { output -> copyBackupAttachment(row, stream, output); output.fd.sync() }
+                    SecureFiles.output(target).use { output -> copyBackupAttachment(row, stream, output); output.flush() }
                     verifyBackupAttachment(row, target)
                 }
             }
+            data.imageFiles.forEach { row ->
+                if (destination == null) {
+                    val bytes = ByteArrayOutputStream(row.byteSize.toInt())
+                    copyImage(row, stream, bytes); validateAvatar(bytes.toByteArray())
+                } else {
+                    val target = File(destination, "images/${row.directory}/${row.name}")
+                    check(target.parentFile!!.isDirectory || target.parentFile!!.mkdirs())
+                    check(target.createNewFile()); images[row.key] = target
+                    SecureFiles.output(target).use { output -> copyImage(row, stream, output); output.flush() }
+                    verifyImage(row, target)
+                }
+            }
             if (format == 2) require(stream.read() == -1) { "Contenido adicional en el backup." }
-            return data.copy(attachmentContents = files, inspectionDirectory = destination)
+            return data.copy(attachmentContents = files, inspectionDirectory = destination, imageContents = images)
         } catch (failure: Throwable) {
-            files.values.forEach { it.delete() }
+            files.values.forEach { it.delete() }; images.values.forEach { it.delete() }
             throw failure
         }
     }

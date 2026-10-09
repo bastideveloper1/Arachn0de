@@ -1,5 +1,6 @@
 package com.r0ybt.arachn0de.backup
 
+import com.r0ybt.arachn0de.security.SecureFiles
 import android.content.Context
 import android.system.Os
 import android.system.OsConstants
@@ -15,18 +16,18 @@ internal class BackupAvatarFiles(context: Context, directoryName: String, journa
     internal val syncDirectory: (File) -> Unit = ::syncBackupDirectory) {
     constructor(context: Context, syncDirectory: (File) -> Unit = ::syncBackupDirectory) :
         this(context, "avatars", "backup-restore-journal", syncDirectory)
-    init { require(directoryName in setOf("avatars", "technology-icons")); require(journalName in setOf("backup-restore-journal", "technology-icon-journal")) }
+    init { require(directoryName in setOf("avatars", "technology-icons", "project-photos")); require(journalName in setOf("backup-restore-journal", "technology-icon-journal", "project-photo-journal")) }
     private val lifecycle = ImageFileLifecycle(context, directoryName, syncDirectory)
     private val directory = File(context.filesDir, directoryName)
     private val journal = File(context.filesDir, "$journalName.json")
-    private fun file(name: String): File {
+    fun file(name: String): File {
         require(BackupLimits.avatarName.matches(name))
         return File(directory, name)
     }
     fun read(name: String): ByteArray {
         val image = file(name)
-        require(image.isFile && image.length() in 1..BackupLimits.AVATAR_BYTES.toLong()) { "Avatar ausente o demasiado grande." }
-        return image.inputStream().use { input -> input.readBytesBounded(BackupLimits.AVATAR_BYTES) }
+        require(image.isFile && SecureFiles.size(image) in 1..BackupLimits.AVATAR_BYTES.toLong()) { "Avatar ausente o demasiado grande." }
+        return SecureFiles.input(image).use { input -> input.readBytesBounded(BackupLimits.AVATAR_BYTES) }
     }
     fun record(names: Set<String>) {
         require(names.all { BackupLimits.avatarName.matches(it) })
@@ -45,8 +46,8 @@ internal class BackupAvatarFiles(context: Context, directoryName: String, journa
     fun hasJournal() = journal.exists() || File(journal.parentFile, "${journal.nameWithoutExtension}.part").exists()
     fun recorded(): Set<String> {
         if (!journal.exists()) return emptySet()
-        require(journal.length() <= 8L * 1024 * 1024) { "Diario de restauración inválido." }
-        val array = JSONObject(journal.readText()).getJSONArray("files")
+        require(SecureFiles.size(journal) <= 8L * 1024 * 1024) { "Diario de restauración inválido." }
+        val array = JSONObject(SecureFiles.text(journal)).getJSONArray("files")
         return (0 until array.length()).map { array.getString(it).also { name -> require(BackupLimits.avatarName.matches(name)) } }.toSet()
     }
     fun delete(name: String) = lifecycle.remove(name) {
@@ -64,7 +65,7 @@ internal class BackupAvatarFiles(context: Context, directoryName: String, journa
 }
 
 internal fun durableWrite(file: File, bytes: ByteArray) {
-    FileOutputStream(file).use { output -> output.write(bytes); output.flush(); output.fd.sync() }
+    SecureFiles.output(file).use { output -> output.write(bytes); output.flush(); output.flush() }
 }
 
 internal fun syncBackupDirectory(directory: File) {

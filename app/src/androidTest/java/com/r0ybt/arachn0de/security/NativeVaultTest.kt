@@ -52,6 +52,15 @@ class NativeVaultTest {
             manager.current.value!!.projects.createProject("Only secondary")
             manager.lock();manager.unlock("principal-native-123".toCharArray())
             assertEquals(listOf(project.id),manager.current.value!!.database.backupDao().projects().map {it.id})
+            manager.lock()
+            val recovery=java.io.ByteArrayOutputStream()
+            manager.exportInitialRecovery("principal-native-123".toCharArray(),"portable-native-123".toCharArray(),recovery)
+            manager.unlock("principal-native-123".toCharArray())
+            val data=manager.current.value!!.backups.inspect(java.io.ByteArrayInputStream(recovery.toByteArray()),"portable-native-123".toCharArray())
+            assertEquals(listOf(project.id),data.projects.map {it.id})
+            manager.current.value!!.backups.restore(data)
+            manager.current.value!!.backups.discard(data)
+            assertEquals(listOf(project.id),manager.current.value!!.database.backupDao().projects().map {it.id})
         } finally {manager.lock();root.deleteRecursively()}
     }
     @Test fun nativeSqlcipherPreservesTypedRowsAndRejectsWrongKey() {
@@ -74,4 +83,29 @@ class NativeVaultTest {
             } finally {key.fill(0)}
         } finally {root.deleteRecursively()}
     }
+    @Test fun interruptedNativeMigrationRetainsSourceAndRetriesWithSamePassword()=runBlocking {
+        val (context,root)=isolated()
+        var interrupt=true
+        val manager=VaultManager(context,sync={directory ->
+            if(interrupt && directory.name=="migration-original") {
+                interrupt=false;throw java.io.IOException("Injected pre-activation interruption")
+            }
+            com.r0ybt.arachn0de.backup.syncBackupDirectory(directory)
+        })
+        try {
+            val original=Arachn0deDatabase.create(context)
+            val project=ProjectRepository(original.projectDao(),original).createProject("Preserve interrupted migration")
+            original.close()
+            val source=File(context.filesDir,"original.bin").apply {writeBytes(byteArrayOf(7,8,9))}
+            assertTrue(runCatching {manager.setup("retry-native-123".toCharArray())}.isFailure)
+            assertNull(manager.current.value);assertFalse(manager.configured)
+            assertArrayEquals(byteArrayOf(7,8,9),source.readBytes())
+            val reopened=Arachn0deDatabase.create(context)
+            try {assertEquals(listOf(project.id),reopened.backupDao().projects().map {it.id})} finally {reopened.close()}
+            manager.setup("retry-native-123".toCharArray())
+            assertEquals(listOf(project.id),manager.current.value!!.database.backupDao().projects().map {it.id})
+            assertArrayEquals(byteArrayOf(7,8,9),SecureFiles.read(File(manager.current.value!!.context.filesDir,source.name)))
+        } finally {manager.lock();root.deleteRecursively()}
+    }
+
 }

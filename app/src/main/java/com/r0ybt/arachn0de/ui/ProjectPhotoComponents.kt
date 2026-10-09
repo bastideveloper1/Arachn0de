@@ -1,6 +1,9 @@
 package com.r0ybt.arachn0de.ui
 
 import android.graphics.Bitmap
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AccountTree
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
@@ -38,14 +41,16 @@ internal fun ProjectIdentityIcon(project: Project, modifier: Modifier = Modifier
     val context = LocalContext.current
     val storageContext=privateStorageContext(context)
     val file = project.photo?.file
-    val bitmap by produceState<Bitmap?>(null, file) {
+    var displayPixels by remember {mutableIntStateOf(120)}
+    val decodePixels=(displayPixels*(project.photo?.framing?.zoom ?: 1f)).toInt().coerceIn(96,2048)
+    val bitmap by produceState<Bitmap?>(null, storageContext, file,decodePixels) {
         value = null
-        value = withContext(Dispatchers.IO) { file?.let { runCatching { AvatarStore(storageContext, "project-photos").readThumbnail(it) }.getOrNull() } }
+        value = withContext(Dispatchers.IO) { file?.let { runCatching { AvatarStore(storageContext, "project-photos").readThumbnail(it,decodePixels) }.getOrNull() } }
     }
-    Box(modifier.clip(ProjectPhotoShape).background(Arachn0deColors.Primary).testTag("project-photo:${project.id}"), contentAlignment = Alignment.Center) {
+    Box(modifier.then(Modifier.onSizeChanged {displayPixels=maxOf(it.width,it.height)}).clip(ProjectPhotoShape).background(Arachn0deColors.Primary).testTag("project-photo:${project.id}"), contentAlignment = Alignment.Center) {
         bitmap?.let { FramedAvatar(it, project.photo?.framing ?: AvatarFraming(), Modifier.fillMaxSize().semantics {
             contentDescription = "Fotografía de ${project.name}"
-        }, shape = ProjectPhotoShape) } ?: Text(project.name.take(1).uppercase(), color = Arachn0deColors.OnPrimary, fontWeight = FontWeight.Bold)
+        }, shape = ProjectPhotoShape) } ?: Icon(Icons.Default.AccountTree,"Proyecto sin fotografía",Modifier.padding(6.dp).fillMaxSize(),tint=Arachn0deColors.OnPrimary)
     }
 }
 
@@ -103,7 +108,7 @@ internal fun ProjectPhotoDialog(project: Project, onClose: () -> Unit,
         }) { Text(if (busy) "Guardando…" else "Guardar fotografía") } },
         dismissButton = { TextButton(enabled = !busy, onClick = ::close) { Text("Cancelar") } })
     if (crop) (pending ?: file)?.let { selected ->
-        AvatarEditor(selected, if (pending != null) AvatarFraming() else framing, onConfirm = {
+        AvatarEditor(selected, framing, onConfirm = {
             pending?.let { file = it }; pending = null; zoom = it.zoom; x = it.x; y = it.y; crop = false
         }, onCancel = {
             val cancelled = pending; pending = null; crop = false

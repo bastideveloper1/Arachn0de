@@ -10,15 +10,20 @@ import java.nio.ByteBuffer
 internal object SqlCipherMigration {
     private fun quote(name:String)="\"${name.replace("\"","\"\"")}\""
     fun copy(source:File,target:File,password:ByteArray) {
+        // VaultManager derives a 256-bit key represented as 64 ASCII hex characters.
+        // ATTACH binds text; reject non-canonical bytes rather than silently replacing UTF-8.
+        require(password.size==64 && password.all {it.toInt() in 48..57 || it.toInt() in 97..102})
         require(source.isFile && !target.exists())
         require(source.canonicalFile!=target.canonicalFile)
         System.loadLibrary("sqlcipher")
-        val original=SQLiteDatabase.openDatabase(source.path,byteArrayOf(),null,SQLiteDatabase.OPEN_READWRITE,null)
+        // SQLite ATTACH inherits the connection's CREATE flag. The source is required
+        // above; CREATE enables only the new attached database, never a missing source.
+        val original=SQLiteDatabase.openDatabase(source.path,byteArrayOf(),null,SQLiteDatabase.OPEN_READWRITE or SQLiteDatabase.CREATE_IF_NECESSARY,null)
         try {
             original.execSQL("PRAGMA temp_store=MEMORY")
             val version=original.rawQuery("PRAGMA user_version",emptyArray<String>()).use { check(it.moveToFirst());it.getInt(0) }
             val before=fingerprint(original)
-            original.execSQL("ATTACH DATABASE ? AS protected_copy KEY ?",arrayOf(target.path,String(password,Charsets.UTF_8)))
+            original.execSQL("ATTACH DATABASE ? AS protected_copy KEY ?",arrayOf(target.path,String(password,Charsets.US_ASCII)))
             try {
                 original.rawQuery("SELECT sqlcipher_export('protected_copy')",emptyArray<String>()).use { check(it.moveToFirst()) }
                 original.execSQL("PRAGMA protected_copy.user_version = $version")

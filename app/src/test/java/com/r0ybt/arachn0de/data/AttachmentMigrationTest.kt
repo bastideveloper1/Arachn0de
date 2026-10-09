@@ -43,7 +43,7 @@ class AttachmentMigrationTest {
         val db = Arachn0deDatabase.create(context)
         try {
             val migrated = db.openHelper.writableDatabase
-            assertEquals(26, migrated.version); assertEquals(before, snapshot(migrated))
+            assertEquals(27, migrated.version); assertEquals(before, snapshot(migrated))
             assertTrue(db.attachmentDao().files().isEmpty())
             val id = "00000000-0000-0000-0000-000000000001"
             val row = AttachmentFileEntity(id, "$id.png", "same.png", "image/png", 10, 1, 1, "hash", 1)

@@ -129,7 +129,7 @@ class ProjectPhotoRepositoryTest {
         source.outputStream().use { bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it) }; bitmap.recycle()
         val name = photos.import(Uri.fromFile(source), "wide")
         val decoded = android.graphics.BitmapFactory.decodeFile(file(name).path)
-        assertEquals(512, decoded.width); assertEquals(128, decoded.height); decoded.recycle()
+        assertEquals(1024, decoded.width); assertEquals(256, decoded.height); decoded.recycle()
         val bytes = file(name).readBytes()
         photos.save(project.id, name, AvatarFraming(4f, .8f, -.2f), "wide")
         photos.save(project.id, name, AvatarFraming(1f, 0f, 0f), "wide")

@@ -135,9 +135,9 @@ class MetroRedesignUiTest {
         com.r0ybt.arachn0de.backup.BackupRepository(app.database,app,com.r0ybt.arachn0de.backup.BackupAvatarFiles(app,com.r0ybt.arachn0de.backup.BackupFixture::syncDirectory)).restore(com.r0ybt.arachn0de.backup.BackupFixture.complete())
         val net=app.metroRepository.snapshot().preferences.network
         val route=MetroPlanner.plan(net,listOf("los-heroes","republica"),false,MetroRestrictions())!!
-        app.metroRepository.savePlan(route,personId="r")
+        val id=app.metroRepository.savePlan(route,personId="r")
         screen();compose.onNodeWithText("Viajes").performClick();capture("12-viajes")
-        compose.onNodeWithText("Iniciar viaje").performClick();await {exists("METRO DETENIDO")};capture("13-seguimiento")
+        compose.onNodeWithTag("metro-trip:$id").performClick();await {exists("Comenzar viaje")};compose.onNodeWithText("Comenzar viaje").performClick();await {exists("Pausar")};capture("13-seguimiento")
         val journey=app.metroRepository.snapshot().journeys.single();assertTrue(journey.data.active!!.automatic)
         compose.onNodeWithTag("metro-avatar").assertIsDisplayed()
         compose.onNodeWithContentDescription("Roy").assertExists()
@@ -146,7 +146,7 @@ class MetroRedesignUiTest {
         // The shared PersonAvatar renders the original magenta fixture, rather than a generic icon.
         await {renderedWindow().getPixel(avatar.x.toInt(),avatar.y.toInt())==android.graphics.Color.MAGENTA}
         capture("13b-avatar-real")
-        compose.onNodeWithText("METRO DETENIDO").performClick();await {exists("REANUDAR")}
+        compose.onNodeWithText("Pausar").performClick();await {exists("Reanudar")}
         compose.onNode(hasText("Los Héroes") and hasClickAction()).performClick();compose.onNodeWithText("Estoy aquí").performClick()
         await {runBlocking {app.metroRepository.snapshot().journeys.single().data.active!!.events.any {it.kind=="CONFIRM"}}}
         assertNotNull(app.metroRepository.snapshot().journeys.single().data.active!!.pausedAt)

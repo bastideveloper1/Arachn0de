@@ -25,17 +25,18 @@ internal object BackupJson {
             (data.metroPreferences?.toByteArray(Charsets.UTF_8)?.size?.toLong() ?: 0L) + data.metroJourneys.sumOf { it.payload.toByteArray(Charsets.UTF_8).size.toLong() } + data.savedTemplates.sumOf { it.payload.toByteArray(Charsets.UTF_8).size.toLong() + it.name.toByteArray(Charsets.UTF_8).size + it.id.toByteArray(Charsets.UTF_8).size }
         require(textBytes <= BackupLimits.PAYLOAD_BYTES / 2) { "El contenido supera el límite de metadatos del backup." }
         fun obj(vararg values: Pair<String, Any?>) = JSONObject().apply { values.forEach { (key, value) -> put(key, value ?: JSONObject.NULL) } }
+        val version=if(data.nodeSortPreferences.any {it.layersFirst || it.mode=="INHERIT"} || data.projectPhotos.isNotEmpty()) 19 else if(data.privatePreferences.isEmpty() && data.storeId==null && data.storeKind=="primary") 17 else 18
         val json = obj(
             "conversionRoots" to JSONArray(data.conversionRoots.map { obj("id" to it.id, "projectId" to it.projectId, "nodeId" to it.nodeId, "projectIdentity" to it.projectIdentity, "nodeIdentity" to it.nodeIdentity, "projectPosition" to it.projectPosition, "nodePosition" to it.nodePosition, "startAt" to it.startAt, "dueAt" to it.dueAt, "priority" to it.priority, "creationGroupId" to it.creationGroupId, "sprintMode" to it.sprintMode) }),
             "conversionPeople" to JSONArray(data.conversionPeople.map { obj("rootId" to it.rootId, "personId" to it.personId) }),
             "conversionTags" to JSONArray(data.conversionTags.map { obj("rootId" to it.rootId, "tagId" to it.tagId) }),
             "conversionEvents" to JSONArray(data.conversionEvents.map { obj("id" to it.id, "rootId" to it.rootId, "type" to it.type, "occurredAt" to it.occurredAt) }),
             "conversionWorkStates" to JSONArray(data.conversionWorkStates.map { obj("nodeId" to it.nodeId, "rootId" to it.rootId, "workState" to it.workState) }),
-            "nodeSortPreferences" to JSONArray(data.nodeSortPreferences.map { obj("context" to it.context, "mode" to it.mode) }),
+            "nodeSortPreferences" to JSONArray(data.nodeSortPreferences.map { obj("context" to it.context, "mode" to it.mode).apply {if(version>=19) put("layersFirst",it.layersFirst)} }),
             "imageFiles" to JSONArray(data.imageFiles.map { obj("directory" to it.directory, "name" to it.name, "byteSize" to it.byteSize, "sha256" to it.sha256) }),
             "metroPreferences" to data.metroPreferences,
             "metroJourneys" to JSONArray(data.metroJourneys.map { obj("id" to it.id, "nodeId" to it.nodeId, "personId" to it.personId, "enabled" to it.enabled, "payload" to it.payload, "revision" to it.revision) }),
-            "dataVersion" to (if(data.privatePreferences.isEmpty() && data.storeId==null && data.storeKind=="primary") 17 else 18), "savedTemplates" to JSONArray(data.savedTemplates.map { obj("id" to it.id, "name" to it.name, "payload" to it.payload) }), "gameSession" to data.gameSession, "appVersion" to data.appVersion, "createdAt" to data.createdAt,
+            "dataVersion" to version, "savedTemplates" to JSONArray(data.savedTemplates.map { obj("id" to it.id, "name" to it.name, "payload" to it.payload) }), "gameSession" to data.gameSession, "appVersion" to data.appVersion, "createdAt" to data.createdAt,
             "projects" to JSONArray(data.projects.map { obj("id" to it.id, "name" to it.name, "description" to it.description, "position" to it.position, "createdAt" to it.createdAt, "updatedAt" to it.updatedAt) }),
             "nodes" to JSONArray(data.nodes.map { obj("id" to it.id, "projectId" to it.projectId, "parentId" to it.parentId, "title" to it.title, "description" to it.description, "isCompleted" to it.isCompleted, "position" to it.position, "createdAt" to it.createdAt, "updatedAt" to it.updatedAt, "startAt" to it.startAt, "dueAt" to it.dueAt, "purpose" to it.purpose, "amountMinor" to it.amountMinor, "currencyCode" to it.currencyCode, "priority" to it.priority, "creationGroupId" to it.creationGroupId, "sprintMode" to it.sprintMode, "workState" to it.workState) }),
             "persons" to JSONArray(data.persons.map { obj("id" to it.id, "name" to it.name, "avatarFile" to it.avatarFile, "avatarZoom" to it.avatarZoom, "avatarX" to it.avatarX, "avatarY" to it.avatarY) }),
@@ -64,7 +65,7 @@ internal object BackupJson {
             "projectPhotoImages" to JSONArray(data.projectPhotoImages.toSortedMap().map { (name, bytes) -> obj("name" to name, "png" to Base64.encodeToString(bytes, Base64.NO_WRAP)) }),
             "avatars" to JSONArray(data.avatars.toSortedMap().map { (name, bytes) -> obj("name" to name, "png" to Base64.encodeToString(bytes, Base64.NO_WRAP)) }),
         )
-        if(data.privatePreferences.isNotEmpty() || data.storeId!=null || data.storeKind!="primary") {
+        if(version>=18) {
             json.put("privatePreferences", JSONArray(data.privatePreferences.map { obj("name" to it.name,"payload" to it.payload) }))
             json.put("storeId",data.storeId ?: JSONObject.NULL);json.put("storeKind",data.storeKind)
         }
@@ -82,7 +83,7 @@ internal object BackupJson {
             value as? JSONObject ?: error("Backup no es un objeto.")
         }
         val version = root.integer("dataVersion")
-        require(version in 1L..18L) { "Versión de datos no compatible." }
+        require(version in 1L..19L) { "Versión de datos no compatible." }
         val baseFields = arrayOf("dataVersion", "appVersion", "createdAt", "projects", "nodes", "persons", "assignments", "avatars")
         root.fields(*(baseFields + (if (version >= 2L) arrayOf("recurrenceRules", "recurrenceOccurrences", "recurrenceAssignments") else emptyArray()) + (if (version >= 3L) arrayOf("tags", "nodeTags", "recurrenceTags") else emptyArray()) + (if (version >= 4L) arrayOf("nodeEvents") else emptyArray()) + (if (version >= 7L) arrayOf("creationDefaults","defaultsTags","defaultsPeople") else emptyArray()) + (if (version >= 10L) arrayOf("attachmentFiles", "nodeAttachments", "projectAttachments") else emptyArray()) + (if (version >= 11L) arrayOf("technologies", "nodeTechnologies", "projectTechnologies", "technologyIcons") else emptyArray()) + (if (version >= 13L) arrayOf("projectPhotos", "projectPhotoImages") else emptyArray()) + (if (version >= 14L) arrayOf("conversionRoots", "conversionPeople", "conversionTags", "conversionEvents", "conversionWorkStates", "nodeSortPreferences", "imageFiles") else emptyArray()) + (if (version >= 15L) arrayOf("gameSession") else emptyArray()) + (if (version >= 16L) arrayOf("metroPreferences", "metroJourneys") else emptyArray()) + (if (version >= 17L) arrayOf("savedTemplates") else emptyArray()) + (if (version >= 18L) arrayOf("privatePreferences","storeId","storeKind") else emptyArray())))
         val projects = root.records("projects").map { row ->
@@ -171,7 +172,7 @@ internal object BackupJson {
                 val name = row.string("name")
                 require(name !in images && BackupLimits.avatarName.matches(name)) { "Nombre de imagen inválido o repetido." }
                 val png = row.string("png")
-                require(png.length <= (BackupLimits.AVATAR_BYTES + 2) / 3 * 4) { "Imagen demasiado grande." }
+                require(png.length <= ((if(key=="projectPhotoImages" && version>=19) BackupLimits.PROJECT_PHOTO_BYTES else BackupLimits.AVATAR_BYTES) + 2) / 3 * 4) { "Imagen demasiado grande." }
                 val decoded = Base64.decode(png, Base64.NO_WRAP)
                 require(Base64.encodeToString(decoded, Base64.NO_WRAP) == png) { "Codificación de imagen inválida." }
                 imageBytes += decoded.size
@@ -209,8 +210,8 @@ internal object BackupJson {
             ConversionWorkStateEntity(row.string("nodeId"), row.string("rootId"), row.string("workState"))
         }
         val nodeSortPreferences = if (version < 14) emptyList() else root.records("nodeSortPreferences").map { row ->
-            row.fields("context", "mode")
-            NodeSortPreferenceEntity(row.string("context"), row.string("mode"))
+            row.fields(*(arrayOf("context","mode")+if(version>=19) arrayOf("layersFirst") else emptyArray()))
+            NodeSortPreferenceEntity(row.string("context"), row.string("mode").also {require(version>=19 || it!="INHERIT")}, if(version>=19) row.boolean("layersFirst") else false)
         }
         val imageFiles = if (version < 14) emptyList() else root.records("imageFiles").map { row ->
             row.fields("directory", "name", "byteSize", "sha256")

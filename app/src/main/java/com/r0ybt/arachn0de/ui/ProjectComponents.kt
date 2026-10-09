@@ -277,10 +277,12 @@ internal fun ProjectCard(
                     softWrap = true,
                     modifier = Modifier.testTag("project-title:${project.id}"),
                 )
-                ProjectAlerts(alerts)
+                CompactAssignments(project.id,emptyList(),project=true)
 
             }
 
+            ProjectAlerts(alerts)
+            com.r0ybt.arachn0de.metro.MetroActivityIndicator("project:${project.id}")
             IconButton(onClick = { showActions = true }, modifier = Modifier.size(48.dp)) {
                 Icon(Icons.Default.MoreVert, contentDescription = "Opciones del proyecto", tint = Arachn0deColors.TextSecondary)
             }
@@ -301,26 +303,9 @@ internal fun ProjectCard(
     }
 }
 
-@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 @Composable
 private fun ProjectAlerts(alerts: ProjectCardAlerts) {
-    if (alerts.highPriority == 0 && alerts.dueToday == 0) return
-    androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-        if (alerts.highPriority > 0) ProjectAlert(Icons.Default.PriorityHigh,
-            if (alerts.highPriority == 1) "1 prioritaria" else "${alerts.highPriority} prioritarias",
-            com.r0ybt.arachn0de.ui.theme.SemanticColors.HighPriority)
-        if (alerts.dueToday > 0) ProjectAlert(Icons.Default.Today,
-            if (alerts.dueToday == 1) "1 vence hoy" else "${alerts.dueToday} vencen hoy",
-            com.r0ybt.arachn0de.ui.theme.SemanticColors.Upcoming)
-    }
-}
-
-@Composable
-private fun ProjectAlert(icon: androidx.compose.ui.graphics.vector.ImageVector, label: String, color: androidx.compose.ui.graphics.Color) {
-    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-        Icon(icon, contentDescription = null, tint = color, modifier = Modifier.size(16.dp))
-        Text(label, color = color, fontSize = ContentTypography.SmallMetadata)
-    }
+    CardSignals(alerts.futureDue,alerts.dueToday,alerts.highPriority,"Tareas del proyecto")
 }
 
 internal fun formatProjectDate(timestamp: Long): String {

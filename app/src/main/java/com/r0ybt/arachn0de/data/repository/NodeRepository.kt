@@ -110,10 +110,17 @@ class NodeRepository(
     }
 
     /** A stale parent is rejected. At a boundary this is a successful no-op (plus normalization). */
-    suspend fun reorderNode(id: String, expectedParentId: String?, moveUp: Boolean): Boolean = database.withTransaction {
+    suspend fun reorderNode(id: String, expectedParentId: String?, moveUp: Boolean, layersOnly:Boolean=false,contentOnly:Boolean=false): Boolean = database.withTransaction {
         val current = nodeDao.getById(id) ?: return@withTransaction false
         if (current.parentId != expectedParentId) return@withTransaction false
         val siblings = sortSiblingsForDisplay(nodeDao.getSiblings(current.projectId, current.parentId))
+        if(layersOnly || contentOnly) {
+            if((current.purpose=="LAYER")!=layersOnly) return@withTransaction false
+            val layers=siblings.filter {(it.purpose=="LAYER")==layersOnly && it.isCompleted==current.isCompleted && it.workState==current.workState}
+            val from=layers.indexOfFirst {it.id==id};val to=from+if(moveUp) -1 else 1
+            if(to in layers.indices) writeLayerOrder(layers,layers.toMutableList().apply {val other=this[to];this[to]=this[from];this[from]=other})
+            return@withTransaction true
+        }
         val sameGroup = siblings.filter { it.isCompleted == current.isCompleted && it.workState == current.workState }
         val from = sameGroup.indexOfFirst { it.id == id }
         check(from >= 0)
@@ -133,17 +140,30 @@ class NodeRepository(
     }
 
     /** Drop onto a sibling's slot; reject stale parents or completion groups atomically. */
-    suspend fun reorderNodeTo(id: String, expectedParentId: String?, targetId: String): Boolean = database.withTransaction {
+    suspend fun reorderNodeTo(id: String, expectedParentId: String?, targetId: String, layersOnly:Boolean=false,contentOnly:Boolean=false): Boolean = database.withTransaction {
         val current = nodeDao.getById(id) ?: return@withTransaction false
         val target = nodeDao.getById(targetId) ?: return@withTransaction false
         if (current.parentId != expectedParentId || target.parentId != expectedParentId ||
             current.projectId != target.projectId || current.isCompleted != target.isCompleted || current.workState != target.workState) return@withTransaction false
+        if(layersOnly || contentOnly) {
+            if((current.purpose=="LAYER")!=layersOnly || (target.purpose=="LAYER")!=layersOnly) return@withTransaction false
+            val layers=sortSiblingsForDisplay(nodeDao.getSiblings(current.projectId,expectedParentId)).filter {(it.purpose=="LAYER")==layersOnly && it.isCompleted==current.isCompleted && it.workState==current.workState}
+            val reordered=layers.toMutableList();val from=reordered.indexOfFirst {it.id==id};val to=reordered.indexOfFirst {it.id==targetId}
+            reordered.add(to,reordered.removeAt(from));writeLayerOrder(layers,reordered)
+            return@withTransaction true
+        }
         val ordered = sortSiblingsForDisplay(nodeDao.getSiblings(current.projectId, expectedParentId)).toMutableList()
         val from = ordered.indexOfFirst { it.id == id }
         val to = ordered.indexOfFirst { it.id == targetId }
         ordered.add(to, ordered.removeAt(from))
         writeOrder(ordered, if (from == to) emptySet() else setOf(id, targetId))
         true
+    }
+
+    /** Only layer slots change; automatic task order and persisted task positions stay intact. */
+    private suspend fun writeLayerOrder(before:List<NodeEntity>,after:List<NodeEntity>) {
+        val slots=before.map {it.position}.let {if(it.distinct().size==it.size) it else before.indices.toList()}
+        after.forEachIndexed {index,node->if(node.position!=slots[index]) check(nodeDao.updateOrder(node.id,slots[index],currentTimeMillis())==1)}
     }
 
     private suspend fun writeOrder(siblings: List<NodeEntity>, changedIds: Set<String> = emptySet()) {

@@ -57,7 +57,7 @@ class ProjectCardAlertsIntegrationTest {
     }).around(compose)
     private fun await(text: String) = compose.waitUntil(10_000) {
         Shadows.shadowOf(android.os.Looper.getMainLooper()).idle()
-        compose.onAllNodesWithText(text).fetchSemanticsNodes().isNotEmpty()
+        compose.onAllNodes(hasText(text) or hasContentDescription(text)).fetchSemanticsNodes().isNotEmpty()
     }
     private fun mount(owner: LifecycleOwner? = null) {
         compose.runOnUiThread { compose.activity.setContent {
@@ -68,13 +68,13 @@ class ProjectCardAlertsIntegrationTest {
     }
     @Test fun confirmedEditsAndCompletionRefreshDeepTaskAlertsAndDetailsRemainAvailable() {
         mount()
-        runBlocking { app.nodeRepository.setPriority(task.id, Priority.HIGH) }; await("1 prioritaria")
-        runBlocking { app.nodeRepository.updateNodeWithDates(task.id, task.title, "", null, instant(8, 1)) }; await("1 vence hoy")
+        runBlocking { app.nodeRepository.setPriority(task.id, Priority.HIGH) }; await("Tareas del proyecto: 1 de prioridad alta")
+        runBlocking { app.nodeRepository.updateNodeWithDates(task.id, task.title, "", null, instant(8, 1)) }; await("Tareas del proyecto: 1 vencen hoy")
         runBlocking { app.nodeRepository.setCompleted(task.id, true) }
-        compose.waitUntil(10_000) { compose.onAllNodesWithText("1 prioritaria").fetchSemanticsNodes().isEmpty() && compose.onAllNodesWithText("1 vence hoy").fetchSemanticsNodes().isEmpty() }
-        runBlocking { app.nodeRepository.setCompleted(task.id, false) }; await("1 prioritaria"); await("1 vence hoy")
+        compose.waitUntil(10_000) { compose.onAllNodesWithContentDescription("Tareas del proyecto: 1 de prioridad alta").fetchSemanticsNodes().isEmpty() && compose.onAllNodesWithContentDescription("Tareas del proyecto: 1 vencen hoy").fetchSemanticsNodes().isEmpty() }
+        runBlocking { app.nodeRepository.setCompleted(task.id, false) }; await("Tareas del proyecto: 1 de prioridad alta"); await("Tareas del proyecto: 1 vencen hoy")
         runBlocking { app.nodeRepository.setPriority(task.id, Priority.LOW); app.nodeRepository.updateNodeWithDates(task.id, task.title, "", null, instant(9)) }
-        compose.waitUntil(10_000) { compose.onAllNodesWithText("1 prioritaria").fetchSemanticsNodes().isEmpty() && compose.onAllNodesWithText("1 vence hoy").fetchSemanticsNodes().isEmpty() }
+        compose.waitUntil(10_000) { compose.onAllNodesWithContentDescription("Tareas del proyecto: 1 de prioridad alta").fetchSemanticsNodes().isEmpty() && compose.onAllNodesWithContentDescription("Tareas del proyecto: 1 vencen hoy").fetchSemanticsNodes().isEmpty() }
         compose.onNodeWithText(project.name).performClick(); await("Proyecto raíz")
         compose.onNodeWithTag("nodes-list").performScrollToNode(hasText("Información interna"))
         compose.onNodeWithText("Información interna").assertIsDisplayed()
@@ -87,15 +87,15 @@ class ProjectCardAlertsIntegrationTest {
             override val lifecycle: Lifecycle get() = registry
         }
         compose.runOnUiThread { owner.registry.currentState = Lifecycle.State.RESUMED }
-        mount(owner); await("1 vence hoy")
+        mount(owner); await("Tareas del proyecto: 1 vencen hoy")
         compose.runOnUiThread { TimeZone.setDefault(TimeZone.getTimeZone("GMT-03:00")); app.sendBroadcast(Intent(Intent.ACTION_TIMEZONE_CHANGED)) }
-        compose.waitUntil(10_000) { Shadows.shadowOf(android.os.Looper.getMainLooper()).idle(); compose.onAllNodesWithText("1 vence hoy").fetchSemanticsNodes().isEmpty() }
-        compose.runOnUiThread { TimeZone.setDefault(zone); app.sendBroadcast(Intent(Intent.ACTION_TIMEZONE_CHANGED)) }; await("1 vence hoy")
+        compose.waitUntil(10_000) { Shadows.shadowOf(android.os.Looper.getMainLooper()).idle(); compose.onAllNodesWithContentDescription("Tareas del proyecto: 1 vencen hoy").fetchSemanticsNodes().isEmpty() }
+        compose.runOnUiThread { TimeZone.setDefault(zone); app.sendBroadcast(Intent(Intent.ACTION_TIMEZONE_CHANGED)) }; await("Tareas del proyecto: 1 vencen hoy")
         compose.runOnUiThread { owner.registry.currentState = Lifecycle.State.CREATED; clock.set(instant(9)) }
-        compose.onNodeWithText("1 vence hoy").assertExists()
+        compose.onNodeWithContentDescription("Tareas del proyecto: 1 vencen hoy").assertExists()
         compose.runOnUiThread { owner.registry.currentState = Lifecycle.State.RESUMED }
-        compose.waitUntil(10_000) { compose.onAllNodesWithText("1 vence hoy").fetchSemanticsNodes().isEmpty() }
-        compose.runOnUiThread { clock.set(instant(8)); app.sendBroadcast(Intent(Intent.ACTION_TIME_CHANGED)) }; await("1 vence hoy")
+        compose.waitUntil(10_000) { compose.onAllNodesWithContentDescription("Tareas del proyecto: 1 vencen hoy").fetchSemanticsNodes().isEmpty() }
+        compose.runOnUiThread { clock.set(instant(8)); app.sendBroadcast(Intent(Intent.ACTION_TIME_CHANGED)) }; await("Tareas del proyecto: 1 vencen hoy")
     }
     @Test fun localMidnightRefreshesTheDashboardWithoutBroadcastOrDatabaseEmission() {
         runBlocking {
@@ -103,10 +103,10 @@ class ProjectCardAlertsIntegrationTest {
             repeat(2) { app.nodeRepository.createNode(project.id, null, "Mañana $it", dueAt = instant(9)) }
         }
         clock.set(instant(9, 0) - 500)
-        mount(); await("1 vence hoy")
+        mount(); await("Tareas del proyecto: 1 vencen hoy")
         compose.runOnUiThread { clock.set(instant(9, 0)) }
-        await("2 vencen hoy")
-        compose.onNodeWithText("1 vence hoy").assertDoesNotExist()
+        await("Tareas del proyecto: 2 vencen hoy")
+        compose.onNodeWithContentDescription("Tareas del proyecto: 1 vencen hoy").assertDoesNotExist()
     }
     @Test fun ticksWithinSameDayReuseTheAggregateAndANewDayRecomputesIt() {
         val tree = NodeTreeSnapshot(listOf(task.copy(parentId = null, dueAt = instant(8))))

@@ -8,6 +8,7 @@ import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.width
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
@@ -107,9 +108,16 @@ class TechnologyUiTest {
             val ids=androidx.compose.runtime.remember {androidx.compose.runtime.mutableStateOf(selected)}
             TechnologySelection(listOf(technology),ids.value,true) {ids.value=it;selected=it}
         }}}
-        compose.onNodeWithText("Python").performClick();compose.onNodeWithText("Cerrar").performClick();assertEquals(listOf("tool"),selected)
-        compose.onNodeWithContentDescription("Quitar Python").performClick();assertTrue(selected.isEmpty())
-        compose.onNodeWithText("Añadir Python").performClick();assertEquals(listOf("tool"),selected)
+        compose.onNodeWithText("Tecnologías (1)").performClick()
+        compose.onAllNodesWithContentDescription("Python").onFirst().performClick()
+        assertEquals(listOf("tool"),selected)
+        compose.onNodeWithText("Cancelar").performClick();assertEquals(listOf("tool"),selected)
+        compose.onNodeWithText("Tecnologías (1)").performClick()
+        compose.onAllNodesWithContentDescription("Python").onFirst().performClick()
+        compose.onNodeWithText("Confirmar").performClick();assertTrue(selected.isEmpty())
+        compose.onNodeWithText("Tecnologías (0)").performClick()
+        compose.onAllNodesWithContentDescription("Python").onFirst().performClick()
+        compose.onNodeWithText("Confirmar").performClick();assertEquals(listOf("tool"),selected)
     }
     @Test fun heldDragReordersSelectedTechnologiesWithoutRemovingThem() {
         val catalog=listOf(TechnologyEntity("a","Alpha",null),TechnologyEntity("b","Beta",null),TechnologyEntity("c","Gamma",null))
@@ -118,19 +126,21 @@ class TechnologyUiTest {
             val ids=androidx.compose.runtime.remember {androidx.compose.runtime.mutableStateOf(selected)}
             TechnologySelection(catalog,ids.value,true) {ids.value=it;selected=it}
         }}}
+        compose.onNodeWithText("Tecnologías (3)").performClick()
+        compose.onNodeWithText("Ordenar seleccionadas").performClick()
         val from=compose.onNodeWithContentDescription("Arrastrar Alpha").fetchSemanticsNode().boundsInRoot.center
         val to=compose.onNodeWithContentDescription("Arrastrar Beta").fetchSemanticsNode().boundsInRoot.center
         assertTrue(to.y>from.y)
         compose.mainClock.autoAdvance=false
         try {
-            compose.onRoot().performTouchInput {down(from);advanceEventTime(600)}
+            compose.onAllNodes(isRoot()).onLast().performTouchInput {down(from);advanceEventTime(600)}
             compose.mainClock.advanceTimeBy(650)
-            compose.onRoot().performTouchInput {moveTo(from)}
+            compose.onAllNodes(isRoot()).onLast().performTouchInput {moveTo(from)}
             compose.mainClock.advanceTimeByFrame()
-            repeat(6) {step->compose.onRoot().performTouchInput {moveTo(from+(to-from)*((step+1)/6f),delayMillis=40)};compose.mainClock.advanceTimeByFrame()}
-            compose.onRoot().performTouchInput {up()}
+            repeat(6) {step->compose.onAllNodes(isRoot()).onLast().performTouchInput {moveTo(from+(to-from)*((step+1)/6f),delayMillis=40)};compose.mainClock.advanceTimeByFrame()}
+            compose.onAllNodes(isRoot()).onLast().performTouchInput {up()}
         } finally {compose.mainClock.autoAdvance=true}
-        compose.waitForIdle();assertEquals(listOf("b","a","c"),selected)
+        compose.waitForIdle();compose.onNodeWithText("Confirmar").performClick();assertEquals(listOf("b","a","c"),selected)
     }
     @Test fun compactOrderHiddenCountAndWrappedFullNamesFitNarrowWidth() {
         val catalog=(1..4).map {TechnologyEntity("$it","Tecnología original número $it",null)}
@@ -139,6 +149,55 @@ class TechnologyUiTest {
         compose.onNodeWithContentDescription(catalog[0].name).assertDoesNotExist()
         compose.onNodeWithContentDescription(catalog[3].name).performClick()
         compose.onNodeWithText(catalog[3].name).assertExists();compose.onNodeWithText("Cerrar").performClick()
+    }
+    @Test fun largeCatalogIsCompactSearchableAndCancelKeepsOrder() {
+        val catalog=(1..500).map {TechnologyEntity("$it","Herramienta $it",null)}
+        var selected=listOf("500","2","1")
+        compose.runOnUiThread {compose.activity.setContent {Arachn0deTheme {
+            val ids=androidx.compose.runtime.remember {androidx.compose.runtime.mutableStateOf(selected)}
+            TechnologySelection(catalog,ids.value,true) {ids.value=it;selected=it}
+        }}}
+        compose.onNodeWithText("Herramienta 1").assertDoesNotExist()
+        compose.onNodeWithText("Tecnologías (3)").performClick()
+        assertTrue(compose.onAllNodes(hasTestTag("technology-tile:500")).fetchSemanticsNodes().isEmpty())
+        compose.onNodeWithText("Buscar tecnologías").performTextInput("Herramienta 499")
+        compose.onNodeWithContentDescription("Herramienta 499").performClick()
+        compose.onNodeWithText("Cancelar").performClick();assertEquals(listOf("500","2","1"),selected)
+        compose.onNodeWithText("Tecnologías (3)").performClick()
+        compose.onNodeWithText("Ordenar seleccionadas").performClick()
+        compose.onNodeWithContentDescription("Subir Herramienta 2").performClick()
+        compose.onNodeWithText("Confirmar").performClick();assertEquals(listOf("2","500","1"),selected)
+    }
+    @Test fun consultationGridShowsAssignedNamesWithoutRemoval() {
+        val catalog=(1..100).map {TechnologyEntity("$it","Herramienta $it",null)}
+        compose.runOnUiThread {compose.activity.setContent {Arachn0deTheme {TechnologyLabels(catalog,true)}}}
+        compose.onNodeWithText("+97").performClick()
+        compose.onNodeWithText("Buscar tecnologías").performTextInput("Herramienta 100")
+        compose.onNodeWithContentDescription("Herramienta 100").performClick()
+        compose.onNodeWithText("Quitar Herramienta 100").assertDoesNotExist()
+        compose.onNodeWithText("Cerrar").performClick()
+    }
+    @Test fun technologiesAndParticipantsShareNarrowSpaceWithLargeFonts() {
+        val project=runBlocking {app.projectRepository.createProject("Proyecto")}
+        val task=runBlocking {app.nodeRepository.createNode(project.id,null,"Tarea")}
+        runBlocking {repository.save("tool","Herramienta",null,true);repository.assign(task.id,false,setOf("tool"))}
+        compose.runOnUiThread {compose.activity.setContent {
+            val density=androidx.compose.ui.platform.LocalDensity.current
+            androidx.compose.runtime.CompositionLocalProvider(androidx.compose.ui.platform.LocalDensity provides androidx.compose.ui.unit.Density(density.density,1.8f)) {
+                Arachn0deTheme {androidx.compose.foundation.layout.Box(Modifier.width(280.dp).testTag("available")) {
+                    CompactAssignments(task.id,listOf(com.r0ybt.arachn0de.domain.model.Person("person","Participante")))
+                }}
+            }
+        }}
+        compose.waitUntil(10000) {compose.onAllNodesWithContentDescription("Herramienta").fetchSemanticsNodes().isNotEmpty()}
+        val available=compose.onNodeWithTag("available").fetchSemanticsNode().boundsInRoot
+        for(name in listOf("Herramienta","Participante")) {
+            val node=compose.onNodeWithContentDescription(name).assertIsDisplayed().fetchSemanticsNode().boundsInRoot
+            assertTrue(node.left>=available.left && node.right<=available.right)
+        }
+        compose.onNodeWithContentDescription("Participante").performClick()
+        compose.onAllNodesWithText("Participante").onFirst().assertExists()
+        compose.onNodeWithText("Cerrar").performClick()
     }
     @Test fun navigationMenuOpensLocalTechnologyCatalog() {
         compose.onNodeWithContentDescription("Abrir menú").performClick()

@@ -44,6 +44,18 @@ class TechnologyRepositoryTest {
         return repository.importIcon(Uri.fromFile(input))
     }
     private fun file(name: String) = File(context.filesDir, "technology-icons/$name")
+    @Test fun projectEditorSavesOrderedAssignmentsAtomicallyAndRejectsMissingTechnology() = runBlocking {
+        repository.save("a","Alpha",null,true);repository.save("b","Beta",null,true)
+        val projects=com.r0ybt.arachn0de.data.repository.ProjectRepository(db.projectDao(),db)
+        assertTrue(projects.saveWithTechnologies(null,"new","Nuevo","",listOf("b","a")))
+        assertEquals(listOf("b","a"),db.technologyDao().projects().filter {it.projectId=="new"}.map {it.technologyId})
+        try {projects.saveWithTechnologies("new","unused","Alterado","",listOf("missing"));fail("Debe fallar")} catch(_:IllegalArgumentException) {}
+        assertEquals("Nuevo",db.projectDao().getById("new")!!.name)
+        assertEquals(listOf("b","a"),db.technologyDao().projects().filter {it.projectId=="new"}.map {it.technologyId})
+        assertTrue(projects.saveWithTechnologies("new","unused","Editado","",listOf("a","b")))
+        assertEquals(listOf("a","b"),db.technologyDao().projects().filter {it.projectId=="new"}.map {it.technologyId})
+        assertEquals(listOf("a","b"),db.technologyDao().catalog().map {it.id})
+    }
     @Test fun manualAssignmentOrderSurvivesReopenRemovalAndDoesNotReorderCatalogOrPeople() = runBlocking {
         repository.save("a","Alpha",null,true);repository.save("b","Beta",null,true);repository.save("c","Gamma",null,true)
         assertTrue(repository.assign("task",false,linkedSetOf("c","a","b")))

@@ -42,20 +42,17 @@ class MetroTrackingTest {
         s=MetroTracking.confirm(s,"a",rolled);assertFalse(s.uncertain)
         val finished=MetroTracking.finish(s,rolled);assertEquals(60_000L,MetroTracking.totalMillis(finished,time(999_000)))
     }
-    @Test fun automaticTripTraversesWaypointsAndTransfersWithoutConfirmationsEvenWhenScreenIsOff() {
+    @Test fun automaticRailEstimationStopsAtStageBoundaryEvenWhenScreenIsOff() {
         val s=MetroTracking.start(route,time(0));assertTrue(s.automatic)
-        val waypointPassed=MetroTracking.position(s,time(180_000));assertEquals(2,waypointPassed.step);assertEquals(.5f,waypointPassed.fraction);assertNull(waypointPassed.waiting)
-        val transfer=MetroTracking.position(s,time(360_000));assertEquals(3,transfer.step);assertEquals(.5f,transfer.fraction);assertNull(transfer.waiting)
-        val after=MetroTracking.position(s,time(540_000));assertEquals(4,after.step);assertEquals(.5f,after.fraction)
-        assertEquals(listOf("d"),MetroTracking.remainingStops(s,time(540_000)))
-        assertEquals("d",MetroTracking.position(s,time(999_000)).station);assertNull(s.ended);assertEquals(1,s.events.size)
+        val stopped=MetroTracking.position(s,time(999_000));assertEquals(1,stopped.step);assertEquals(MetroStepKind.WAYPOINT,stopped.waiting)
+        assertEquals(120_000L,stopped.offset);assertNull(s.ended);assertEquals(1,s.events.size)
     }
     @Test fun automaticCorrectionAndPauseReanchorWithoutChangingRestrictionsOrRequiringPasses() {
         var s=MetroTracking.start(route,time(0));s=MetroTracking.pause(s,time(180_000))
-        assertEquals(180_000L,MetroTracking.position(s,time(999_000)).offset)
+        assertEquals(120_000L,MetroTracking.position(s,time(999_000)).offset)
         s=MetroTracking.confirm(s,"a",time(999_000));assertNotNull(s.pausedAt);assertEquals(0L,s.offset)
-        s=MetroTracking.resume(s,time(1_000_000));assertNull(MetroTracking.position(s,time(1_400_000)).waiting)
-        assertEquals(400_000L,MetroTracking.position(s,time(1_400_000)).offset)
+        s=MetroTracking.resume(s,time(1_000_000));assertEquals(MetroStepKind.WAYPOINT,MetroTracking.position(s,time(1_400_000)).waiting)
+        assertEquals(120_000L,MetroTracking.position(s,time(1_400_000)).offset)
     }
     @Test fun replanKeepsOriginalStatisticsPauseAndHistoryWhileChangingOnlyPendingRoute() {
         var s=MetroTracking.pause(MetroTracking.start(route,time(0)),time(20_000))
@@ -68,7 +65,7 @@ class MetroTrackingTest {
         assertTrue(changed.automatic);assertTrue(changed.uncertain);assertEquals(old.pausedAt,changed.pausedAt)
         assertEquals(old.events,changed.events);assertEquals(60_000L,changed.offset)
         val corrected=MetroTracking.confirm(changed,"a",time(900_000,2))
-        val resumed=MetroTracking.resume(corrected,time(900_000,2));assertNull(MetroTracking.position(resumed,time(1_440_000,2)).waiting)
+        val resumed=MetroTracking.resume(corrected,time(900_000,2));assertEquals(MetroStepKind.WAYPOINT,MetroTracking.position(resumed,time(1_440_000,2)).waiting)
     }
 
 }

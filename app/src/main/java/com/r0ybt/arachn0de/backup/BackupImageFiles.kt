@@ -12,9 +12,9 @@ internal data class BackupImageFile(val directory: String, val name: String, val
 }
 internal fun imageHash(bytes: ByteArray): String = MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it) }
 internal fun inspectImage(directory: String, name: String, file: File): BackupImageFile {
-    require(file.isFile && SecureFiles.size(file) in 1..BackupLimits.AVATAR_BYTES.toLong()) { "Imagen ausente o demasiado grande." }
-    val bytes = SecureFiles.input(file).use { it.readBytesBounded(BackupLimits.AVATAR_BYTES) }
-    validateAvatar(bytes)
+    require(file.isFile && SecureFiles.size(file) in 1..imageByteLimit(directory).toLong()) { "Imagen ausente o demasiado grande." }
+    val bytes = SecureFiles.input(file).use { it.readBytesBounded(imageByteLimit(directory)) }
+    validatePrivateImage(directory,bytes)
     return BackupImageFile(directory, name, bytes.size.toLong(), imageHash(bytes))
 }
 internal fun verifyImage(row: BackupImageFile, file: File) {
@@ -41,5 +41,5 @@ internal fun BackupData.imageBytes(directory: String, name: String): ByteArray {
     inline[name]?.let { return it }
     val row = imageFiles.single { it.directory == directory && it.name == name }
     val file = imageContents.getValue(row.key); verifyImage(row, file)
-    return SecureFiles.input(file).use { it.readBytesBounded(BackupLimits.AVATAR_BYTES) }
+    return SecureFiles.input(file).use { it.readBytesBounded(imageByteLimit(directory)) }
 }

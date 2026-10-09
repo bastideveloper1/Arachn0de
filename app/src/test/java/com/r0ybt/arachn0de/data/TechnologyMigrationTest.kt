@@ -48,7 +48,7 @@ class TechnologyMigrationTest {
         val db = Arachn0deDatabase.create(context)
         try {
             val migrated = db.openHelper.writableDatabase
-            assertEquals(26, migrated.version); assertEquals(before, snapshot(migrated)); assertTrue(db.technologyDao().catalog().isEmpty())
+            assertEquals(27, migrated.version); assertEquals(before, snapshot(migrated)); assertTrue(db.technologyDao().catalog().isEmpty())
             db.technologyDao().insert(TechnologyEntity("t", "Tool", null))
             db.technologyDao().assignNodes(listOf(NodeTechnologyEntity("n", "t"))); db.technologyDao().assignProjects(listOf(ProjectTechnologyEntity("p", "t")))
             assertTrue(runCatching { db.technologyDao().assignNodes(listOf(NodeTechnologyEntity("n", "absent"))) }.isFailure)

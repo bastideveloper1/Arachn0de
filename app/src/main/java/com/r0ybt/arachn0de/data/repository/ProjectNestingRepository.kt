@@ -206,7 +206,7 @@ internal class ProjectNestingRepository(private val database: Arachn0deDatabase,
         val dao = database.nodeSortPreferenceDao()
         val ids = rows.mapTo(hashSetOf()) { it.id }
         val sourceRoot = "$source:${oldRoot ?: "project-root"}"
-        val inherited = preferences.firstOrNull { it.context == sourceRoot }
+        val inherited = preferences.firstOrNull { it.context == sourceRoot && it.mode!="INHERIT" }
             ?: preferences.firstOrNull { it.context == "$source:project-root" }
         preferences.filter { it.context == sourceRoot ||
             (it.context.startsWith("$source:") && it.context.removePrefix("$source:") in ids) }.forEach { row ->
@@ -214,11 +214,12 @@ internal class ProjectNestingRepository(private val database: Arachn0deDatabase,
             val suffix = row.context.removePrefix("$source:")
             dao.save(row.copy(context = "$target:${if (row.context == sourceRoot) newRoot ?: "project-root" else suffix}"))
         }
-        dao.save(NodeSortPreferenceEntity("$target:${newRoot ?: "project-root"}", inherited?.mode ?: "MANUAL"))
+        dao.save(NodeSortPreferenceEntity("$target:${newRoot ?: "project-root"}", inherited?.mode ?: "MANUAL",preferences.firstOrNull {it.context==sourceRoot}?.layersFirst ?: false))
         val baseline = preferences.firstOrNull { it.context == "$source:project-root" }?.mode ?: "MANUAL"
         rows.filter { it.purpose == "LAYER" && it.id != oldRoot }.forEach { row ->
-            val explicit = preferences.firstOrNull { it.context == "$source:${row.id}" }?.mode
-            dao.save(NodeSortPreferenceEntity("$target:${row.id}", explicit ?: baseline))
+            val explicitRow=preferences.firstOrNull {it.context=="$source:${row.id}"}
+            val explicit = explicitRow?.mode?.takeUnless {it=="INHERIT"}
+            dao.save(NodeSortPreferenceEntity("$target:${row.id}", explicit ?: baseline,explicitRow?.layersFirst ?: false))
         }
     }
 }

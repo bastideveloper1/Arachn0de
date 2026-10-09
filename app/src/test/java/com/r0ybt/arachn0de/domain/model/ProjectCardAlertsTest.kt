@@ -19,7 +19,7 @@ class ProjectCardAlertsTest {
         assertTrue(alerts(task("ordinary"), task("low").copy(priority = Priority.LOW), task("medium").copy(priority = Priority.MEDIUM)).isEmpty())
     }
     @Test fun highPriorityAndTodayCountIndependentlyIncludingElapsedHoursAndFutureStarts() {
-        assertEquals(ProjectCardAlerts(2, 3), alerts(
+        assertEquals(ProjectCardAlerts(2, 3, 1), alerts(
             task("both").copy(priority = Priority.HIGH, dueAt = instant(8, 0)),
             task("high").copy(priority = Priority.HIGH),
             task("due").copy(dueAt = instant(8, 23)),
@@ -47,14 +47,28 @@ class ProjectCardAlertsTest {
         assertEquals(ProjectCardAlerts(0, 1), projectCardAlerts(nodes, today, zone)["p"])
         assertTrue(projectCardAlerts(nodes, CalendarDay(2026, 10, 9), zone).isEmpty())
         // 23:00 in Santiago is already the next UTC calendar date.
-        assertTrue(projectCardAlerts(nodes, today, TimeZone.getTimeZone("UTC")).isEmpty())
+        assertEquals(ProjectCardAlerts(futureDue=1),projectCardAlerts(nodes,today,TimeZone.getTimeZone("UTC"))["p"])
         assertEquals(ProjectCardAlerts(0, 1), projectCardAlerts(nodes, CalendarDay(2026, 10, 9), TimeZone.getTimeZone("UTC"))["p"])
         val range = TemporalRanges.day(today, zone)
-        assertEquals(ProjectCardAlerts(0, 2), alerts(
+        assertEquals(ProjectCardAlerts(0, 2, 1), alerts(
             task("before").copy(dueAt = range.startInclusive - 1),
             task("first").copy(dueAt = range.startInclusive),
             task("last").copy(dueAt = range.endExclusive - 1),
             task("after").copy(dueAt = range.endExclusive))["p"])
+    }
+    @Test fun descendantSignalsExcludeOwnLayerDatesAndDoNotChangeAttentionFilters() {
+        val layer=task("layer").copy(purpose=NodePurpose.LAYER,priority=Priority.HIGH,dueAt=instant(8))
+        val inner=task("inner",parent="layer").copy(purpose=NodePurpose.LAYER)
+        val future=task("future",parent="inner").copy(dueAt=instant(9),priority=Priority.HIGH)
+        val todayTask=task("today",parent="layer").copy(dueAt=instant(8,23))
+        val completed=task("done",parent="layer").copy(isCompleted=true,dueAt=instant(8),priority=Priority.HIGH)
+        val note=task("note",parent="layer").copy(purpose=NodePurpose.NOTE,dueAt=instant(8),priority=Priority.HIGH)
+        val snapshot=AttentionSnapshot(NodeTreeSnapshot(listOf(layer,inner,future,todayTask,completed,note)),instant(8),zone)
+        assertEquals(ProjectCardAlerts(1,1,1),snapshot.cardAlertsByNodeId["layer"])
+        assertEquals(ProjectCardAlerts(1,0,1),snapshot.cardAlertsByNodeId["inner"])
+        assertEquals(ProjectCardAlerts(),snapshot.cardAlertsByNodeId["note"])
+        assertEquals(AttentionSummary(upcoming=2),snapshot.byNodeId["layer"])
+        assertEquals(setOf("future","today"),snapshot.tasks.map {it.id}.toSet())
     }
     @Test fun manyProjectsAndDescendantsAreAggregatedInOneProjection() {
         val nodes = (0 until 2_000).flatMap { index ->

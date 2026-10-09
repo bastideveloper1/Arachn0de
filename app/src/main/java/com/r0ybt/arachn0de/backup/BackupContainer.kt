@@ -87,7 +87,7 @@ internal object BackupContainer {
             data.imageFiles.forEach { row ->
                 if (destination == null) {
                     val bytes = ByteArrayOutputStream(row.byteSize.toInt())
-                    copyImage(row, stream, bytes); validateAvatar(bytes.toByteArray())
+                    copyImage(row, stream, bytes); validatePrivateImage(row.directory, bytes.toByteArray())
                 } else {
                     val target = File(destination, "images/${row.directory}/${row.name}")
                     check(target.parentFile!!.isDirectory || target.parentFile!!.mkdirs())

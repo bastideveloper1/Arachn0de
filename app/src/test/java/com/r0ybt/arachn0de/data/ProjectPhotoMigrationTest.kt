@@ -40,7 +40,7 @@ class ProjectPhotoMigrationTest {
         sql.execSQL("INSERT INTO attachment_files VALUES (?, ?, 'photo.png', 'image/png', 10, 1, 1, 'hash', 1, 'READY')", arrayOf(attachmentId, "$attachmentId.png"))
         sql.execSQL("INSERT INTO node_attachments VALUES ('n', ?)", arrayOf(attachmentId))
         fun snapshot(database: androidx.sqlite.db.SupportSQLiteDatabase) = tables.associateWith { table ->
-            database.query("SELECT ${if (table == "persons") "id, name, avatarFile" else "*"} FROM `$table` ORDER BY rowid").use { cursor -> buildList {
+            database.query("SELECT ${when (table) { "persons" -> "id, name, avatarFile"; "node_technologies" -> "nodeId, technologyId"; "project_technologies" -> "projectId, technologyId"; else -> "*" }} FROM `$table` ORDER BY rowid").use { cursor -> buildList {
                 while (cursor.moveToNext()) add((0 until cursor.columnCount).map { if (cursor.isNull(it)) null else cursor.getString(it) })
             } }
         }
@@ -51,7 +51,7 @@ class ProjectPhotoMigrationTest {
         val db = Arachn0deDatabase.create(context)
         try {
             val migrated = db.openHelper.writableDatabase
-            assertEquals(26, migrated.version); assertEquals(before, snapshot(migrated)); assertTrue(db.projectPhotoDao().all().isEmpty())
+            assertEquals(27, migrated.version); assertEquals(before, snapshot(migrated)); assertTrue(db.projectPhotoDao().all().isEmpty())
             val person = db.personDao().get("person")!!
             assertEquals(1f, person.avatarZoom); assertEquals(0f, person.avatarX); assertEquals(0f, person.avatarY)
             assertEquals(listOf(NodePersonEntity("n", "person")), db.personDao().assignmentsForNodes(listOf("n")))

@@ -66,6 +66,7 @@ internal fun ProjectDashboardScreen(
     exportTree: com.r0ybt.arachn0de.domain.model.NodeTreeSnapshot = com.r0ybt.arachn0de.domain.model.NodeTreeSnapshot(emptyList()),
     copyDescendantsReady: Boolean = false,
     onOpenTechnologies: () -> Unit = {},
+    onOpenTags:()->Unit={},
 ) {
     val scope = rememberCoroutineScope()
     val context = androidx.compose.ui.platform.LocalContext.current
@@ -111,14 +112,7 @@ internal fun ProjectDashboardScreen(
                     onMenuClick = { showDrawer = true },
                 )
 
-                Spacer(modifier = Modifier.height(18.dp))
-
-                Text(
-                    text = "Proyectos",
-                    color = Arachn0deColors.TextPrimary,
-                    fontSize = 28.sp,
-                    fontWeight = FontWeight.SemiBold,
-                )
+                Spacer(modifier = Modifier.height(6.dp))
 
                 recurrenceContent()
                 Spacer(modifier = Modifier.height(12.dp))
@@ -165,7 +159,7 @@ internal fun ProjectDashboardScreen(
                         onDismiss = { showDrawer = false },
                         onProjects = {},
                         projectsSelected = true,
-                        onPeople = { showDrawer = false; onOpenPeople() }, onTechnologies = { showDrawer = false; onOpenTechnologies() },
+                        onPeople = { showDrawer = false; onOpenPeople() }, onTechnologies = { showDrawer = false; onOpenTechnologies() },onTags={showDrawer=false;onOpenTags()},
                         onAttention = { showDrawer = false; onOpenAttention() },
                         onCalendar = { showDrawer = false; onOpenCalendar() },
                         onObligations = { showDrawer = false; onOpenObligations() },

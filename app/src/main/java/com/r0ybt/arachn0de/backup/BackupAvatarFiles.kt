@@ -12,7 +12,7 @@ import com.r0ybt.arachn0de.data.local.PrivateImageCache
 import org.json.JSONObject
 
 /** Unique new PNGs are durable before Room can reference them. Old files are never overwritten. */
-internal class BackupAvatarFiles(context: Context, directoryName: String, journalName: String,
+internal class BackupAvatarFiles(context: Context, private val directoryName: String, journalName: String,
     internal val syncDirectory: (File) -> Unit = ::syncBackupDirectory) {
     constructor(context: Context, syncDirectory: (File) -> Unit = ::syncBackupDirectory) :
         this(context, "avatars", "backup-restore-journal", syncDirectory)
@@ -26,8 +26,8 @@ internal class BackupAvatarFiles(context: Context, directoryName: String, journa
     }
     fun read(name: String): ByteArray {
         val image = file(name)
-        require(image.isFile && SecureFiles.size(image) in 1..BackupLimits.AVATAR_BYTES.toLong()) { "Avatar ausente o demasiado grande." }
-        return SecureFiles.input(image).use { input -> input.readBytesBounded(BackupLimits.AVATAR_BYTES) }
+        require(image.isFile && SecureFiles.size(image) in 1..imageByteLimit(directoryName).toLong()) { "Avatar ausente o demasiado grande." }
+        return SecureFiles.input(image).use { input -> input.readBytesBounded(imageByteLimit(directoryName)) }
     }
     fun record(names: Set<String>) {
         require(names.all { BackupLimits.avatarName.matches(it) })

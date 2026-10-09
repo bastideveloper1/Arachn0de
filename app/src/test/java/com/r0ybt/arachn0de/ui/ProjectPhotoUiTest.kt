@@ -73,7 +73,7 @@ class ProjectPhotoUiTest {
         val launched = shadowOf(compose.activity).nextStartedActivityForResult
         val file = File(app.cacheDir, "picked-project.png").apply { writeBytes(BackupFixture.png()) }
         compose.runOnUiThread { compose.activity.activityResultRegistry.dispatchResult(launched.requestCode, Activity.RESULT_OK, Intent().setData(Uri.fromFile(file))) }
-        waitText("Encuadrar fotografía"); waitText("Zoom: 1.00×")
+        waitText("Encuadrar fotografía"); compose.onNodeWithText("Confirmar").assertExists()
     }
     @Test fun selectionCancelSaveReplacementAndReopenPreserveFramesAndOriginalUntilCommit() {
         show(); select(); compose.onAllNodesWithText("Cancelar").onLast().performClick()

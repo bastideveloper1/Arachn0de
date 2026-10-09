@@ -8,6 +8,14 @@ class NodePresentationSortTest {
     private fun node(id: String, position: Int = 0, due: Long? = null, priority: Priority = Priority.NONE, created: Long = 100) =
         Node(id,"p",null,id,"",false,position,created,200,false,dueAt=due,priority=priority)
     private fun ids(nodes: List<Node>, mode: NodeSortMode) = NodePresentationSort.children(nodes,mode).map { it.id }
+    @Test fun layersFirstUsesManualLayerSlotsAndAutomaticTaskOrderAndCanBeDisabled() {
+        val first=node("first",9).copy(purpose=NodePurpose.LAYER,dueAt=1)
+        val second=node("second",1).copy(purpose=NodePurpose.LAYER,dueAt=100)
+        val task=node("task",2,due=2)
+        val input=listOf(first,task,second)
+        assertEquals(listOf("second","first","task"),NodePresentationSort.children(input,NodeSortMode.DUE_ASC,layersFirst=true).map {it.id})
+        assertEquals(listOf("first","task","second"),NodePresentationSort.children(input,NodeSortMode.DUE_ASC,layersFirst=false).map {it.id})
+    }
     @Test fun historyOrdersOnlyManualCompletedTasksAndPreservesFilterContext() {
         val pendingA=node("p1",0);val pendingB=node("p2",1)
         val old=node("old",2,1).copy(isCompleted=true)

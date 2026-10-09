@@ -59,16 +59,16 @@ import kotlinx.coroutines.launch
         }
     }, confirmButton = { TextButton(onClick = { open = false }) { Text("Listo") } })
 }
-@Composable internal fun TagManager(repository: TagRepository, state: TagState) {
-    var open by rememberSaveable { mutableStateOf(false) }
+@Composable internal fun TagManager(repository: TagRepository, state: TagState,showAccess:Boolean=true,initiallyOpen:Boolean=false,onClose:()->Unit={}) {
+    var open by rememberSaveable { mutableStateOf(initiallyOpen) }
     var search by rememberSaveable { mutableStateOf("") }
     var editing by remember { mutableStateOf<Tag?>(null) }
     var deleting by remember { mutableStateOf<Tag?>(null) }
     var name by rememberSaveable { mutableStateOf("") }
     var error by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
-    TextButton(onClick = { open = true }) { Text("Gestionar etiquetas") }
-    if (open) AlertDialog(onDismissRequest = { open = false }, title = { Text("Etiquetas globales") }, text = { Column {
+    if(showAccess) TextButton(onClick = { open = true }) { Text("Gestionar etiquetas") }
+    if (open) AlertDialog(onDismissRequest = { open = false;onClose() }, title = { Text("Etiquetas globales") }, text = { Column {
         OutlinedTextField(search, { search = it }, label = { Text("Buscar") }, singleLine = true)
         LazyColumn(Modifier.heightIn(max = 320.dp)) { items(state.tags.filter { it.name.contains(search, true) }, key = { it.id }) { tag ->
             Column { Text("${tag.name} · ${state.usage(tag.id)} usos")
@@ -77,7 +77,7 @@ import kotlinx.coroutines.launch
             }
         } }
         error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
-    } }, confirmButton = { TextButton(onClick = { open = false }) { Text("Cerrar") } })
+    } }, confirmButton = { TextButton(onClick = { open = false;onClose() }) { Text("Cerrar") } })
     editing?.let { tag -> AlertDialog(onDismissRequest = { editing = null }, title = { Text("Renombrar etiqueta") },
         text = { OutlinedTextField(name, { name = it }, singleLine = true) }, confirmButton = { TextButton(onClick = { scope.launch {
             runCatching { repository.rename(tag.id, name) }.onSuccess { editing = null; error = null }.onFailure { error = it.message; editing = null }

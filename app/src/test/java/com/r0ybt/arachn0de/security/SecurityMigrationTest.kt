@@ -36,7 +36,7 @@ class SecurityMigrationTest {
         val before=snapshot(sql);helper.close();val db=Arachn0deDatabase.create(context)
         try {
             val migrated=db.openHelper.writableDatabase
-            assertEquals(26,migrated.version);assertEquals(before,snapshot(migrated))
+            assertEquals(27,migrated.version);assertEquals(before,snapshot(migrated))
             migrated.query("SELECT * FROM private_preferences").use {assertFalse(it.moveToFirst())}
             migrated.query("PRAGMA foreign_key_check").use {assertFalse(it.moveToFirst())}
         } finally {db.close()}

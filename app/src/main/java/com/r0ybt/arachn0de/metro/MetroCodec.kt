@@ -92,19 +92,20 @@ internal object MetroCodec {
         require(r.steps.filter { it.kind==MetroStepKind.WAYPOINT }.map { it.to }==r.stops.drop(1).dropLast(1))
         return r
     }
-    fun journey(j: MetroJourneyData) = obj("version" to 2,"plan" to route(j.plan),"sessions" to JSONArray(j.sessions.map { s ->
-        obj("id" to s.id,"route" to route(s.route),"originalRoute" to route(s.originalRoute),"personId" to s.personId,"startElapsed" to s.startElapsed,"startBoot" to s.startBoot,"pausedElapsed" to s.pausedElapsed,"pausedBoot" to s.pausedBoot,"realMillis" to s.realMillis,"routeHistory" to JSONArray(s.routeHistory.map { route(it) }),"historyElapsedTrusted" to s.historyElapsedTrusted,"automatic" to s.automatic,"start" to s.start,"anchorWall" to s.anchorWall,"anchorElapsed" to s.anchorElapsed,"boot" to s.boot,"offset" to s.offset,
+    fun journey(j: MetroJourneyData) = obj("version" to 3,"plan" to route(j.plan),"sessions" to JSONArray(j.sessions.map { s ->
+        obj("control" to MetroControlCodec.encode(s.control),"id" to s.id,"route" to route(s.route),"originalRoute" to route(s.originalRoute),"personId" to s.personId,"startElapsed" to s.startElapsed,"startBoot" to s.startBoot,"pausedElapsed" to s.pausedElapsed,"pausedBoot" to s.pausedBoot,"realMillis" to s.realMillis,"routeHistory" to JSONArray(s.routeHistory.map { route(it) }),"historyElapsedTrusted" to s.historyElapsedTrusted,"automatic" to s.automatic,"start" to s.start,"anchorWall" to s.anchorWall,"anchorElapsed" to s.anchorElapsed,"boot" to s.boot,"offset" to s.offset,
             "pausedAt" to s.pausedAt,"pausedMillis" to s.pausedMillis,"ended" to s.ended,"confirmed" to s.confirmed,"uncertain" to s.uncertain,
             "events" to JSONArray(s.events.map { e->obj("kind" to e.kind,"at" to e.at,"offset" to e.offset,"station" to e.station) })) })).toString()
-    fun journey(raw: String, net: MetroNetwork): MetroJourneyData {
-        val o=boundedObject(raw); val version=o.int("version"); require(version in 1..2);o.fields("version","plan","sessions")
+    fun journey(raw: String, net: MetroNetwork,allowUndo:Boolean=true): MetroJourneyData {
+        val o=boundedObject(raw); val version=o.int("version"); require(version in 1..3) {"Versión de viaje Metro no compatible."};o.fields("version","plan","sessions")
         val j=MetroJourneyData(route(o.getJSONObject("plan"),net),objects(o.getJSONArray("sessions")).map { s->
-            s.fields("id","route","originalRoute","personId","start","anchorWall","anchorElapsed","boot","offset","pausedAt","pausedMillis","ended","confirmed","uncertain","events","startElapsed","startBoot","pausedElapsed","pausedBoot","realMillis","routeHistory","historyElapsedTrusted",*if(version==2) arrayOf("automatic") else emptyArray())
+            require(version<3 || s.has("control"))
+            s.fields("id","route","originalRoute","personId","start","anchorWall","anchorElapsed","boot","offset","pausedAt","pausedMillis","ended","confirmed","uncertain","events","startElapsed","startBoot","pausedElapsed","pausedBoot","realMillis","routeHistory","historyElapsedTrusted",*((if(version>=2) arrayOf("automatic") else emptyArray())+(if(version>=3) arrayOf("control") else emptyArray())))
             MetroSession(s.string("id"),route(s.getJSONObject("route"),net),s.long("start"),s.long("anchorWall"),s.long("anchorElapsed"),s.int("boot"),s.long("offset"),s.nullLong("pausedAt"),
                 s.long("pausedMillis"),s.nullLong("ended"),s.nullString("confirmed"),objects(s.getJSONArray("events")).map { e->e.fields("kind","at","offset","station");MetroEvent(e.string("kind"),e.long("at"),e.long("offset"),e.nullString("station")) },s.bool("uncertain"),if(s.has("originalRoute")) route(s.getJSONObject("originalRoute"),net) else route(s.getJSONObject("route"),net),if(s.has("personId")) s.nullString("personId") else null,
                 if(s.has("startElapsed")) s.long("startElapsed") else s.long("anchorElapsed"), if(s.has("startBoot")) s.int("startBoot") else s.int("boot"),
                 if(s.has("pausedElapsed")) s.nullLong("pausedElapsed") else null, if(s.has("pausedBoot")) s.nullLong("pausedBoot")?.also { require(it in 0..Int.MAX_VALUE) }?.toInt() else null,
-                if(s.has("realMillis")) s.nullLong("realMillis") else null, if(s.has("routeHistory")) objects(s.getJSONArray("routeHistory")).map { route(it,net) } else emptyList(),if(s.has("historyElapsedTrusted")) s.bool("historyElapsedTrusted") else true,if(version==2) s.bool("automatic") else false) })
+                if(s.has("realMillis")) s.nullLong("realMillis") else null, if(s.has("routeHistory")) objects(s.getJSONArray("routeHistory")).map { route(it,net) } else emptyList(),if(s.has("historyElapsedTrusted")) s.bool("historyElapsedTrusted") else true,if(version>=2) s.bool("automatic") else false).let {session->if(version>=3 && !s.isNull("control")) session.copy(control=MetroControlCodec.decode(s.getJSONObject("control"),session,net,allowUndo)) else session} })
         require(j.sessions.size <= 1000 && j.sessions.map { it.id }.distinct().size==j.sessions.size)
         require(j.sessions.dropLast(1).all { it.ended!=null })
         j.sessions.forEach { s->
@@ -113,7 +114,7 @@ internal object MetroCodec {
             require((s.pausedElapsed==null)==(s.pausedBoot==null) && (s.pausedElapsed==null || s.pausedAt!=null))
             require(s.events.isNotEmpty() && s.events.first().kind=="BOARD" && s.events.first().offset==0L)
             require((s.events.last().kind=="ARRIVED")== (s.ended!=null))
-            require(s.events.all { it.kind in setOf("BOARD","PAUSE","RESUME","CONFIRM","BETWEEN","REPLAN","ARRIVED") || it.kind.matches(Regex("PASS_[0-9]{1,4}")) && it.kind.substringAfter("PASS_").toInt()<4096 })
+            require(s.events.all { it.kind in setOf("BOARD","PAUSE","RESUME","CONFIRM","BETWEEN","REPLAN","ARRIVED","STAGE_ARRIVED","BEGIN_TRANSFER","NEXT_LINE","UNDO_ARRIVAL") || it.kind.matches(Regex("PASS_[0-9]{1,4}")) && it.kind.substringAfter("PASS_").toInt()<4096 })
             require(s.startElapsed>=0 && s.startBoot>=0 && (s.pausedElapsed==null || s.pausedElapsed>=0) && (s.realMillis==null || s.realMillis>=0) && s.routeHistory.size<=128)
             require(s.personId==null || s.personId.isNotBlank() && s.personId.length<=128)
             require(s.id.isNotBlank() && s.id.length<=128 && s.start>=0 && s.anchorWall>=0 && s.anchorElapsed>=0 && s.boot>=0 && s.pausedMillis>=0)

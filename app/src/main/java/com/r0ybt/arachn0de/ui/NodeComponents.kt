@@ -143,6 +143,7 @@ internal fun NodeCard(
     responsiblePeople: List<com.r0ybt.arachn0de.domain.model.Person> = emptyList(),
     now: Long = 0L,
     attention: com.r0ybt.arachn0de.domain.model.AttentionSummary? = null,
+    cardAlerts: com.r0ybt.arachn0de.domain.model.ProjectCardAlerts? = null,
     onMakeLayer: () -> Unit = {},
     onConvertToProject: (() -> Unit)? = null,
     onConvert: (() -> Unit) -> Unit = { done -> done() },
@@ -157,6 +158,7 @@ internal fun NodeCard(
     onAdvanceWorkState: (() -> Unit)? = null,
     onChangeWorkState: (() -> Unit)? = null,
     stateBusy: Boolean = false,
+    metroRouteLabel: String? = null,
 ) {
     var editingTechnologies by remember { mutableStateOf(false) }
     var savingTemplate by remember { mutableStateOf(false) }
@@ -240,8 +242,10 @@ internal fun NodeCard(
                                 maxLines = 2, overflow = TextOverflow.Ellipsis)
                         }
 
+                        metroRouteLabel?.let {com.r0ybt.arachn0de.metro.MetroRoutePreview(node.id,it)}
                         ObligationIndicator(node)
-                        if (node.isStructural) AttentionIndicator(attention)
+                        if(node.isStructural && (attention?.overdue ?: 0)>0) AttentionIndicator(com.r0ybt.arachn0de.domain.model.AttentionSummary(overdue=attention!!.overdue))
+
 
                         if (node.isStructural && progress != null) {
                             Spacer(modifier = Modifier.height(6.dp))
@@ -277,6 +281,10 @@ internal fun NodeCard(
                     }
 
                     Row(verticalAlignment = Alignment.CenterVertically) {
+                        com.r0ybt.arachn0de.metro.MetroActivityIndicator("node:${node.id}")
+                        if(node.isStructural) CardSignals(cardAlerts?.futureDue ?: 0,cardAlerts?.dueToday ?: 0,cardAlerts?.highPriority ?: 0,"Tareas descendientes")
+                        else NodeCardSignals(node,now)
+
                         if (node.isStructural) {
                             Icon(
                                 imageVector = Icons.Default.ChevronRight,
@@ -303,10 +311,10 @@ internal fun NodeCard(
                 }
                 CompactAssignments(node.id,responsiblePeople,Modifier.padding(start = 24.dp + leadingColumnWidth, end = 12.dp))
                 if (sprintPhase != null || tags.isNotEmpty() ||
-                    node.effectivePriority != com.r0ybt.arachn0de.domain.model.Priority.NONE || (!node.isStructural && (node.startAt != null || node.dueAt != null))) Column(
+                    (node.effectivePriority != com.r0ybt.arachn0de.domain.model.Priority.NONE && node.effectivePriority != com.r0ybt.arachn0de.domain.model.Priority.HIGH) || (!node.isStructural && (node.startAt != null || node.dueAt != null))) Column(
                     modifier = Modifier.fillMaxWidth().padding(start = 24.dp + leadingColumnWidth, end = 12.dp, top = 2.dp, bottom = 6.dp),
                 ) {
-                    if (sprintPhase != null || node.effectivePriority != com.r0ybt.arachn0de.domain.model.Priority.NONE ||
+                    if (sprintPhase != null || (node.effectivePriority != com.r0ybt.arachn0de.domain.model.Priority.NONE && node.effectivePriority != com.r0ybt.arachn0de.domain.model.Priority.HIGH) ||
                         (!node.isStructural && (node.startAt != null || node.dueAt != null))) FlowRow(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -336,7 +344,7 @@ internal fun NodeCard(
                                     fontSize = ContentTypography.Metadata, fontWeight = FontWeight.SemiBold)
                             }
                         }
-                        PriorityIndicator(node)
+                        if(node.effectivePriority != com.r0ybt.arachn0de.domain.model.Priority.HIGH) PriorityIndicator(node)
                         TaskDateIndicator(node, now, wrap = true)
                     }
                     if (tags.isNotEmpty()) FlowRow(
@@ -393,7 +401,7 @@ internal fun NodeCard(
         ActionMenu(node.title, { showContextMenu = false }) {
             onSelect?.let { select -> ActionMenuItem("Seleccionar", Icons.Default.CheckBox, { showContextMenu = false; select() }) }
             onChangeWorkState?.let { change -> ActionMenuItem("Cambiar estado",Icons.Default.SwapHoriz,{ showContextMenu = false; change() }, enabled = !stateBusy) }
-            if (!hasChildren && node.purpose == NodePurpose.ACTION) ActionMenuItem("Metro / modo Viaje", Icons.Default.Directions, { showContextMenu=false;com.r0ybt.arachn0de.metro.MetroNavigation.open(node.id) })
+            if (metroRouteLabel==null && !hasChildren && node.purpose == NodePurpose.ACTION) ActionMenuItem("Metro / modo Viaje", Icons.Default.Directions, { showContextMenu=false;com.r0ybt.arachn0de.metro.MetroNavigation.open(node.id) })
             ActionMenuItem("Editar",Icons.Default.Edit,{ showContextMenu = false; onEdit() })
             ActionMenuItem("Editar tecnologías",Icons.Default.Code,{showContextMenu=false;editingTechnologies=true})
             if(!node.isStructural) ActionMenuItem("Guardar como plantilla",Icons.Default.Bookmark,{showContextMenu=false;savingTemplate=true})
@@ -406,6 +414,8 @@ internal fun NodeCard(
             ActionMenuItem("Mover a…",Icons.Default.DriveFileMove,{ showContextMenu = false; onMove() })
             ActionMenuItem("Copiar este elemento",Icons.Default.ContentCopy,{ showContextMenu = false; onCopy(false) },enabled=canCopy)
             if(node.isStructural) ActionMenuItem("Copiar con descendientes",Icons.Default.AccountTree,{ showContextMenu = false; onCopy(true) },enabled=canCopy)
+            ActionMenuItem("Subir", Icons.Default.ArrowUpward, { onReorder(true) { showContextMenu = false } }, enabled = canMoveUp)
+            ActionMenuItem("Bajar", Icons.Default.ArrowDownward, { onReorder(false) { showContextMenu = false } }, enabled = canMoveDown)
             HorizontalDivider()
             ActionMenuItem("Eliminar",Icons.Default.Delete,{ showContextMenu = false; onDelete() },destructive=true)
         }

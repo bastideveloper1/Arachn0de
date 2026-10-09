@@ -2,7 +2,7 @@ package com.r0ybt.arachn0de.data.repository
 
 import android.net.Uri
 import androidx.room.withTransaction
-import com.r0ybt.arachn0de.backup.validateAvatar
+import com.r0ybt.arachn0de.backup.validateProjectPhoto
 import com.r0ybt.arachn0de.data.local.*
 import com.r0ybt.arachn0de.domain.model.AvatarFraming
 import kotlinx.coroutines.*
@@ -35,7 +35,7 @@ internal class ProjectPhotoRepository(private val database: Arachn0deDatabase, p
     suspend fun save(projectId: String, name: String?, framing: AvatarFraming, owner: String): Boolean = files {
         framing.validate()
         recoverLocked()
-        name?.let { validateAvatar(store.durable.read(it)) }
+        name?.let { validateProjectPhoto(store.durable.read(it)) }
         try {
             val success = database.withTransaction {
                 if (database.projectDao().getById(projectId) == null) return@withTransaction false

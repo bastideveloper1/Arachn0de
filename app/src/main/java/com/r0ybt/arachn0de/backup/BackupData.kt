@@ -55,6 +55,7 @@ internal data class BackupData(
 internal object BackupLimits {
     const val PAYLOAD_BYTES = 16 * 1024 * 1024
     const val TOTAL_STREAMED_IMAGE_BYTES = 1024L * 1024 * 1024
+    const val PROJECT_PHOTO_BYTES = 20 * 1024 * 1024
     const val AVATAR_BYTES = 1024 * 1024
     const val TOTAL_AVATAR_BYTES = 8 * 1024 * 1024
     const val ATTACHMENT_BYTES = 20L * 1024 * 1024
@@ -214,7 +215,7 @@ internal fun BackupData.validate(): List<NodeEntity> {
     require(photoNames == imageNames("project-photos") && photoNames.all { BackupLimits.avatarName.matches(it) }) { "Referencias de fotografías inválidas." }
     require(avatars.values.sumOf { it.size.toLong() } + technologyIcons.values.sumOf { it.size.toLong() } +
         projectPhotoImages.values.sumOf { it.size.toLong() } <= BackupLimits.TOTAL_AVATAR_BYTES) { "Imágenes demasiado grandes." }
-    projectPhotoImages.values.forEach { validateAvatar(it) }
+    projectPhotoImages.values.forEach { validateProjectPhoto(it) }
     val rootIds = unique(conversionRoots.map { it.id })
     require(conversionRoots.mapNotNull { it.projectId }.distinct().size == conversionRoots.count { it.projectId != null } &&
         conversionRoots.mapNotNull { it.nodeId }.distinct().size == conversionRoots.count { it.nodeId != null }) { "Raíces de conversión duplicadas." }
@@ -245,13 +246,13 @@ internal fun BackupData.validate(): List<NodeEntity> {
     val sortContexts = projects.mapTo(hashSetOf()) { "${it.id}:project-root" }
     nodes.forEach { sortContexts.add("${it.projectId}:${it.id}") }
     nodeSortPreferences.forEach {
-        require(it.mode in listOf("MANUAL", "DUE_ASC", "DUE_DESC", "DUE_PRIORITY", "PRIORITY", "CREATED_NEWEST", "CREATED_OLDEST"))
+        require(it.mode in listOf("MANUAL", "DUE_ASC", "DUE_DESC", "DUE_PRIORITY", "PRIORITY", "CREATED_NEWEST", "CREATED_OLDEST", "INHERIT"))
         require(it.context in sortContexts) { "Preferencia de orden sin propietario." }
     }
     require(imageFiles.map { it.key }.distinct().size == imageFiles.size) { "Imagen de manifiesto duplicada." }
     imageFiles.forEach {
         require(it.directory in setOf("avatars", "technology-icons", "project-photos") && BackupLimits.avatarName.matches(it.name) && java.util.UUID.fromString(it.name.substringBefore('.')).toString() == it.name.substringBefore('.'))
-        require(it.byteSize in 1..BackupLimits.AVATAR_BYTES.toLong() && it.sha256.matches(Regex("[a-f0-9]{64}")))
+        require(it.byteSize in 1..imageByteLimit(it.directory).toLong() && it.sha256.matches(Regex("[a-f0-9]{64}")))
         val inline = when (it.directory) { "avatars" -> avatars; "technology-icons" -> technologyIcons; else -> projectPhotoImages }
         require(it.name !in inline) { "Imagen duplicada en JSON y manifiesto." }
     }
@@ -259,8 +260,12 @@ internal fun BackupData.validate(): List<NodeEntity> {
     return ordered
 }
 
-internal fun validateAvatar(bytes: ByteArray) {
-    require(bytes.size in 1..BackupLimits.AVATAR_BYTES) { "Avatar demasiado grande o vacío." }
+internal fun imageByteLimit(directory:String)=if(directory=="project-photos") BackupLimits.PROJECT_PHOTO_BYTES else BackupLimits.AVATAR_BYTES
+internal fun validateProjectPhoto(bytes:ByteArray)=validatePng(bytes,BackupLimits.PROJECT_PHOTO_BYTES,2048)
+internal fun validateAvatar(bytes:ByteArray)=validatePng(bytes,BackupLimits.AVATAR_BYTES,512)
+internal fun validatePrivateImage(directory:String,bytes:ByteArray) { if(directory=="project-photos") validateProjectPhoto(bytes) else validateAvatar(bytes) }
+private fun validatePng(bytes: ByteArray,maxBytes:Int,maxDimension:Int) {
+    require(bytes.size in 1..maxBytes) { "Avatar demasiado grande o vacío." }
     val signature = byteArrayOf(-119, 80, 78, 71, 13, 10, 26, 10)
     require(bytes.size >= 8 && bytes.copyOfRange(0, 8).contentEquals(signature)) { "Avatar no PNG." }
     // Check every PNG chunk including its CRC; decoders can otherwise accept a truncated image.
@@ -286,7 +291,7 @@ internal fun validateAvatar(bytes: ByteArray) {
     require(ended) { "PNG incompleto." }
     val bounds = android.graphics.BitmapFactory.Options().apply { inJustDecodeBounds = true }
     android.graphics.BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
-    require(bounds.outWidth in 1..512 && bounds.outHeight in 1..512) { "Dimensiones de avatar inválidas." }
+    require(bounds.outWidth in 1..maxDimension && bounds.outHeight in 1..maxDimension) { "Dimensiones de avatar inválidas." }
     val image = requireNotNull(android.graphics.BitmapFactory.decodeByteArray(bytes, 0, bytes.size)) { "Avatar dañado." }
     image.recycle()
 }

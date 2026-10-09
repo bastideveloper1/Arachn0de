@@ -80,7 +80,7 @@ class ObligationReportUiTest {
         compose.onNodeWithTag("obligations-list").performScrollToIndex(0)
         compose.onNodeWithText("Todo").assertIsSelected()
         compose.onNodeWithTag("generate-obligation-report").assertIsEnabled()
-        assertEquals(26, app.database.openHelper.writableDatabase.version)
+        assertEquals(27, app.database.openHelper.writableDatabase.version)
     }
     @Test fun cacheWriteFailureKeepsScreenAndFiltersAndAllowsRetry() {
         directory.writeText("block directory creation")

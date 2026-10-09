@@ -59,7 +59,7 @@ class ProjectPhotoBackupTest {
     @Test fun genuineV12HasNoPhotosAndRestoresHistoricalDefaults() = runBlocking {
         seed()
         val root = JSONObject(String(BackupJson.encode(BackupFixture.empty()))).apply {
-            put("dataVersion", 12); BackupFixture.removeSprintFields(this); remove("metroPreferences"); remove("metroJourneys"); remove("gameSession"); remove("conversionRoots"); remove("conversionPeople"); remove("conversionTags"); remove("conversionEvents"); remove("conversionWorkStates"); remove("nodeSortPreferences"); remove("imageFiles"); remove("projectPhotos"); remove("projectPhotoImages")
+            put("dataVersion", 12); remove("privatePreferences");remove("storeId");remove("storeKind"); BackupFixture.removeSprintFields(this); remove("metroPreferences"); remove("metroJourneys"); remove("gameSession"); remove("conversionRoots"); remove("conversionPeople"); remove("conversionTags"); remove("conversionEvents"); remove("conversionWorkStates"); remove("nodeSortPreferences"); remove("imageFiles"); remove("projectPhotos"); remove("projectPhotoImages")
         }
         val decoded = BackupJson.decode(root.toString().toByteArray())
         assertTrue(decoded.projectPhotos.isEmpty()); repo.restore(decoded)

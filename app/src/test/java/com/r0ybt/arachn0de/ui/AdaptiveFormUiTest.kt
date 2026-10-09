@@ -16,7 +16,7 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk = [28])
+@Config(application=com.r0ybt.arachn0de.security.LegacyUiTestApplication::class,sdk = [28])
 class AdaptiveFormUiTest {
     @get:Rule val compose = createComposeRule()
     private fun dates(fontScale: Float) {
@@ -26,6 +26,16 @@ class AdaptiveFormUiTest {
                 Arachn0deTheme { Column { TaskDatesEditor(EditorDraft(null,null,"",""), true, TaskDatePickerDraft(), progressive = true) } }
             }
         }
+    }
+    @Test @Config(qualifiers = "w320dp-h640dp") fun elementTypeRemainsVisibleAfterScrollingTheForm() {
+        val draft=EditorDraft(null,null,"Borrador","",purpose=com.r0ybt.arachn0de.domain.model.NodePurpose.ACTION)
+        compose.setContent {Arachn0deTheme {NodeDialog(draft,false,{}, {_,_->})}}
+        compose.onNodeWithText("Capa",useUnmergedTree=true).assertIsDisplayed()
+        compose.onNodeWithText("Descartar borrador").performScrollTo()
+        compose.onNodeWithText("Tarea",useUnmergedTree=true).assertIsDisplayed()
+        compose.onNodeWithText("Nota",useUnmergedTree=true).assertIsDisplayed()
+        compose.onNodeWithText("Capa",useUnmergedTree=true).assertIsDisplayed().performClick()
+        compose.runOnIdle {assertEquals(com.r0ybt.arachn0de.domain.model.NodePurpose.LAYER,draft.purpose)}
     }
     @Test fun descriptionNormalWeightDoesNotInheritEmphasisAndBoldRemainsDistinct() {
         compose.setContent { Arachn0deTheme {

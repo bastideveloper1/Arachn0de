@@ -85,67 +85,69 @@ internal fun NodeDialog(
         onDismissRequest = if (isSubmitting) ({}) else onDismiss,
         title = { Text(if(templateEditing) "Guardar plantilla" else if (draft.id == null) "Nuevo elemento" else "Editar elemento") },
         text = {
-            Column(modifier = Modifier.verticalScroll(rememberSaveable(draft.creationId, saver = androidx.compose.foundation.ScrollState.Saver) { androidx.compose.foundation.ScrollState(0) }), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedTextField(
-                    value = title,
-                    onValueChange = { if (!isSubmitting) title = it },
-                    label = { Text("Título") },
-                    supportingText = { Text("${TitleLimits.count(title)} / ${TitleLimits.NODE}") },
-                    isError = TitleLimits.count(title) > TitleLimits.NODE,
-                    singleLine = true,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .focusRequester(titleFocusRequester),
-                    enabled = !isSubmitting,
-                )
-                if(draft.id==null) SavedTemplatesAccess(draft,!isSubmitting && !draft.attachmentBusy)
-                extraFields()
-                com.r0ybt.arachn0de.metro.MetroDraftFields(draft,!isSubmitting) {metroValid=it}
-                if(templateEditing) OutlinedTextField(description,{description=it},label={Text("Descripción")},modifier=Modifier.fillMaxWidth())
-                else AttachmentDescriptionEditor(draft, !isSubmitting, focusRequester = descriptionFocusRequester.takeIf { initialField == "description" })
-                DraftTechnologies(draft,!isSubmitting)
-                if(!specializedCreationValid) Text("Las tecnologías ordenadas y el plan Metro requieren creación individual. Desactiva Crear varios / Recurrente o quita estas propiedades para continuar.",color=Arachn0deColors.Destructive)
+            Column {
                 if (draft.id == null || templateEditing) FormChoices((if(templateEditing) listOf(NodePurpose.ACTION to "Tarea", NodePurpose.NOTE to "Nota") else listOf(NodePurpose.ACTION to "Tarea", NodePurpose.NOTE to "Nota", NodePurpose.LAYER to "Capa")), draft.purpose, !isSubmitting) { draft.purpose = it }
                 else Text("Tipo: ${when(draft.purpose) { NodePurpose.NOTE -> "Nota";NodePurpose.ACTION -> "Tarea";NodePurpose.LAYER -> "Capa" }}")
-                AdaptiveFormRow(buildList {
-                    if (editDates && draft.purpose == NodePurpose.ACTION) add({ PrioritySelector(draft.priority, { draft.priority = checkNotNull(it) }, enabled = !isSubmitting) })
-                    add({
-                        androidx.compose.material3.OutlinedButton(enabled = !isSubmitting && peopleLoaded, onClick = { draft.showResponsible = true }) {
-                            Text("Responsables (${draft.responsibleIds.size})")
-                        }
+                Column(modifier = Modifier.weight(1f, fill = false).verticalScroll(rememberSaveable(draft.creationId, saver = androidx.compose.foundation.ScrollState.Saver) { androidx.compose.foundation.ScrollState(0) }), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedTextField(
+                        value = title,
+                        onValueChange = { if (!isSubmitting) title = it },
+                        label = { Text("Título") },
+                        supportingText = { Text("${TitleLimits.count(title)} / ${TitleLimits.NODE}") },
+                        isError = TitleLimits.count(title) > TitleLimits.NODE,
+                        singleLine = true,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .focusRequester(titleFocusRequester),
+                        enabled = !isSubmitting,
+                    )
+                    if(draft.id==null) SavedTemplatesAccess(draft,!isSubmitting && !draft.attachmentBusy)
+                    extraFields()
+                    com.r0ybt.arachn0de.metro.MetroDraftFields(draft,!isSubmitting) {metroValid=it}
+                    if(templateEditing) OutlinedTextField(description,{description=it},label={Text("Descripción")},modifier=Modifier.fillMaxWidth())
+                    else AttachmentDescriptionEditor(draft, !isSubmitting, focusRequester = descriptionFocusRequester.takeIf { initialField == "description" })
+                    DraftTechnologies(draft,!isSubmitting)
+                    if(!specializedCreationValid) Text("Las tecnologías ordenadas y el plan Metro requieren creación individual. Desactiva Crear varios / Recurrente o quita estas propiedades para continuar.",color=Arachn0deColors.Destructive)
+                    AdaptiveFormRow(buildList {
+                        if (editDates && draft.purpose == NodePurpose.ACTION) add({ PrioritySelector(draft.priority, { draft.priority = checkNotNull(it) }, enabled = !isSubmitting) })
+                        add({
+                            androidx.compose.material3.OutlinedButton(enabled = !isSubmitting && peopleLoaded, onClick = { draft.showResponsible = true }) {
+                                Text("Responsables (${draft.responsibleIds.size})")
+                            }
+                        })
                     })
-                })
-                tagRepository?.let { repo -> val state by remember(repo) { repo.observe() }.collectAsState(initial = com.r0ybt.arachn0de.domain.model.TagState())
-                    TagSelector(state.tags, draft.tagIds.toSet(), { draft.tagIds = it.toList() }, repository = repo, enabled = !isSubmitting) }
-                if (editDates && draft.purpose == NodePurpose.ACTION) {
-                    if(!templateEditing) FormSection("Planificación")
-                    if(!templateEditing) TaskDatesEditor(draft, enabled = !isSubmitting, picker = datePicker, includeStart = !draft.batchEnabled, progressive = true)
-                    if (!datesValid) Text("Elige una fecha para cada opción activada o desactívala.", color = Arachn0deColors.Destructive)
-                    if (draft.id == null) {
-                        FormToggle("Recurrente", draft.recurrenceFrequency != "NONE", !isSubmitting && (!draft.batchEnabled || draft.recurrenceFrequency != "NONE")) { draft.toggleRecurrence(it) }
-                        if (draft.batchEnabled) Text("Crear varios genera un lote finito; desactívalo para configurar una regla recurrente.", style = androidx.compose.material3.MaterialTheme.typography.bodySmall)
-                        if (draft.recurrenceFrequency != "NONE") RecurrenceFields(draft, !isSubmitting)
-                    } else Text("Editar este elemento no modifica una regla recurrente ni otras ocurrencias.", style = androidx.compose.material3.MaterialTheme.typography.bodySmall)
-                    if (draft.activeStart != null && draft.activeDue != null && draft.activeDue!! < draft.activeStart!!) {
-                        Text("El vencimiento no puede ser anterior al inicio. Corrige las fechas para guardar.", color = Arachn0deColors.Destructive)
+                    tagRepository?.let { repo -> val state by remember(repo) { repo.observe() }.collectAsState(initial = com.r0ybt.arachn0de.domain.model.TagState())
+                        TagSelector(state.tags, draft.tagIds.toSet(), { draft.tagIds = it.toList() }, repository = repo, enabled = !isSubmitting) }
+                    if (editDates && draft.purpose == NodePurpose.ACTION) {
+                        if(!templateEditing) FormSection("Planificación")
+                        if(!templateEditing) TaskDatesEditor(draft, enabled = !isSubmitting, picker = datePicker, includeStart = !draft.batchEnabled, progressive = true)
+                        if (!datesValid) Text("Elige una fecha para cada opción activada o desactívala.", color = Arachn0deColors.Destructive)
+                        if (draft.id == null) {
+                            FormToggle("Recurrente", draft.recurrenceFrequency != "NONE", !isSubmitting && (!draft.batchEnabled || draft.recurrenceFrequency != "NONE")) { draft.toggleRecurrence(it) }
+                            if (draft.batchEnabled) Text("Crear varios genera un lote finito; desactívalo para configurar una regla recurrente.", style = androidx.compose.material3.MaterialTheme.typography.bodySmall)
+                            if (draft.recurrenceFrequency != "NONE") RecurrenceFields(draft, !isSubmitting)
+                        } else Text("Editar este elemento no modifica una regla recurrente ni otras ocurrencias.", style = androidx.compose.material3.MaterialTheme.typography.bodySmall)
+                        if (draft.activeStart != null && draft.activeDue != null && draft.activeDue!! < draft.activeStart!!) {
+                            Text("El vencimiento no puede ser anterior al inicio. Corrige las fechas para guardar.", color = Arachn0deColors.Destructive)
+                        }
                     }
+                    if (editDates && draft.purpose == NodePurpose.ACTION) {
+                        FormSection("Pago")
+                        ObligationFields(draft, enabled = !isSubmitting)
+                    }
+                    if (draft.id == null && draft.purpose != NodePurpose.LAYER) {
+                        FormSection("Creación")
+                        FormToggle("Crear varios", draft.batchEnabled, !isSubmitting && (draft.batchEnabled || draft.purpose != NodePurpose.ACTION || draft.recurrenceFrequency == "NONE")) { draft.batchEnabled = it }
+                        if (draft.purpose == NodePurpose.ACTION && draft.recurrenceFrequency != "NONE") Text("Una regla recurrente y un lote finito son modalidades distintas. Desactiva Recurrente para crear varios.", style = androidx.compose.material3.MaterialTheme.typography.bodySmall)
+                        if (draft.batchEnabled) CreationBatchFields(draft, !isSubmitting)
+                    }
+                    if (hasUnsavedChanges || draft.technologyEdited || draft.metroEdited) DestructiveAction(if (draft.id == null) "Descartar borrador" else "Descartar cambios", { confirmDiscard = true }, enabled = !isSubmitting && !draft.attachmentBusy)
+                    Text(
+                        text = if(draft.purpose==NodePurpose.LAYER) "Una capa admite elementos y permanece como capa aunque esté vacía." else if (draft.purpose == NodePurpose.NOTE) "Una nota conserva información. Para añadir hijos, conviértela primero en capa." else if (draft.financialEnabled) "Para convertir en capa, confirma primero quitar los datos de pago." else "Para añadir elementos, convierte la tarea en capa desde ⋮.",
+                        color = Arachn0deColors.TextSecondary,
+                        fontSize = 12.sp,
+                    )
                 }
-                if (editDates && draft.purpose == NodePurpose.ACTION) {
-                    FormSection("Pago")
-                    ObligationFields(draft, enabled = !isSubmitting)
-                }
-                if (draft.id == null && draft.purpose != NodePurpose.LAYER) {
-                    FormSection("Creación")
-                    FormToggle("Crear varios", draft.batchEnabled, !isSubmitting && (draft.batchEnabled || draft.purpose != NodePurpose.ACTION || draft.recurrenceFrequency == "NONE")) { draft.batchEnabled = it }
-                    if (draft.purpose == NodePurpose.ACTION && draft.recurrenceFrequency != "NONE") Text("Una regla recurrente y un lote finito son modalidades distintas. Desactiva Recurrente para crear varios.", style = androidx.compose.material3.MaterialTheme.typography.bodySmall)
-                    if (draft.batchEnabled) CreationBatchFields(draft, !isSubmitting)
-                }
-                if (hasUnsavedChanges || draft.technologyEdited || draft.metroEdited) DestructiveAction(if (draft.id == null) "Descartar borrador" else "Descartar cambios", { confirmDiscard = true }, enabled = !isSubmitting && !draft.attachmentBusy)
-                Text(
-                    text = if(draft.purpose==NodePurpose.LAYER) "Una capa admite elementos y permanece como capa aunque esté vacía." else if (draft.purpose == NodePurpose.NOTE) "Una nota conserva información. Para añadir hijos, conviértela primero en capa." else if (draft.financialEnabled) "Para convertir en capa, confirma primero quitar los datos de pago." else "Para añadir elementos, convierte la tarea en capa desde ⋮.",
-                    color = Arachn0deColors.TextSecondary,
-                    fontSize = 12.sp,
-                )
             }
         },
         confirmButton = {
@@ -220,6 +222,7 @@ internal fun ProjectDialog(
                     modifier = Modifier.fillMaxWidth(),
                 )
                 AttachmentDescriptionEditor(draft, !isSubmitting, project = true)
+                DraftTechnologies(draft,!isSubmitting,project=true)
                 if (draft.hasWork) DestructiveAction("Descartar", { confirmDiscard = true }, enabled = !isSubmitting && !draft.attachmentBusy)
             }
         },

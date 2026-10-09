@@ -68,13 +68,13 @@ class AttentionUiTest {
     @Test fun indicatorsProjectionNavigationAndSavedRouteUseRealNodeAndAncestors() {
         val restoration = StateRestorationTester(compose)
         mount(restoration)
-        awaitText("Personal"); awaitText("1 vence hoy")
+        awaitText("Personal"); compose.onAllNodesWithContentDescription("Tareas del proyecto: 1 vencen hoy").onFirst().assertExists()
         compose.onNodeWithText("Contiene 1 vencida").assertDoesNotExist()
         compose.onNodeWithText("Contiene 1 próxima").assertDoesNotExist()
         val before = runBlocking { app.nodeRepository.getProjectNodes(project) }
         openAttention()
         compose.onNodeWithTag("attention-task:$urgent").assert(hasText("Personal › Salud › Tratamiento"))
-        compose.onNodeWithTag("attention-task:$urgent").assert(hasContentDescription("Roy"))
+        compose.onNodeWithTag("attention-task:$urgent").assert(hasAnyDescendant(hasContentDescription("Roy")))
         compose.onNodeWithTag("attention-task:$other").assert(hasText("Trabajo"))
         assertEquals(before, runBlocking { app.nodeRepository.getProjectNodes(project) })
         compose.onNodeWithTag("attention-task:$urgent").performClick()

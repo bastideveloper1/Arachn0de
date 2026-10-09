@@ -116,6 +116,20 @@ internal class NodeActions(private val repository: NodeRepository, private val s
             repository.reorderNodeTo(id, parentId, targetId)
         })
 
+    fun reorderLayers(id:String,parentId:String?,moveUp:Boolean,onSuccess:()->Unit)=operation.submit("No se pudo cambiar el orden de Capas.",{
+        repository.reorderNode(id,parentId,moveUp,layersOnly=true)
+    },onSuccess)
+    fun reorderLayersTo(id:String,parentId:String?,targetId:String)=operation.submit("No se pudo cambiar el orden de Capas.",{
+        repository.reorderNodeTo(id,parentId,targetId,layersOnly=true)
+    })
+
+    fun reorderContent(id:String,parentId:String?,moveUp:Boolean,onSuccess:()->Unit)=operation.submit("No se pudo cambiar el orden.",{
+        repository.reorderNode(id,parentId,moveUp,contentOnly=true)
+    },onSuccess)
+    fun reorderContentTo(id:String,parentId:String?,targetId:String)=operation.submit("No se pudo cambiar el orden.",{
+        repository.reorderNodeTo(id,parentId,targetId,contentOnly=true)
+    })
+
     fun sprintMode(id: String, enabled: Boolean, onSuccess: () -> Unit) = operation.submit("No se pudo cambiar el modo. Puedes reintentar.", {
         repository.setSprintMode(id, enabled)
     }, onSuccess)

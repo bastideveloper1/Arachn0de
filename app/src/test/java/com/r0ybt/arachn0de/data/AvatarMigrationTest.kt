@@ -51,7 +51,7 @@ class AvatarMigrationTest {
         val db = Arachn0deDatabase.create(context)
         try {
             val migrated = db.openHelper.writableDatabase
-            assertEquals(26, migrated.version); assertEquals(before, snapshot(migrated))
+            assertEquals(27, migrated.version); assertEquals(before, snapshot(migrated))
             val person = db.personDao().get("person")!!
             assertEquals(1f, person.avatarZoom); assertEquals(0f, person.avatarX); assertEquals(0f, person.avatarY)
             assertEquals(listOf(NodePersonEntity("n", "person")), db.personDao().assignmentsForNodes(listOf("n")))

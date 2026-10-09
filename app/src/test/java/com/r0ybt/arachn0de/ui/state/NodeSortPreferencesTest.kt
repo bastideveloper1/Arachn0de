@@ -32,6 +32,15 @@ class NodeSortPreferencesTest {
             assertEquals(NodeSortMode.MANUAL,reopened.mode("other:layer"))
         } finally { storage.edit().clear().commit() }
     }
+    @Test fun layersFirstSurvivesSaverWithoutChangingInheritedModesOrOtherContexts() {
+        val store=NodeSortPreferences();store.set("p:project-root",NodeSortMode.DUE_PRIORITY)
+        store.setLayersFirst("p:a",true)
+        val saved=checkNotNull(with(NodeSortPreferences.Saver) {scope.save(store)})
+        val restored=checkNotNull(NodeSortPreferences.Saver.restore(saved))
+        assertTrue(restored.layersFirst("p:a"));assertFalse(restored.layersFirst("p:b"))
+        restored.set("p:project-root",NodeSortMode.PRIORITY)
+        assertEquals(NodeSortMode.PRIORITY,restored.mode("p:a"))
+    }
     @Test fun contextsAreIndependentSavedAndManualIsDefault() {
         val store=NodeSortPreferences()
         store.set("root",NodeSortMode.DUE_ASC);store.set("ideas",NodeSortMode.PRIORITY)
@@ -51,7 +60,7 @@ class NodeSortPreferencesTest {
         store.set("0",NodeSortMode.DUE_DESC);store.set("64",NodeSortMode.PRIORITY)
         assertEquals(NodeSortMode.MANUAL,store.mode("1"))
         assertEquals(NodeSortMode.DUE_DESC,store.mode("0"))
-        assertEquals(128,(with(NodeSortPreferences.Saver) { scope.save(store) } as List<*>).size)
+        assertEquals(129,(with(NodeSortPreferences.Saver) { scope.save(store) } as List<*>).size)
     }
     @Test fun unknownOrIncompleteSavedEntriesFallBackSafely() {
         val restored=NodeSortPreferences.Saver.restore(listOf("a","UNKNOWN","b","DUE_ASC","dangling"))!!

@@ -36,15 +36,18 @@ data class AttentionSummary(val upcoming: Int = 0, val overdue: Int = 0, val pri
 
 /** Reusable derived projection of a validated tree at one explicit instant; never persisted. */
 class AttentionSnapshot(val tree: NodeTreeSnapshot, val now: Long, val zone: java.util.TimeZone = java.util.TimeZone.getDefault()) {
+    val cardAlertsByNodeId: Map<String, ProjectCardAlerts>
     val byNodeId: Map<String, AttentionSummary>
     val byProjectId: Map<String, AttentionSummary>
     val reasonsByNodeId: Map<String, List<AttentionReason>>
     val tasks: List<Node>
 
     init {
+        val todayRange=TemporalRanges.day(CalendarDates.localDay(now,zone),zone)
         val remaining = tree.nodes.associate { it.id to 0 }.toMutableMap()
         tree.nodes.forEach { node -> node.parentId?.let { remaining[it] = remaining.getValue(it) + 1 } }
         val queue = ArrayDeque<Node>()
+        val cardCounts=mutableMapOf<String,ProjectCardAlerts>()
         val counts = mutableMapOf<String, AttentionSummary>()
         val projects = mutableMapOf<String, AttentionSummary>()
         val reasons = mutableMapOf<String, List<AttentionReason>>()
@@ -60,6 +63,10 @@ class AttentionSnapshot(val tree: NodeTreeSnapshot, val now: Long, val zone: jav
                     AttentionReason.HIGH_PRIORITY -> AttentionSummary(priorityOnly = 1)
                     else -> AttentionSummary()
                 }
+                val active=node.isCompletable && !node.isCompleted
+                cardCounts[node.id]=ProjectCardAlerts(highPriority=if(active && node.effectivePriority==Priority.HIGH) 1 else 0,
+                    dueToday=if(active && node.dueAt?.let {it in todayRange}==true) 1 else 0,
+                    futureDue=if(active && node.dueAt!=null && node.dueAt>=todayRange.endExclusive) 1 else 0)
                 counts[node.id] = summary
                 if (summary.total > 0) sources.add(node)
                 queue.addLast(node)
@@ -74,12 +81,16 @@ class AttentionSnapshot(val tree: NodeTreeSnapshot, val now: Long, val zone: jav
             val parent = node.parentId
             if (parent == null) projects[node.projectId] = projects.getOrDefault(node.projectId, AttentionSummary()) + summary
             else {
+                val inherited=cardCounts[node.id] ?: ProjectCardAlerts()
+                val previous=cardCounts[parent] ?: ProjectCardAlerts()
+                cardCounts[parent]=ProjectCardAlerts(previous.highPriority+inherited.highPriority,previous.dueToday+inherited.dueToday,previous.futureDue+inherited.futureDue)
                 counts[parent] = counts.getOrDefault(parent, AttentionSummary()) + summary
                 remaining[parent] = remaining.getValue(parent) - 1
                 if (remaining[parent] == 0) queue.addLast(tree.nodesById.getValue(parent))
             }
         }
         check(processed == tree.nodes.size) { "Invalid attention hierarchy" }
+        cardAlertsByNodeId=cardCounts.toMap()
         byNodeId = counts.toMap()
         byProjectId = projects.toMap()
         reasonsByNodeId = reasons.toMap()

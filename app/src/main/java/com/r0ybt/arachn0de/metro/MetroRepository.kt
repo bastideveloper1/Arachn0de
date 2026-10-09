@@ -53,11 +53,20 @@ internal class MetroRepository(private val db: Arachn0deDatabase, context: Conte
     suspend fun tracking(id: String,revision: Long,action: (MetroSession)->MetroSession)=act(id,revision) { data ->
         val active=requireNotNull(data.active); data.copy(sessions=data.sessions.dropLast(1)+action(active))
     }
+    suspend fun undoArrival(id:String,revision:Long,time:MetroTime):Boolean=act(id,revision) {data->
+        val latest=requireNotNull(data.sessions.lastOrNull())
+        if(latest.control?.undo==null) return@act data
+        require(latest.control.undo.reversible) {"Ya comenzó una etapa posterior. Corrige explícitamente la estación actual."}
+        require(dao.journeys().none {it.id!=id && MetroCodec.journey(it.payload,preferences().network).active!=null}) {"Otro viaje está activo; no se puede restaurar un seguimiento anterior."}
+        data.copy(sessions=data.sessions.dropLast(1)+MetroStages.undoArrival(latest,time))
+    }
     private suspend fun act(id: String,revision: Long,action: suspend (MetroJourneyData)->MetroJourneyData): Boolean=withContext(Dispatchers.IO) { db.withTransaction {
         val row=dao.journey(id) ?: return@withTransaction false
         if(row.revision!=revision) return@withTransaction false
         val net=preferences().network
-        val data=action(MetroCodec.journey(row.payload,net)); val raw=MetroCodec.journey(data); MetroCodec.journey(raw,net)
+        val previous=MetroCodec.journey(row.payload,net)
+        val data=action(previous);if(data==previous) return@withTransaction true
+        val raw=MetroCodec.journey(data); MetroCodec.journey(raw,net)
         dao.save(row.copy(payload=raw,revision=Math.addExact(revision,1))); currentCoroutineContext().ensureActive(); true
     } }
     suspend fun remove(id: String)=withContext(Dispatchers.IO) { db.withTransaction {

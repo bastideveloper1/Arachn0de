@@ -65,7 +65,7 @@ class ProjectConversionBackupTest {
     }
     @Test fun genuineV13RestoresPhotosWithNoConversionMetadataOrSortOverrides() = runBlocking<Unit> {
         val root = JSONObject(String(BackupJson.encode(ConversionFixture.complete()))).apply {
-            put("dataVersion", 13); BackupFixture.removeSprintFields(this); remove("metroPreferences"); remove("metroJourneys"); remove("gameSession")
+            put("dataVersion", 13); remove("privatePreferences");remove("storeId");remove("storeKind"); BackupFixture.removeSprintFields(this); remove("metroPreferences"); remove("metroJourneys"); remove("gameSession")
             listOf("conversionRoots", "conversionPeople", "conversionTags", "conversionEvents", "conversionWorkStates", "nodeSortPreferences", "imageFiles").forEach { remove(it) }
         }
         val old = BackupJson.decode(root.toString().toByteArray())

@@ -1,12 +1,12 @@
 # Respaldo offline de Arachn0de
 
-La extensión sigue siendo `.arachnode`. El esquema actual es Room **26**, con la cadena histórica completa de migraciones. La versión comercial sigue siendo **0.3.0 / 9** y el protocolo de firma no cambia.
+La extensión sigue siendo `.arachnode`. El esquema actual es Room **27**, con la cadena histórica completa de migraciones. La versión comercial preparada es **0.3.0 / 10** y el protocolo de firma no cambia.
 
 ## Seguridad local: formato actual
 
 Toda exportación desde un almacén protegido usa la envoltura autenticada **ANBACK01**, con su propia contraseña, UUID, salt y clave aleatoria. El payload conserva el contenedor v2 y sus manifiestos/SHA-256. Los backups antiguos sin cifrar se importan mediante la validación y confirmación existentes; nunca se exporta un backup nuevo sin contraseña desde un almacén protegido.
 
-JSON **18** añade `privatePreferences` (namespaces y valores tipados), `storeId` (UUID portable o null para fuentes históricas) y `storeKind` (`primary`/`secondary`). No transporta contraseñas ni claves del almacén. Los lectores admiten JSON 1–18 y contenedores v1/v2. Una fuente histórica sin preferencias ni identidad puede conservar JSON 17. Todas las exportaciones de sesiones protegidas incluyen su identidad y emiten 18. Versiones antiguas rechazan explícitamente el nuevo formato.
+JSON **18** añade `privatePreferences` (namespaces y valores tipados), `storeId` (UUID portable o null para fuentes históricas) y `storeKind` (`primary`/`secondary`). No transporta contraseñas ni claves del almacén. Los lectores admiten JSON 1–19 y contenedores v1/v2. Una fuente histórica sin preferencias ni identidad puede conservar JSON 17. Todas las exportaciones de sesiones protegidas incluyen su identidad y emiten 18 o 19. Versiones antiguas rechazan explícitamente el nuevo formato.
 
 Las preferencias se restauran en la tabla Room `private_preferences` dentro de la misma transacción que los demás datos. Las cachés de preferencias se recargan tras el commit. Room 25→26 solo añade esa tabla; conserva todas las anteriores. No se serializan rutas absolutas.
 
@@ -17,6 +17,16 @@ La contraseña del backup se requiere al inspeccionar ANBACK01. Contraseña err�
 Parámetros y especificación binaria: [SECURITY_DESIGN.md](SECURITY_DESIGN.md). No se añade un límite de capacidad al cifrado por streams; siguen vigentes los límites estructurales históricos de los formatos e importadores descritos abajo. La prueba de volumen contempla 100 Personas y 500 Tecnologías con imágenes.
 
 Las secciones siguientes describen también los formatos históricos y sus migraciones.
+
+## Dogfooding Sprint 2: JSON 19 y Room 27
+
+Room 26→27 añade únicamente `node_sort_preferences.layersFirst`, booleano con valor inicial falso. `INHERIT` conserva el criterio heredado cuando solo se configura esta opción. El orden manual continúa en las posiciones de los nodos. No cambia claves ni identidades de almacenes.
+
+JSON 19 añade `layersFirst` a las preferencias de orden y admite `INHERIT`. Se emite cuando hay fotografías de proyectos o estas preferencias nuevas; en los demás casos se conservan los formatos 17/18. Lectores históricos 1–18 inicializan la opción a falso. La validación estricta rechaza campos, valores o referencias inválidos antes de restaurar.
+
+Las fotografías de proyectos admiten PNG de hasta 2048 píxeles por lado y 20 MiB por archivo; avatares e iconos mantienen 512 píxeles y 1 MiB. Los bytes y encuadres se incluyen íntegramente en los manifiestos y streams, conservando SHA-256 y el límite total histórico de 1 GiB. El formato inline conserva su límite agregado de 8 MiB: para colecciones grandes se utiliza el contenedor con streaming. No se exportan rutas absolutas.
+
+`cache/project-thumbnails` contiene únicamente derivados regenerables cifrados; queda fuera del backup. Su limpieza limitada a nombres controlados no elimina fuentes ni reservas. Las fotografías confirmadas mantienen el diario, bloqueo, referencias compartidas y reservas existentes.
 
 ## Contenedor v2 y datos v16
 
@@ -263,3 +273,15 @@ Se reutiliza `metro_journeys.nodeId`: un viaje independiente se vincula a la nue
 El formulario edita solo configuración; las sesiones permanecen en el repositorio. Cambiar el plan no reemplaza una sesión activa. Cambiar la Persona viajera actualiza su referencia activa mediante la misma lógica de persistencia, sin copiar archivos. Un guardado de metadatos conserva un plan histórico aunque el catálogo o las restricciones actuales lo afecten. El backup v17 y payload Metro v2 ya incluyen los vínculos y todo su contenido: no hay migración, tabla ni archivo nuevo. Prueba dirigida verifica exportación/restauración con nueva asociación en Subcapa y una sesión activa, además de rollback ante conflictos.
 
 El estado temporal del editor añade un prefijo opcional `__metro_link_v1` con identidad/revisión y baseline Metro. El lector conserva los formatos anteriores, sin vínculo por defecto. Este estado no es dato confirmado ni se exporta a backups; al aplicar Guardados se limpia la referencia al viaje original y se conserva solo el plan reutilizable.
+
+## Dogfooding 1: orden de asignaciones
+
+La cuadrícula y reordenación reutilizan `position` en `nodeTechnologies` y `projectTechnologies`. El orden es propio de cada dueño y no cambia la biblioteca. No se incrementa JSON 18 ni Room 26: el formato ya transporta posiciones, asociaciones, metadatos y bytes de iconos. La prueba de restauración de Tecnologías comprueba explícitamente orden inverso en un proyecto y una tarea, además de integridad de iconos y compatibilidad histórica. Los cambios visuales no crean archivos ni modifican su liberación. Se mantiene ANBACK01, la separación principal/señuelo y la validación antes de sustituir datos.
+
+## Dogfooding Sprint 4A: seguimiento Metro por etapas
+
+El payload de `metro_journeys` pasa a **v3**; Room continúa en 27 y el formato exterior de backup conserva sus versiones 17/18/19 según los datos presentes. No se añaden tablas, columnas, preferencias ni archivos. Los lectores admiten payloads Metro v1–v3: los históricos conservan sus sesiones y derivan la etapa desde su offset, sin reescribir filas al consultar. Aplicaciones anteriores pueden rechazar payloads v3.
+
+Cada sesión transporta `control` (nulo para sesiones históricas), con etapa inicial, ancla temporal, pausas base, estado RIDING/ARRIVED/TRANSFERRING, tiempo detenido por una llegada deshecha, inicio del transbordo, duraciones confirmadas por etapa y última llegada reversible. `undo` incluye la sesión anterior completa sin otro undo anidado, la hora de llegada y su reversibilidad. Se validan tipos, campos, rangos, coherencia con la ruta, identidad y anclas originales de la sesión anterior antes de reemplazar datos. Los eventos nuevos también forman parte del payload íntegro.
+
+La restauración conserva IDs, asociaciones, pausas, duraciones y recuperación de llegada. Marca como no confiables los relojes locales de control y del snapshot de undo; las sesiones activas quedan inciertas como en el protocolo anterior. Un embarque confirmado crea una nueva ancla local. No se inventan duraciones históricas inexistentes. Los indicadores y vistas previas se derivan del almacén abierto y no crean datos persistentes ni archivos que liberar. El rechazo de un payload corrupto mantiene el estado anterior.

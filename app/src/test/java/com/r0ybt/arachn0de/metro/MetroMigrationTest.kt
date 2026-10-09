@@ -32,6 +32,6 @@ class MetroMigrationTest {
         sql.execSQL("INSERT INTO game_state VALUES (1,'original-game-payload',12)")
         fun snapshot(db:SupportSQLiteDatabase)=tables.associateWith {table->db.query("SELECT * FROM `$table` ORDER BY rowid").use {c->buildList {while(c.moveToNext()) add((0 until c.columnCount).map {if(c.isNull(it)) null else c.getString(it)})}}}
         val before=snapshot(sql);helper.close();val db=Arachn0deDatabase.create(context)
-        try {assertEquals(26,db.openHelper.writableDatabase.version);assertEquals(before,snapshot(db.openHelper.writableDatabase));assertTrue(db.metroDao().journeys().isEmpty());assertNull(db.metroDao().preferences())} finally {db.close()}
+        try {assertEquals(27,db.openHelper.writableDatabase.version);assertEquals(before,snapshot(db.openHelper.writableDatabase));assertTrue(db.metroDao().journeys().isEmpty());assertNull(db.metroDao().preferences())} finally {db.close()}
     }
 }

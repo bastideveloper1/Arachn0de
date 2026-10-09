@@ -231,7 +231,7 @@ internal class BackupRepository(
                     data.metroJourneys.forEach { row ->
                         val net=com.r0ybt.arachn0de.metro.MetroCodec.preferences(requireNotNull(data.metroPreferences)).network
                         val journey=com.r0ybt.arachn0de.metro.MetroCodec.journey(row.payload,net)
-                        val restored=journey.copy(sessions=journey.sessions.map { s -> if(s.ended==null) s.copy(uncertain=true,historyElapsedTrusted=false) else s })
+                        val restored=journey.copy(sessions=journey.sessions.map { s -> com.r0ybt.arachn0de.metro.MetroStages.portable(s) })
                         database.metroDao().save(row.copy(payload=com.r0ybt.arachn0de.metro.MetroCodec.journey(restored),revision=Math.addExact(maxOf(previousMetroRevision,row.revision),1)))
                     }
                     val gameRevision = database.gameStateDao().get()?.revision ?: 0

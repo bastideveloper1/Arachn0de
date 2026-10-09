@@ -42,7 +42,7 @@ class GameStateMigrationTest {
         context.getSharedPreferences("experimental_game", 0).edit().putString("session", GameSessionCodec.encode(original)).commit()
         var db = Arachn0deDatabase.create(context)
         try {
-            assertEquals(26, db.openHelper.writableDatabase.version); assertEquals(before, snapshot(db.openHelper.writableDatabase))
+            assertEquals(27, db.openHelper.writableDatabase.version); assertEquals(before, snapshot(db.openHelper.writableDatabase))
             assertEquals(original, GameStateRepository(db).load().session)
             db.close(); context.getSharedPreferences("experimental_game", 0).edit().putString("session", "corrupt").commit()
             db = Arachn0deDatabase.create(context); assertEquals(original, GameStateRepository(db).load().session)

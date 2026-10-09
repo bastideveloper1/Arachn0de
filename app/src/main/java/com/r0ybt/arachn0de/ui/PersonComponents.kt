@@ -50,7 +50,13 @@ internal fun ResponsibleAvatars(people: List<Person>) {
     if (people.isEmpty()) return
     FlowRow(itemVerticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
         people.take(3).forEach { person -> var info by remember { mutableStateOf(false) }; TextButton(onClick={info=true},contentPadding=PaddingValues(4.dp)) { PersonAvatar(person) };if(info) AlertDialog(onDismissRequest={info=false},title={Text(person.name)},text={Text(people.joinToString {it.name})},confirmButton={TextButton(onClick={info=false}) {Text("Cerrar")}}) }
-        if (people.size > 3) Text("+${people.size - 3}", color = Arachn0deColors.TextSecondary, fontSize = 12.sp)
+        if (people.size > 3) {
+            var all by remember {mutableStateOf(false)}
+            TextButton(onClick={all=true}) {Text("+${people.size - 3}")}
+            if(all) AlertDialog(onDismissRequest={all=false},title={Text("Participantes")},text={androidx.compose.foundation.lazy.LazyColumn(Modifier.heightIn(max=360.dp)) {
+                items(people.size) {index->ResponsiblePersonLabel(people[index])}
+            }},confirmButton={TextButton(onClick={all=false}) {Text("Cerrar")}})
+        }
     }
 }
 

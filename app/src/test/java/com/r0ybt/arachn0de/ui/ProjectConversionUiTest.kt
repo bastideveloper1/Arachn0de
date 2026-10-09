@@ -65,7 +65,7 @@ class ProjectConversionUiTest {
         compose.activityRule.scenario.onActivity { it.onBackPressedDispatcher.onBackPressed() }
         await("Nuevo elemento")
         compose.activityRule.scenario.onActivity { it.onBackPressedDispatcher.onBackPressed() }
-        await("Proyectos")
+        await("Target")
         compose.onNodeWithTag("projects-list").performScrollToNode(hasText("Target"))
         compose.onNodeWithText("Target").performClick(); await("Nuevo elemento")
         compose.onNodeWithContentDescription("Opciones del proyecto").assertExists()

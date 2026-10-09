@@ -43,6 +43,7 @@ private fun AppRootContent(projectRepository: ProjectRepository, nodeRepository:
     LaunchedEffect(Unit) { com.r0ybt.arachn0de.metro.MetroNavigation.requests.collect { request -> if(request!=null) { metroNodeId=request.nodeId;metroRequestToken=request.token;showMetro=true;com.r0ybt.arachn0de.metro.MetroNavigation.requests.value=null } } }
     var showGame by rememberSaveable { mutableStateOf(false) }
     var showAbout by rememberSaveable { mutableStateOf(false) }
+    var showTags by rememberSaveable {mutableStateOf(false)}
     var showTechnologies by rememberSaveable { mutableStateOf(false) }
     var showPeople by rememberSaveable { mutableStateOf(false) }
     var showObligations by rememberSaveable { mutableStateOf(false) }
@@ -62,7 +63,7 @@ private fun AppRootContent(projectRepository: ProjectRepository, nodeRepository:
     val sortPreferences = remember(sortRepository) {
         com.r0ybt.arachn0de.ui.state.NodeSortPreferences(onWrite = { context, mode ->
             sortScope.launch { sortMutex.withLock { sortRepository.set(context, mode?.name) } }
-        })
+        }, onLayersWrite={context,enabled,mode->sortScope.launch {sortMutex.withLock {sortRepository.set(context,mode.name,enabled)}}})
     }
     LaunchedEffect(sortRepository) { sortRepository.observe().collect { sortPreferences.replace(it) } }
     val conversionScope = androidx.compose.runtime.rememberCoroutineScope()
@@ -70,6 +71,16 @@ private fun AppRootContent(projectRepository: ProjectRepository, nodeRepository:
     var selectedProjectId by rememberSaveable { mutableStateOf<String?>(null) }
     var projects by remember(projectRepository) { mutableStateOf<List<Project>?>(null) }
     var allState by remember(nodeRepository) { mutableStateOf(NodeTreeSnapshot(emptyList())) }
+    val metroRepository=(androidx.compose.ui.platform.LocalContext.current.applicationContext as com.r0ybt.arachn0de.Arachn0deApplication).metroRepository
+    val metroSnapshot by remember(metroRepository) {metroRepository.observe()}.collectAsState(initial=null)
+    val metroContext=androidx.compose.ui.platform.LocalContext.current
+    val metroTime by androidx.compose.runtime.produceState(com.r0ybt.arachn0de.metro.metroTime(metroContext),metroRepository) {while(true) {value=com.r0ybt.arachn0de.metro.metroTime(metroContext);kotlinx.coroutines.delay(30_000)}}
+    val metroActivity by androidx.compose.runtime.produceState<Map<String,List<com.r0ybt.arachn0de.metro.MetroActivityEntry>>>(emptyMap(),allState,metroSnapshot,metroTime) {
+        value=kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {metroSnapshot?.let {com.r0ybt.arachn0de.metro.MetroActivity.hierarchy(allState.nodes,it,metroTime)}.orEmpty()}
+    }
+    val metroPreviews by androidx.compose.runtime.produceState<Map<String,String>>(emptyMap(),metroSnapshot,metroTime) {
+        value=kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {metroSnapshot?.let {snapshot->val network=snapshot.preferences.network;snapshot.journeys.mapNotNull {j->j.row.nodeId?.let {it to com.r0ybt.arachn0de.metro.MetroActivity.summary(j,network,metroTime)}}.toMap()}.orEmpty()}
+    }
     var nodesLoaded by remember(nodeRepository) { mutableStateOf(false) }
     var assignmentsLoaded by remember { mutableStateOf(false) }
     var responsibleByNode by remember { mutableStateOf(emptyMap<String, List<Person>>()) }
@@ -88,6 +99,7 @@ private fun AppRootContent(projectRepository: ProjectRepository, nodeRepository:
             }
         }
     }
+    if(showTags) TagManager(nodeRepository.tags,tagState,showAccess=false,initiallyOpen=true,onClose={showTags=false})
     // A coherent global read powers the existing progress and the transversal projection.
     LaunchedEffect(nodeRepository, nodesLoad.attempt) {
         nodesLoad.collect(nodeRepository.observeAllState()) { allState = it; nodesLoaded = true }
@@ -122,6 +134,7 @@ private fun AppRootContent(projectRepository: ProjectRepository, nodeRepository:
     } else emptyMap()
 
     val selectedProject = projects?.firstOrNull { it.id == selectedProjectId }
+    androidx.compose.runtime.CompositionLocalProvider(com.r0ybt.arachn0de.metro.LocalMetroActivity provides metroActivity,com.r0ybt.arachn0de.metro.LocalMetroPreview provides metroPreviews) {
     if (showMetro) {
         screenStates.SaveableStateProvider("metro:${metroNodeId ?: "main"}") { com.r0ybt.arachn0de.metro.MetroScreen(allState.nodes,projects.orEmpty(),metroNodeId,requestToken=metroRequestToken,onBack={showMetro=false;metroNodeId=null}) }
     } else if (showGame) {
@@ -194,7 +207,7 @@ private fun AppRootContent(projectRepository: ProjectRepository, nodeRepository:
         ProjectDashboardScreen(
             exportTree = allState,
             copyDescendantsReady = nodesLoaded,
-            recurrenceContent = { TagManager(nodeRepository.tags, tagState); RecurrenceManager(nodeRepository.recurrence, "", emptyList(), people, financialPeopleLoaded) },
+            recurrenceContent = { RecurrenceManager(nodeRepository.recurrence, "", emptyList(), people, financialPeopleLoaded) },
             repository = projectRepository,
             listState = projectsListState,
             projects = projects.orEmpty(),
@@ -204,6 +217,7 @@ private fun AppRootContent(projectRepository: ProjectRepository, nodeRepository:
             onOpenProject = { screenStates.removeState("project:${it.id}"); openNodeId = null; selectedProjectId = it.id; returnToAttention = false; returnToCalendar = false; returnToObligations = false },
             onOpenPeople = { showPeople = true },
             onOpenTechnologies = { showTechnologies = true },
+            onOpenTags={showTags=true},
             onOpenAttention = { showAttention = true },
             onOpenCalendar = { showCalendar = true },
             onOpenObligations = { showObligations = true },
@@ -228,6 +242,7 @@ private fun AppRootContent(projectRepository: ProjectRepository, nodeRepository:
                 onOpenNodeHandled = { openNodeId = null },
                 onOpenPeople = { showPeople = true },
                 onOpenTechnologies = { showTechnologies = true },
+            onOpenTags={showTags=true},
                 onOpenAttention = { showAttention = true },
                 onOpenCalendar = { showCalendar = true },
                 onOpenObligations = { showObligations = true },
@@ -264,4 +279,5 @@ private fun AppRootContent(projectRepository: ProjectRepository, nodeRepository:
     LoadErrorDialog(nodesLoad)
     if (showAttention || showObligations || showCalendar || selectedProjectId == null) LoadErrorDialog(financialPeopleLoad)
     if (showAttention || showCalendar || showObligations) LoadErrorDialog(peopleLoad)
+    }
 }

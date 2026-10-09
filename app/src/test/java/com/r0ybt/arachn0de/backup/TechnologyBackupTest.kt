@@ -59,7 +59,12 @@ class TechnologyBackupTest {
         assertEquals(before.technologies.size, after.technologies.size); assertEquals(before.technologyIcons.size, after.technologyIcons.size)
     }
     @Test fun freshInstallationRestoresEntireCatalogIconsAndProjectLayerTaskLinks() = runBlocking {
-        val before = seed()
+        seed()
+        db.technologyDao().clearNode("task")
+        db.technologyDao().assignNodes(listOf(NodeTechnologyEntity("task","docker",0),NodeTechnologyEntity("task","python",1)))
+        db.technologyDao().clearProject("p")
+        db.technologyDao().assignProjects(listOf(ProjectTechnologyEntity("p","docker",0),ProjectTechnologyEntity("p","python",1)))
+        val before=repo.snapshot()
         val external = File.createTempFile("portable-technology-backup-", ".arachnode")
         try {
             repo.create().copyTo(external, overwrite = true)
@@ -70,6 +75,8 @@ class TechnologyBackupTest {
             repo.restore(candidate)
             val after = repo.snapshot()
             BackupFixture.assertData(before, after); assertTechnologyData(before, after)
+            assertEquals(listOf("docker","python"),db.technologyDao().nodes().filter {it.nodeId=="task"}.map {it.technologyId})
+            assertEquals(listOf("docker","python"),db.technologyDao().projects().filter {it.projectId=="p"}.map {it.technologyId})
             assertEquals(1, File(context.filesDir, "technology-icons").listFiles()!!.size)
             assertEquals(after.technologies.first { it.id == "python" }.iconFile, after.technologies.first { it.id == "unused" }.iconFile)
             assertTrue(after.technologyIcons.keys.all { iconFile(it).isFile })

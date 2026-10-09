@@ -96,6 +96,19 @@ class ProjectRepository(
             projectDao.update(id, validateName(name), description, currentTimeMillis()) == 1
         }
 
+    /** Save editor content and owner-specific order atomically; missing technologies roll back. */
+    suspend fun saveWithTechnologies(id:String?,creationId:String,name:String,description:String,technologyIds:List<String>?):Boolean = inTransaction {
+        val db=requireNotNull(database)
+        if(technologyIds!=null) require(technologyIds.distinct().size==technologyIds.size && technologyIds.all {db.technologyDao().get(it)!=null})
+        val owner=id ?: creationId
+        val saved=if(id==null) {createProject(name,description,creationId);true} else updateProject(id,name,description)
+        if(saved && technologyIds!=null) {
+            db.technologyDao().clearProject(owner)
+            db.technologyDao().assignProjects(technologyIds.mapIndexed {position,technology->com.r0ybt.arachn0de.data.local.ProjectTechnologyEntity(owner,technology,position)})
+        }
+        saved
+    }
+
     /** Deleting an already absent project returns false. */
     suspend fun deleteProject(id: String): Boolean = inTransaction {
         val deleted = projectDao.delete(id) == 1

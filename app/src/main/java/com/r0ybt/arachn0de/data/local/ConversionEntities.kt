@@ -32,7 +32,7 @@ data class ConversionEventEntity(@PrimaryKey val id: String, val rootId: String,
 ], indices = [Index("rootId")])
 data class ConversionWorkStateEntity(@PrimaryKey val nodeId: String, val rootId: String, val workState: String)
 @Entity(tableName = "node_sort_preferences")
-data class NodeSortPreferenceEntity(@PrimaryKey val context: String, val mode: String)
+data class NodeSortPreferenceEntity(@PrimaryKey val context: String, val mode: String, @ColumnInfo(defaultValue="0") val layersFirst:Boolean=false)
 
 @Dao interface ConversionDao {
     @Query("SELECT * FROM conversion_roots ORDER BY id") suspend fun roots(): List<ConversionRootEntity>

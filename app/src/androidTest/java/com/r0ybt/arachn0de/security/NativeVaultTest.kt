@@ -26,6 +26,11 @@ class NativeVaultTest {
             override fun getFilesDir()=File(root,"files").apply {mkdirs()}
             override fun getCacheDir()=File(root,"cache").apply {mkdirs()}
             override fun getDatabasePath(name:String)=File(root,"databases/$name").apply {parentFile!!.mkdirs()}
+            override fun openOrCreateDatabase(name:String,mode:Int,factory:android.database.sqlite.SQLiteDatabase.CursorFactory?)=
+                android.database.sqlite.SQLiteDatabase.openOrCreateDatabase(getDatabasePath(name).path,factory)
+            override fun openOrCreateDatabase(name:String,mode:Int,factory:android.database.sqlite.SQLiteDatabase.CursorFactory?,errorHandler:android.database.DatabaseErrorHandler?)=
+                android.database.sqlite.SQLiteDatabase.openOrCreateDatabase(getDatabasePath(name).path,factory,errorHandler)
+            override fun deleteDatabase(name:String)=android.database.sqlite.SQLiteDatabase.deleteDatabase(getDatabasePath(name))
         } to root
     }
     @Test fun nativePagesExportMainMigrationAndIndependentSecondary()=runBlocking {
@@ -63,6 +68,54 @@ class NativeVaultTest {
             assertEquals(listOf(project.id),manager.current.value!!.database.backupDao().projects().map {it.id})
         } finally {manager.lock();root.deleteRecursively()}
     }
+    @Test fun encryptedVersion26UpgradePreservesBothStoreIdentitiesAndNewPhotosBackups()=runBlocking {
+        val (context,root)=isolated();val manager=VaultManager(context)
+        fun version26(db:Arachn0deDatabase) {
+            val sql=db.openHelper.writableDatabase
+            sql.execSQL("ALTER TABLE node_sort_preferences DROP COLUMN layersFirst")
+            sql.execSQL("UPDATE room_master_table SET identity_hash='38afa7183ac982125a17210e879c2dc5' WHERE id=42")
+            sql.version=26
+        }
+        try {
+            manager.setup("main-upgrade-fixture".toCharArray())
+            val primary=manager.current.value!!;val primaryId=primary.access.id
+            val mainProject=primary.projects.createProject("MAIN_UPGRADE_SENTINEL")
+            primary.database.nodeSortPreferenceDao().save(com.r0ybt.arachn0de.data.local.NodeSortPreferenceEntity("${mainProject.id}:project-root","DUE_PRIORITY"))
+            manager.createSecondary("main-upgrade-fixture".toCharArray(),"decoy-upgrade-fixture".toCharArray())
+            version26(primary.database);manager.lock()
+            manager.unlock("decoy-upgrade-fixture".toCharArray())
+            val secondary=manager.current.value!!;val secondaryId=secondary.access.id
+            val decoyProject=secondary.projects.createProject("DECOY_UPGRADE_SENTINEL")
+            secondary.database.nodeSortPreferenceDao().save(com.r0ybt.arachn0de.data.local.NodeSortPreferenceEntity("${decoyProject.id}:project-root","PRIORITY"))
+            version26(secondary.database);manager.lock()
+            manager.unlock("main-upgrade-fixture".toCharArray())
+            val reopened=manager.current.value!!
+            assertEquals(primaryId,reopened.access.id);assertEquals(27,reopened.database.openHelper.readableDatabase.version)
+            assertEquals(listOf(mainProject.id),reopened.database.backupDao().projects().map {it.id})
+            val preference=reopened.database.nodeSortPreferenceDao().all().single();assertFalse(preference.layersFirst);assertEquals("DUE_PRIORITY",preference.mode)
+            reopened.database.nodeSortPreferenceDao().save(preference.copy(layersFirst=true))
+            val bitmap=android.graphics.Bitmap.createBitmap(1800,900,android.graphics.Bitmap.Config.ARGB_8888).apply {eraseColor(android.graphics.Color.GREEN)}
+            val source=File(context.cacheDir,"upgrade-source.png");source.outputStream().use {bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG,100,it)};bitmap.recycle()
+            val photo=reopened.photos.import(android.net.Uri.fromFile(source),"upgrade-editor")
+            val framing=com.r0ybt.arachn0de.domain.model.AvatarFraming(3f,.4f,-.2f)
+            reopened.photos.save(mainProject.id,photo,framing,"upgrade-editor")
+            val bytes=SecureFiles.read(File(reopened.context.filesDir,"project-photos/$photo"))
+            val thumbnail=com.r0ybt.arachn0de.data.local.AvatarStore(reopened.context,"project-photos").readThumbnail(photo,240)!!
+            assertEquals(240,thumbnail.width)
+            val cached=File(reopened.context.cacheDir,"project-thumbnails").listFiles()!!.first {it.name.endsWith(".png")}
+            assertFalse(cached.readBytes().take(8).toByteArray().contentEquals(byteArrayOf(-119,80,78,71,13,10,26,10)))
+            val exported=reopened.backups.create("portable-upgrade-fixture".toCharArray())
+            val inspection=reopened.backups.inspect(SecureFiles.input(exported),"portable-upgrade-fixture".toCharArray())
+            reopened.backups.restore(inspection);reopened.backups.discard(inspection)
+            val restored=reopened.projects.getProject(mainProject.id)!!.photo!!
+            assertEquals(framing,restored.framing);assertArrayEquals(bytes,SecureFiles.read(File(reopened.context.filesDir,"project-photos/${restored.file}")))
+            assertTrue(reopened.database.nodeSortPreferenceDao().all().single().layersFirst)
+            manager.lock();manager.unlock("decoy-upgrade-fixture".toCharArray())
+            val decoy=manager.current.value!!;assertEquals(secondaryId,decoy.access.id);assertEquals(27,decoy.database.openHelper.readableDatabase.version)
+            assertEquals(listOf(decoyProject.id),decoy.database.backupDao().projects().map {it.id});assertFalse(decoy.database.nodeSortPreferenceDao().all().single().layersFirst)
+            assertNull(decoy.projects.getProject(decoyProject.id)!!.photo)
+        } finally {manager.lock();root.deleteRecursively()}
+    }
     @Test fun nativeSqlcipherPreservesTypedRowsAndRejectsWrongKey() {
         val (context,root)=isolated()
         try {
@@ -72,7 +125,9 @@ class NativeVaultTest {
                 db.execSQL("INSERT INTO typed VALUES(?,?,?,?,?)",arrayOf(7,"ñ UTF-8",2.75,byteArrayOf(0,1,127),null))
                 db.execSQL("PRAGMA user_version=25")
             }
-            val target=context.getDatabasePath("protected.db");val key=VaultCrypto.randomKey()
+            val target=context.getDatabasePath("protected.db")
+            val entropy=VaultCrypto.randomKey()
+            val key=try {entropy.joinToString("") {"%02x".format(it)}.toByteArray(Charsets.US_ASCII)} finally {entropy.fill(0)}
             try {
                 val before=source.readBytes();SqlCipherMigration.copy(source,target,key)
                 assertArrayEquals(before,source.readBytes())

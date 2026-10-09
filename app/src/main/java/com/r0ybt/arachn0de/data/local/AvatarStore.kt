@@ -23,7 +23,7 @@ open class AvatarStore(context: Context, private val directoryName: String = "av
     }
     fun exists(name: String) = file(name).isFile
     fun read(name: String): Bitmap? = SecureFiles.decoded(file(name))
-    fun readThumbnail(name: String): Bitmap? = PrivateImageCache.read(file(name))
+    fun readThumbnail(name: String, maxDimension:Int=96): Bitmap? = if(directoryName=="project-photos") ProjectThumbnailCache.read(context,file(name),maxDimension) else PrivateImageCache.read(file(name),maxDimension)
     open fun delete(name: String) = lifecycle.remove(name) {
         val target = file(name)
         check(!target.exists() || target.delete())
@@ -54,8 +54,11 @@ open class AvatarStore(context: Context, private val directoryName: String = "av
             val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
             SecureFiles.decoded(inputFile, bounds)
             require(bounds.outWidth in 1..32000 && bounds.outHeight in 1..32000) { "Invalid image" }
+            val maxDimension=if(directoryName=="project-photos") 2048 else 512
             var sample = 1
-            while (bounds.outWidth / sample > 512 || bounds.outHeight / sample > 512) sample *= 2
+            if(directoryName=="project-photos") {
+                while(maxOf(bounds.outWidth,bounds.outHeight)/(sample*2)>=maxDimension) sample*=2
+            } else while (bounds.outWidth / sample > 512 || bounds.outHeight / sample > 512) sample *= 2
             var bitmap = requireNotNull(SecureFiles.decoded(inputFile, BitmapFactory.Options().apply { inSampleSize = sample }))
             // Camera photos often encode orientation in EXIF rather than in pixel order.
             val orientation = runCatching { SecureFiles.orientation(inputFile) }.getOrDefault(1)
@@ -74,6 +77,12 @@ open class AvatarStore(context: Context, private val directoryName: String = "av
                 val oriented = Bitmap.createBitmap(bitmap, 0, 0, bitmap.width, bitmap.height, matrix, true)
                 if (oriented !== bitmap) bitmap.recycle()
                 bitmap = oriented
+            }
+            if(directoryName=="project-photos" && maxOf(bitmap.width,bitmap.height)>maxDimension) {
+                val scale=maxDimension.toFloat()/maxOf(bitmap.width,bitmap.height)
+                val resized=Bitmap.createScaledBitmap(bitmap,(bitmap.width*scale).toInt().coerceAtLeast(1),(bitmap.height*scale).toInt().coerceAtLeast(1),true)
+                if(resized!==bitmap) bitmap.recycle()
+                bitmap=resized
             }
             val name = "${UUID.randomUUID()}.png"
             outputFile = file(name)

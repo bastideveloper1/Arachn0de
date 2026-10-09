@@ -36,6 +36,6 @@ class SavedTemplatesMigrationTest {
         sql.execSQL("INSERT INTO game_state VALUES (1,'original',12)")
         fun snapshot(db:SupportSQLiteDatabase)=columns.mapValues {(table,fields)->db.query("SELECT ${fields.joinToString {"`$it`"}} FROM `$table` ORDER BY rowid").use {c->buildList {while(c.moveToNext()) add((0 until c.columnCount).map {if(c.isNull(it)) null else c.getString(it)})}}}
         val before=snapshot(sql);helper.close();val db=Arachn0deDatabase.create(context)
-        try {assertEquals(26,db.openHelper.writableDatabase.version);assertEquals(before,snapshot(db.openHelper.writableDatabase));assertEquals(listOf("b","c","a"),db.technologyDao().nodes().map {it.technologyId});assertEquals(listOf(0,1,2),db.technologyDao().nodes().map {it.position});assertEquals(listOf("b","a"),db.technologyDao().projects().map {it.technologyId});assertTrue(db.savedTemplateDao().all().isEmpty())} finally {db.close()}
+        try {assertEquals(27,db.openHelper.writableDatabase.version);assertEquals(before,snapshot(db.openHelper.writableDatabase));assertEquals(listOf("b","c","a"),db.technologyDao().nodes().map {it.technologyId});assertEquals(listOf(0,1,2),db.technologyDao().nodes().map {it.position});assertEquals(listOf("b","a"),db.technologyDao().projects().map {it.technologyId});assertTrue(db.savedTemplateDao().all().isEmpty())} finally {db.close()}
     }
 }

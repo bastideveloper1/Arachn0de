@@ -56,3 +56,9 @@ Todos los enteros son big-endian. Contraseñas: UTF-8 sin normalización Unicode
 Los streams autenticados validan también la cola al cerrar: un decodificador que deje de leer antes del EOF no puede ocultar una alteración o truncación al final. Los consumidores de backup deben validar completamente en staging antes de cualquier reemplazo.
 
 Room 26 incorpora únicamente `private_preferences(name,payload)`. JSON 18 añade namespaces/valores tipados de esas preferencias. JSON 18 también incluye storeId y storeKind. Una fuente histórica sin preferencias ni identidad puede emitir JSON 17; los lectores admiten 1–18. La tabla se reemplaza en la misma transacción que el resto del backup. La tabla se cifra con la base SQLCipher; no se duplican valores privados en XML de Android.
+
+## Preparación 0.3.0 / 10: validación nativa
+
+SQLCipher ATTACH hereda el indicador CREATE de la conexión origen. La copia exige primero un archivo fuente existente y un destino inexistente, y abre con OPEN_READWRITE | CREATE_IF_NECESSARY para permitir crear el adjunto. Nunca cifra ni reemplaza el origen in situ. La clave derivada se transmite como 64 caracteres ASCII hexadecimales; otras representaciones se rechazan antes de abrir archivos para evitar sustituciones UTF-8 silenciosas. Se verifica la integridad y la huella tipada de la copia al reabrirla.
+
+Las tres pruebas nativas pasaron en Android API 37, x86_64 con páginas de 16 KiB; incluyen respaldo de recuperación y reintento después de una interrupción antes de la activación. Esto verifica el motor nativo en emulador; no equivale a una prueba física en cada teléfono.

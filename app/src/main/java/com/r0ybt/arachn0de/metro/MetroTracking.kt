@@ -6,20 +6,23 @@ internal data class MetroSession(val id: String, val route: MetroRoute, val star
     val offset: Long = 0, val pausedAt: Long? = null, val pausedMillis: Long = 0, val ended: Long? = null,
     val confirmed: String? = null, val events: List<MetroEvent> = emptyList(), val uncertain: Boolean = false, val originalRoute: MetroRoute = route, val personId: String? = null,
     val startElapsed: Long = anchorElapsed, val startBoot: Int = boot, val pausedElapsed: Long? = null, val pausedBoot: Int? = null,
-    val realMillis: Long? = null, val routeHistory: List<MetroRoute> = emptyList(), val historyElapsedTrusted: Boolean = true, val automatic: Boolean = false)
+    val realMillis: Long? = null, val routeHistory: List<MetroRoute> = emptyList(), val historyElapsedTrusted: Boolean = true, val automatic: Boolean = false, val control:MetroControl?=null)
 internal data class MetroPosition(val offset: Long, val step: Int, val fraction: Float, val station: String, val waiting: MetroStepKind? = null, val uncertain: Boolean = false)
 internal object MetroTracking {
     fun start(route: MetroRoute, time: MetroTime) = MetroSession(java.util.UUID.randomUUID().toString(), route, time.wall, time.wall, time.elapsed, time.boot,
-        automatic = true, confirmed = route.stops.first(), events = listOf(MetroEvent("BOARD", time.wall, 0, route.stops.first())))
+        automatic = true, control=MetroControl(0,time,0), confirmed = route.stops.first(), events = listOf(MetroEvent("BOARD", time.wall, 0, route.stops.first())))
     fun position(s: MetroSession, now: MetroTime): MetroPosition {
         val uncertain = s.uncertain || s.boot != now.boot || now.elapsed < s.anchorElapsed || kotlin.math.abs((now.wall-now.elapsed)-(s.anchorWall-s.anchorElapsed)) > 300_000
         var offset = s.offset + if (s.pausedAt == null && s.ended == null && !uncertain) (now.elapsed - s.anchorElapsed).coerceAtLeast(0) else 0
-        val epoch = s.events.indexOfLast { it.kind in setOf("CONFIRM", "BETWEEN", "REPLAN") }
-        val passed = s.events.drop(epoch + 1)
+        val boundary=if(s.ended==null) MetroStages.boundary(s) else s.route.steps.size
+        if(s.ended==null) {
+            val control=MetroStages.control(s)
+            offset=if(control.phase!=MetroPhase.RIDING) s.offset else minOf(offset,MetroStages.offset(s.route,boundary))
+        }
         var consumed = 0L
         s.route.steps.forEachIndexed { i, step ->
             val duration = step.minutes * 60_000L
-            if (!s.automatic && step.kind != MetroStepKind.RIDE && consumed >= s.offset && !passed.any { it.kind == "PASS_$i" }) {
+            if (s.ended==null && step.kind != MetroStepKind.RIDE && i==boundary && offset>=consumed) {
                 offset = minOf(offset, consumed)
                 if (offset >= consumed) return MetroPosition(consumed, i, 0f, step.from, step.kind, uncertain)
             }
@@ -54,7 +57,7 @@ internal object MetroTracking {
         val target = candidates.minBy { kotlin.math.abs(it-current.offset) }
         // Backward corrections make future transfers pending again; history remains intact.
         val anchored = anchor(s,target,now,MetroEvent(if(between) "BETWEEN" else "CONFIRM",now.wall,target,station))
-        return anchored.copy(confirmed = if(between) null else station, uncertain = false)
+        return anchored.copy(confirmed = if(between) null else station, uncertain = false,control=MetroStages.atOffset(s,target,now))
     }
     fun enableAutomatic(s:MetroSession, now:MetroTime):MetroSession {
         require(s.ended==null)
@@ -62,17 +65,16 @@ internal object MetroTracking {
         // Preserve the last estimated/confirmed point, pause and recovery warning.
         return s.copy(automatic=true,offset=p.offset,anchorWall=now.wall,anchorElapsed=now.elapsed,boot=now.boot,uncertain=p.uncertain)
     }
-    fun pass(s: MetroSession, now: MetroTime): MetroSession {
-        require(s.ended == null && s.pausedAt == null)
-        val p = position(s,now); require(p.waiting != null)
-        val step = s.route.steps[p.step]
-        return anchor(s,p.offset + step.minutes * 60_000L,now,MetroEvent("PASS_${p.step}",now.wall,p.offset,step.to))
+    fun pass(s:MetroSession,now:MetroTime):MetroSession {
+        require(s.ended==null && s.pausedAt==null)
+        require(position(s,now).waiting!=null)
+        return MetroStages.nextLine(MetroStages.arrive(s,now),now)
     }
-    fun finish(s: MetroSession, now: MetroTime): MetroSession {
-        require(s.ended == null)
-        val p = position(s,now)
-        return anchor(s,p.offset,now,MetroEvent("ARRIVED",now.wall,p.offset,s.route.stops.last())).copy(ended = now.wall,
-            pausedMillis = s.pausedMillis + currentPauseMillis(s,now), pausedAt = null, pausedElapsed=null, pausedBoot=null, realMillis=totalMillis(s,now), uncertain = p.uncertain)
+    fun finish(s:MetroSession,now:MetroTime):MetroSession {
+        if(s.ended!=null) return s
+        val atDestination=s.copy(control=MetroStages.control(s).copy(firstStep=s.route.steps.size))
+        val finished=MetroStages.arrive(atDestination,now)
+        return finished.copy(control=finished.control?.copy(undo=MetroArrivalUndo(s.copy(offset=position(s,now).offset,anchorWall=now.wall,anchorElapsed=now.elapsed,boot=now.boot,control=MetroStages.control(s).copy(undo=null)),now)))
     }
     fun remainingStops(s: MetroSession, now: MetroTime): List<String> {
         val p = position(s,now)
@@ -81,7 +83,7 @@ internal object MetroTracking {
     }
     fun replan(s: MetroSession, route: MetroRoute, now: MetroTime): MetroSession {
         require(s.ended == null)
-        return anchor(s,0,now,MetroEvent("REPLAN",now.wall,0,route.stops.first())).copy(route=route,routeHistory=s.routeHistory+s.route,confirmed=route.stops.first(),uncertain=false)
+        return anchor(s,0,now,MetroEvent("REPLAN",now.wall,0,route.stops.first())).copy(route=route,routeHistory=s.routeHistory+s.route,confirmed=route.stops.first(),uncertain=false,control=MetroControl(0,now,s.pausedMillis,records=MetroStages.control(s).records,undo=s.control?.undo?.copy(reversible=false)))
     }
     fun currentPauseMillis(s: MetroSession, now: MetroTime): Long {
         if(s.pausedAt==null) return 0

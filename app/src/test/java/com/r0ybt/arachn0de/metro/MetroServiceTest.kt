@@ -30,7 +30,7 @@ class MetroServiceTest {
             val manager=app.getSystemService(NotificationManager::class.java)
             await {Shadows.shadowOf(manager).getNotification(843)?.actions?.size==2}
             var notification=Shadows.shadowOf(manager).getNotification(843)
-            assertEquals("Metro detenido",notification.actions[0].title)
+            assertEquals("Pausar",notification.actions[0].title)
             val pause=Shadows.shadowOf(notification.actions[0].actionIntent).savedIntent
             assertEquals(MetroTrackingService::class.java.name,pause.component!!.className)
             service.onStartCommand(pause,0,2)

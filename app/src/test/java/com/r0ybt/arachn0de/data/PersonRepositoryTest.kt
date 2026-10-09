@@ -127,7 +127,7 @@ class PersonRepositoryTest {
         open()
         val oldProject = db.projectDao().getById("project")!!
         val oldNode = nodes.getNode("node")!!
-        assertEquals(26, db.openHelper.readableDatabase.version)
+        assertEquals(27, db.openHelper.readableDatabase.version)
         assertEquals("Original", oldProject.name)
         assertEquals(8, oldProject.position)
         assertEquals(100L, oldProject.createdAt)

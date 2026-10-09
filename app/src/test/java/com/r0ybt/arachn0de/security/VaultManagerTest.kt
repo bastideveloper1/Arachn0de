@@ -22,6 +22,49 @@ import org.robolectric.annotation.Config
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk=[28],application=android.app.Application::class)
 class VaultManagerTest {
+    @Test fun metroConsultationUsesOwnStoreAndLockDiscardsQueuedRequest()=runBlocking<Unit> {
+        val original=ApplicationProvider.getApplicationContext<Context>()
+        val root=File(original.filesDir,"metro-isolation-${UUID.randomUUID()}").apply {mkdirs()}
+        val base=object:ContextWrapper(original) {
+            override fun getApplicationContext():Context=this
+            override fun getFilesDir()=File(root,"files").apply {mkdirs()}
+            override fun getCacheDir()=File(root,"cache").apply {mkdirs()}
+        }
+        seed(base,"main-metro-fixture");val vault=manager(base)
+        try {
+            vault.unlock("main-metro-fixture".toCharArray());val main=vault.current.value!!
+            val p=main.projects.createProject("Principal Metro")
+            val task=main.nodes.createNode(p.id,null,"Principal",creationId="same-metro-node")
+            val net=main.metro.snapshot().preferences.network
+            val plan=com.r0ybt.arachn0de.metro.MetroPlanner.plan(net,listOf("las-parcelas","los-dominicos"),false,com.r0ybt.arachn0de.metro.MetroRestrictions())!!
+            val id=main.metro.savePlan(plan,task.id)
+            val time=com.r0ybt.arachn0de.metro.MetroTime(1_000_000,100_000,1)
+            main.metro.begin(id,main.metro.snapshot().journeys.single().row.revision,time)
+            main.metro.tracking(id,main.metro.snapshot().journeys.single().row.revision) {com.r0ybt.arachn0de.metro.MetroStages.arrive(it,time)}
+            main.metro.tracking(id,main.metro.snapshot().journeys.single().row.revision) {com.r0ybt.arachn0de.metro.MetroStages.beginTransfer(it,time)}
+            val backups=com.r0ybt.arachn0de.backup.BackupRepository(main.database,main.context,
+                com.r0ybt.arachn0de.backup.BackupAvatarFiles(main.context,BackupFixture::syncDirectory))
+            val protected=backups.create("metro-backup-fixture".toCharArray())
+            val inspection=backups.inspect(SecureFiles.input(protected),"metro-backup-fixture".toCharArray())
+            backups.restore(inspection);backups.discard(inspection);backups.discardPending(protected.name)
+            assertEquals(com.r0ybt.arachn0de.metro.MetroPhase.TRANSFERRING,main.metro.snapshot().journeys.single().data.active!!.control!!.phase)
+            assertNotNull(main.metro.snapshot().journeys.single().data.active!!.control!!.undo)
+            val before=main.metro.snapshot()
+            assertEquals(before,main.metro.snapshot())
+            vault.createSecondary("main-metro-fixture".toCharArray(),"secondary-metro-fixture".toCharArray())
+            com.r0ybt.arachn0de.metro.MetroNavigation.open(task.id)
+            vault.lock();assertNull(com.r0ybt.arachn0de.metro.MetroNavigation.requests.value)
+            vault.unlock("secondary-metro-fixture".toCharArray());val secondary=vault.current.value!!
+            assertTrue(secondary.metro.snapshot().journeys.isEmpty())
+            assertTrue(runCatching {main.metro.snapshot()}.isFailure)
+            val sp=secondary.projects.createProject("Señuelo Metro")
+            val st=secondary.nodes.createNode(sp.id,null,"Señuelo",creationId="same-metro-node")
+            secondary.metro.savePlan(plan,st.id)
+            assertNotEquals(id,secondary.metro.snapshot().journeys.single().row.id)
+            vault.lock();vault.unlock("main-metro-fixture".toCharArray())
+            assertEquals(before,vault.current.value!!.metro.snapshot())
+        } finally {vault.lock();root.deleteRecursively()}
+    }
     /** Native SQLCipher is replaced ONLY in this test. Auth, envelopes, files and controller are real. */
     private fun manager(base:Context)=VaultManager(base,BackupFixture::syncDirectory) { ctx,_ ->
         Room.databaseBuilder(base,Arachn0deDatabase::class.java,ctx.getDatabasePath("arachn0de.db").absolutePath).build()

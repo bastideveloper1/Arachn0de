@@ -66,6 +66,31 @@ class NodeSortUiTest {
         }
     }
     private fun persisted()=runBlocking { app.nodeRepository.getProjectNodes(project.id) }
+    @Test fun dashboardUsesExistingHierarchyFallbackAndTagsRemainAccessibleFromDrawer() {
+        await(project.name)
+        compose.onNodeWithText("Proyectos").assertDoesNotExist()
+        compose.onNodeWithText("Gestionar etiquetas").assertDoesNotExist()
+        compose.onNodeWithContentDescription("Proyecto sin fotografía").assertExists()
+        compose.onNodeWithContentDescription("Abrir menú").performClick()
+        compose.onNodeWithText("Gestionar etiquetas").performScrollTo().performClick()
+        await("Etiquetas globales")
+        compose.onNodeWithText("Cerrar").performClick()
+        await(project.name)
+    }
+    @Test fun layersFirstIsIndependentAndAllowsLayerMovementUnderAutomaticTaskSorting() {
+        val another=runBlocking {app.nodeRepository.createNode(project.id,null,"Otra capa",purpose=NodePurpose.LAYER)}
+        open();sort(NodeSortMode.DUE_PRIORITY)
+        order().performClick();compose.onNodeWithText("Capas primero").performScrollTo().performClick()
+        first("Cuentas",setOf("A","Cuentas","Otra capa"))
+        menu(another.id);compose.onNodeWithText("Subir").performScrollTo().assertIsEnabled().performClick()
+        compose.waitUntil(10000) {runBlocking {app.nodeRepository.getNode(another.id)!!.position<app.nodeRepository.getNode(layer.id)!!.position}}
+        first("Otra capa",setOf("A","Cuentas","Otra capa"))
+        val prefs=runBlocking {app.database.nodeSortPreferenceDao().all()}
+        assertTrue(prefs.single {it.context=="${project.id}:project-root"}.layersFirst)
+        assertEquals("DUE_PRIORITY",prefs.single {it.context=="${project.id}:project-root"}.mode)
+        order().performClick();compose.onNodeWithText("Capas primero").performScrollTo().performClick()
+        first("C")
+    }
     @Test fun allModesHaveSelectedSemanticsAndPreservePositionsAndStructuralCopy() {
         open();val original=persisted();val events=runBlocking { app.database.nodeEventDao().all() }
         first("A")
@@ -114,7 +139,7 @@ class NodeSortUiTest {
         order().assert(hasStateDescription("Orden: Más antiguos; arrastre deshabilitado"))
         compose.runOnUiThread { compose.activity.onBackPressedDispatcher.onBackPressed() }
         compose.runOnUiThread { compose.activity.onBackPressedDispatcher.onBackPressed() }
-        await("Proyectos");compose.onNodeWithText(project.name).performClick();await("Nuevo elemento")
+        await(project.name);compose.onNodeWithText(project.name).performClick();await("Nuevo elemento")
         order().assert(hasStateDescription("Orden: Vencimiento próximo; arrastre deshabilitado"))
     }
     @Test fun differentProjectsKeepIndependentRootPreferencesAndDashboardHasNoSelector() {
@@ -124,17 +149,17 @@ class NodeSortUiTest {
         }
         open();sort(NodeSortMode.DUE_ASC)
         compose.onNodeWithContentDescription("Abrir menú").performClick()
-        compose.onNodeWithText("Proyectos").performScrollTo().performClick();await("Proyectos")
+        compose.onNodeWithText("Proyectos").performScrollTo().performClick();await(project.name)
         compose.onNodeWithContentDescription("Ordenar").assertDoesNotExist()
         compose.onNodeWithText("Other project").performClick();await("Other task")
         order().assert(hasStateDescription("Orden: Manual"))
         sort(NodeSortMode.PRIORITY)
         compose.onNodeWithContentDescription("Abrir menú").performClick()
-        compose.onNodeWithText("Proyectos").performScrollTo().performClick();await("Proyectos")
+        compose.onNodeWithText("Proyectos").performScrollTo().performClick();await(project.name)
         compose.onNodeWithText(project.name).performClick();await("Nuevo elemento")
         order().assert(hasStateDescription("Orden: Vencimiento próximo; arrastre deshabilitado"))
     }
-    @Test fun automaticDragCannotWriteAndManualDragWorksAgain() {
+    @Test @Config(qualifiers = "h900dp") fun automaticDragCannotWriteAndManualDragWorksAgain() {
         runBlocking {
             persisted().filter { it.parentId==null }.forEach { app.nodeRepository.deleteNode(it.id) }
             app.nodeRepository.createNode(project.id,null,"Alpha")

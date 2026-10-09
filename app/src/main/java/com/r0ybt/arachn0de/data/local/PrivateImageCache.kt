@@ -12,10 +12,10 @@ internal object PrivateImageCache {
     private val entries = object : LruCache<String, Bitmap>(MAX_BYTES) {
         override fun sizeOf(key: String, value: Bitmap) = value.allocationByteCount
     }
-    @Synchronized fun read(file: File, maxDimension: Int = 96): Bitmap? {
+    @Synchronized fun read(file: File, maxDimension: Int = 96,immutable:Boolean=false): Bitmap? {
         if(SecureFiles.protected(file)) SecureFiles.requireActive(file)
         if (!file.isFile) { invalidate(file); return null }
-        val key = "${file.absolutePath}:${file.length()}:${file.lastModified()}:$maxDimension"
+        val key = "${file.absolutePath}:${file.length()}:${if(immutable) 0 else file.lastModified()}:$maxDimension"
         entries.get(key)?.let { if (!it.isRecycled) return it else entries.remove(key) }
         val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
         SecureFiles.decoded(file, bounds)

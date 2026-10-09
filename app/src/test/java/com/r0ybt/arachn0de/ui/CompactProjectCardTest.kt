@@ -21,7 +21,7 @@ import org.robolectric.annotation.Config
 
 @org.robolectric.annotation.GraphicsMode(org.robolectric.annotation.GraphicsMode.Mode.NATIVE)
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk = [28])
+@Config(application=com.r0ybt.arachn0de.security.LegacyUiTestApplication::class,sdk = [28])
 class CompactProjectCardTest {
     @get:Rule val compose = createComposeRule()
     private val project = Project("p", "Proyecto", "Descripción secundaria", 0, 0)
@@ -47,8 +47,8 @@ class CompactProjectCardTest {
         compose.onNodeWithContentDescription("Tecnologías de Proyecto").assertDoesNotExist()
         compose.onNodeWithContentDescription("Opciones del proyecto").assertIsDisplayed()
         compose.runOnIdle { alerts = ProjectCardAlerts(3, 2) }
-        compose.onNodeWithText("3 prioritarias").assertIsDisplayed()
-        compose.onNodeWithText("2 vencen hoy").assertIsDisplayed()
+        compose.onNodeWithContentDescription("Tareas del proyecto: 3 de prioridad alta").assertIsDisplayed()
+        compose.onNodeWithContentDescription("Tareas del proyecto: 2 vencen hoy").assertIsDisplayed()
         assertTrue(compose.onNodeWithTag("project-card:p").fetchSemanticsNode().boundsInRoot.height >= original)
         compose.runOnIdle { alerts = ProjectCardAlerts() }
         assertEquals(original, compose.onNodeWithTag("project-card:p").fetchSemanticsNode().boundsInRoot.height, 0.1f)
@@ -57,13 +57,13 @@ class CompactProjectCardTest {
         var opened = false; var edited = false
         var alerts by mutableStateOf(ProjectCardAlerts(1, 0))
         compose.setContent { Arachn0deTheme { ProjectCard(project, alerts, { opened = true }, { edited = true }, {}) } }
-        compose.onNodeWithText("1 prioritaria").assertIsDisplayed()
+        compose.onNodeWithContentDescription("Tareas del proyecto: 1 de prioridad alta").assertIsDisplayed()
         compose.onNodeWithText("vence hoy", substring = true).assertDoesNotExist()
         compose.onNodeWithContentDescription("Opciones del proyecto").performClick()
         compose.onNodeWithContentDescription("Editar proyecto").performClick()
         compose.runOnIdle { assertTrue(edited); assertFalse(opened); alerts = ProjectCardAlerts(0, 1) }
-        compose.onNodeWithText("1 vence hoy").assertIsDisplayed()
-        compose.onNodeWithText("1 prioritaria").assertDoesNotExist()
+        compose.onNodeWithContentDescription("Tareas del proyecto: 1 vencen hoy").assertIsDisplayed()
+        compose.onNodeWithContentDescription("Tareas del proyecto: 1 de prioridad alta").assertDoesNotExist()
         compose.onNodeWithText(project.name).performClick()
         compose.runOnIdle { assertTrue(opened) }
     }
@@ -83,8 +83,8 @@ class CompactProjectCardTest {
         assertTrue(layout.lineCount > 2)
         assertFalse(layout.hasVisualOverflow)
         assertEquals(long.length, layout.getLineEnd(layout.lineCount - 1))
-        compose.onNodeWithText("12 prioritarias").assertIsDisplayed()
-        compose.onNodeWithText("20 vencen hoy").assertIsDisplayed()
+        compose.onNodeWithContentDescription("Tareas del proyecto: 12 de prioridad alta").assertIsDisplayed()
+        compose.onNodeWithContentDescription("Tareas del proyecto: 20 vencen hoy").assertIsDisplayed()
         val card = compose.onNodeWithTag("project-card:p").fetchSemanticsNode().boundsInRoot
         val available = compose.onNodeWithTag("available").fetchSemanticsNode().boundsInRoot
         assertTrue(card.left >= available.left && card.right <= available.right)

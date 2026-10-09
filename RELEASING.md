@@ -1,10 +1,24 @@
 # Publicar Arachn0de manualmente
 
-Preparación vigente para WhatsApp: **0.3.0 / 9**, mismo `applicationId` y firma oficial. La referencia local `release-assets/Arachn0de-v0.2.5.apk` declara **0.2.5 / 7** y su certificado coincide con el SHA-256 oficial documentado abajo. El checkout anterior declaraba **0.2.5-beta-test1 / 8**. El incremento MINOR corresponde a las nuevas funcionalidades compatibles. Los apartados de v0.2.4 que siguen conservan el protocolo histórico, no la versión objetivo actual.
+Preparación vigente para WhatsApp: **0.3.0 / 10**, `com.r0ybt.arachn0de`, con la firma oficial existente. El código 10 permite actualizar la APK 0.3.0 / 9. No cambia el esquema ni el formato de backup por este incremento.
 
-Desde una terminal Bash local, ejecutar `bash release-assets/preparar-apk-0.3.0.sh`. Detecta ruta y alias desde las variables/propiedades existentes; en su ausencia reutiliza la copia usada para 0.2.5, `~/.local/share/arachn0de/signing/arachn0de-release.jks`, y su alias `arachn0de-release`. También reconoce `firma.jks` en el home o en la carpeta local de firma; si falta el alias lo identifica mediante lectura del certificado oficial, sin crear ni configurar claves. Solicita únicamente ambas contraseñas mediante `read -s`; Enter en la segunda usa la contraseña real del keystore. Exporta las cuatro variables del mecanismo existente solo para la sesión, compila Release sin caché de configuración y borra las variables de contraseñas al terminar. No introducir contraseñas en el chat ni en argumentos de comandos. No crea claves ni modifica datos de Android.
+Ejecutar desde la raíz del repositorio:
 
-El helper verifica firma, certificado oficial, identificador, versión/código, ausencia de debuggable e integridad del APK; informa qué PNG faltan antes de compilar y después inspecciona su inclusión. Solo tras verificar copia a `release-assets/Arachn0de-v0.3.0.apk`, con checksum propio, sin reemplazar APKs históricas. Es un archivo local ignorado por Git. No envía archivos ni publica; tampoco repite pruebas, lint ni compilaciones Debug ya verificadas. Los cinco PNG definitivos `pantano.png`, `pastoseco.png`, `terrenocueva.png`, `paredcueva.png`, `araña.png` están incorporados sin modificación en `app/src/main/assets/game/`. La versión sigue en 0.3.0 / 9. Las credenciales se introducen localmente; no se ha ejecutado la firma ni hay una APK 0.3.0 firmada/verificada todavía.
+```bash
+bash release-assets/preparar-apk-0.3.0.sh
+```
+
+El script reutiliza exclusivamente `~/.local/share/arachn0de/signing/arachn0de-release.jks` y el alias `arachn0de-release`. Solicita solo las dos contraseñas mediante la terminal, sin mostrarlas; Enter en la segunda reutiliza la primera. No solicita rutas ni alias, no crea claves y no guarda credenciales en archivos. Las variables de contraseñas se eliminan al finalizar. No ejecutar con trazas de shell, logs de depuración o build scans.
+
+Antes de pedir contraseñas exige evidencia íntegra de tres pruebas nativas SQLCipher aprobadas y huella coincidente del código probado. Si falta evidencia, hay fallos o cambia el código, bloquea la distribución. `bash release-assets/preparar-apk-0.3.0.sh --check` comprueba esta preparación sin firmar ni solicitar contraseñas.
+
+Tras compilar Release verifica firma y certificado oficial, identificador, 0.3.0 / 10, ausencia de debuggable e instrumentación, backup automático deshabilitado, integridad ZIP y bibliotecas SQLCipher ARM. Compara identidad, certificado y código con las APK oficiales anteriores. Comprueba bytes idénticos de los cinco PNG definitivos, incluido el nombre UTF-8 `araña.png`.
+
+Solo después copia a `release-assets/Arachn0de-v0.3.0-code10-seguridad.apk` y genera su `.apk.sha256`. Conserva la APK 0.3.0 / 9. Estos archivos locales están ignorados por Git. No se ha ejecutado la firma durante esta preparación. Exportar y conservar un respaldo recuperable antes de instalar; actualizar sin desinstalar ni borrar datos. Ver [RELEASE_SECURITY_0.3.0_CODE10.md](RELEASE_SECURITY_0.3.0_CODE10.md) para resultados y límites de validación.
+
+**Después del sprint de dogfooding 1:** la evidencia nativa conservada corresponde a la preparación anterior. El código de interfaz y guardado de proyectos cambió; el preflight debe bloquear la firma hasta una nueva validación nativa del checkout. No actualizar su huella sin ejecutar las pruebas. Este sprint no genera ni firma una nueva APK de distribución.
+
+Los apartados de v0.2.4 siguientes documentan el procedimiento histórico; sus versiones y baterías de pruebas no son pasos adicionales para esta preparación.
 
 Repositorio y canal oficial: https://github.com/bastideveloper1/Arachn0de.
 Este documento prepara v0.2.4 Beta (Room 16 / Backup lógico 9); no autoriza commit, push, tag ni publicación. El updater interno ya fue validado físicamente en v0.2.1 → v0.2.2.
@@ -33,21 +47,7 @@ Una instalación Debug tiene otra firma: Android no permite reemplazarla directa
 
 ## Credenciales locales
 
-En Bash, configurar variables solo para la sesión:
-
-```bash
-read -r -p 'Ruta absoluta del keystore oficial existente: ' ARACHNODE_KEYSTORE_PATH
-read -r -p 'Alias oficial existente: ' ARACHNODE_KEY_ALIAS
-export ARACHNODE_KEYSTORE_PATH ARACHNODE_KEY_ALIAS
-read -r -s -p 'Contraseña del keystore: ' ARACHNODE_KEYSTORE_PASSWORD
-export ARACHNODE_KEYSTORE_PASSWORD
-read -r -s -p 'Contraseña de la clave: ' ARACHNODE_KEY_PASSWORD
-export ARACHNODE_KEY_PASSWORD
-```
-
-Alternativa: las mismas cuatro propiedades en **`$HOME/.gradle/gradle.properties`**, fuera del checkout, con permisos `600`. Las variables de entorno tienen precedencia. No colocarlas en el `gradle.properties` versionado ni en argumentos `-P`. Los caches y logs locales de Gradle deben tratarse como privados; evitar `--debug`, build scans y compartirlos con credenciales configuradas. Puede utilizarse `--no-configuration-cache` en los builds de Release para no almacenar su configuración.
-
-Release comprueba presencia de las cuatro variables, ruta absoluta externa y archivo legible; errores de contraseña/alias también deben impedir la firma. Nunca se usa la clave Debug como sustituto ni se ofrece un APK sin firma. Debug no necesita estas credenciales. `.gitignore` protege keystores, archivos locales de firma y assets preparados; esto no protege secretos que ya estén tracked.
+Para la preparación vigente usar únicamente el helper indicado al inicio. La ruta y el alias oficiales se fijan automáticamente; las contraseñas se leen con `read -s` desde `/dev/tty` y se exportan solo para la ejecución. No colocarlas en `gradle.properties`, argumentos `-P`, documentación ni chat. Release falla si faltan las credenciales oficiales y nunca sustituye su firma por Debug.
 
 ## Construir, verificar y preparar assets
 

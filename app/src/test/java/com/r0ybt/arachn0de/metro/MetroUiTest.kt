@@ -45,14 +45,14 @@ class MetroUiTest {
         val id=repo.savePlan(route);var j=repo.snapshot().journeys.single();repo.begin(id,j.row.revision,metroTime(compose.activity))
         val restoration=StateRestorationTester(compose)
         restoration.setContent {Arachn0deTheme {MetroScreen(emptyList(),emptyList(),onBack={})}}
-        await {exists("METRO DETENIDO")};compose.onNodeWithText("METRO DETENIDO").performClick()
-        await {exists("REANUDAR")};compose.onNodeWithText("Ampliar").performClick()
-        compose.onNodeWithText("REANUDAR").assertIsDisplayed()
+        await {exists("Pausar")};compose.onNodeWithText("Pausar").performClick()
+        await {exists("Reanudar")};compose.onNodeWithText("Ampliar").performClick()
+        compose.onNodeWithText("Reanudar").assertIsDisplayed()
         compose.onNodeWithText("Los Héroes").performClick();compose.onNodeWithText("Estoy aquí").performClick()
         await {runBlocking {repo.snapshot().journeys.single().data.active!!.events.any {it.kind=="CONFIRM"}}}
         assertNotNull(repo.snapshot().journeys.single().data.active!!.pausedAt)
-        restoration.emulateSavedInstanceStateRestore();await {exists("REANUDAR")};compose.onNodeWithText("REANUDAR").assertIsDisplayed()
-        compose.onNodeWithText("REANUDAR").performClick();await {exists("METRO DETENIDO")}
+        restoration.emulateSavedInstanceStateRestore();await {exists("Reanudar")};compose.onNodeWithText("Reanudar").assertIsDisplayed()
+        compose.onNodeWithText("Reanudar").performClick();await {exists("Pausar")}
         compose.onNodeWithText("Llegué").performClick();await {repoState(repo)}
         j=repo.snapshot().journeys.single();assertNotNull(j.data.sessions.single().ended);assertNull(j.data.active)
     }
@@ -62,9 +62,9 @@ class MetroUiTest {
         repo.begin(id,repo.snapshot().journeys.single().row.revision,metroTime(compose.activity))
         var token by androidx.compose.runtime.mutableStateOf(0L)
         compose.setContent {Arachn0deTheme {MetroScreen(emptyList(),emptyList(),requestToken=token,onBack={})}}
-        await {exists("METRO DETENIDO")};compose.onNodeWithText("Explorar").performClick()
-        compose.onNodeWithText("METRO DETENIDO").assertDoesNotExist()
-        compose.runOnIdle {token=1L};await {exists("METRO DETENIDO")};compose.onNodeWithText("METRO DETENIDO").assertIsDisplayed()
+        await {exists("Pausar")};compose.onNodeWithText("Explorar").performClick()
+        compose.onNodeWithText("Pausar").assertDoesNotExist()
+        compose.runOnIdle {token=1L};await {exists("Pausar")};compose.onNodeWithText("Pausar").assertIsDisplayed()
     }
     private fun repoState(repo: MetroRepository)=runBlocking {repo.snapshot().journeys.single().data.active==null}
 }

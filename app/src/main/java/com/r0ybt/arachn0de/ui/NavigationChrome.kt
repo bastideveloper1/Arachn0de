@@ -7,6 +7,7 @@ import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.filled.Label
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -38,7 +39,7 @@ internal object DrawerWidthPolicy {
 internal fun AppIdentityDrawer(onDismiss: () -> Unit, onPeople: (() -> Unit)? = null,
     onAttention: (() -> Unit)? = null, onCalendar: (() -> Unit)? = null,
     onObligations: (() -> Unit)? = null, onAbout: (() -> Unit)? = null,
-    onMetro: (() -> Unit)? = null, onGame: (() -> Unit)? = null, onAppearance: (() -> Unit)? = null, onProjects: (() -> Unit)? = null, projectsSelected: Boolean = false, onTechnologies: (() -> Unit)? = null) {
+    onMetro: (() -> Unit)? = null, onGame: (() -> Unit)? = null, onAppearance: (() -> Unit)? = null, onProjects: (() -> Unit)? = null, projectsSelected: Boolean = false, onTechnologies: (() -> Unit)? = null,onTags:(()->Unit)?=null) {
     BackHandler(onBack = onDismiss)
     BoxWithConstraints(Modifier.fillMaxSize()) {
         val compact = DrawerWidthPolicy.fullWidth(maxWidth)
@@ -79,6 +80,8 @@ internal fun AppIdentityDrawer(onDismiss: () -> Unit, onPeople: (() -> Unit)? = 
                 icon = { Icon(Icons.Default.People, null) }, onClick = { navigate(it) }, modifier = Modifier.heightIn(min = 48.dp)) }
             onTechnologies?.let { NavigationDrawerItem(label = { Text("Tecnologías") }, selected = false,
                 icon = { Icon(Icons.Default.Code, null) }, onClick = { navigate(it) }, modifier = Modifier.heightIn(min = 48.dp)) }
+            onTags?.let {NavigationDrawerItem(label={Text("Gestionar etiquetas")},selected=false,
+                icon={Icon(Icons.Default.Label,null)},onClick={navigate(it)},modifier=Modifier.heightIn(min=48.dp))}
             HorizontalDivider(Modifier.padding(vertical = 8.dp))
             Text("Aplicación", style = MaterialTheme.typography.labelLarge, color = Arachn0deColors.TextSecondary)
             onAppearance?.let { NavigationDrawerItem(label = { Text("Apariencia") }, selected = false,

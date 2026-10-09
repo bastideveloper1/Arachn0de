@@ -13,7 +13,7 @@ internal class ProjectPhotoStore(context: Context, sync: (File) -> Unit = ::sync
     fun readThumbnail(name: String) = store.readThumbnail(name)
     fun import(uri: Uri, cancelled: () -> Unit): String {
         val name = store.import(uri, cancelled)
-        try { validateAvatar(durable.read(name)); durable.finishStaging(); return name }
+        try { validateProjectPhoto(durable.read(name)); durable.finishStaging(); return name }
         catch (failure: Throwable) { runCatching { lifecycle.release(name); store.delete(name) }; throw failure }
     }
     fun cleanup(references: Set<String>) = store.cleanup(references, durable.recorded())

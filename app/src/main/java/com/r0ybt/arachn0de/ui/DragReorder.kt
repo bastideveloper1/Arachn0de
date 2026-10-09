@@ -18,15 +18,15 @@ internal class DragReorderState(private val list: LazyListState, private val pre
         private set
     private var grabOffsetY = 0f
     private var draggedHeight = 0
-    private var group = false
+    private var group:Any = false
     private var originalOrder = emptyList<String>()
     private var transientOrder by mutableStateOf(emptyList<String>())
     private var pending by mutableStateOf(false)
-    var groups: Map<Boolean, List<String>> = emptyMap()
+    var groups: Map<Any, List<String>> = emptyMap()
     var busy = false
-    var commit: (String, String, Boolean) -> Unit = { _, _, _ -> }
+    var commit: (String, String, Any) -> Unit = { _, _, _ -> }
 
-    fun orderFor(completed: Boolean, persisted: List<String>): List<String> =
+    fun orderFor(completed: Any, persisted: List<String>): List<String> =
         if ((draggedId != null || pending) && group == completed) transientOrder else persisted
 
     fun isDragging(id: String) = draggedId == id
@@ -151,15 +151,15 @@ internal class DragReorderState(private val list: LazyListState, private val pre
 internal fun rememberDragReorderState(
     list: LazyListState,
     prefix: String,
-    groups: Map<Boolean, List<String>>,
+    groups: Map<out Any, List<String>>,
     busy: Boolean,
     error: String?,
     layerKey: String? = null,
-    commit: (String, String, Boolean) -> Unit,
+    commit: (String, String, Any) -> Unit,
 ): DragReorderState {
     val state = remember(list, prefix, layerKey) { DragReorderState(list, prefix) }
     SideEffect {
-        state.groups = groups
+        state.groups = groups.entries.associate {it.key to it.value}
         state.busy = busy
         state.commit = commit
         state.reconcile(error)

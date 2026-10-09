@@ -73,3 +73,9 @@ Antes de distribuir, ejecutar esas pruebas y dogfooding en un entorno Android au
 - Metadatos del APK: `com.r0ybt.arachn0de`, `0.3.0 / 9`. Incluye SQLCipher para arm64-v8a, armeabi-v7a, x86 y x86_64.
 - Los cinco PNG del juego incluidos en el APK tienen bytes idénticos a `app/src/main/assets/game/`, incluido `araña.png`; la comprobación respeta la codificación real de los nombres ZIP.
 - Estos artefactos debug no sustituyen el APK oficial de distribución ni prueban compatibilidad de actualización con su firma. No se solicitó ni utilizó la firma oficial.
+
+## Actualización de preparación 0.3.0 / 10
+
+La validación nativa pendiente arriba queda sustituida por **3 pruebas ejecutadas, 0 fallos**, en emulador Android API 37 / x86_64 / páginas 16 KiB. Se instaló exclusivamente el paquete aislado `com.r0ybt.arachn0de.securityvalidation`, sin actualizar ni desinstalar la aplicación existente. Se verificaron migración Room con IDs y archivos, almacenes independientes, apertura cifrada y rechazo de clave errónea, exportación/restauración de recuperación y conservación del origen/reintento tras interrupción.
+
+Se corrigió un fallo real de creación del destino adjunto de SQLCipher. La prueba tipada utiliza ahora la representación ASCII hexadecimal de la clave que usa producción; el migrador rechaza representaciones no canónicas. Log y huella del código probado se conservan en `release-assets/security-native-instrumentation.log` y `security-native-validation.json`. El script bloquea distribución si falta o cambia esa evidencia. Versión preparada: 0.3.0 / 10. No se ejecutó la firma oficial. Continúan pendientes el dogfooding en teléfono físico y la actualización con datos reales del usuario.

@@ -64,7 +64,8 @@ internal class BackupRepository(
                 require(totalBytes <= BackupLimits.TOTAL_AVATAR_BYTES) { "El snapshot en memoria supera 8 MiB; usa la exportación por streaming." }
             }
         }
-        val images = people.mapNotNull { it.avatarFile }.toSet().mapNotNull { name -> image("avatars", avatars, name)?.let { name to it } }.toMap()
+        val gallery=database.personGalleryDao().photos()
+        val images = (people.mapNotNull { it.avatarFile }.toSet()+gallery.map {it.file}).mapNotNull { name -> image("avatars", avatars, name)?.let { name to it } }.toMap()
         val technologies = database.technologyDao().catalog()
         val icons = technologies.mapNotNull { it.iconFile }.toSet().mapNotNull { name -> image("technology-icons", technologyIcons, name)?.let { name to it } }.toMap()
         val photos = database.projectPhotoDao().confirmed()
@@ -82,7 +83,7 @@ internal class BackupRepository(
             conversionRoots = database.conversionDao().roots(), conversionPeople = database.conversionDao().people(),
             conversionTags = database.conversionDao().tags(), conversionEvents = database.conversionDao().events(),
             conversionWorkStates = database.conversionDao().workStates(), nodeSortPreferences = database.nodeSortPreferenceDao().all(),
-            imageFiles = imageFiles, imageContents = imageContents, storeId=vaultContext?.session?.id?.toString(),storeKind=if(vaultContext?.primary==false) "secondary" else "primary", privatePreferences = database.privatePreferenceDao().all(), savedTemplates = database.savedTemplateDao().all(), metroPreferences = database.metroDao().preferences()?.payload, metroJourneys = database.metroDao().journeys(), gameSession = database.gameStateDao().get()?.payload?.takeIf { it.isNotEmpty() }).also { it.validate() }
+            personPhotos=gallery,personBirthdays=database.personGalleryDao().birthdays(), personTechnologies=database.personIntegrationDao().technologies(), personProfiles=database.personProfileDao().profiles(),personRelations=database.personProfileDao().relations(), imageFiles = imageFiles, imageContents = imageContents, storeId=vaultContext?.session?.id?.toString(),storeKind=if(vaultContext?.primary==false) "secondary" else "primary", privatePreferences = database.privatePreferenceDao().all(), savedTemplates = database.savedTemplateDao().all(), metroPreferences = database.metroDao().preferences()?.payload, metroJourneys = database.metroDao().journeys(), iterationPlans=database.iterationDao().plans(),iterationCycles=database.iterationDao().cycles(),iterationCommitments=database.iterationDao().commitments(),iterationClosures=database.iterationDao().closures(),managementParticipants=database.participationDao().participants(),participantRoles=database.participationDao().roles(),objectiveResponsibilities=database.participationDao().objectives(),nodeResponsibilities=database.participationDao().nodes(),managementRoles=database.backlogDao().roles(),objectiveEpics=database.backlogDao().objectiveEpics(),epicStories=database.backlogDao().epicStories(),storyTasks=database.backlogDao().storyTasks(),backlogEntries=database.backlogDao().entries(),projectCharters=database.planningDao().charters(), managementObjectives=database.planningDao().objectives(), acceptanceCriteria=database.planningDao().criteria(), sprintStories=database.cascadeRelationDao().stories(),objectiveWork=database.cascadeRelationDao().objectives(),localIdentities=database.cascadeRelationDao().identities(),managementLayers=database.managementLayerDao().all(), ganttAnnotations=database.ganttAnnotationDao().all(), managementContexts=database.managementContextDao().all(), sprintLinks=database.sprintLinkDao().all(), gameSession = database.gameStateDao().get()?.payload?.takeIf { it.isNotEmpty() }).also { it.validate() }
     }
 
     suspend fun writeSnapshot(output: java.io.OutputStream) = withContext(Dispatchers.IO) {
@@ -175,6 +176,10 @@ internal class BackupRepository(
                 avatars.finishStaging()
                 database.withTransaction {
                     val previousMetroRevision = database.metroDao().journeys().maxOfOrNull { it.revision } ?: 0
+                    database.cascadeRelationDao().clearStories();database.cascadeRelationDao().clearObjectives();database.cascadeRelationDao().clearIdentity()
+                    database.ganttAnnotationDao().clear()
+                    database.managementLayerDao().clear()
+                    database.iterationDao().clear()
                     database.privatePreferenceDao().clear()
                     data.privatePreferences.forEach { database.privatePreferenceDao().save(it) }
                     database.savedTemplateDao().clear()
@@ -189,7 +194,7 @@ internal class BackupRepository(
                     val attachmentDao = database.attachmentDao()
                     attachments.record(attachmentDao.files().map { it.storageName }.toSet() + attachmentNames.values)
                     val dao = database.backupDao()
-                    val previous = dao.persons().mapNotNull { it.avatarFile }.toSet()
+                    val previous = dao.persons().mapNotNull { it.avatarFile }.toSet()+database.personGalleryDao().photos().map {it.file}
                     // Persist both sets before DB changes: recovery queries committed references after a crash.
                     avatars.record(previous + names.values)
                     val recurrence = database.recurrenceDao()
@@ -198,17 +203,23 @@ internal class BackupRepository(
                     recurrence.deleteOccurrences(); recurrence.deleteAssignments(); recurrence.deleteRules()
                     technologyDao.clear()
                     attachmentDao.clearNodes(); attachmentDao.clearProjects(); attachmentDao.clearFiles()
+                    database.sprintLinkDao().clear()
                     dao.deleteAssignments()
                     dao.detachNodes() // Avoid SQLite's recursive cascade depth limit.
                     dao.deleteNodes(); dao.deleteProjects(); dao.deletePersons()
                     data.projects.forEach { database.projectDao().insert(it) }
                     data.persons.forEach { person -> database.personDao().insert(person.copy(avatarFile = person.avatarFile?.let(names::getValue))) }
+                    data.personPhotos.forEach {database.personGalleryDao().save(it.copy(file=names.getValue(it.file)))}
+                    data.personBirthdays.forEach {database.personGalleryDao().save(it)}
+                    data.personProfiles.forEach {database.personProfileDao().save(it)}
+                    data.personRelations.forEach {database.personProfileDao().insert(it)}
                     ordered.forEach { database.nodeDao().insert(it) }
                     data.projectPhotos.forEach { photoDao.save(it.copy(file = photoNames.getValue(it.file))) }
                     data.attachmentFiles.forEach { attachmentDao.insert(it.copy(storageName = attachmentNames.getValue(it.storageName))) }
                     attachmentDao.attachNode(data.nodeAttachments)
                     attachmentDao.attachProject(data.projectAttachments)
                     data.technologies.forEach { technologyDao.insert(it.copy(iconFile = it.iconFile?.let(iconNames::getValue))) }
+                    data.personTechnologies.forEach {database.personIntegrationDao().save(it)}
                     technologyDao.assignNodes(data.nodeTechnologies)
                     technologyDao.assignProjects(data.projectTechnologies)
                     database.personDao().assign(data.assignments)
@@ -224,6 +235,29 @@ internal class BackupRepository(
                     database.creationDefaultsDao().insertPeople(data.defaultsPeople)
                     data.conversionRoots.forEach { database.conversionDao().save(it) }
                     database.conversionDao().people(data.conversionPeople); database.conversionDao().tags(data.conversionTags)
+                    data.managementContexts.forEach {database.managementContextDao().save(it)}
+                    data.managementLayers.forEach {database.managementLayerDao().insert(it)}
+                    data.ganttAnnotations.forEach {database.ganttAnnotationDao().save(it)}
+                    data.projectCharters.forEach {database.planningDao().save(it)}
+                    data.managementObjectives.forEach {database.planningDao().save(it)}
+                    data.sprintStories.forEach {database.cascadeRelationDao().insert(it)}
+                    data.objectiveWork.forEach {database.cascadeRelationDao().insert(it)}
+                    data.localIdentities.forEach {database.cascadeRelationDao().save(it)}
+                    data.acceptanceCriteria.forEach {database.planningDao().save(it)}
+                    data.managementRoles.forEach {database.backlogDao().save(it)}
+                    data.objectiveEpics.forEach {database.backlogDao().insert(it)}
+                    data.epicStories.forEach {database.backlogDao().insert(it)}
+                    data.storyTasks.forEach {database.backlogDao().insert(it)}
+                    data.backlogEntries.forEach {database.backlogDao().save(it)}
+                    data.managementParticipants.forEach {database.participationDao().insert(it)}
+                    data.participantRoles.forEach {database.participationDao().insert(it)}
+                    data.objectiveResponsibilities.forEach {database.participationDao().insert(it)}
+                    data.nodeResponsibilities.forEach {database.participationDao().insert(it)}
+                    data.sprintLinks.forEach {database.sprintLinkDao().insert(it)}
+                    data.iterationPlans.forEach {database.iterationDao().save(it)}
+                    data.iterationCycles.forEach {database.iterationDao().insert(it)}
+                    data.iterationCommitments.forEach {database.iterationDao().insert(it)}
+                    data.iterationClosures.forEach {database.iterationDao().insert(it)}
                     database.conversionDao().events(data.conversionEvents); database.conversionDao().workStates(data.conversionWorkStates)
                     data.nodeSortPreferences.forEach { database.nodeSortPreferenceDao().save(it) }
                     data.savedTemplates.forEach { database.savedTemplateDao().insert(it) }

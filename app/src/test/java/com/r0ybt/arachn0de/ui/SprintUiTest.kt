@@ -7,6 +7,7 @@ import com.r0ybt.arachn0de.Arachn0deApplication
 import com.r0ybt.arachn0de.MainActivity
 import com.r0ybt.arachn0de.domain.model.*
 import kotlinx.coroutines.runBlocking
+import androidx.room.withTransaction
 import org.junit.*
 import org.junit.Assert.*
 import org.junit.rules.ExternalResource
@@ -15,9 +16,10 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 
+@org.robolectric.annotation.GraphicsMode(org.robolectric.annotation.GraphicsMode.Mode.NATIVE)
 @RunWith(RobolectricTestRunner::class) @Config(application=com.r0ybt.arachn0de.security.LegacyUiTestApplication::class,sdk=[28])
 class SprintUiTest {
-    private val compose=createAndroidComposeRule<MainActivity>()
+    private val compose=createAndroidComposeRule<androidx.activity.ComponentActivity>()
     private lateinit var app:Arachn0deApplication;private lateinit var project:Project;private lateinit var layer:Node;private lateinit var task:Node
     @get:Rule val rules:RuleChain=RuleChain.outerRule(object:ExternalResource() {
         override fun before() { app=ApplicationProvider.getApplicationContext();runBlocking {
@@ -27,10 +29,15 @@ class SprintUiTest {
             app.nodeRepository.createNode(project.id,layer.id,"Notes",purpose=NodePurpose.NOTE)
             app.nodeRepository.createNode(project.id,layer.id,"Normal sublayer",purpose=NodePurpose.LAYER)
         } }
-        override fun after() { app.database.close() }
+        override fun after() {app.database.close()}
     }).around(compose)
-    private fun await(text:String)=compose.waitUntil(10000) { org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle();compose.onAllNodesWithText(text).fetchSemanticsNodes().isNotEmpty() }
+    @After fun dispose() {
+        compose.runOnUiThread {val content=compose.activity.findViewById<android.view.ViewGroup>(android.R.id.content);for(i in 0 until content.childCount) (content.getChildAt(i) as? androidx.compose.ui.platform.AbstractComposeView)?.disposeComposition()}
+        compose.waitForIdle();runBlocking {app.database.withTransaction {}}
+    }
+    private fun await(text:String)=compose.waitUntil(10000) { org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle();androidx.compose.runtime.snapshots.Snapshot.sendApplyNotifications();compose.mainClock.advanceTimeByFrame();compose.onAllNodesWithText(text).fetchSemanticsNodes().isNotEmpty() }
     private fun open() {
+        compose.setContent {com.r0ybt.arachn0de.ui.theme.Arachn0deTheme {AppRoot(app.projectRepository,app.nodeRepository)}}
         await("Work");compose.onNodeWithText("Work").performClick();await("Development")
         compose.onNodeWithTag("nodes-list").performScrollToNode(hasText("Development"));compose.onNodeWithText("Development").performClick();await("CAPA 1")
     }

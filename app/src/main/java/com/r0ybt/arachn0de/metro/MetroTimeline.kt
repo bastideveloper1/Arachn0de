@@ -48,7 +48,7 @@ internal fun MetroVerticalTimeline(
     val nodeInset=with(density) { 30.dp.toPx() }
     val trackX=with(density) { 22.dp.toPx() }
     val surface=Arachn0deColors.Surface
-    val markerSize=with(density) { 36.dp.toPx() }
+    val markerSize=with(density) { 24.dp.toPx() }
     Box(modifier.clipToBounds()) {
         LazyColumn(Modifier.fillMaxSize().testTag("metro-timeline"),state=list) {
             itemsIndexed(rows,key={ i,row->"$i:${row.station}:${row.line}" }) { index,row->
@@ -113,7 +113,7 @@ internal fun MetroVerticalTimeline(
                 val start=item.offset+nodeInset
                 val end=(next?.offset ?: (item.offset+item.size))+nodeInset
                 val y=if(progress.first==rows.lastIndex) start else start+(end-start)*progress.second.coerceIn(0f,1f)
-                Box(Modifier.offset {IntOffset((trackX-markerSize/2).roundToInt(),(y-markerSize/2).roundToInt())}.size(36.dp).testTag("metro-avatar"),contentAlignment=Alignment.Center) {avatar()}
+                Box(Modifier.offset {IntOffset((trackX-markerSize/2).roundToInt(),(y-markerSize/2).roundToInt())}.size(24.dp).testTag("metro-avatar"),contentAlignment=Alignment.Center) {avatar()}
             }
         }
     }

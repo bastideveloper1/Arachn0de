@@ -19,8 +19,7 @@ private fun palette(background: Long, middle: Long, end: Long, surface: Long, ra
         Color(text), Color(muted), Color(primary), Color(secondary), Color(solid), Color(outline), Color(controls), Color(selection), Color(accentSurface))
 
 enum class AppearanceTheme(val label: String, val palette: AppearancePalette) {
-    Arachn0de("Arachn0de", palette(0xFF000000,0xFF050505,0xFF0A0A0A,0xFF17181C,0xFF121316,
-        0xFFF3F6FF,0xFFB9C6E8,0xFFB99BFF,0xFFFFA45B,0xFF7E61FF,0xFF3A2C52,0xFF2A2A2D,0xFF4B3E76,0xFF2A1F39,0xFF090A0D).copy(onSolidPrimary = Color.Black)),
+    Arachn0de("Black & White 90", BlackWhite90.palette),
     KingCrimson("King Crimson", palette(0xFF0C080A,0xFF100A0D,0xFF150D11,0xFF1D1519,0xFF171014,
         0xFFF7EEF1,0xFFD4BBC3,0xFFD65B78,0xFFC98578,0xFF70263D,0xFF4A2933,0xFF30232A,0xFF593341,0xFF34202A)),
     DeepMoss("Deep Moss", palette(0xFF080C0A,0xFF0B100D,0xFF0F1511,0xFF171E19,0xFF121813,

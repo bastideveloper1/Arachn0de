@@ -18,12 +18,21 @@ internal class NodeCopyActions(context: Context, private val scope: CoroutineSco
     private val clipboard = ContextClipboard(appContext)
     var busy by mutableStateOf(false)
         private set
+    var pendingCopy by mutableStateOf<((Boolean) -> Unit)?>(null)
+        private set
+    fun cancelChoice() { pendingCopy = null }
+    fun confirmChoice(onlyPending: Boolean) {
+        val request = pendingCopy ?: return
+        pendingCopy = null
+        request(onlyPending)
+    }
+    private fun choose(request: (Boolean) -> Unit) { if(!busy && pendingCopy == null) pendingCopy = request }
     fun copy(tree: NodeTreeSnapshot, id: String, descendants: Boolean) {
-        if(descendants) copyText { check -> val names = imageNames(); PendingChatRenderer.render(tree,id,people=people(),checkCancelled=check,descriptionText={ descriptionClipboardText(it, names) }) }
+        if(descendants) choose { onlyPending -> copyText { check -> val names = imageNames(); PendingChatRenderer.render(tree,id,people=people(),checkCancelled=check,descriptionText={ descriptionClipboardText(it, names) },completeHierarchy=true,onlyPending=onlyPending) } }
         else copySnapshot { check -> NodeExportSnapshot.capture(tree,id,false,check) }
     }
     fun copyProject(project: Project, tree: NodeTreeSnapshot, descendants: Boolean) {
-        if(descendants) copyText { check -> val names = imageNames(); PendingChatRenderer.render(tree,null,project,people(),check,descriptionText={ descriptionClipboardText(it, names) }) }
+        if(descendants) choose { onlyPending -> copyText { check -> val names = imageNames(); PendingChatRenderer.render(tree,null,project,people(),check,descriptionText={ descriptionClipboardText(it, names) },completeHierarchy=true,onlyPending=onlyPending) } }
         else copySnapshot { check -> NodeExportSnapshot.captureProject(project,tree,false,check) }
     }
     private fun copySnapshot(capture: (() -> Unit) -> NodeExportSnapshot) {

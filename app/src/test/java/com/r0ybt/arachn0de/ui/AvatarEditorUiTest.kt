@@ -83,7 +83,7 @@ class AvatarEditorUiTest {
         val launched = shadowOf(compose.activity).nextStartedActivityForResult
         val file = File(app.cacheDir, "editor-picked.png").apply { writeBytes(BackupFixture.png()) }
         compose.runOnUiThread { compose.activity.activityResultRegistry.dispatchResult(launched.requestCode, Activity.RESULT_OK, Intent().setData(Uri.fromFile(file))) }
-        waitText("Encuadrar avatar"); waitText("Zoom: 1.00×")
+        waitText("Encuadrar avatar"); waitText("Zoom: 2.00×")
     }
     @Test fun selectedPhotoCanBeCancelledOrConfirmedWithoutDeletingPreviousBeforeSave() {
         val old = seed(); val before = runBlocking { app.database.personDao().get("a")!! }
@@ -96,7 +96,7 @@ class AvatarEditorUiTest {
         compose.onNodeWithText("Guardar").performClick()
         compose.waitUntil(10_000) { runBlocking { app.database.personDao().get("a")!!.avatarFile != old } }
         compose.waitUntil(10_000) { !File(app.filesDir, "avatars/$old").exists() }
-        assertEquals(1.2f, runBlocking { app.database.personDao().get("a")!!.avatarZoom }, .0001f)
+        assertEquals(2.4f, runBlocking { app.database.personDao().get("a")!!.avatarZoom }, .0001f)
     }
     @Test fun cancellingPersonAfterConfirmingCropKeepsPreviousAvatar() {
         val old = seed(); val before = runBlocking { app.database.personDao().get("a")!! }

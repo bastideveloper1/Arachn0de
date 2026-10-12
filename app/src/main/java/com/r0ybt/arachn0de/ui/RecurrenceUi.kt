@@ -1,6 +1,9 @@
 package com.r0ybt.arachn0de.ui
 
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.ui.platform.testTag
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
@@ -19,7 +22,7 @@ import kotlinx.coroutines.flow.flow
 import com.r0ybt.arachn0de.ui.theme.Arachn0deColors
 
 @Composable
-internal fun RecurrenceFields(draft: EditorDraft, enabled: Boolean) {
+internal fun RecurrenceFields(draft: EditorDraft, enabled: Boolean, initializeStart: Boolean = true) {
     var expanded by remember { mutableStateOf(false) }
     val options = listOf("NONE" to "Ninguna", "DAILY" to "Diaria", "WEEKLY" to "Semanal", "MONTHLY" to "Mensual", "YEARLY" to "Anual")
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -30,7 +33,7 @@ internal fun RecurrenceFields(draft: EditorDraft, enabled: Boolean) {
             DropdownMenu(expanded, onDismissRequest = { expanded = false }) {
                 options.forEach { (value, label) -> DropdownMenuItem(text = { Text(label) }, onClick = {
                     if (value == "NONE") draft.toggleRecurrence(false) else { draft.recurrenceFrequency = value; draft.latentFrequency = value }
-                    if (value != "NONE" && draft.recurrenceStart.isBlank()) draft.recurrenceStart = RecurrenceSchedule.format(
+                    if (initializeStart && value != "NONE" && draft.recurrenceStart.isBlank()) draft.recurrenceStart = RecurrenceSchedule.format(
                         RecurrenceSchedule.localDay(draft.dueAt ?: System.currentTimeMillis(), java.util.TimeZone.getDefault().id))
                     expanded = false
                 }) }
@@ -55,6 +58,7 @@ internal fun RecurrenceFields(draft: EditorDraft, enabled: Boolean) {
 }
 
 /** Rules remain reachable even before the first occurrence or after deleting every Node. */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun RecurrenceManager(repository: RecurrenceRepository, projectId: String, nodes: List<Node>, people: List<Person>, peopleLoaded: Boolean, externalRule: String? = null, showLauncher: Boolean = true, onConsumed: () -> Unit = {}) {
     var open by rememberSaveable(projectId) { mutableStateOf(false) }
@@ -70,13 +74,30 @@ internal fun RecurrenceManager(repository: RecurrenceRepository, projectId: Stri
     val operation = remember(repository, scope) { OperationState(scope) }
 
     if(showLauncher) OutlinedButton(onClick={ open=true }) { Text("Recurrencias") }
-    if (open && selected == null) AlertDialog(
-        containerColor = Arachn0deColors.Surface, onDismissRequest = { open = false }, title = { Text("Recurrencias") },
-        text = { Column(Modifier.verticalScroll(rememberScrollState())) {
-            val current = rules.filter { projectId.isEmpty() || it.projectId == projectId || projects.none { project -> project.id == it.projectId } }
-            if (current.isEmpty()) Text("Crea una regla desde Nuevo elemento → Tarea → Recurrencia.")
-            current.forEach { rule -> TextButton(onClick = { selected = rule.id }) { Text("${rule.title} · ${statusLabel(rule.status)}") } }
-        } }, confirmButton = { TextButton(onClick = { open = false }) { Text("Cerrar") } })
+    if (open && selected == null) ModalBottomSheet(
+        onDismissRequest = { open = false },
+        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+        containerColor = Arachn0deColors.Surface,
+        contentColor = Arachn0deColors.TextPrimary,
+        tonalElevation = 0.dp,
+    ) {
+        BoxWithConstraints(Modifier.fillMaxWidth()) {
+            Column(Modifier.fillMaxWidth().heightIn(max=maxHeight * .75f).padding(horizontal=16.dp)
+                .testTag("recurrence-sheet"),verticalArrangement=Arrangement.spacedBy(8.dp)) {
+                Text("Recurrencias",style=MaterialTheme.typography.titleLarge)
+                val current = rules.filter { projectId.isEmpty() || it.projectId == projectId || projects.none { project -> project.id == it.projectId } }
+                LazyColumn(Modifier.fillMaxWidth().weight(1f,fill=false).testTag("recurrence-list")) {
+                    if (current.isEmpty()) item { Text("Crea una regla desde Nuevo elemento → Tarea → Recurrencia.",Modifier.padding(vertical=12.dp)) }
+                    items(current,key={it.id}) { rule ->
+                        TextButton(onClick = { selected = rule.id },modifier=Modifier.fillMaxWidth().heightIn(min=48.dp)) {
+                            Text("${rule.title} · ${statusLabel(rule.status)}",Modifier.fillMaxWidth(),style=MaterialTheme.typography.bodyMedium)
+                        }
+                    }
+                }
+                TextButton(onClick = { open = false },modifier=Modifier.fillMaxWidth().heightIn(min=48.dp)) { Text("Cerrar") }
+            }
+        }
+    }
     val editorStates = rememberSaveableStateHolder()
     val rule = rules.firstOrNull { it.id == selected }
     if (open && rule != null) editorStates.SaveableStateProvider(rule.id) { RecurrenceRuleDialog(rule, repository, nodes, people, peopleLoaded, operation, onClearDraft = { editorStates.removeState(rule.id); selected = null }) { selected = null } }

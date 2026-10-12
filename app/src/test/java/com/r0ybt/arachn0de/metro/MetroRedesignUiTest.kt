@@ -132,7 +132,7 @@ class MetroRedesignUiTest {
         await {exists("Destino: República")};capture("14-editar-tarea")
         scope.coroutineContext[kotlinx.coroutines.Job]?.cancel()
     }
-    @Test fun savedTripStartsImmediatelyAndTrackingAvatarAndCorrectionKeepPause()=runBlocking<Unit> {
+    @Test fun savedTripStartsImmediatelyAndTrackingTrainAndCorrectionKeepPause()=runBlocking<Unit> {
         com.r0ybt.arachn0de.backup.BackupRepository(app.database,app,com.r0ybt.arachn0de.backup.BackupAvatarFiles(app,com.r0ybt.arachn0de.backup.BackupFixture::syncDirectory)).restore(com.r0ybt.arachn0de.backup.BackupFixture.complete())
         val net=app.metroRepository.snapshot().preferences.network
         val route=MetroPlanner.plan(net,listOf("los-heroes","republica"),false,MetroRestrictions())!!
@@ -141,12 +141,11 @@ class MetroRedesignUiTest {
         compose.onNodeWithTag("metro-trip:$id").performClick();await {exists("Comenzar viaje")};compose.onNodeWithText("Comenzar viaje").performClick();await {exists("Pausar")};capture("13-seguimiento")
         val journey=app.metroRepository.snapshot().journeys.single();assertTrue(journey.data.active!!.automatic)
         compose.onNodeWithTag("metro-avatar").assertIsDisplayed()
-        compose.onNodeWithContentDescription("Roy").assertExists()
-        await {com.r0ybt.arachn0de.data.local.AvatarStore(app).readThumbnail(runBlocking {app.database.personDao().get("r")!!}.avatarFile!!)!=null}
+        compose.onNodeWithTag("metro-train").assertIsDisplayed()
+        compose.onNodeWithContentDescription("Roy").assertDoesNotExist()
+        assertEquals("r",journey.row.personId)
         val avatar=compose.onNodeWithTag("metro-avatar").fetchSemanticsNode().boundsInRoot.center
-        // The shared PersonAvatar renders the original magenta fixture, rather than a generic icon.
-        await {renderedWindow().getPixel(avatar.x.toInt(),avatar.y.toInt())==android.graphics.Color.MAGENTA}
-        capture("13b-avatar-real")
+        capture("13b-tren")
         compose.onNodeWithText("Pausar").performClick();await {exists("Reanudar")}
         compose.onNode(hasText("Los Héroes") and hasClickAction()).performClick();compose.onNodeWithText("Estoy aquí").performClick()
         await {runBlocking {app.metroRepository.snapshot().journeys.single().data.active!!.events.any {it.kind=="CONFIRM"}}}

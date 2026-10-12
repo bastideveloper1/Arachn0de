@@ -50,12 +50,41 @@ internal data class BackupData(
     val savedTemplates: List<SavedTemplateEntity> = emptyList(),
     val metroPreferences: String? = null,
     val metroJourneys: List<MetroJourneyEntity> = emptyList(),
+    val managementRoles:List<ManagementRoleEntity> = emptyList(),
+    val objectiveEpics:List<ObjectiveEpicEntity> = emptyList(),
+    val epicStories:List<EpicStoryEntity> = emptyList(),
+    val storyTasks:List<StoryTaskEntity> = emptyList(),
+    val iterationPlans:List<IterationPlanEntity> = emptyList(),
+    val iterationCycles:List<IterationCycleEntity> = emptyList(),
+    val iterationCommitments:List<IterationCommitmentEntity> = emptyList(),
+    val iterationClosures:List<IterationClosureEntity> = emptyList(),
+    val managementParticipants:List<ManagementParticipantEntity> = emptyList(),
+    val participantRoles:List<ParticipantRoleEntity> = emptyList(),
+    val objectiveResponsibilities:List<ObjectiveResponsibilityEntity> = emptyList(),
+    val nodeResponsibilities:List<NodeResponsibilityEntity> = emptyList(),
+    val backlogEntries:List<BacklogEntryEntity> = emptyList(),
+    val projectCharters: List<ProjectCharterEntity> = emptyList(),
+    val managementObjectives: List<ManagementObjectiveEntity> = emptyList(),
+    val acceptanceCriteria: List<AcceptanceCriterionEntity> = emptyList(),
+    val sprintStories:List<SprintStoryEntity> = emptyList(),
+    val objectiveWork:List<ObjectiveWorkEntity> = emptyList(),
+    val localIdentities:List<LocalIdentityEntity> = emptyList(),
+    val managementLayers:List<ManagementLayerEntity> = emptyList(),
+    val ganttAnnotations:List<GanttAnnotationEntity> = emptyList(),
+    val managementContexts: List<ManagementContextEntity> = emptyList(),
+    val sprintLinks: List<SprintLinkEntity> = emptyList(),
+    val personTechnologies:List<PersonTechnologyEntity> = emptyList(),
+    val personPhotos:List<PersonPhotoEntity> = emptyList(),
+    val personBirthdays:List<PersonBirthdayEntity> = emptyList(),
+    val personProfiles:List<PersonProfileEntity> = emptyList(),
+    val personRelations:List<PersonRelationEntity> = emptyList(),
 )
 
 internal object BackupLimits {
     const val PAYLOAD_BYTES = 16 * 1024 * 1024
     const val TOTAL_STREAMED_IMAGE_BYTES = 1024L * 1024 * 1024
     const val PROJECT_PHOTO_BYTES = 20 * 1024 * 1024
+    const val PERSON_AVATAR_BYTES = 20 * 1024 * 1024
     const val AVATAR_BYTES = 1024 * 1024
     const val TOTAL_AVATAR_BYTES = 8 * 1024 * 1024
     const val ATTACHMENT_BYTES = 20L * 1024 * 1024
@@ -67,16 +96,21 @@ internal object BackupLimits {
 
 /** Validate before staging or deleting anything; return parent-first order without recursion. */
 internal fun BackupData.validate(): List<NodeEntity> {
+    validatePersonTechnologies(persons.mapTo(hashSetOf()) {it.id},technologies.mapTo(hashSetOf()) {it.id},personTechnologies)
+    validatePersonGallery(persons.mapTo(hashSetOf()) {it.id},personPhotos,personBirthdays)
+    com.r0ybt.arachn0de.domain.model.validatePersonDetails(persons.mapTo(hashSetOf()) {it.id},personProfiles,personRelations)
     require(storeKind in setOf("primary","secondary"))
     storeId?.let { require(java.util.UUID.fromString(it).toString()==it) }
     require(privatePreferences.map { it.name }.toSet().size == privatePreferences.size)
     privatePreferences.forEach { row ->
         require(row.name.matches(Regex("[a-zA-Z0-9_-]+")) && row.name != "vault_meta")
         com.r0ybt.arachn0de.security.EncryptedPreferences.decode(row.payload)
+        if(row.name==com.r0ybt.arachn0de.metro.MetroHoursConfig.NAME) com.r0ybt.arachn0de.metro.MetroHoursConfig.validatePayload(row.payload)
+        if(row.name==com.r0ybt.arachn0de.access.AccessCodec.NAME) com.r0ybt.arachn0de.access.AccessCodec.decode(row.payload)
     }
-    gameSession?.let { require(com.r0ybt.arachn0de.game.GameSessionCodec.decode(it) != null) { "Partida guardada inválida." } }
+    gameSession?.let { require(com.r0ybt.arachn0de.game.RaceCodec.validPayload(it)) { "Partida guardada inválida." } }
     require(appVersion.isNotBlank() && appVersion.length <= 128 && createdAt >= 0) { "Metadatos de backup inválidos." }
-    require(privatePreferences.size + savedTemplates.size + projects.size.toLong() + nodes.size + persons.size + assignments.size + recurrenceRules.size + recurrenceOccurrences.size + recurrenceAssignments.size + tags.size + nodeTags.size + recurrenceTags.size + nodeEvents.size + creationDefaults.size + defaultsTags.size + defaultsPeople.size + attachmentFiles.size + nodeAttachments.size + projectAttachments.size + technologies.size + nodeTechnologies.size + projectTechnologies.size + projectPhotos.size + conversionRoots.size + conversionPeople.size + conversionTags.size + conversionEvents.size + conversionWorkStates.size + nodeSortPreferences.size + imageFiles.size + metroJourneys.size + (if (metroPreferences == null) 0 else 1) + (if (gameSession == null) 0 else 1) <= BackupLimits.RECORDS) { "Demasiados registros en el backup." }
+    require(ganttAnnotations.size.toLong() + sprintStories.size.toLong() + objectiveWork.size + localIdentities.size + managementLayers.size.toLong() + iterationPlans.size.toLong() + iterationCycles.size.toLong() + iterationCommitments.size.toLong() + iterationClosures.size.toLong() + managementParticipants.size.toLong() + participantRoles.size.toLong() + objectiveResponsibilities.size.toLong() + nodeResponsibilities.size.toLong() + managementRoles.size.toLong() + objectiveEpics.size + epicStories.size + storyTasks.size + backlogEntries.size + projectCharters.size + managementObjectives.size + acceptanceCriteria.size + managementContexts.size + sprintLinks.size + privatePreferences.size + savedTemplates.size + projects.size.toLong() + nodes.size + personPhotos.size + personBirthdays.size + personTechnologies.size + personProfiles.size + personRelations.size + persons.size + assignments.size + recurrenceRules.size + recurrenceOccurrences.size + recurrenceAssignments.size + tags.size + nodeTags.size + recurrenceTags.size + nodeEvents.size + creationDefaults.size + defaultsTags.size + defaultsPeople.size + attachmentFiles.size + nodeAttachments.size + projectAttachments.size + technologies.size + nodeTechnologies.size + projectTechnologies.size + projectPhotos.size + conversionRoots.size + conversionPeople.size + conversionTags.size + conversionEvents.size + conversionWorkStates.size + nodeSortPreferences.size + imageFiles.size + metroJourneys.size + (if (metroPreferences == null) 0 else 1) + (if (gameSession == null) 0 else 1) <= BackupLimits.RECORDS) { "Demasiados registros en el backup." }
     fun unique(ids: List<String>): Set<String> {
         require(ids.all { it.isNotBlank() && it.length <= 256 }) { "Identidad inválida." }
         return ids.toSet().also { require(it.size == ids.size) { "Identidades duplicadas." } }
@@ -96,8 +130,31 @@ internal fun BackupData.validate(): List<NodeEntity> {
     val personIds = unique(persons.map { it.id })
     // Historical long titles and non-contiguous positions are valid persisted data, not editor input.
     require(projects.all { it.name.isNotBlank() } && nodes.all { it.title.isNotBlank() } && persons.all { it.name.isNotBlank() }) { "Nombre vacío." }
+    unique(managementContexts.map {it.id})
+    managementLayers.filter {it.kind.startsWith("OBJECTIVE:")}.forEach {r->require(managementObjectives.any {it.id==r.kind.removePrefix("OBJECTIVE:") && it.id==r.nodeId && it.contextId==r.contextId}) {"Objetivo de capa sin registro."}}
+    val contexts=managementContexts.mapTo(hashSetOf()) {it.id}
+    unique(projectCharters.map {it.contextId});require(projectCharters.all {it.contextId in contexts}) {"Acta sin contexto."}
+    val objectiveIds=unique(managementObjectives.map {it.id})
+    require(managementObjectives.all {it.contextId in contexts && it.title.isNotBlank() && it.position>=0}) {"Objetivo inválido."}
+    require(managementObjectives.map {it.contextId to it.position}.distinct().size==managementObjectives.size) {"Orden de objetivos duplicado."}
+    unique(acceptanceCriteria.map {it.id})
+    require(acceptanceCriteria.all {it.objectiveId in objectiveIds && it.description.isNotBlank() && it.position>=0 && it.validated==(it.validatedAt!=null) && (it.validatedAt==null || it.validatedAt>=0)}) {"Criterio inválido."}
+    require(acceptanceCriteria.map {it.objectiveId to it.position}.distinct().size==acceptanceCriteria.size) {"Orden de criterios duplicado."}
+    val managementRoots=conversionRoots.mapTo(hashSetOf()) {it.id}
+    managementContexts.forEach {
+        require(it.id in managementRoots) {"Contexto de gestión sin propietario."}
+        require(it.methodology in setOf("AGILE","TRADITIONAL","HYBRID")) {"Metodología inválida."}
+    }
     val byId = nodes.associateBy { it.id }
     val children = nodes.groupBy { it.parentId }
+    require(sprintLinks.map {it.taskId}.toSet().size==sprintLinks.size) {"Tarea vinculada más de una vez."}
+    val linksByTask=sprintLinks.associateBy {it.taskId}
+    sprintLinks.forEach {link->
+        val task=requireNotNull(byId[link.taskId]) {"Tarea vinculada ausente."}
+        val sprint=requireNotNull(byId[link.sprintId]) {"Sprint vinculado ausente."}
+        require(task.id!=sprint.id && task.purpose=="ACTION" && sprint.purpose=="LAYER" && sprint.sprintMode && task.projectId==sprint.projectId) {"Vínculo Sprint incompatible."}
+        require(byId[task.parentId]?.sprintMode!=true) {"La tarea tiene pertenencia directa y vinculada a Sprint."}
+    }
     nodes.forEach { node ->
         require(node.projectId in projectIds) { "Proyecto ausente." }
         node.parentId?.let { parentId ->
@@ -107,7 +164,7 @@ internal fun BackupData.validate(): List<NodeEntity> {
         require(node.creationGroupId == null || (node.creationGroupId.isNotBlank() && node.creationGroupId.length <= 200)) { "Grupo inválido." }
         com.r0ybt.arachn0de.domain.model.Priority.valueOf(node.priority)
         require(!node.sprintMode || node.purpose == "LAYER") { "Modo Sprint incompatible." }
-        val sprintAction = node.purpose == "ACTION" && byId[node.parentId]?.sprintMode == true
+        val sprintAction = node.purpose == "ACTION" && (byId[node.parentId]?.sprintMode == true || node.id in linksByTask)
         require((node.workState != null) == sprintAction) { "Estado Sprint fuera de contexto." }
         node.workState?.let {
             com.r0ybt.arachn0de.domain.model.WorkState.valueOf(it)
@@ -173,7 +230,7 @@ internal fun BackupData.validate(): List<NodeEntity> {
             defaultTagsById[row.id].orEmpty().mapTo(hashSetOf()) { it.tagId },defaultPeopleById[row.id].orEmpty().mapTo(hashSetOf()) { it.personId })
     }
     persons.forEach { com.r0ybt.arachn0de.domain.model.AvatarFraming(it.avatarZoom, it.avatarX, it.avatarY).validate() }
-    val names = persons.mapNotNull { it.avatarFile }.toSet()
+    val names = persons.mapNotNull { it.avatarFile }.toSet()+personPhotos.map {it.file}
     require(names == imageNames("avatars") && names.all { BackupLimits.avatarName.matches(it) }) { "Referencias de avatar inválidas." }
     require(avatars.values.sumOf { it.size.toLong() } <= BackupLimits.TOTAL_AVATAR_BYTES) { "Avatares demasiado grandes." }
     avatars.values.forEach { validateAvatar(it) }
@@ -199,7 +256,7 @@ internal fun BackupData.validate(): List<NodeEntity> {
     val iconNames = technologies.mapNotNull { it.iconFile }.toSet()
     require(iconNames == imageNames("technology-icons") && iconNames.all { BackupLimits.avatarName.matches(it) }) { "Referencias de iconos de tecnología inválidas." }
     require(avatars.values.sumOf { it.size.toLong() } + technologyIcons.values.sumOf { it.size.toLong() } <= BackupLimits.TOTAL_AVATAR_BYTES) { "Avatares e iconos demasiado grandes." }
-    technologyIcons.values.forEach { validateAvatar(it) }
+    technologyIcons.values.forEach { validateTechnologyIcon(it) }
     require(nodeTechnologies.map { it.nodeId to it.technologyId }.distinct().size == nodeTechnologies.size && nodeTechnologies.all { it.position >= 0 } && nodeTechnologies.all { it.nodeId in nodeIds && it.technologyId in technologyIds }) { "Asociación de tecnología con nodo inválida." }
     require(projectTechnologies.map { it.projectId to it.technologyId }.distinct().size == projectTechnologies.size && projectTechnologies.all { it.position >= 0 } && projectTechnologies.all { it.projectId in projectIds && it.technologyId in technologyIds }) { "Asociación de tecnología con proyecto inválida." }
     unique(projectPhotos.map { it.id })
@@ -257,13 +314,21 @@ internal fun BackupData.validate(): List<NodeEntity> {
         require(it.name !in inline) { "Imagen duplicada en JSON y manifiesto." }
     }
     require(imageFiles.sumOf { it.byteSize } + avatars.values.sumOf { it.size.toLong() } + technologyIcons.values.sumOf { it.size.toLong() } + projectPhotoImages.values.sumOf { it.size.toLong() } <= BackupLimits.TOTAL_STREAMED_IMAGE_BYTES) { "Imágenes por streaming demasiado grandes." }
+    unique(managementRoles.map {it.nodeId});unique(backlogEntries.map {it.nodeId})
+    com.r0ybt.arachn0de.data.repository.validateCascadeRelations(sprintStories,objectiveWork,localIdentities,nodes,conversionRoots,managementContexts,managementRoles,managementObjectives,persons.mapTo(hashSetOf()) {it.id})
+    com.r0ybt.arachn0de.data.repository.validateManagementLayers(managementLayers,nodes,conversionRoots,managementContexts)
+    validateGanttAnnotations(ganttAnnotations,managementContexts.mapTo(hashSetOf()) {it.id})
+    com.r0ybt.arachn0de.data.repository.BacklogRecords(managementRoles,objectiveEpics,epicStories,storyTasks,backlogEntries).validate(nodes,conversionRoots,managementContexts,managementObjectives)
+    com.r0ybt.arachn0de.data.repository.ParticipationRecords(managementParticipants,participantRoles,objectiveResponsibilities,nodeResponsibilities).validate(persons,managementContexts,managementObjectives,nodes,conversionRoots,managementRoles)
+    com.r0ybt.arachn0de.data.repository.IterationRecords(iterationPlans,iterationCycles,iterationCommitments,iterationClosures).validate(nodes,conversionRoots,managementContexts,sprintLinks)
     return ordered
 }
 
-internal fun imageByteLimit(directory:String)=if(directory=="project-photos") BackupLimits.PROJECT_PHOTO_BYTES else BackupLimits.AVATAR_BYTES
+internal fun imageByteLimit(directory:String)=when(directory) {"avatars"->BackupLimits.PERSON_AVATAR_BYTES;"project-photos"->BackupLimits.PROJECT_PHOTO_BYTES;else->BackupLimits.AVATAR_BYTES}
 internal fun validateProjectPhoto(bytes:ByteArray)=validatePng(bytes,BackupLimits.PROJECT_PHOTO_BYTES,2048)
-internal fun validateAvatar(bytes:ByteArray)=validatePng(bytes,BackupLimits.AVATAR_BYTES,512)
-internal fun validatePrivateImage(directory:String,bytes:ByteArray) { if(directory=="project-photos") validateProjectPhoto(bytes) else validateAvatar(bytes) }
+internal fun validateAvatar(bytes:ByteArray)=validatePng(bytes,BackupLimits.PERSON_AVATAR_BYTES,2048)
+internal fun validateTechnologyIcon(bytes:ByteArray)=validatePng(bytes,BackupLimits.AVATAR_BYTES,512)
+internal fun validatePrivateImage(directory:String,bytes:ByteArray) { when(directory) {"avatars"->validateAvatar(bytes);"project-photos"->validateProjectPhoto(bytes);else->validateTechnologyIcon(bytes)} }
 private fun validatePng(bytes: ByteArray,maxBytes:Int,maxDimension:Int) {
     require(bytes.size in 1..maxBytes) { "Avatar demasiado grande o vacío." }
     val signature = byteArrayOf(-119, 80, 78, 71, 13, 10, 26, 10)

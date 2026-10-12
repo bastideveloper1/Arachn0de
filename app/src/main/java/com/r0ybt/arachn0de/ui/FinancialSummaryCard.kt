@@ -5,9 +5,10 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.r0ybt.arachn0de.domain.model.*
 import com.r0ybt.arachn0de.ui.theme.Arachn0deColors
 
@@ -18,25 +19,39 @@ internal fun FinancialState.label(): String = when (this) {
     FinancialState.COMPLETED -> "Completado"
 }
 
+/** The overview already respects person/project/layer and keeps all pending periods. */
 @Composable
-internal fun FinancialSummaryCard(summary: FinancialSummary?, modifier: Modifier = Modifier, title: String = "Obligaciones", overview: FinancialSummary? = summary) {
+internal fun FinancialSummaryCard(summary: FinancialSummary?, modifier: Modifier = Modifier, title: String = "Pagos pendientes", overview: FinancialSummary? = summary) {
     if (summary == null || overview == null || overview.count == 0) return
     val locale = LocalConfiguration.current.locales[0]
+    val density=LocalDensity.current
+    val measurer=rememberTextMeasurer()
     Card(modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = Arachn0deColors.ControlSurface)) {
-        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            Text("$title · ${summary.state.label()}", fontSize = 14.sp)
-            Text("${summary.count} obligaciones · ${summary.pendingCount} pendientes · ${summary.completedCount} completadas", fontSize = 12.sp)
-            (summary.byCurrency.keys + overview.byCurrency.keys).sorted().forEach { code ->
-                val totals = summary.byCurrency[code] ?: CurrencyTotals()
-                val pending = overview.byCurrency[code] ?: CurrencyTotals()
-                Column(Modifier.testTag("financial-currency:$code"), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                    Text(code, color = Arachn0deColors.PathHighlight, fontSize = 12.sp)
-                    Text("Total · ${Money.format(totals.totalMinor, code, locale)}", fontSize = 12.sp)
-                    Text("Pendiente total · ${Money.format(pending.pendingMinor, code, locale)}", fontSize = 12.sp)
-                    Text("Este mes · ${Money.format(pending.thisMonthPendingMinor, code, locale)}", fontSize = 16.sp,
-                        fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold, color = Arachn0deColors.PathHighlight)
-                    Text("Próximo mes · ${Money.format(pending.nextMonthPendingMinor, code, locale)}", fontSize = 12.sp)
-                    Text("Completado · ${Money.format(totals.completedMinor, code, locale)}", fontSize = 12.sp, color = Arachn0deColors.TextSecondary)
+        Column(Modifier.padding(12.dp),verticalArrangement=Arrangement.spacedBy(6.dp)) {
+            Text(title,style=MaterialTheme.typography.titleSmall)
+            overview.byCurrency.toSortedMap().forEach { (code,totals) ->
+                val values=listOf("Este mes" to totals.thisMonthPendingMinor,"Próximo mes" to totals.nextMonthPendingMinor,"Total pendiente" to totals.pendingMinor)
+                    .map { (label,amount)->label to Money.format(amount,code,locale) }
+                BoxWithConstraints(Modifier.fillMaxWidth().testTag("financial-currency:$code")) {
+                    val style=MaterialTheme.typography.titleMedium
+                    val cellWidth=with(density) {((maxWidth-16.dp)/3).toPx()}
+                    val horizontal=values.all { (label,value)->
+                        measurer.measure(value,style,softWrap=false).size.width<=cellWidth
+                    }
+                    Column(verticalArrangement=Arrangement.spacedBy(4.dp)) {
+                        Text(code,style=MaterialTheme.typography.labelSmall,color=Arachn0deColors.TextSecondary)
+                        if(horizontal) Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(8.dp)) {
+                            values.forEachIndexed {index,(label,value)->Column(Modifier.weight(1f),verticalArrangement=Arrangement.spacedBy(2.dp)) {
+                                Text(label,style=MaterialTheme.typography.labelSmall,minLines=2)
+                                Text(value,style=style,color=if(index==0) Arachn0deColors.PathHighlight else Arachn0deColors.TextPrimary,
+                                    modifier=Modifier.testTag("financial-amount:$code:$index"))
+                            }}
+                        } else Column(verticalArrangement=Arrangement.spacedBy(4.dp)) {
+                            values.forEachIndexed {index,(label,value)->Text("$label · $value",style=if(index==0) style else MaterialTheme.typography.bodyMedium,
+                                color=if(index==0) Arachn0deColors.PathHighlight else Arachn0deColors.TextPrimary,
+                                modifier=Modifier.testTag("financial-amount:$code:$index"))}
+                        }
+                    }
                 }
             }
         }

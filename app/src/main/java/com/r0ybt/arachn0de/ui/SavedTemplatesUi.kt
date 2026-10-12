@@ -1,6 +1,7 @@
 package com.r0ybt.arachn0de.ui
 
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.*
@@ -20,7 +21,7 @@ import java.util.*
 @Composable
 internal fun SavedTemplatesAccess(draft:EditorDraft,enabled:Boolean) {
     var open by rememberSaveable(draft.creationId) {mutableStateOf(false)}
-    TextButton(enabled=enabled,onClick={open=true}) {Text("Guardados")}
+    TextButton(enabled=enabled,onClick={open=true}) {Text("Usar Guardado")}
     if(open) SavedTemplatesLibrary(draft) {open=false}
 }
 
@@ -31,27 +32,57 @@ internal fun SavedTemplatesLibrary(draft:EditorDraft,onDismiss:()->Unit) {
     val rows by remember(repo){repo.observe()}.collectAsState(initial=emptyList())
     var query by rememberSaveable {mutableStateOf("")}
     var selected by remember {mutableStateOf<TemplateApplication?>(null)}
+    var inspecting by remember {mutableStateOf<SavedTemplateEntity?>(null)}
     var editing by remember {mutableStateOf<SavedTemplateEntity?>(null)}
     var deleting by remember {mutableStateOf<SavedTemplateEntity?>(null)}
     val scope=rememberCoroutineScope();val op=remember(repo,scope){OperationState(scope)}
     fun apply(application:TemplateApplication) {
         draft.removedAttachmentIds=(draft.removedAttachmentIds+AttachmentReferences.ids(draft.description)).distinct()
-        application.configuration.apply(draft,System.currentTimeMillis(),TimeZone.getDefault());draft.technologiesLoaded=true;onDismiss()
+        val journeyId=draft.metroJourneyId
+        val revision=draft.metroJourneyRevision
+        val originalPlan=draft.metroOriginalPlan
+        val originalTraveler=draft.metroOriginalTraveler
+        val plan=draft.templateMetroPlan
+        val catalog=draft.templateMetroCatalog
+        val traveler=draft.templateTraveler
+        application.configuration.apply(draft,System.currentTimeMillis(),TimeZone.getDefault())
+        // Editing keeps instance identity and concurrency checks; templates contain configuration only.
+        if(draft.id!=null && journeyId!=null) {
+            draft.metroJourneyId=journeyId;draft.metroJourneyRevision=revision
+            draft.metroOriginalPlan=originalPlan;draft.metroOriginalTraveler=originalTraveler
+            if(application.configuration.metroPlan==null) {
+                draft.templateMetroPlan=plan;draft.templateMetroCatalog=catalog;draft.templateTraveler=traveler
+            }
+        }
+        draft.technologiesLoaded=true;onDismiss()
     }
-    AlertDialog(onDismissRequest={if(!op.busy) onDismiss()},title={Text("Guardados")},text={Column {
+    AlertDialog(onDismissRequest={if(!op.busy) onDismiss()},title={Text("Usar Guardado")},text={Column {
         OutlinedTextField(query,{query=it},label={Text("Buscar por nombre")},singleLine=true,modifier=Modifier.fillMaxWidth())
-        Text("Rellena el formulario; tú decides cuándo crear la tarea.",style=MaterialTheme.typography.bodySmall)
+        Text("Rellena el formulario; tú decides cuándo guardar el elemento.",style=MaterialTheme.typography.bodySmall)
         LazyColumn(Modifier.heightIn(max=420.dp)) {
             items(rows.filter {it.name.contains(query,ignoreCase=true)},key={it.id}) {row->
                 Column {
                     TextButton(enabled=!op.busy,onClick={var prepared:TemplateApplication?=null;op.submit("No se pudo leer la plantilla.",{prepared=repo.prepare(row);true},{val a=requireNotNull(prepared);if(draft.hasWork || a.warnings.isNotEmpty()) selected=a else apply(a)})}) {Column {Text(row.name);Text(SavedTemplateCodec.decode(row.payload).let { if(it.metroPlan!=null) "Viaje Metro" else if(it.amount!=null) "Pago" else if(it.purpose==NodePurpose.NOTE) "Nota" else "Tarea" },style=MaterialTheme.typography.labelSmall)}}
-                    Row {TextButton(enabled=!op.busy,onClick={editing=row}) {Text("Editar / renombrar")};TextButton(enabled=!op.busy,onClick={deleting=row}) {Text("Eliminar")}}
+                    FlowRow {TextButton(enabled=!op.busy,onClick={inspecting=row}) {Text("Consultar")};TextButton(enabled=!op.busy,onClick={editing=row}) {Text("Editar / renombrar")};TextButton(enabled=!op.busy,onClick={deleting=row}) {Text("Eliminar")}}
                 }
             }
         }
         if(rows.isEmpty()) Text("Guarda una tarea desde ⋮ → Guardar como plantilla.")
     }},confirmButton={TextButton(enabled=!op.busy,onClick=onDismiss) {Text("Cerrar")}})
-    selected?.let {a->AlertDialog(onDismissRequest={selected=null},title={Text(if(draft.hasWork) "¿Reemplazar el borrador?" else "Referencias no disponibles")},text={Text((if(draft.hasWork) "Se sustituirán los campos del borrador, incluidas fechas, participantes, tecnologías y modalidades de creación. No se crea ni ejecuta una tarea.\n" else "")+a.warnings.joinToString("\n")+(if(a.warnings.isNotEmpty()) "\nPuedes continuar sin estas referencias." else ""))},confirmButton={TextButton(onClick={selected=null;apply(a)}) {Text("Aplicar plantilla")}},dismissButton={TextButton(onClick={selected=null}) {Text("Cancelar")}})}
+    inspecting?.let {row->
+        val c=remember(row.payload) {SavedTemplateCodec.decode(row.payload)}
+        AlertDialog(onDismissRequest={inspecting=null},title={InformationalTitle("Contenido de la plantilla") {inspecting=null}},text={
+            Column(Modifier.verticalScroll(androidx.compose.foundation.rememberScrollState()),verticalArrangement=Arrangement.spacedBy(6.dp)) {
+                Text(row.name,style=MaterialTheme.typography.titleMedium);Text(c.title);Text(c.description)
+                c.amount?.let {Text("${Money.input(it,requireNotNull(c.currency),Locale.getDefault())} ${c.currency}")}
+                Text("Inicio: ${templateDateSummary(c.start)}")
+                Text("Vencimiento: ${templateDateSummary(c.due)}")
+                Text("${c.people.size} Personas · ${c.technologies.size} Tecnologías · ${c.tags.size} etiquetas")
+                if(c.metroPlan!=null) Text("Plan de viaje sin sesiones ni historial")
+            }
+        },confirmButton={})
+    }
+    selected?.let {a->AlertDialog(onDismissRequest={selected=null},title={Text(if(draft.hasWork) "¿Reemplazar el borrador?" else "Referencias no disponibles")},text={Text((if(draft.hasWork) "Se sustituirán los campos del borrador, incluidas fechas, participantes, tecnologías y modalidades de creación. No se guarda ni ejecuta un elemento. Si la tarjeta ya tiene un viaje, se conserva su vínculo; una plantilla sin viaje no lo elimina.\n" else "")+a.warnings.joinToString("\n")+(if(a.warnings.isNotEmpty()) "\nPuedes continuar sin estas referencias." else ""))},confirmButton={TextButton(onClick={selected=null;apply(a)}) {Text("Aplicar plantilla")}},dismissButton={TextButton(onClick={selected=null}) {Text("Cancelar")}})}
     deleting?.let {row->AlertDialog(onDismissRequest={deleting=null},title={Text("¿Eliminar ${row.name}?")},text={Text("Las tareas creadas antes se conservan.")},confirmButton={TextButton(enabled=!op.busy,onClick={op.submit("No se pudo eliminar.",{repo.delete(row.id);true},{deleting=null})}) {Text("Eliminar")}},dismissButton={TextButton(onClick={deleting=null}) {Text("Cancelar")}})}
     editing?.let {row->TemplateEditor(row,false,repo) {editing=null}}
     OperationErrorDialog(op)
@@ -114,4 +145,17 @@ internal fun TemplateDateFields(label:String,value:TemplateDate,onValidity:(Bool
         OutlinedTextField(hour,{text->hour=text;val p=text.split(':');val h=p.getOrNull(0)?.toIntOrNull();val m=p.getOrNull(1)?.toIntOrNull();hourValid=p.size==2 && h!=null && h in 0..23 && m!=null && m in 0..59;if(hourValid) onChange(value.copy(minute=requireNotNull(h)*60+requireNotNull(m)))},label={Text("Hora (HH:mm)")},isError=!hourValid,singleLine=true,modifier=Modifier.widthIn(max=180.dp))
         Text("Si el día no existe, se usa el último día válido del mes.",style=MaterialTheme.typography.bodySmall)
     }
+}
+
+private fun templateDateSummary(date: TemplateDate): String {
+    val label=when(date.kind) {
+        TemplateDateKind.NONE -> "Sin fecha"
+        TemplateDateKind.TODAY -> "Hoy"
+        TemplateDateKind.TOMORROW -> "Mañana"
+        TemplateDateKind.IN_DAYS -> "Dentro de ${date.number} días"
+        TemplateDateKind.DAY_NEXT_MONTH -> "Día ${date.number} del próximo mes"
+        TemplateDateKind.FIRST_DAY_NEXT -> "Primer día del próximo mes"
+        TemplateDateKind.LAST_DAY -> "Último día del mes"
+    }
+    return if(date.kind==TemplateDateKind.NONE) label else "$label · ${"%02d:%02d".format(Locale.ROOT,date.minute/60,date.minute%60)}"
 }

@@ -75,12 +75,12 @@ class ObligationUiTest {
     @Test fun obligationDisplaysInCalendarAttentionAndNoteConversionRequiresConfirmation() {
         val node=runBlocking { app.nodeRepository.createNode(project,null,"Bill",dueAt=fixed-1,obligation=Obligation(50000,"CLP")) }
         compose.setContent { Arachn0deTheme { AppSafeArea { AppRoot(app.projectRepository,app.nodeRepository) { fixed } } } }
-        await("Project"); compose.onNodeWithContentDescription("Abrir menú").performClick(); compose.onNodeWithText("Calendario").performClick()
+        await("Project"); compose.onNodeWithContentDescription("Abrir menú").performClick(); compose.onNodeWithText("Seguimiento").performScrollTo().performClick(); compose.onNodeWithText("Calendario").performClick()
         compose.waitUntil(10_000) { compose.onAllNodes(hasStateDescription("Hoy · 1 tarea")).fetchSemanticsNodes().isNotEmpty() }
         compose.onNodeWithTag("calendar-list").performScrollToNode(hasTestTag("calendar-task:${node.id}"))
         compose.onNodeWithTag("calendar-task:${node.id}").assert(hasText("CLP",substring=true))
         compose.onNodeWithText("Volver").performClick()
-        compose.onNodeWithContentDescription("Abrir menú").performClick(); compose.onNodeWithText("Atención").performClick()
+        compose.onNodeWithContentDescription("Abrir menú").performClick(); compose.onNodeWithText("Seguimiento").performScrollTo().performClick(); compose.onNodeWithText("Avisos").performClick()
         compose.waitUntil(10_000) { compose.onAllNodesWithTag("attention-task:${node.id}").fetchSemanticsNodes().isNotEmpty() }
         compose.onNodeWithTag("attention-task:${node.id}").assert(hasText("CLP",substring=true))
         compose.onNodeWithTag("attention-task:${node.id}").performClick(); await("CAPA 1")

@@ -24,12 +24,12 @@ import com.r0ybt.arachn0de.domain.model.AttachmentReferences
 /** Keep Material's outlined decoration; hit testing uses the actual inner text coordinates. */
 @Composable
 internal fun AttachmentDescriptionField(value: TextFieldValue, onValueChange: (TextFieldValue) -> Unit,
-    enabled: Boolean, focusRequester: androidx.compose.ui.focus.FocusRequester? = null, transformation: AttachmentVisualTransformation, onReference: (Int) -> Unit) {
+    enabled: Boolean, maxLines: Int = Int.MAX_VALUE, focusRequester: androidx.compose.ui.focus.FocusRequester? = null, transformation: AttachmentVisualTransformation, onReference: (Int) -> Unit) {
     val interactions = remember { MutableInteractionSource() }
     var layout by remember { mutableStateOf<TextLayoutResult?>(null) }
     val transformed = transformation.filter(AnnotatedString(value.text))
     val references = AttachmentReferences.matches(value.text).toList()
-    BasicTextField(value = value, onValueChange = onValueChange, enabled = enabled,
+    BasicTextField(value = value, onValueChange = onValueChange, enabled = enabled, maxLines = maxLines,
         modifier = (focusRequester?.let { Modifier.focusRequester(it) } ?: Modifier).fillMaxWidth().defaultMinSize(minHeight = OutlinedTextFieldDefaults.MinHeight), interactionSource = interactions,
         textStyle = LocalTextStyle.current.copy(color = MaterialTheme.colorScheme.onSurface, fontWeight = androidx.compose.ui.text.font.FontWeight.Normal),
         cursorBrush = SolidColor(MaterialTheme.colorScheme.primary), visualTransformation = transformation,

@@ -111,7 +111,15 @@ class ProjectRepository(
 
     /** Deleting an already absent project returns false. */
     suspend fun deleteProject(id: String): Boolean = inTransaction {
+        database?.let {db->
+            val ids=db.nodeDao().getProjectNodes(id).mapTo(hashSetOf()) {it.id}
+            BacklogRepository(db).rejectProjectDeletion(id,ids)
+            SprintLinkRepository(db).rejectDeletion(ids)
+            // Remove owned histories before nodes with RESTRICT foreign keys, in this transaction.
+            db.conversionDao().roots().filter {it.projectId==id || it.nodeId in ids}.forEach {db.managementContextDao().delete(it.id)}
+        }
         val deleted = projectDao.delete(id) == 1
+        database?.let {com.r0ybt.arachn0de.access.AccessRepository(it).cleanReferences()}
         if (deleted) {
             val ordered = sortProjectsForDisplay(projectDao.getAll())
             writeOrder(ordered)

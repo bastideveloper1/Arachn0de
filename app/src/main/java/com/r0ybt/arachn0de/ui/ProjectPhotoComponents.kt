@@ -37,7 +37,11 @@ private val ProjectPhotoShape = RoundedCornerShape(12.dp)
 
 /** Fixed geometry before/after decoding; only composed visible identities load a cached thumbnail. */
 @Composable
-internal fun ProjectIdentityIcon(project: Project, modifier: Modifier = Modifier.size(40.dp)) {
+internal fun ProjectIdentityIcon(project: Project, modifier: Modifier = Modifier.size(48.dp)) {
+    if(project.photo==null) {
+        OfficialIcon(com.r0ybt.arachn0de.R.drawable.bw90_project,"Proyecto sin fotografía",size=48.dp,modifier=modifier.testTag("project-photo:${project.id}"))
+        return
+    }
     val context = LocalContext.current
     val storageContext=privateStorageContext(context)
     val file = project.photo?.file

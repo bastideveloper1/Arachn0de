@@ -53,4 +53,21 @@ class MetroServiceTest {
         val second=Robolectric.buildService(MetroTrackingService::class.java).create()
         try {second.get().onStartCommand(null,0,2);await {Shadows.shadowOf(app.getSystemService(NotificationManager::class.java)).getNotification(843)?.actions?.size==2};assertEquals(session,repo.snapshot().journeys.single().data.active!!.id)} finally {second.destroy()}
     }
+    @Test fun configurableArrivalReminderIsRecordedOnceAcrossServiceRecreation()=runBlocking<Unit> {
+        val repo=app.metroRepository;repo.settings {it.copy(vibration=true)}
+        val route=MetroPlanner.plan(repo.snapshot().preferences.network,listOf("los-heroes","republica"),false,MetroRestrictions())!!
+        val id=repo.savePlan(route);assertTrue(repo.begin(id,repo.snapshot().journeys.single().row.revision,metroTime(app)))
+        val first=Robolectric.buildService(MetroTrackingService::class.java).create()
+        try {
+            first.get().onStartCommand(null,0,1)
+            await {runBlocking {repo.snapshot().journeys.single().data.active!!.events.count {it.kind.startsWith("PASS_")}==1}}
+        } finally {first.destroy()}
+        val second=Robolectric.buildService(MetroTrackingService::class.java).create()
+        try {
+            second.get().onStartCommand(null,0,2)
+            await {Shadows.shadowOf(app.getSystemService(NotificationManager::class.java)).getNotification(843)!=null}
+            assertEquals(1,repo.snapshot().journeys.single().data.active!!.events.count {it.kind.startsWith("PASS_")})
+        } finally {second.destroy()}
+    }
+
 }

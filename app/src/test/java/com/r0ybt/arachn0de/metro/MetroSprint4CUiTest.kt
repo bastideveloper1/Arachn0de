@@ -48,7 +48,7 @@ class MetroSprint4CUiTest {
     }
     @Test fun referenceScheduleIsAnExplicitScenarioWithDateAndUncertaintyNotAnOperationalPanel() {
         screen();click("Planificar")
-        compose.onNodeWithText("Simular horario de referencia").performScrollTo();click("Simular horario de referencia")
+        compose.onNodeWithText("Simular horario").performScrollTo();click("Simular horario")
         compose.onNode(hasText("Fecha y hora en Santiago:",substring=true)).assertExists()
         compose.onNode(hasText("Referencia histórica, no horario vigente confirmado.",substring=true)).assertExists()
         compose.onNodeWithText("Horario y tipo de servicio").assertDoesNotExist()

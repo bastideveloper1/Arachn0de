@@ -153,7 +153,7 @@ internal fun EmptyProjectsState(onCreateProject: () -> Unit) {
                     .fillMaxWidth()
                     .heightIn(min = 48.dp),
             ) {
-                Icon(imageVector = Icons.Default.Add, contentDescription = null)
+                LucideIcon(imageVector = Icons.Default.Add, contentDescription = null)
                 Spacer(modifier = Modifier.width(8.dp))
                 Text("Nuevo proyecto")
             }
@@ -221,7 +221,7 @@ internal fun ProjectList(
                 colors = ButtonDefaults.buttonColors(containerColor = Arachn0deColors.Primary, contentColor = Arachn0deColors.OnSolidPrimary),
                 shape = RoundedCornerShape(14.dp),
             ) {
-                Icon(imageVector = Icons.Default.Add, contentDescription = null)
+                LucideIcon(imageVector = Icons.Default.Add, contentDescription = null)
                 Spacer(modifier = Modifier.width(8.dp))
                 Text("Nuevo proyecto")
             }
@@ -245,6 +245,8 @@ internal fun ProjectCard(
     onPhoto: () -> Unit = {},
 ) {
     var showActions by remember { mutableStateOf(false) }
+    var planning by remember {mutableStateOf(false)}
+    if(planning) ProjectPlanningDialog(project.id) {planning=false}
     Card(
         shape = RoundedCornerShape(8.dp),
         colors = CardDefaults.cardColors(containerColor = Arachn0deColors.Surface),
@@ -258,8 +260,8 @@ internal fun ProjectCard(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .heightIn(min = 56.dp)
-                .padding(horizontal = 10.dp, vertical = 4.dp),
+                .heightIn(min = 72.dp)
+                .padding(horizontal = 12.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             ProjectIdentityIcon(project)
@@ -277,27 +279,26 @@ internal fun ProjectCard(
                     softWrap = true,
                     modifier = Modifier.testTag("project-title:${project.id}"),
                 )
-                CompactAssignments(project.id,emptyList(),project=true)
+                CompactCardIndicators("project:${project.id}",modifier=Modifier.padding(top=4.dp,bottom=4.dp))
 
             }
 
-            ProjectAlerts(alerts)
-            com.r0ybt.arachn0de.metro.MetroActivityIndicator("project:${project.id}")
+            FavoriteToggle("project:${project.id}")
             IconButton(onClick = { showActions = true }, modifier = Modifier.size(48.dp)) {
-                Icon(Icons.Default.MoreVert, contentDescription = "Opciones del proyecto", tint = Arachn0deColors.TextSecondary)
+                LucideIcon(Icons.Default.MoreVert, contentDescription = "Opciones del proyecto", tint = Arachn0deColors.TextSecondary)
             }
         }
     }
     if (showActions) {
-        ActionMenu(project.name,{ showActions = false }) {
-            ActionMenuItem("Fotografía", Icons.Default.Image, { showActions = false; onPhoto() })
-            ActionMenuItem("Editar",Icons.Default.Edit,{ showActions = false; onEdit() },
+        ContextActionMenu(project.name,{ showActions = false }) {
+            action("Planificación",Icons.Default.Settings,{showActions=false;planning=true})
+            action("Fotografía", Icons.Default.Image, { showActions = false; onPhoto() })
+            action("Editar",Icons.Default.Edit,{ showActions = false; onEdit() },
                 Modifier.semantics { contentDescription = "Editar proyecto" })
-            ActionMenuItem("Convertir en capa",Icons.Default.AccountTree,{ showActions=false;onMoveInside() })
-            ActionMenuItem("Copiar",Icons.Default.ContentCopy,{ showActions = false; onCopy(false) },enabled=canCopy)
-            ActionMenuItem("Copiar con descendientes",Icons.Default.AccountTree,{ showActions = false; onCopy(true) },enabled=canCopy && canCopyDescendants)
-            androidx.compose.material3.HorizontalDivider()
-            ActionMenuItem("Eliminar",Icons.Default.Delete,{ showActions = false; onDelete() },
+            action("Convertir en capa",Icons.Default.AccountTree,{ showActions=false;onMoveInside() })
+            action("Copiar",Icons.Default.ContentCopy,{ showActions = false; onCopy(false) },enabled=canCopy)
+            action("Copiar texto con descendientes",Icons.Default.CopyAll,{ showActions = false; onCopy(true) },enabled=canCopy && canCopyDescendants)
+            action("Eliminar",Icons.Default.Delete,{ showActions = false; onDelete() },
                 Modifier.semantics { contentDescription = "Eliminar proyecto" },destructive=true)
         }
     }

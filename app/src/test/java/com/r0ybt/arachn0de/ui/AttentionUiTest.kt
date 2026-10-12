@@ -53,28 +53,27 @@ class AttentionUiTest {
         }
         if (restorer == null) compose.setContent(content) else restorer.setContent(content)
     }
-    private fun awaitText(text: String) = compose.waitUntil(10_000) { compose.onAllNodesWithText(text).fetchSemanticsNodes().isNotEmpty() }
-    private fun awaitTag(tag: String) = compose.waitUntil(10_000) { compose.onAllNodesWithTag(tag).fetchSemanticsNodes().isNotEmpty() }
+    private fun awaitText(text: String) = compose.waitUntil(10_000) { org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle();androidx.compose.runtime.snapshots.Snapshot.sendApplyNotifications();compose.mainClock.advanceTimeByFrame();compose.onAllNodesWithText(text).fetchSemanticsNodes().isNotEmpty() }
+    private fun awaitTag(tag: String) = compose.waitUntil(10_000) { org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle();androidx.compose.runtime.snapshots.Snapshot.sendApplyNotifications();compose.mainClock.advanceTimeByFrame();compose.onAllNodesWithTag(tag,useUnmergedTree=true).fetchSemanticsNodes().isNotEmpty() }
     private fun openAttention() {
         compose.onNodeWithContentDescription("Abrir menú").performClick()
-        compose.onNodeWithText("Atención").performClick()
+        compose.onNodeWithText("Seguimiento").performScrollTo().performClick(); compose.onNodeWithText("Avisos").performClick()
         awaitTag("attention-task:$urgent")
     }
     private fun up() {
-        compose.onNodeWithTag("nodes-list").performScrollToNode(hasContentDescription("Volver a la capa anterior"))
         compose.onNodeWithContentDescription("Volver a la capa anterior").performClick()
     }
 
     @Test fun indicatorsProjectionNavigationAndSavedRouteUseRealNodeAndAncestors() {
         val restoration = StateRestorationTester(compose)
         mount(restoration)
-        awaitText("Personal"); compose.onAllNodesWithContentDescription("Tareas del proyecto: 1 vencen hoy").onFirst().assertExists()
+        awaitText("Personal"); awaitTag("card-signal:project:$project:due");compose.onNodeWithTag("card-signal:project:$project:due",useUnmergedTree=true).assertExists()
         compose.onNodeWithText("Contiene 1 vencida").assertDoesNotExist()
         compose.onNodeWithText("Contiene 1 próxima").assertDoesNotExist()
         val before = runBlocking { app.nodeRepository.getProjectNodes(project) }
         openAttention()
         compose.onNodeWithTag("attention-task:$urgent").assert(hasText("Personal › Salud › Tratamiento"))
-        compose.onNodeWithTag("attention-task:$urgent").assert(hasAnyDescendant(hasContentDescription("Roy")))
+        compose.onNodeWithTag("attention-task:$urgent").assert(hasContentDescription("Roy"))
         compose.onNodeWithTag("attention-task:$other").assert(hasText("Trabajo"))
         assertEquals(before, runBlocking { app.nodeRepository.getProjectNodes(project) })
         compose.onNodeWithTag("attention-task:$urgent").performClick()
@@ -91,8 +90,8 @@ class AttentionUiTest {
         compose.waitUntil(10_000) { runBlocking { !app.nodeRepository.getNode(urgent)!!.isCompleted } }
         up(); awaitText("CAPA 2")
         up(); awaitText("CAPA 1")
-        compose.onNodeWithTag("nodes-list").performScrollToNode(hasText("Contiene 1 vencida"))
-        compose.onAllNodesWithText("Contiene 1 vencida")[0].assertExists()
+        compose.onNodeWithTag("nodes-list").performScrollToNode(hasText("Tratamiento"))
+        compose.onNodeWithTag("card-signal:node:$inner:due",useUnmergedTree=true).assertExists()
         up()
         compose.onNodeWithContentDescription("Capas de cebolla").performClick()
         awaitTag("layer-navigator")

@@ -49,6 +49,24 @@ internal class MetroTrackingService : Service() {
                 while(isActive) {
                     owner.access.checkOpen()
                     val session=active.data.active!!; val position=MetroTracking.position(session,metroTime(this@MetroTrackingService))
+                    if(snapshot.preferences.vibration && MetroArrivalAlert.pending(session,metroTime(this@MetroTrackingService))!=null) {
+                        // Record first, so reopening does not repeat the reminder. Recheck store access before hardware use.
+                        withContext(NonCancellable) {
+                            val time=metroTime(this@MetroTrackingService)
+                            if(repository.tracking(active.row.id,active.row.revision) {MetroArrivalAlert.mark(it,time)}) {
+                                owner.access.checkOpen()
+                                val vibrator=getSystemService(VIBRATOR_SERVICE) as? Vibrator
+                                if(vibrator?.hasVibrator()==true) {
+                                    // Notification usage lets Android apply notification/DND policies.
+                                    runCatching {
+                                        val attributes=android.media.AudioAttributes.Builder().setUsage(android.media.AudioAttributes.USAGE_NOTIFICATION).build()
+                                        if(Build.VERSION.SDK_INT>=26) vibrator.vibrate(VibrationEffect.createOneShot(200,VibrationEffect.DEFAULT_AMPLITUDE),attributes)
+                                        else @Suppress("DEPRECATION") vibrator.vibrate(200,attributes)
+                                    }
+                                }
+                            }
+                        }
+                    }
                     val station=MetroPresentation.positionText(session.route,position,snapshot.preferences.network)
                     val status=MetroActivity.status(active,metroTime(this@MetroTrackingService))
                     val command=if(session.pausedAt==null) PAUSE else RESUME
@@ -76,7 +94,8 @@ internal class MetroTrackingService : Service() {
     }
 }
 internal object MetroNavigation {
-    data class Request(val nodeId: String?,val token: Long=System.nanoTime())
+    data class Request(val nodeId: String?,val token: Long=System.nanoTime(),val journeyId:String?=null)
     val requests=kotlinx.coroutines.flow.MutableStateFlow<Request?>(null)
+    fun openJourney(id:String) {requests.value=Request(null,journeyId=id)}
     fun open(nodeId: String?=null) { requests.value=Request(nodeId) }
 }

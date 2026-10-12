@@ -65,7 +65,7 @@ class FinancialUiTest {
         else restorer.setContent { Arachn0deTheme { AppSafeArea { AppRoot(app.projectRepository,app.nodeRepository){clock.get()} } } }
     }
     private fun open() {
-        awaitText("Personal");compose.onNodeWithContentDescription("Abrir menú").performClick();compose.onNodeWithText("Obligaciones").performScrollTo().performClick()
+        awaitText("Personal");compose.onNodeWithContentDescription("Abrir menú").performClick();compose.onNodeWithText("Seguimiento").performScrollTo().performClick(); compose.onNodeWithText("Obligaciones").performScrollTo().performClick()
         awaitTag("financial-summary")
     }
     private fun row(id:String) { awaitTag("financial-summary"); compose.onNodeWithTag("obligations-list").performScrollToNode(hasTestTag("obligation-task:$id"));awaitTag("obligation-task:$id") }
@@ -81,7 +81,7 @@ class FinancialUiTest {
             app.personRepository.setResponsiblePeople(bill, setOf("s"))
         }
         mount(); awaitText("Personal"); compose.onNodeWithText("Personal").performClick()
-        awaitText("Sin fecha")
+        compose.waitUntil(10_000) {runCatching {compose.onNodeWithTag("nodes-list").performScrollToNode(hasText("Sin fecha"))}.isSuccess}
         compose.onNodeWithContentDescription("Filtros").performClick()
         compose.onNodeWithText("Persona: Todas").performClick()
         compose.onNodeWithText("Roy").performClick()
@@ -122,7 +122,7 @@ class FinancialUiTest {
         card(excluded.id).assertDoesNotExist()
         compose.onNodeWithText("Compra Scarlett").assertDoesNotExist()
         action(second.id, "Historial").performClick(); awaitText("Historial · Otra compra")
-        compose.onNodeWithText("Cerrar").performClick()
+        compose.onNodeWithContentDescription("Cerrar").performClick()
         action(second.id, "Editar").performClick(); awaitText("Editar elemento")
         compose.onNode(hasSetTextAction() and hasText("Otra compra")).assertExists()
         compose.onNodeWithText("Cerrar").performClick()
@@ -130,17 +130,18 @@ class FinancialUiTest {
         card(second.id).assertIsSelected(); card(undated).assertIsNotSelected()
     }
 
-    @Test fun summaryDisplaysAllPendingCurrentAndNextMonthAndKeepsCompleted() {
+    @Test fun summaryDisplaysOnlyPendingCurrentNextAndTotalWithoutHistoricalAmounts() {
         val overview=com.r0ybt.arachn0de.domain.model.FinancialSummary(mapOf("CLP" to com.r0ybt.arachn0de.domain.model.CurrencyTotals(
             totalMinor=java.math.BigInteger.valueOf(240000),pendingMinor=java.math.BigInteger.valueOf(200000),
             completedMinor=java.math.BigInteger.valueOf(40000),pendingCount=3,completedCount=1,
             thisMonthPendingMinor=java.math.BigInteger.valueOf(50000),nextMonthPendingMinor=java.math.BigInteger.valueOf(70000))))
         compose.setContent { Arachn0deTheme { FinancialSummaryCard(overview) } }
         fun amount(value:Long)=com.r0ybt.arachn0de.domain.model.Money.format(java.math.BigInteger.valueOf(value),"CLP",Locale.US)
-        compose.onNodeWithText("Pendiente total · ${amount(200000)}").assertExists()
-        compose.onNodeWithText("Este mes · ${amount(50000)}").assertExists()
-        compose.onNodeWithText("Próximo mes · ${amount(70000)}").assertExists()
-        compose.onNodeWithText("Completado · ${amount(40000)}").assertExists()
+        compose.onNodeWithTag("financial-amount:CLP:0").assertTextContains(amount(50000),substring=true)
+        compose.onNodeWithTag("financial-amount:CLP:1").assertTextContains(amount(70000),substring=true)
+        compose.onNodeWithTag("financial-amount:CLP:2").assertTextContains(amount(200000),substring=true)
+        compose.onNodeWithText("Completado · ${amount(40000)}").assertDoesNotExist()
+        compose.onNodeWithText("Total · ${amount(240000)}").assertDoesNotExist()
     }
 
     @Test fun filtersCurrencySummaryRealNavigationAndRestorationUseSameObligations() {
@@ -188,7 +189,7 @@ class FinancialUiTest {
         compose.onNodeWithTag("nodes-list").performScrollToNode(hasText("Salud"));compose.onNodeWithText("Salud").performClick();awaitText("CAPA 1")
         compose.onNodeWithTag("nodes-list").performScrollToNode(hasText("Total",substring=true))
         compose.onNodeWithTag("financial-currency:CLP").assertExists();compose.onNodeWithTag("financial-currency:USD").assertDoesNotExist()
-        compose.onNodeWithContentDescription("Abrir menú").performClick();compose.onNodeWithText("Obligaciones").performScrollTo().performClick();awaitTag("financial-summary")
+        compose.onNodeWithContentDescription("Abrir menú").performClick();compose.onNodeWithText("Seguimiento").performScrollTo().performClick(); compose.onNodeWithText("Obligaciones").performScrollTo().performClick();awaitTag("financial-summary")
         compose.onNodeWithText("Volver").performClick();awaitText("CAPA 1")
         compose.onNodeWithTag("nodes-list").performScrollToNode(hasText("Tratamiento"));compose.onNodeWithText("Tratamiento").assertExists()
     }

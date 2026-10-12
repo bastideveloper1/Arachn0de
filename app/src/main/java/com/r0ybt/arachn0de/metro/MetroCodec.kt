@@ -3,7 +3,7 @@ package com.r0ybt.arachn0de.metro
 import org.json.JSONArray
 import org.json.JSONObject
 
-internal data class MetroPreferences(val catalog: String, val home: String? = null, val favorites: Set<String> = emptySet(), val restrictions: MetroRestrictions = MetroRestrictions()) {
+internal data class MetroPreferences(val catalog: String, val home: String? = null, val favorites: Set<String> = emptySet(), val restrictions: MetroRestrictions = MetroRestrictions(), val vibration: Boolean = false) {
     val network get() = MetroNetwork.decode(catalog)
     val planningNetwork get() = MetroCatalogRevision.forPlanning(network)
 }
@@ -41,11 +41,11 @@ internal object MetroCodec {
         return JSONObject(raw)
     }
     private fun parse(raw: String)=boundedObject(raw).also { require(it.int("version")==1) }
-    fun preferences(p: MetroPreferences) = obj("version" to 1, "catalog" to p.catalog, "home" to p.home, "favorites" to JSONArray(p.favorites.sorted()),
+    fun preferences(p: MetroPreferences) = obj("version" to 2, "vibration" to p.vibration, "catalog" to p.catalog, "home" to p.home, "favorites" to JSONArray(p.favorites.sorted()),
         "closed" to JSONArray(p.restrictions.closed.sorted()), "avoided" to JSONArray(p.restrictions.avoided.sorted()), "interrupted" to JSONArray(p.restrictions.interrupted.sorted())).toString()
     fun preferences(raw: String): MetroPreferences {
-        val o=parse(raw); o.fields("version","catalog","home","favorites","closed","avoided","interrupted"); listOf("favorites","closed","avoided","interrupted").forEach { key-> val a=strings(o.getJSONArray(key));require(a.distinct().size==a.size) }; val p=MetroPreferences(o.string("catalog"),o.nullString("home"),strings(o.getJSONArray("favorites")).toSet(),
-            MetroRestrictions(strings(o.getJSONArray("closed")).toSet(),strings(o.getJSONArray("avoided")).toSet(),strings(o.getJSONArray("interrupted")).toSet()))
+        val o=boundedObject(raw); val version=o.int("version"); require(version in 1..2); o.fields("version","catalog","home","favorites","closed","avoided","interrupted",*(if(version==2) arrayOf("vibration") else emptyArray())); listOf("favorites","closed","avoided","interrupted").forEach { key-> val a=strings(o.getJSONArray(key));require(a.distinct().size==a.size) }; val p=MetroPreferences(o.string("catalog"),o.nullString("home"),strings(o.getJSONArray("favorites")).toSet(),
+            MetroRestrictions(strings(o.getJSONArray("closed")).toSet(),strings(o.getJSONArray("avoided")).toSet(),strings(o.getJSONArray("interrupted")).toSet()), if(version==2) o.bool("vibration") else false)
         val net=p.network
         require(p.home==null || p.home in net.stations)
         require((p.favorites+p.restrictions.closed+p.restrictions.avoided).all { it in net.stations })

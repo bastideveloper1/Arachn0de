@@ -29,7 +29,20 @@ import org.robolectric.annotation.Config
 @RunWith(RobolectricTestRunner::class) @Config(application=com.r0ybt.arachn0de.security.LegacyUiTestApplication::class,sdk=[28])
 class VisualActionsNavigationTest {
     @get:Rule val compose=createAndroidComposeRule<MainActivity>()
-    @After fun close() { (compose.activity.application as Arachn0deApplication).database.close() }
+    @After fun close() {
+        compose.runOnUiThread {
+            val content=compose.activity.findViewById<android.view.ViewGroup>(android.R.id.content)
+            for(i in 0 until content.childCount) (content.getChildAt(i) as? androidx.compose.ui.platform.AbstractComposeView)?.disposeComposition()
+            content.removeAllViews()
+        }
+        val app=compose.activity.application as Arachn0deApplication
+        kotlinx.coroutines.runBlocking {
+            app.security.current.value!!.scope.coroutineContext[kotlinx.coroutines.Job]?.cancel()
+            app.security.current.value!!.scope.coroutineContext[kotlinx.coroutines.Job]?.join()
+            kotlinx.coroutines.withTimeout(15000) {app.database.getCoroutineScope().coroutineContext[kotlinx.coroutines.Job]!!.children.toList().forEach {it.join()}}
+        }
+        app.database.close()
+    }
     private fun mount(content:@Composable () -> Unit) { compose.runOnUiThread { compose.activity.setContent { Arachn0deTheme { AppSafeArea(content=content) } } } }
     private fun roleButton()=SemanticsMatcher.expectValue(SemanticsProperties.Role,Role.Button)
     @Test fun actionMenuHasExplicitRolesAndDistinctDestructiveSemantics() {
@@ -42,6 +55,33 @@ class VisualActionsNavigationTest {
         compose.onNodeWithText("Convertir en nota").assert(roleButton()).performClick();assertEquals("convert",selected)
         compose.onNodeWithText("Copiar este elemento").assert(roleButton()).performClick();assertEquals("copy",selected)
         compose.onNodeWithText("Eliminar").assert(roleButton()).assert(hasStateDescription("Acción destructiva"))
+    }
+    @Test fun drawerGroupsCollapseIndependentlyAndKeepPrimaryDestinationsOrdered() {
+        var destination="";var dismissed=0
+        mount {AppIdentityDrawer({dismissed++},onSearch={destination="Buscar"},onProjects={destination="Proyectos"},onMetro={destination="Metro"},
+            onFavorites={destination="Favoritos"},onAttention={destination="Avisos"},onObligations={destination="Obligaciones"},onCalendar={destination="Calendario"},
+            onPeople={destination="Personas"},onTechnologies={destination="Tecnologías"},onTags={destination="Etiquetas"},
+            onSecurity={destination="Seguridad"},onBackups={destination="Respaldo"},onAppearance={destination="Apariencia"},
+            onQuickCapture={destination="Captura rápida"},onAbout={destination="Acerca de"},onGame={destination="Juego"})}
+        val primary=listOf("Buscar","Proyectos","Metro").map {compose.onNodeWithText(it).assertIsDisplayed().fetchSemanticsNode().boundsInRoot.top}
+        assertEquals(primary.sorted(),primary)
+        val groups=listOf("Seguimiento" to listOf("Favoritos","Avisos","Obligaciones","Calendario"),
+            "Recursos" to listOf("Personas","Tecnologías","Etiquetas"),"Ajustes" to listOf("Seguridad","Respaldo","Apariencia"))
+        for((section,children) in groups) {
+            compose.onNodeWithTag("drawer-section:$section").assert(hasStateDescription("Contraída"))
+            children.forEach {compose.onNodeWithText(it).assertDoesNotExist()}
+            compose.onNodeWithText(section).performScrollTo().performClick()
+            compose.onNodeWithTag("drawer-section:$section").assert(hasStateDescription("Expandida"))
+            children.forEach {label->compose.onNodeWithText(label).performScrollTo().performClick();assertEquals(label,destination)}
+            compose.onNodeWithText(section).performScrollTo().performClick()
+            children.forEach {compose.onNodeWithText(it).assertDoesNotExist()}
+        }
+        for(label in listOf("Buscar","Proyectos","Metro","Captura rápida","Acerca de","Juego")) {
+            val item=compose.onNodeWithText(label)
+            if(runCatching {item.assertIsDisplayed()}.isFailure) item.performScrollTo()
+            item.performClick();assertEquals(label,destination)
+        }
+        assertEquals(16,dismissed)
     }
     @Test fun compactDrawerHasIdentitySelectedDestinationScrollAndBackWithLargeFont() {
         mount {
@@ -66,6 +106,7 @@ class VisualActionsNavigationTest {
             }
         }
         compose.onNodeWithTag("navigation-drawer").assert(hasStateDescription("Menú a ancho completo"))
+        compose.onNodeWithText("Seguimiento").performScrollTo().performClick()
         compose.onNodeWithText("Calendario").performScrollTo().performClick()
         compose.onNodeWithTag("navigation-drawer").assertDoesNotExist();assertEquals(1,calendarCalls)
     }

@@ -10,13 +10,13 @@ object SemanticColors {
     val Upcoming = Color(0xFFFFA45B)
     val Attention = Color(0xFFFFA45B)
     val ImageLink = Color(0xFF83CFFF)
-    val SprintUnplanned = Color(0xFF3A2C52)
-    val SprintPlanned = Color(0xFFB9C6E8)
-    val SprintDoing = Color(0xFF7E61FF)
-    val SprintDone = Color(0xFF6A4AC6)
-    val SprintValidated = Color(0xFFB99BFF)
-    val SprintText = Color(0xFFB99BFF)
-    val CompletedText = Color(0xFFE3DCF7)
+    val SprintUnplanned = BlackWhite90.Inactive
+    val SprintPlanned = BlackWhite90.Secondary
+    val SprintDoing = BlackWhite90.Text
+    val SprintDone = BlackWhite90.Selected
+    val SprintValidated = BlackWhite90.Text
+    val SprintText = BlackWhite90.Text
+    val CompletedText = BlackWhite90.Secondary
 }
 
 /** Existing token names keep all callers on one composition-scoped appearance palette. */
@@ -36,7 +36,7 @@ object Arachn0deColors {
     val PathHighlight: Color @Composable get() = LocalAppearancePalette.current.secondary
     val Selection: Color @Composable get() = LocalAppearancePalette.current.selection
     val AccentSurface: Color @Composable get() = LocalAppearancePalette.current.accentSurface
-    val OnPrimary = Color.White
+    val OnPrimary = BlackWhite90.Text
     val OnSolidPrimary: Color @Composable get() = LocalAppearancePalette.current.onSolidPrimary
     val ImageLink = SemanticColors.ImageLink
     val Destructive = SemanticColors.Error

@@ -95,7 +95,7 @@ class PersonRepositoryTest {
         db.close(); open()
         assertEquals(file, people.observePeople().first().single().avatarFile)
         val loaded = AvatarStore(context).read(file)!!
-        assertTrue(loaded.width <= 512 && loaded.height <= 512)
+        assertEquals(800,loaded.width);assertEquals(800,loaded.height)
         loaded.recycle()
         assertTrue(people.save("p", "Person renamed", null, isNew = false))
         assertFalse(AvatarStore(context).exists(file))
@@ -127,7 +127,7 @@ class PersonRepositoryTest {
         open()
         val oldProject = db.projectDao().getById("project")!!
         val oldNode = nodes.getNode("node")!!
-        assertEquals(27, db.openHelper.readableDatabase.version)
+        assertEquals(37,db.openHelper.readableDatabase.version)
         assertEquals("Original", oldProject.name)
         assertEquals(8, oldProject.position)
         assertEquals(100L, oldProject.createdAt)

@@ -22,7 +22,14 @@ open class AvatarStore(context: Context, private val directoryName: String = "av
         return File(directory, name)
     }
     fun exists(name: String) = file(name).isFile
-    fun read(name: String): Bitmap? = SecureFiles.decoded(file(name))
+    fun read(name: String): Bitmap? {
+        val target=file(name)
+        val bounds=BitmapFactory.Options().apply {inJustDecodeBounds=true}
+        SecureFiles.decoded(target,bounds)
+        var sample=1
+        while(bounds.outWidth/sample>2048 || bounds.outHeight/sample>2048) sample*=2
+        return SecureFiles.decoded(target,BitmapFactory.Options().apply {inSampleSize=sample})
+    }
     fun readThumbnail(name: String, maxDimension:Int=96): Bitmap? = if(directoryName=="project-photos") ProjectThumbnailCache.read(context,file(name),maxDimension) else PrivateImageCache.read(file(name),maxDimension)
     open fun delete(name: String) = lifecycle.remove(name) {
         val target = file(name)
@@ -54,9 +61,11 @@ open class AvatarStore(context: Context, private val directoryName: String = "av
             val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
             SecureFiles.decoded(inputFile, bounds)
             require(bounds.outWidth in 1..32000 && bounds.outHeight in 1..32000) { "Invalid image" }
-            val maxDimension=if(directoryName=="project-photos") 2048 else 512
+            val maxDimension=if(directoryName!="technology-icons") 2048 else 512
             var sample = 1
-            if(directoryName=="project-photos") {
+            if(directoryName=="avatars") {
+                while(maxOf(bounds.outWidth,bounds.outHeight)/sample>maxDimension) sample*=2
+            } else if(directoryName=="project-photos") {
                 while(maxOf(bounds.outWidth,bounds.outHeight)/(sample*2)>=maxDimension) sample*=2
             } else while (bounds.outWidth / sample > 512 || bounds.outHeight / sample > 512) sample *= 2
             var bitmap = requireNotNull(SecureFiles.decoded(inputFile, BitmapFactory.Options().apply { inSampleSize = sample }))
@@ -78,7 +87,7 @@ open class AvatarStore(context: Context, private val directoryName: String = "av
                 if (oriented !== bitmap) bitmap.recycle()
                 bitmap = oriented
             }
-            if(directoryName=="project-photos" && maxOf(bitmap.width,bitmap.height)>maxDimension) {
+            if(directoryName!="technology-icons" && maxOf(bitmap.width,bitmap.height)>maxDimension) {
                 val scale=maxDimension.toFloat()/maxOf(bitmap.width,bitmap.height)
                 val resized=Bitmap.createScaledBitmap(bitmap,(bitmap.width*scale).toInt().coerceAtLeast(1),(bitmap.height*scale).toInt().coerceAtLeast(1),true)
                 if(resized!==bitmap) bitmap.recycle()
@@ -89,6 +98,7 @@ open class AvatarStore(context: Context, private val directoryName: String = "av
             try {
                 lifecycle.reserve(name)
                 SecureFiles.output(outputFile).use { require(bitmap.compress(Bitmap.CompressFormat.PNG, 100, it)); it.flush() }
+                require(SecureFiles.size(outputFile)<=com.r0ybt.arachn0de.backup.imageByteLimit(directoryName)) {"La imagen supera el tamaño admitido por el respaldo."}
                 syncDirectory(directory)
                 checkCancelled()
             } finally { bitmap.recycle() }

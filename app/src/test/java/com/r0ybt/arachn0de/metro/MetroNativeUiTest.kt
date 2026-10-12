@@ -109,9 +109,12 @@ class MetroNativeUiTest {
     }
     @Test fun plannerViaNameRemainsVisibleOnSmallScreenAndCanBeChanged()=runBlocking<Unit> {
         val net=app.metroRepository.snapshot().preferences.planningNetwork
-        app.metroRepository.savePlan(MetroPlanner.plan(net,listOf("los-heroes","universidad-de-santiago","tobalaba"),false,MetroRestrictions())!!)
+        val journey=app.metroRepository.savePlan(MetroPlanner.plan(net,listOf("los-heroes","universidad-de-santiago","tobalaba"),false,MetroRestrictions())!!)
         compose.setContent {Arachn0deTheme {Surface(Modifier.fillMaxSize()) {MetroScreen(emptyList(),emptyList(),onBack={})}}}
-        await {exists("Viajes")};compose.onNodeWithText("Viajes").performClick();compose.onNodeWithText("Editar plan").performClick()
+        await {exists("Viajes")};compose.onNodeWithText("Viajes").performClick()
+        await {compose.onAllNodesWithTag("metro-trip:$journey").fetchSemanticsNodes().isNotEmpty()}
+        compose.onNodeWithTag("metro-trip:$journey").performClick();await {exists("Comenzar viaje")};compose.onNodeWithTag("metro-actions:$journey").performClick();await {exists("Editar viaje")}
+        compose.onNodeWithText("Editar viaje").performClick()
         compose.onNodeWithText("Parada 1: Universidad de Santiago").performScrollTo().assertIsDisplayed()
         capture("parada-larga-planificar")
         station("Parada 1: Universidad de Santiago","estacion central","Estación Central")

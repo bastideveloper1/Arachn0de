@@ -80,6 +80,49 @@ Las nuevas funciones deben construirse encima del núcleo existente y no convert
 
 No implementar funciones futuras antes de que sean necesarias.
 
+## Fundamentos permanentes de diseño UI/UX
+
+Estos principios son obligatorios para los próximos bloques de depuración visual y para las decisiones posteriores de interfaz. Su incorporación es exclusivamente preparatoria: no declara cambios implementados ni autoriza iniciar un bloque visual o funcional. La implementación de los próximos bloques requiere una instrucción posterior del usuario.
+
+### Principio 1 — Thumb-Friendly Design
+
+Toda interacción frecuente debe priorizar la ergonomía de uso con una sola mano, considerando que el usuario sostiene el teléfono desde su parte inferior.
+
+1. Los menús contextuales con pocas opciones deben abrirse preferentemente desde abajo mediante **Modal Bottom Sheet**.
+2. Las acciones frecuentes deben permanecer dentro del alcance natural del pulgar.
+3. Los menús con muchas opciones o configuraciones complejas pueden utilizar pantallas completas.
+4. Respetar la navegación gestual, el teclado, las barras del sistema y las diferentes dimensiones de pantalla.
+5. Aplicar el criterio de manera consistente a Proyectos, Capas, Tareas, Notas, filtros y selectores.
+6. No trasladar indiscriminadamente todos los controles a la parte inferior: evaluar siempre el contexto y el espacio disponible.
+
+### Principio 2 — UX-ERG-02: jerarquía funcional y ergonómica de acciones
+
+El orden y la distribución de los menús deben responder a estos criterios:
+
+1. Frecuencia real de uso.
+2. Importancia funcional.
+3. Continuidad del flujo de trabajo.
+4. Proximidad al pulgar.
+5. Contexto del elemento seleccionado.
+6. Consistencia y memoria muscular.
+7. Seguridad de las acciones destructivas.
+
+Reglas obligatorias:
+
+- Priorizar las acciones habituales y necesarias para continuar trabajando.
+- Mantener posiciones estables entre menús equivalentes.
+- Evitar duplicaciones y desplazamientos innecesarios.
+- Separar visualmente **Eliminar** y otras acciones destructivas.
+- En menús inferiores extensos, favorecer agrupaciones compactas y una distribución en dos columnas cuando resulte adecuada al contexto y al espacio disponible.
+
+### Filosofía de depuración y simplificación
+
+**Quitar antes que agregar. Reorganizar antes que duplicar. Simplificar sin perder capacidades.**
+
+Preservar la lógica de negocio, los datos, las funciones existentes, el funcionamiento offline y la identidad visual **Black & White 90**. Simplificar la presentación debe conservar el acceso a las capacidades existentes.
+
+Las imágenes «Guía de menús y alcance del pulgar» y «Comparativa de menús móviles accesibles» son referencias ilustrativas. Sus ejemplos de acciones, colores y composiciones no constituyen instrucciones adicionales ni un orden universal de menú; las decisiones deben cumplir los principios anteriores, incluida la ausencia de duplicaciones innecesarias.
+
 ---
 
 # 4. Plataforma inicial
@@ -3449,3 +3492,267 @@ El progreso por etapa usa anclas monotónicas absolutas; cambios civiles no inva
 `MetroReturn` genera un borrador independiente desde el destino vigente al origen original, sin invertir pasos ni copiar vínculos/sesiones/paradas. Se recalcula con el planificador; no sustituye otro seguimiento activo. `MetroSchedule` ofrece solo una referencia histórica, no operación vigente ni trenes en tiempo real. `planAt` evalúa tiempos en cada segmento, mantiene estados de línea/dirección/servicio y exige cambio manual cuando corresponda. Rechaza segmentos que cruzan ventanas sin transición conocida, datos ausentes y ciclos como espera; el horizonte conservador por subrecorrido es 2 × estaciones + 4 × líneas minutos. La búsqueda temporal del editor corre en Dispatchers.Default. El panel operativo continúa oculto y los controles de escenario expresan incertidumbre de vigencia/festivos/excepciones.
 
 El payload Metro v5 conserva `departure` en las rutas del escenario y admite normal/expresa por etapas. Se emite v4 para planes manuales y se admiten v1–v5. Room 27 y backups exteriores 17/18/19 no cambian; no se añaden archivos ni permisos. Inicio/embarque verifica el servicio del momento y cambiar destino recalcula según hora actual. La confirmación de destino protege lo mostrado ante cambios de propuesta. Backup/restauración, errores, principal/señuelo y relojes portables se prueban en el mismo sprint. Informe: DOGFOODING_SPRINT_4C.md.
+
+## Juego: carrera táctica por turnos
+
+La entrada `GameScreen` abre exclusivamente la carrera; se retiran la pantalla de batalla y sus controles. Los modelos/lectores históricos se conservan para validar respaldos v1–v3, sin exponer otro modo jugable. `RaceModel`, `RaceRules` y `RaceBots` comparten transiciones puras para humanos y bots; `RaceBalance` centraliza alcances, zonas y duración de trampas. El circuito versionado tiene 32 casillas principales y dos desvíos de cuatro casillas intermedias que agregan exactamente dos pasos. Las conexiones explícitas resuelven alcance y las fracciones de progreso impiden inflar la clasificación por recorrer un desvío.
+
+`RaceRepository` reutiliza el singleton Room `game_state`, con transacción, revisión CAS y validación antes del commit. `RaceCodec` v4 guarda toda acción confirmada, incluidos premio pendiente, PRNG, pasos y temporizadores por turno/ronda. El backup existente incluye el payload íntegro sin modificar datos de Metro, productividad, archivos personales, seguridad ni esquema. Ver BACKUP_FORMAT.md para compatibilidad y límites.
+
+La visibilidad se calcula antes de dibujar fichas, ocupantes, posiciones y cámara. El ojo revela invisibles solo a su propietario y solo dentro de la zona fijada. La clasificación muestra ordinal e identidad, sin casillas rivales. El cambio entre humanos usa una pantalla de entrega sin tablero; los bots seleccionan objetivos a partir de su proyección visible, sin dados ni premios privilegiados. Cámara, retratos y destellos son transitorios regenerables; no participan del backup. El cargador de assets está acotado y no escribe archivos privados.
+
+### Bloque 3 Metro: confirmación y aviso previo
+
+La confirmación explícita de llegada inicia el cronómetro de combinación en una única actualización del repositorio existente cuando el seguimiento no está pausado. La estimación nunca inicia la siguiente línea ni confirma llegada. Se conserva la recuperación de estados históricos ARRIVED, su control «Iniciar combinación», los registros y el deshacer. Las sesiones pausadas conservan la pausa y requieren reanudar antes de iniciar combinación.
+
+La vibración previa es opcional, desactivada por defecto y almacenada en las preferencias Metro (payload v2, lector v1). El servicio emite un aviso al entrar estimadamente en el último tramo antes de combinación o destino, solo sin pausa ni incertidumbre. Se registra previamente un evento PASS histórico para evitar repetir al reabrir; no cambia el progreso. El permiso VIBRATE es normal, no solicita ubicación. La vibración usa categoría de notificación para respetar políticas de Android y no detiene el seguimiento si falla el hardware. El backup transporta preferencia y evento; no añade archivos, esquema ni migración. Detalles y validación: BLOCK3_METRO_REPORT.md.
+
+### Bloque 4: búsqueda y accesos a entidades originales
+
+`ElementSearch` construye rutas a partir de los Proyectos y nodos observados del almacén desbloqueado. Normaliza Unicode, acentos, mayúsculas y espacios en título/descripción; indexación y filtrado se ejecutan en `Dispatchers.Default`. Los resultados mantienen IDs originales y usan la navegación existente. No hay un índice persistente ni un almacén de búsqueda compartido entre principal y señuelo.
+
+`AccessRepository` guarda Favoritos, recientes, frecuencias de apertura y último destino de captura en la fila `element_access` de `private_preferences`, dentro de la misma base protegida. Las eliminaciones de nodos y proyectos limpian referencias en su transacción; lectura/observación también depura referencias inexistentes. Mover una entidad conserva su ID y favorito, y recalcula la ruta observada. Recientes conserva 20 entradas y frecuencias hasta 200; estos límites acotan historial, no entidades ni favoritos. Ninguna de estas listas altera orden manual, prioridades o Sprint.
+
+La captura usa `NodeRepository.createNode` y sus validaciones, un identificador estable del borrador para reintentos y el bloqueo de operaciones de UI. La tarea y el último destino se confirman juntos. No guarda automáticamente el borrador ni copia entidades. Cancelar no escribe. El destino es el último válido o un destino seleccionable disponible. No se añade widget ni se expone información fuera de la sesión desbloqueada. No se añaden tablas, columnas, archivos ni migraciones; el backup incluye íntegramente la nueva fila y valida su codec antes de reemplazar datos.
+
+## Avatares de Personas de mayor resolución
+
+Las nuevas importaciones conservan una fuente PNG orientada de hasta 2048×2048 y 20 MiB, sin recortar el encuadre. Zoom y desplazamiento siguen independientes; ajustar o reimportar conserva la ficha y permite revisar el encuadre existente. No se reescriben imágenes antiguas. Tecnologías conservan 512 px / 1 MiB. No hay cambios de Room, estructura o versión del respaldo: se amplía únicamente la validación admitida de avatares. Los respaldos antiguos válidos siguen admitidos; aplicaciones anteriores pueden rechazar avatares nuevos que superen sus límites de 512 px / 1 MiB.
+
+El respaldo por streaming conserva los bytes completos, con límite agregado existente de 1 GiB. El snapshot en memoria mantiene 8 MiB y debe usarse streaming para colecciones mayores. Miniaturas escaladas según densidad y zoom (96/192/384/512 px) comparten la caché LRU de 4 MiB, regenerable y excluida del respaldo. El editor carga solo la imagen seleccionada, acotada a 2048 px. Las reservas, bloqueo común, diarios y limpieza tras la última referencia se reutilizan; no se añaden archivos privados auxiliares ni se caducan reservas.
+
+## Bloque 8: tareas vinculadas a Sprints sin traslado
+
+El árbol físico y los identificadores siguen siendo únicos. `sprint_links` (Room 28, migración aditiva 27→28) representa solo pertenencias externas; las directas siguen derivándose del padre. Cada tarea ACTION puede pertenecer a un solo Sprint activo (`sprintMode=true`), dentro del mismo Proyecto. Vincular conserva ubicación, contenido, asociaciones y completitud; inicializa la fase solo cuando no existe.
+
+Las dos vistas usan el mismo `Node.workState`, con las cinco fases y pesos existentes. Completitud y fase permanecen independientes. La proyección del Sprint une tareas directas y vinculadas por ID, sin contar dos veces; muestra origen, búsqueda y selección múltiple y abre el detalle real. Los filtros existentes se aplican también a las tareas vinculadas.
+
+Desvincular exige confirmar explícitamente la fase que se descartará; la transacción verifica que siga siendo exactamente esa fase. Si cambió, exige revisar y confirmar nuevamente. Cancelar no modifica nada. No se introduce un estado operativo secundario.
+
+Mover una tarea vinculada dentro del Proyecto conserva su fase; moverla al propio Sprint transforma la pertenencia externa en directa sin duplicación. Se rechazan destinos incompatibles, desactivación o eliminación de un Sprint con tareas externas supervivientes y conversiones de jerarquías con vínculos, con mensaje para desvincular previamente. Eliminar intencionadamente una tarea o todo el Proyecto elimina sus relaciones en la misma transacción. Las conversiones sin vínculos conservan sus reglas anteriores.
+
+Los repositorios usan la base de la sesión correspondiente; no hay intercambio entre almacenes. JSON 20 incluye relaciones y fases y conserva lectura histórica (véase BACKUP_FORMAT.md). No cambian SQLCipher, cifrado, versiones comerciales ni archivos privados.
+
+## Bloque 9: Proyectos gestionados, identidad reversible
+
+`management_contexts` (Room 29) extiende las raíces permanentes de conversión con modalidad y metodología; su ID es el de la raíz existente, estable frente a cambios de ID físico por colisión. Cada raíz tiene un único Proyecto o Capa propietario. No hay árboles ni nombres duplicados. Sin contexto, la modalidad es Normal; la activación crea la raíz solo si no existe. La desactivación guarda `enabled=false` y conserva metodología e identidad.
+
+`ManagementRepository` usa exclusivamente la base de su sesión. «Gestión del proyecto» permite activar, elegir Ágil/Tradicional/Híbrida, configurar y desactivar. También se consulta desde una Capa que conserva una raíz de Proyecto convertido. No añade acta, objetivos ni otras herramientas del Bloque 10. Cambiar metodología no modifica tareas, fases ni Sprints.
+
+La conversión captura los contextos antes de la reinserción de nodos, comprueba que todas sus raíces siguen existiendo y restituye los contextos afectados por cascadas dentro de la misma transacción. Un fallo revierte la conversión completa. Los contextos anidados no se fusionan. Se conservan las restricciones Sprint–Tarea del Bloque 8. Desactivar no elimina; borrar explícitamente el propietario definitivo elimina su contexto mediante FK, con las confirmaciones de borrado existentes.
+
+El respaldo JSON 21 conserva contextos activos/desactivados, metodología y raíces. Los formatos históricos siguen siendo legibles sin inventar contextos. No cambian SQLCipher, aislamiento de sesiones, formato de medios ni versiones comerciales. Ver BACKUP_FORMAT.md.
+
+
+## Bloque 10: planificación inicial de Proyectos gestionados
+
+`PlanningEntities.kt` y `PlanningRepository.kt` añaden acta opcional, objetivos con UUID y criterios con UUID, orden manual y validación explícita reversible. Room 29→30 añade únicamente tres tablas vinculadas a `ManagementContextEntity.id` con FK en cascada e invariantes de texto, posición y fecha. Normal sigue siendo el comportamiento predeterminado; desactivar y reactivar gestión conserva todos los datos. El estado de aceptación es derivado (sin criterios, pendientes, todos validados), independiente de tareas, completitud y fases Sprint.
+
+`PlanningUi.kt` se abre desde «Acta y objetivos» en la gestión activa de Proyecto o Capa convertida. Reutiliza título y descripción actuales, permite actas parciales, consulta de pendientes, edición y orden con botones accesibles. Las eliminaciones requieren confirmación. Las listas y formularios desplazan textos largos y las acciones se redistribuyen horizontalmente. No hay pestañas globales ni herramientas del Bloque 11.
+
+`ProjectNestingRepository` captura actas, objetivos y criterios junto con todos los contextos antes de reinsertar nodos y los restituye en orden de dependencias antes del commit. IDs lógicos, órdenes, validaciones y fechas sobreviven a conversiones anidadas y colisiones físicas; un fallo o cancelación revierte la transacción. Eliminar definitivamente el propietario elimina su planificación mediante FK, mientras desactivar gestión no la elimina.
+
+JSON 22 conserva estos datos, con validación de referencias, identidades, órdenes, estados y fechas antes de reemplazar. Lectores históricos 1–21 se conservan; lectores anteriores rechazan 22. Sin planificación sigue la selección previa de formatos. Snapshot y restauración usan la base de la sesión actual, sin cambiar SQLCipher ni archivos privados. Véase `BACKUP_FORMAT.md` y `PLANNING.md`.
+
+
+## Bloque 11: Épicas, historias y Backlog
+
+`BacklogEntities.kt` añade Room 30→31 mediante cinco tablas aditivas: roles opcionales de capas EPIC/STORY, relaciones objetivo/épica, épica/historia, historia/tarea y entradas con orden propio. `BacklogRepository.kt` valida tipos, propietarios, unicidad y contexto más cercano por un recorrido iterativo con memoización. Contextos anidados activos o desactivados permanecen independientes. Las aristas tipadas forman un grafo acíclico sin imponer padres físicos; una tarea puede tener varias historias y una única entrada de Backlog. Los nodos existentes siguen siendo la fuente de títulos, descripciones, fechas, medios, completitud y `workState`.
+
+«Backlog» se abre dentro de la gestión activa, con listas virtualizadas, búsqueda por título y origen, roles, pendientes calculados desde la completitud y apertura del nodo original. Las relaciones se consultan en ambos sentidos, incluyendo los objetivos indirectos de tareas/historias. Reordenar no modifica el árbol; el filtro de pendientes deshabilita ese control para evitar cambiar el orden respecto de entradas ocultas. No hay pestañas globales ni cambios al motor Sprint.
+
+`NodeRepository`, `ProjectRepository` y `ManagementRepository` impiden operaciones que invaliden relaciones o creen nuevos límites de contexto sobre datos existentes. Retirar roles/relaciones se confirma en la UI; se bloquean eliminaciones de nodos con referencias hasta retirarlas explícitamente. `ProjectNestingRepository` captura y restituye roles, relaciones y entradas dentro de su transacción, validando el árbol resultante antes del commit. Una Capa con rol que se promueve a Proyecto debe retirar ese rol previamente; una promoción que separaría elementos de su contexto se rechaza. Las conversiones de propietarios con relaciones válidas mantienen identidad, vínculos y orden, incluyendo anidamiento y gestión desactivada.
+
+JSON 23 incorpora los cinco conjuntos sin cambiar el contenedor ni cifrado. Lectura 1–23, validación antes de reemplazar y restauración transaccional con fallo recuperable. Sin datos del bloque conserva la selección previa de formato. No se añaden medios, preferencias globales ni estados operativos paralelos. Véase `BACKUP_FORMAT.md` y `BACKLOG.md`.
+
+### Bloque 12: participantes y responsabilidades de gestión
+
+Room 32 / JSON 24 añaden relaciones por contexto estable y Persona existente,
+separadas de node_person y de los roles EPIC/STORY del Backlog. Una participación
+admite cero o varios roles; los mismos cuatro roles pueden asignarse explícitamente
+a objetivos, épicas, historias y tareas, independientemente de los roles generales.
+Estos roles son etiquetas organizativas: no conceden acceso, no validan criterios,
+no atribuyen acciones realizadas ni generan estados o porcentajes.
+
+ParticipationRepository valida pertenencia y alcance usando contextOwners, también
+con gestión desactivada. BacklogRepository integra la validación en movimientos,
+cambios de tipo y cambios de contexto; rechaza pérdida de responsabilidades.
+ProjectNestingRepository captura y restaura las relaciones dentro de la misma
+transacción que la conversión, validando el árbol final. No fusiona contextos.
+La retirada de participación con relaciones necesita confirmación explícita; la
+eliminación definitiva de Persona utiliza el CASCADE dentro de su transacción y
+el ciclo de vida existente para imágenes. La eliminación de objetivo confirmada
+incluye sus responsabilidades. Los detalles de formato están en BACKUP_FORMAT.md;
+el informe y validación del bloque, en PARTICIPATION.md.
+
+### Bloque 13: planificación sobre el motor Sprint
+
+Room 33 / JSON 25 incorporan IterationPlan, IterationCycle, IterationCommitment
+(referencias iniciales y añadidas después) e IterationClosure (resultado congelado).
+Cada planificación utiliza una Capa Sprint existente y su título original. El
+alcance actual se calcula exclusivamente desde hijos ACTION y sprint_links.
+Node.workState y las cinco fases/pesos 0/25/50/75/100 permanecen intactos; la UI
+reutiliza sprintProgressPercentage. La planificación no altera checks, vencimientos,
+orden del árbol/Backlog, criterios de aceptación ni responsabilidades.
+
+Iniciar fija referencias iniciales. Cambios de pertenencia por los repositorios de
+Sprint y Node registran referencias posteriores, sin duplicar tareas ni fases.
+Retirar una tarea externa conserva la referencia histórica y exige la confirmación
+de su fase que ya implementa el Bloque 8. Tareas directas no se desvinculan aquí:
+retirarlas requiere un movimiento por el árbol. Cerrar valida el resumen actual,
+guarda fechas y estados históricos y conserva trabajo pendiente y vínculos.
+Reabrir necesita confirmación y crea un ciclo nuevo, sin reescribir cierres anteriores.
+
+La ampliación autorizada de conversiones valida previamente el árbol completo y
+las referencias, reconstruye dentro de una transacción y comprueba fases/vínculos
+antes del commit. El contexto más cercano, incluso desactivado, delimita cada
+iteración. Las colisiones o referencias separadas se rechazan. Las FK RESTRICT
+protegen los Sprints planificados y tareas históricas frente a borrado accidental;
+los repositorios añaden mensajes comprensibles antes de modificar datos.
+No hay operación de borrado de historial en este bloque. Detalles en ITERATIONS.md
+y BACKUP_FORMAT.md; sin cambios de release, cifrado, archivos privados o juego.
+
+
+## Evolución de Personas: ficha avanzada y vínculos
+
+Room 34 añade perfiles opcionales por Persona y relaciones con UUID estable, sin
+reescribir `persons`, avatares ni asignaciones. `PersonRepository` valida y guarda
+secciones y relaciones dentro de transacciones; FK CASCADE elimina únicamente el
+perfil y vínculos de la Persona eliminada. Una relación es un único registro y su
+presentación inversa se calcula; no hay estado inverso duplicado. Los tipos dirigidos,
+recíprocos y no recíprocos son explícitos, también para relaciones personalizadas.
+El formato y límites portables se describen en BACKUP_FORMAT.md (JSON 26).
+
+La navegación existente conduce de Personas a una ficha de consulta con General,
+Contacto, Perfil y Relaciones. La edición se divide en secciones y el selector de
+Persona relacionada es buscable. La ficha conserva el camino Persona→Persona;
+Volver recorre ese camino antes de salir. Responsables y participantes abren la misma
+ficha; los selectores de asignación siguen seleccionando, sin añadir acciones a
+indicadores de tarjetas. Contactos son textos opcionales multilínea, sin cuentas,
+Internet ni apertura automática de enlaces. No se añaden métricas, estadísticas,
+permisos de roles, nuevas jerarquías, asignación de tecnologías a Personas ni informes.
+
+Contrato de backup: snapshot transaccional de ambas tablas, validación histórica,
+referencias y límites antes de reemplazar, restauración en la transacción y staging
+existentes. Los únicos archivos confirmados siguen siendo los avatares previos;
+se conserva su bloqueo, diario, deduplicación, reservas y liberación tras último
+referente/commit. No se crean caches o exclusiones nuevas. Bóvedas independientes
+utilizan el mismo esquema con conexiones y claves distintas. La evidencia de release
+anterior queda invalidada por estos cambios; no se firma una nueva APK en esta fase.
+
+
+## Personas Fase 2: catálogo y navegación contextual
+
+Room 35 añade `person_technologies`, con clave compuesta de IDs y dominio enum,
+FK CASCADE e índice de Tecnología. No se duplican medios, perfiles ni árbol.
+PersonRepository valida y escribe las asociaciones en transacciones; backup JSON 27
+las recupera íntegramente junto al catálogo y sus bytes. Lectura histórica 1–26
+conservada. Detalles y ciclo de liberación: PERSON_INTEGRATION.md y BACKUP_FORMAT.md.
+
+PersonIntegrationDao calcula proyectos/trabajo a partir de asignaciones tradicionales,
+participantes, roles y responsabilidades de nodos/objetivos; conversion_roots permite
+resolver contextos independientes convertidos en Capas sin fusionarlos. UI agrupa
+por proyecto físico y por ID/tipo de elemento, mostrando roles y gestión desactivada.
+Completitud y fases permanecen independientes; no se deriva ejecución de asignaciones.
+Tecnologías y Proyectos y trabajo se integran como secciones de la ficha. Navegación
+local envía IDs al router existente y retorna a la Persona; objetivos seleccionan su
+detalle existente. No cambia la navegación global ni se añade infraestructura LAN.
+Las cuadrículas/listas son virtualizadas y reutilizan miniaturas/caché del catálogo.
+No cambia SQLCipher, aislamiento, archivos privados ni progreso Sprint.
+
+### Personas: galería y presentación CV (Room 36)
+
+La migración aditiva 35→36 incorpora `person_photos` (hasta cuatro referencias
+adicionales por Persona, UUID estable, posición y encuadre independiente) y
+`person_birthdays` (fecha ISO opcional). No altera Personas, perfiles, relaciones,
+responsabilidades ni Tecnologías. La edad se calcula al consultar; no se persiste.
+La foto principal sigue en `persons` y conserva su encuadre actual.
+
+Las fotos adicionales reutilizan `avatars`, sus límites de importación (20 MiB,
+normalización a PNG de hasta 2048 px), caché decodificada de 4 MiB y bloqueo común.
+El contador de referencias incluye tanto avatares como fotos de referencia.
+Importaciones/editor mantienen reservas durables; reemplazar o eliminar registra
+los nombres antes de la transacción y libera solo después del commit. Eliminar
+una Persona registra también sus fotos antes del CASCADE. Fallos dejan reservas
+y diarios recuperables; no se cambia ni recomprime multimedia existente.
+La observación de limpieza incluye `person_photos`. Las miniaturas/cachés son
+regenerables y se excluyen del respaldo; todas las fuentes confirmadas se incluyen.
+
+JSON 28 agrega las dos colecciones y reutiliza el manifiesto `avatars` para sus
+bytes, deduplicado por nombre. El snapshot es transaccional, la restauración
+valida referencias, fechas, posiciones, cantidad y encuadres antes de preparar
+archivos; remapea nombres privados dentro de la misma transacción. Se conserva
+lectura histórica y el aislamiento principal/señuelo, sin cambiar ANBACK01.
+
+### Metro 1: administración independiente de viajes
+
+`MetroRepository.link` modifica únicamente el vínculo opcional y la revisión, con validación previa y transacción; las rutas y sesiones permanecen intactas. `duplicate` copia el plan a un ID nuevo sin duplicar seguimiento ni historial. La apertura mediante `MetroNavigation.openJourney` identifica el original por ID, independientemente de su tarea. `TaskMetroAccess` permite buscar, asociar, abrir y desvincular desde la ficha de tarea. Se conserva la FK SET NULL y la cardinalidad actual, sin nueva migración ni formato. Eliminación explícita con confirmación, revisión y rechazo de viajes activos. Detalles y límites en METRO_INDEPENDENCE.md.
+
+
+### Gestión mediante Capas reales (Room 37 / JSON 29)
+
+`ManagementCascadeRepository` inicializa Acta, Backlog, Sprints y Kanban como
+nodos reales, con Objetivos y Equipo dentro del Acta. `management_layers` conserva
+su función aunque se renombren. Épicas e Historias reutilizan Node LAYER y sus roles
+existentes. Los seis nodos esenciales se crean una sola vez dentro de la transacción de
+activación. Las secciones documentales del Acta son notas opcionales; los doce
+nodos de estructuras anteriores se conservan íntegramente y no se regeneran
+secciones que el usuario haya eliminado. Textos históricos sin capas se materializan
+solo si tienen contenido. Los contextos desactivados mantienen datos y estructura.
+Véase el bloque Sprint UX 2 de `MANAGEMENT_CASCADE.md`.
+
+Sprint, Kanban, objetivos y cronograma referencian identidades originales.
+`sprint_stories` asocia Historias sin moverlas; sus tareas descendientes y los
+vínculos históricos explícitos entran en el mismo Sprint. Las Notas no son tareas.
+Retirar una Historia exige confirmación de las fases actuales de sus tareas;
+el check y la Historia se conservan. Los ciclos cerrados no incorporan trabajo
+nuevo hasta reabrirse y conservan sus resultados históricos.
+
+`objective_work` calcula progreso sobre ACTION hoja deduplicados; cero trabajo no
+significa completado ni valida criterios. `local_identity` identifica una Persona
+Yo por bóveda; los filtros usan responsabilidades actuales, nunca autoría inferida.
+Gantt es una proyección de fechas y progreso existente, sin nuevo estado operativo.
+No hay dependencias temporales o hitos inventados.
+
+La migración 36→37 es aditiva; JSON 29 exporta/restaura las cuatro colecciones y
+valida integridad antes de reemplazar. Conversiones Proyecto↔Capa conservan
+metadatos y referencias en la transacción existente. No hay archivos privados
+nuevos ni cambios criptográficos. Ver `MANAGEMENT_CASCADE.md` para validación y
+limitaciones de interfaz; `BACKUP_FORMAT.md` para compatibilidad.
+
+## Gantt integral — Room 38
+
+Gantt reutiliza nodos, progresos jerárquicos/Sprint y responsabilidades mediante un
+único GanttDocument para orientaciones y perspectivas. Room 37→38 añade únicamente
+gantt_annotations (UUID, contexto FK CASCADE, texto, epochDay, posición 0–1).
+Validación, snapshot y restauración transaccional incorporan las anotaciones;
+JSON 30 las conserva, respaldos anteriores producen colección vacía. No hay
+archivos privados nuevos: los PNG SAF son derivados externos regenerables,
+renderizados secuencialmente con bitmap acotado. Fallos de exportación eliminan
+solo el documento parcial creado, sin limpiar almacenamiento privado.
+Fechas de Historia se guardan en Node mediante una operación contextual validada,
+sin duplicar estados. Ver GANTT.md para límites, funcionamiento y evidencia.
+
+### Compartir una tarjeta como PNG (UI/UX Bloque 3)
+
+T4: fotografías de Personas y logotipos de Tecnologías se ajustan proporcionalmente a bloques de 160 × 160 px, con etiquetas laterales; fotografías de Proyecto y adjuntos mantienen su presentación. Guardar imagen usa exactamente el generador compartido y ACTION_CREATE_DOCUMENT (image/png), sin permisos generales. Solo después de elegir destino se genera y copia el PNG mediante SecureFiles y el bloqueo común. El temporal se descarta con el diario existente al terminar. Ante fallo se intenta eliminar el documento nuevo; la eliminación/atomicidad externa depende del proveedor SAF, incluso ante cierre del proceso. Es un derivado externo regenerable, sin referencias privadas confirmadas ni cambios de backup.
+
+`CardShareSource` obtiene una instantánea de un único nodo y sus imágenes bajo el bloqueo común de archivos. `CardShareRenderer` produce una imagen derivada con texto completo e imágenes proporcionales; rechaza tarjetas que excedan 1080 × 8192 px en lugar de truncarlas. Nunca reemplaza ni recomprime los archivos originales.
+
+`CardShareFiles` publica mediante staging `.part` y sincronización de directorio en la caché privada `card-shares`. Límite: 24 PNG / 64 MiB, con conservación de envíos recientes durante 24 horas para permitir su lectura por el destinatario. Cerrar el selector de Android no modifica el origen; el PNG temporal sigue sujeto a esos límites. Las operaciones fallidas o canceladas retiran su staging; los residuos se reintentan durante el mantenimiento habitual. La limpieza solo acepta los nombres UUID propios, registra `.delete`, revoca permisos y elimina bajo `AttachmentRepository.fileOperations`, que también protege los lectores activos del proveedor. No se eliminan envíos recientes para liberar espacio: se rechaza una nueva generación cuando se alcanza el límite.
+
+El proveedor existente `ReportFileProvider` ofrece URI de contenido con permiso de lectura y sin escritura. En bóvedas, el PNG temporal queda cifrado mediante `SecureFiles`; se comparte mediante un pipe, sin copia persistente en claro, y solo mientras la sesión propietaria esté activa. Las URI dejan de servir al bloquear o cambiar de perfil. Esta caché es regenerable y queda excluida del backup; no añade datos confirmados, preferencias, tablas ni migraciones.
+
+El permiso de capturas es exclusivamente volátil y empieza bloqueado. Sobrevive a navegación, segundo plano sin cierre de sesión y recreación de actividad; se revoca manualmente, al cerrar la actividad definitivamente o al terminar la sesión de seguridad. No tiene temporizador propio ni se exporta en backups. Los diálogos de contraseña mantienen `FLAG_SECURE` incluso cuando el usuario ha permitido capturas del resto de la aplicación.
+
+### Gantt compacto — modelo visual y numeración derivada
+
+El Gantt compacto mantiene `ganttDocument` como proyección de fechas y progresos existentes. `GanttCompactModel` selecciona únicamente historias para las filas visuales; las tareas y los cálculos originales siguen en el documento y en Room. Sus unidades comunes (gutter 62, columnas 18, filas 18, círculo 16 y barra 8) se usan en pantalla, hit testing y PNG. La paleta carbón/grises/cobre es local a Gantt y no modifica el tema global. El mes está en el gutter izquierdo, en la misma fila del calendario; el gutter permanece fijo y muestra el mes de la primera columna visible al desplazarse.
+
+`storyLabels` calcula HU1… por proyecto a partir de todos los nodos con rol STORY, ordenando por `createdAt` y luego ID. Se aplica antes de filtros, no depende del Sprint ni de títulos/orden manual, y compacta al eliminar una historia. Es una proyección sin persistencia nueva: títulos e IDs permanecen intactos; Backlog, Sprint y superficies de historias reutilizan el mismo formateador, que evita duplicar un prefijo HU existente.
+
+Las anotaciones conservan íntegramente su formato UUID/contexto/texto/epochDay/lane. La posición normalizada antigua se proyecta mediante las filas originales del documento y, cuando existe, su historia contenedora/vinculada. La asociación HU del comentario es derivada, no una FK nueva. Arrastrar un marcador reexpresa la posición de destino en esas coordenadas originales y utiliza el mismo upsert transaccional. Abrir o filtrar no reescribe notas. Colisiones se apilan de forma determinista solo en presentación; pantalla y PNG utilizan ese mismo cálculo. Las notas fuera del período conservan acceso desde Opciones. El editor contextual utiliza fecha con calendario y área de texto acotada; guardar/eliminar son explícitos y cancelar no confirma cambios.
+
+`GanttRenderer` dibuja el mismo gráfico horizontal en Android y PNG. Exporta bloques de hasta 40 columnas y 36 filas lógicas, a escala 2, comprobando el límite original de 4 millones de píxeles por imagen y 512 imágenes por exportación. Repite encabezados y conserva coordenadas/etiquetas al paginar. Solo las anotaciones visibles añaden imágenes «ARACHN0DE — ANOTACIONES»; se divide el texto mediante límites de línea de Android, conservándolo completo, incluidos Unicode y saltos de línea. Sin notas no hay páginas adicionales. Los PNG siguen siendo derivados externos SAF, sin caché privada ni estado confirmado nuevo; se eliminan los destinos nuevos que fallen durante exportación por lote y se informa cuántos PNG quedaron escritos. No se alteran los anteriores.
+
+Navegación: la granularidad Días/Semanas/Meses conserva los ticks existentes. Anterior/Siguiente desplaza un día, semana o mes según la escala, mediante ventanas de consulta deslizantes; Hoy recupera el período actual. No cambia fechas almacenadas. La consulta Android rechaza tamaños superiores a 100.000 píxeles por eje y propone un Sprint/período menor; la protección de exportación permanece independiente. No se introduce fecha real de finalización ni indicadores de puntualidad no demostrables.

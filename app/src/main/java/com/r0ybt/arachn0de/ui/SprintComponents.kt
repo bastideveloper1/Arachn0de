@@ -1,6 +1,8 @@
 package com.r0ybt.arachn0de.ui
 
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
@@ -37,11 +39,9 @@ internal fun SprintSectionHeader(label: String, count: Int, expanded: Boolean, o
 
 @Composable
 internal fun WorkStateDialog(title: String, current: WorkState, busy: Boolean, onDismiss: () -> Unit, onSelect: (WorkState) -> Unit) {
-    AlertDialog(onDismissRequest = { if (!busy) onDismiss() }, title = { Text("Cambiar estado · $title") },
-        text = { Column { WorkState.entries.forEach { state ->
-            TextButton(enabled = !busy, onClick = { onSelect(state) }, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).semantics { selected = state == current }) {
-                Text(state.label)
-            }
+    AlertDialog(onDismissRequest = { if (!busy) onDismiss() }, title = { Text("Cambiar estado · $title", maxLines = 3, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis) },
+        text = { Column(Modifier.verticalScroll(rememberScrollState())) { WorkState.entries.forEach { state ->
+            FilterChip(selected=state==current,enabled = !busy, onClick = { onSelect(state) }, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).semantics { selected = state == current },label={Text(state.label)})
         } } }, confirmButton = {}, dismissButton = { TextButton(enabled = !busy, onClick = onDismiss) { Text("Cancelar") } })
 }
 
@@ -54,3 +54,13 @@ internal fun SprintModeDialog(enabled: Boolean, busy: Boolean, onDismiss: () -> 
         confirmButton = { TextButton(enabled = !busy, onClick = onConfirm) { Text(if (enabled) "Desactivar" else "Activar") } },
         dismissButton = { TextButton(enabled = !busy, onClick = onDismiss) { Text("Cancelar") } })
 }
+
+/** Shared by the existing Sprint view and managed projections; never creates a phase. */
+internal fun sprintSectionNodes(nodes: List<com.r0ybt.arachn0de.domain.model.Node>, section: String) =
+    nodes.distinctBy { it.id }.filter {
+        when (section) {
+            "structure" -> it.purpose != com.r0ybt.arachn0de.domain.model.NodePurpose.ACTION
+            "unassigned" -> it.purpose == com.r0ybt.arachn0de.domain.model.NodePurpose.ACTION && it.workState == null
+            else -> it.purpose == com.r0ybt.arachn0de.domain.model.NodePurpose.ACTION && it.workState?.name == section
+        }
+    }

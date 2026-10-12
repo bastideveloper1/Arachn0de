@@ -63,9 +63,10 @@ internal fun AttentionScreen(
     Surface(Modifier.fillMaxSize(), color = Arachn0deColors.Background) {
         Column(Modifier.fillMaxSize().padding(14.dp)) {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                Text("Atención", style = MaterialTheme.typography.headlineSmall)
+                Text("Atención",modifier=Modifier.weight(1f),maxLines=1,overflow=androidx.compose.ui.text.style.TextOverflow.Ellipsis, style = MaterialTheme.typography.titleLarge)
                 TextButton(onClick = { filters.open = true }) { Text(if (filters.active) "Filtros activos" else "Filtros") }
                 TextButton(onClick = onBack) { Text("Volver") }
+                GlobalChromeActions()
             }
             if (!ready) Text("Cargando Atención…")
             else if (tasks.isEmpty()) Text("No hay tareas que requieran atención.")
@@ -91,7 +92,7 @@ internal fun AttentionScreen(
                             TagChips(tagState.forNode(node.id))
                             ObligationIndicator(node)
                             TaskDateIndicator(node, attention.now)
-                            ResponsibleAvatars(responsibleByNode[node.id].orEmpty())
+                            ResponsibleAvatars(responsibleByNode[node.id].orEmpty(),interactive=false)
                         }
                     }
                 }

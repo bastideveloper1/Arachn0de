@@ -48,6 +48,11 @@ internal object MetroStages {
         return if(boundary<s.route.steps.size) arrived else arrived.copy(ended=now.wall,realMillis=MetroTracking.totalMillis(s,now),
             pausedMillis=s.pausedMillis+MetroTracking.currentPauseMillis(s,now),pausedAt=null,pausedElapsed=null,pausedBoot=null)
     }
+    /** User confirmation starts transfer timing; temporal estimates never invoke this. */
+    fun confirmArrival(s:MetroSession,now:MetroTime):MetroSession {
+        val arrived=arrive(s,now)
+        return if(arrived!==s && arrived.ended==null && arrived.pausedAt==null) beginTransfer(arrived,now) else arrived
+    }
     fun beginTransfer(s:MetroSession,now:MetroTime):MetroSession {
         val c=control(s)
         if(s.ended!=null || c.phase!=MetroPhase.ARRIVED || s.pausedAt!=null || boundary(s)>=s.route.steps.size || gateKind(s)==MetroStepKind.WAYPOINT) return s

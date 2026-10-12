@@ -33,6 +33,7 @@ import kotlinx.coroutines.launch
         if (tags.size > 2) Text("+${tags.size - 2}", fontSize = 12.sp, color = Arachn0deColors.TextSecondary)
     }
 }
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable internal fun TagSelector(tags: List<Tag>, selected: Set<String>, onChange: (Set<String>) -> Unit,
     single: Boolean = false, repository: TagRepository? = null, enabled: Boolean = true) {
     var open by rememberSaveable { mutableStateOf(false) }
@@ -40,24 +41,35 @@ import kotlinx.coroutines.launch
     var error by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
     OutlinedButton(enabled = enabled, onClick = { open = true }) { Text("Etiquetas: " + (tags.filter { it.id in selected }.let { picked -> picked.take(2).joinToString { it.name } + if (picked.size > 2) " +${picked.size - 2}" else "" }.ifEmpty { if (single) "Todas" else "Ninguna" }), maxLines = 2, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis) }
-    if (open) AlertDialog(onDismissRequest = { open = false }, title = { Text("Etiquetas") }, text = {
-        Column {
-            OutlinedTextField(search, { search = it }, label = { Text("Buscar o crear etiqueta") }, singleLine = true)
-            LazyColumn(Modifier.heightIn(max = 240.dp)) {
-                items(tags.filter { it.normalizedName.contains(search.trim().lowercase(java.util.Locale.ROOT)) }, key = { it.id }) { tag ->
-                    TextButton(onClick = { onChange(if (single) setOf(tag.id) else if (tag.id in selected) selected - tag.id else selected + tag.id) }) {
-                        Text((if (tag.id in selected) "✓ " else "") + tag.name)
+    if (open) ModalBottomSheet(onDismissRequest={open=false},sheetState=rememberModalBottomSheetState(skipPartiallyExpanded=true),
+        containerColor=Arachn0deColors.Surface,contentColor=Arachn0deColors.TextPrimary,tonalElevation=0.dp) {
+        BoxWithConstraints(Modifier.fillMaxWidth()) {
+            Column(Modifier.fillMaxWidth().heightIn(max=maxHeight*.7f).padding(horizontal=12.dp),verticalArrangement=Arrangement.spacedBy(6.dp)) {
+                Text("Etiquetas",style=MaterialTheme.typography.titleMedium)
+                OutlinedTextField(search, { search = it }, label = { Text("Buscar o crear etiqueta") }, singleLine = true,modifier=Modifier.fillMaxWidth())
+                LazyColumn(Modifier.fillMaxWidth().weight(1f,fill=false)) {
+                    items(tags.filter { it.normalizedName.contains(search.trim().lowercase(java.util.Locale.ROOT)) }, key = { it.id }) { tag ->
+                        TextButton(onClick = { onChange(if (single) setOf(tag.id) else if (tag.id in selected) selected - tag.id else selected + tag.id) },
+                            modifier=Modifier.fillMaxWidth().heightIn(min=48.dp),shape=androidx.compose.foundation.shape.RoundedCornerShape(8.dp),
+                            contentPadding=PaddingValues(horizontal=8.dp,vertical=4.dp),
+                            colors=ButtonDefaults.textButtonColors(containerColor=if(tag.id in selected) Arachn0deColors.ControlSurface else androidx.compose.ui.graphics.Color.Transparent,
+                                contentColor=if(tag.id in selected) Arachn0deColors.TextPrimary else Arachn0deColors.TextSecondary)) {
+                            Text((if (tag.id in selected) "✓ " else "") + tag.name,Modifier.fillMaxWidth())
+                        }
                     }
                 }
+                if (repository != null && search.isNotBlank()) TextButton(onClick = { scope.launch {
+                    runCatching { repository.create(search) }.onSuccess { onChange(if (single) setOf(it.id) else selected + it.id); search = "" }
+                        .onFailure { error = it.message }
+                } }) { Text("Crear y seleccionar") }
+                error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+                Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween,verticalAlignment=androidx.compose.ui.Alignment.CenterVertically) {
+                    TextButton(onClick={onChange(emptySet())}) {Text(if(single) "Todas las etiquetas" else "Quitar todas")}
+                    FilledTonalButton(onClick={open=false},shape=androidx.compose.foundation.shape.RoundedCornerShape(8.dp)) {Text("Listo")}
+                }
             }
-            TextButton(onClick = { onChange(emptySet()) }) { Text(if (single) "Todas las etiquetas" else "Quitar todas") }
-            if (repository != null && search.isNotBlank()) TextButton(onClick = { scope.launch {
-                runCatching { repository.create(search) }.onSuccess { onChange(if (single) setOf(it.id) else selected + it.id); search = "" }
-                    .onFailure { error = it.message }
-            } }) { Text("Crear y seleccionar") }
-            error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
         }
-    }, confirmButton = { TextButton(onClick = { open = false }) { Text("Listo") } })
+    }
 }
 @Composable internal fun TagManager(repository: TagRepository, state: TagState,showAccess:Boolean=true,initiallyOpen:Boolean=false,onClose:()->Unit={}) {
     var open by rememberSaveable { mutableStateOf(initiallyOpen) }

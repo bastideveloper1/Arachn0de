@@ -14,9 +14,8 @@ internal fun AppearancePalette.materialColors(): androidx.compose.material3.Colo
     tertiary = secondary, onTertiary = background,
     background = background, onBackground = text, surface = surface, onSurface = text,
     surfaceVariant = controls, onSurfaceVariant = muted, surfaceTint = primary,
-    outline = muted, outlineVariant = outline, error = SemanticColors.Error, onError = background,
+    outline = outline, outlineVariant = outline, error = SemanticColors.Error, onError = background,
     )
-    if (this == AppearanceTheme.Arachn0de.palette) return base
     // Cover Material surface/fixed roles too: custom palettes never inherit decorative violet.
     return base.copy(tertiaryContainer = accentSurface, onTertiaryContainer = text,
         inverseSurface = text, inverseOnSurface = background, inversePrimary = solidPrimary, surfaceDim = background, surfaceBright = controls, surfaceContainerLowest = background,

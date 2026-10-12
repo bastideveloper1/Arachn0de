@@ -21,7 +21,11 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.MyLocation
 import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.Train
+import androidx.compose.material.icons.filled.ExpandMore
+import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.DirectionsSubway
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
@@ -55,10 +59,25 @@ import kotlinx.coroutines.*
 /** The map, tasks and standalone trips share the same persisted plans and planner. */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-internal fun MetroScreen(nodes: List<Node>, projects: List<Project>, nodeId: String?=null, requestToken: Long=0, onBack: ()->Unit) {
+internal fun MetroScreen(nodes: List<Node>, projects: List<Project>, nodeId: String?=null, requestToken: Long=0, journeyId:String?=null, onBack: ()->Unit) {
     val context=LocalContext.current
     val app=context.applicationContext as Arachn0deApplication
     val repository=app.metroRepository
+    val hoursPreferences=remember(repository) {app.privateContext.getSharedPreferences(MetroHoursConfig.NAME,0)}
+    var hours by remember(hoursPreferences) {mutableStateOf(MetroHoursConfig.read(hoursPreferences))}
+    var contextMenu by remember {mutableStateOf(false)}
+    var tripsExpanded by rememberSaveable {mutableStateOf(false)}
+    var preferencesExpanded by rememberSaveable {mutableStateOf(false)}
+    var settingsExpanded by rememberSaveable {mutableStateOf(false)}
+    var editHours by remember {mutableStateOf(false)}
+    DisposableEffect(hoursPreferences) {
+        val listener=android.content.SharedPreferences.OnSharedPreferenceChangeListener {_,_->hours=MetroHoursConfig.read(hoursPreferences)}
+        hoursPreferences.registerOnSharedPreferenceChangeListener(listener)
+        onDispose {hoursPreferences.unregisterOnSharedPreferenceChangeListener(listener)}
+    }
+    if(editHours) MetroHoursEditor(hours,onDismiss={editHours=false},onSave={value->
+        if(hoursPreferences.edit().putString("hours",value.encode()).commit()) {hours=value;editHours=false;true} else false
+    })
     var snapshot by remember { mutableStateOf<MetroSnapshot?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
     var busy by remember { mutableStateOf(false) }
@@ -107,6 +126,7 @@ internal fun MetroScreen(nodes: List<Node>, projects: List<Project>, nodeId: Str
         lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) {
             now=metroTime(context)
             if(page=="Seguimiento" && pick==null && tapped==null) while(isActive) {delay(1000);now=metroTime(context)}
+            else if(page in setOf("Planificar","Recorrido")) while(isActive) {delay(30_000);now=metroTime(context)}
         }
     }
     LaunchedEffect(pick,destinationJourney) {
@@ -115,9 +135,13 @@ internal fun MetroScreen(nodes: List<Node>, projects: List<Project>, nodeId: Str
     val state=snapshot
     val selected=state?.journeys?.firstOrNull { it.row.id==selectedId }
     val active=state?.journeys?.firstOrNull { it.data.active!=null }
-    var opened by rememberSaveable(nodeId) { mutableStateOf(false) }
-    LaunchedEffect(nodeId,state?.journeys?.map { it.row.id }) {
-        if(state!=null && !opened) { opened=true; if(nodeId==null && active!=null) {selectedId=active.row.id;page="Seguimiento"} }
+    var opened by rememberSaveable(nodeId,journeyId) { mutableStateOf(false) }
+    LaunchedEffect(nodeId,journeyId,state?.journeys?.map { it.row.id }) {
+        if(state!=null && !opened) { opened=true; if(nodeId==null && journeyId==null && active!=null) {selectedId=active.row.id;page="Seguimiento"} }
+        if(journeyId!=null && selectedId==null && state!=null) {
+            val trip=state.journeys.firstOrNull {it.row.id==journeyId}
+            selectedId=trip?.row?.id;page=if(trip?.data?.active!=null) "Seguimiento" else "Recorrido"
+        }
         if(nodeId!=null && selectedId==null) {
             val attached=state?.journeys?.firstOrNull { it.row.nodeId==nodeId }
             if(attached!=null) { selectedId=attached.row.id; page=if(attached.data.active!=null) "Seguimiento" else "Recorrido" }
@@ -128,7 +152,7 @@ internal fun MetroScreen(nodes: List<Node>, projects: List<Project>, nodeId: Str
     LaunchedEffect(requestToken,state) {
         if(requestToken!=0L && handledRequest!=requestToken && state!=null) {
             handledRequest=requestToken
-            val requested=if(nodeId!=null) state.journeys.firstOrNull {it.row.nodeId==nodeId} else active
+            val requested=if(journeyId!=null) state.journeys.firstOrNull {it.row.id==journeyId} else if(nodeId!=null) state.journeys.firstOrNull {it.row.nodeId==nodeId} else active
             selectedId=requested?.row?.id
             page=when {requested?.data?.active!=null->"Seguimiento";requested!=null->"Recorrido";nodeId!=null->"Planificar";else->"Inicio"}
         }
@@ -141,7 +165,7 @@ internal fun MetroScreen(nodes: List<Node>, projects: List<Project>, nodeId: Str
         if(page=="Seguimiento" && selected!=null && selected.data.active==null) page="Recorrido"
     }
     LaunchedEffect(state?.preferences?.home) { if(origin==null) origin=state?.preferences?.home }
-    BackHandler { if(full) full=false else if(nodeId!=null) onBack() else if(page=="Recorrido") page="Viajes" else if(page!="Inicio") page="Inicio" else onBack() }
+    BackHandler { if(full) full=false else if(nodeId!=null || journeyId!=null) onBack() else if(page=="Recorrido") page="Viajes" else if(page!="Inicio") page="Inicio" else onBack() }
     var pendingBegin by rememberSaveable {mutableStateOf<String?>(null)}
     suspend fun startJourney(journey:MetroJourney) {
         val fresh=repository.snapshot()
@@ -160,6 +184,13 @@ internal fun MetroScreen(nodes: List<Node>, projects: List<Project>, nodeId: Str
     fun begin(journey:MetroJourney) {
         if(needsNotificationPermission()) {pendingBegin=journey.row.id;notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)}
         else work {startJourney(journey)}
+    }
+    fun deleteJourney(journey:MetroJourney) {
+        restrictionAction="¿Eliminar este viaje, su historial y su vínculo con la tarea? La tarea se conservará. Esta acción no se puede deshacer." to {work {
+            repository.remove(journey.row.id,journey.row.revision)
+            if(selectedId==journey.row.id) selectedId=null
+            page="Viajes"
+        }}
     }
     fun editJourney(journey:MetroJourney) { returnDraft=false;selectedId=journey.row.id;origin=journey.data.plan.stops.first();destination=journey.data.plan.stops.last();vias=ArrayList(journey.data.plan.stops.drop(1).dropLast(1));express=journey.data.plan.express;referenceSchedule=journey.data.plan.departure!=null;departure=journey.data.plan.departure ?: System.currentTimeMillis();traveler=journey.row.personId;searched=true;page="Planificar" }
     fun planReturn(journey:MetroJourney) {
@@ -180,7 +211,10 @@ internal fun MetroScreen(nodes: List<Node>, projects: List<Project>, nodeId: Str
         check(repository.tracking(journey.row.id,journey.row.revision,action)) { "La sesión cambió; vuelve a pulsar." }
     }
     if(state==null) {
-        Column(Modifier.fillMaxSize().padding(16.dp)) { Text("Metro de Santiago · Beta 1"); Text(error ?: "Cargando red offline…"); TextButton(onClick=onBack) { Text("Volver") } }; return
+        Column(Modifier.fillMaxSize().padding(horizontal=12.dp,vertical=10.dp)) {
+            com.r0ybt.arachn0de.ui.HeaderBar(onMenuClick=onBack,title="Metro",onBack=onBack)
+            Text(error ?: "Cargando red offline…")
+        }; return
     }
     val preferences=state.preferences
     val net=remember(preferences.catalog) { preferences.planningNetwork }
@@ -206,14 +240,31 @@ internal fun MetroScreen(nodes: List<Node>, projects: List<Project>, nodeId: Str
         if(station==null) pick="ubicacion-destino" else prepareDestination(journey,destination,station)
     }
     CompositionLocalProvider(LocalContentColor provides MaterialTheme.colorScheme.onBackground) {
-    Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).padding(horizontal=12.dp)) {
-        if(!full) Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically) {
-            TextButton(onClick={ if(full) full=false else onBack() }) { Text("Volver") }
-            Text("Metro de Santiago",Modifier.weight(1f),style=MaterialTheme.typography.titleMedium)
-
-        }
+    Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).padding(horizontal=12.dp,vertical=10.dp)) {
+        com.r0ybt.arachn0de.ui.HeaderBar(onMenuClick=onBack,title="Metro",onBack={if(full) full=false else onBack()},trailingAction={
+            Box {
+                TextButton(onClick={contextMenu=true}) {Text("Opciones de Metro")}
+                DropdownMenu(contextMenu,{contextMenu=false}) {
+                    fun navigate(target:String) {page=target;full=false;managing=false;contextMenu=false}
+                    DropdownMenuItem(text={Text("Viajes")},trailingIcon={Icon(if(tripsExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,null)},onClick={tripsExpanded=!tripsExpanded})
+                    if(tripsExpanded) {
+                        DropdownMenuItem(text={Text("Viajar")},onClick={navigate("Planificar")})
+                        DropdownMenuItem(text={Text("Viajes guardados")},onClick={navigate("Viajes")})
+                        DropdownMenuItem(text={Text("Viajes recientes")},onClick={navigate("Recientes")})
+                    }
+                    DropdownMenuItem(text={Text("Preferencias")},trailingIcon={Icon(if(preferencesExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,null)},onClick={preferencesExpanded=!preferencesExpanded})
+                    if(preferencesExpanded) {
+                        DropdownMenuItem(text={Text("Restricciones de viaje")},onClick={navigate("Restricciones")})
+                        DropdownMenuItem(text={Text("Estaciones favoritas")},onClick={navigate("Favoritos")})
+                        DropdownMenuItem(text={Text("Configurar vibración")},onClick={navigate("Vibración")})
+                    }
+                    DropdownMenuItem(text={Text("Configuración")},trailingIcon={Icon(if(settingsExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,null)},onClick={settingsExpanded=!settingsExpanded})
+                    if(settingsExpanded) DropdownMenuItem(text={Text("Configuración general de Metro")},onClick={navigate("Configuración")})
+                }
+            }
+        })
         if(!full) Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(4.dp)) {
-            listOf("Inicio","Líneas","Planificar","Viajes").forEach {tab->
+            listOf("Inicio","Líneas").forEach {tab->
                 val chosen=page==tab || tab=="Viajes" && page in setOf("Seguimiento","Recorrido")
                 Surface(onClick={page=tab;managing=false},modifier=Modifier.weight(1f),shape=androidx.compose.foundation.shape.RoundedCornerShape(12.dp),
                     color=if(chosen) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surface,
@@ -222,7 +273,7 @@ internal fun MetroScreen(nodes: List<Node>, projects: List<Project>, nodeId: Str
                 }
             }
         }
-        if(!full) Spacer(Modifier.height(8.dp))
+        if(!full) { Spacer(Modifier.height(8.dp)); HorizontalDivider(); Spacer(Modifier.height(8.dp)) }
         when(page) {
             "Inicio" -> LazyColumn(Modifier.weight(1f),verticalArrangement=Arrangement.spacedBy(10.dp),contentPadding=PaddingValues(vertical=8.dp)) {
                 item { Card(Modifier.fillMaxWidth()) { Column(Modifier.padding(14.dp),verticalArrangement=Arrangement.spacedBy(8.dp)) {
@@ -231,17 +282,29 @@ internal fun MetroScreen(nodes: List<Node>, projects: List<Project>, nodeId: Str
                     Button(onClick={page="Planificar"},modifier=Modifier.fillMaxWidth()) {Text("Planificar viaje")}
                     if(active!=null) FilledTonalButton(onClick={selectedId=active.row.id;page="Seguimiento"},modifier=Modifier.fillMaxWidth()) { Text("Abrir seguimiento activo") }
                 } } }
+                if(state.journeys.isNotEmpty()) item {Text("Guardados y recientes",style=MaterialTheme.typography.titleMedium)}
+                items(state.journeys.sortedByDescending {it.data.sessions.lastOrNull()?.start ?: 0L}.take(3)) {j->OutlinedCard(Modifier.fillMaxWidth().clickable {selectedId=j.row.id;page=if(j.data.active!=null) "Seguimiento" else "Recorrido"}) {Column(Modifier.padding(12.dp)) {RouteSummary(j.data.plan,net);Text("Ver viaje ›",style=MaterialTheme.typography.labelLarge)}}}
+
+            }
+            "Configuración" -> LazyColumn(Modifier.weight(1f),verticalArrangement=Arrangement.spacedBy(8.dp)) {
+                item {Text("Configuración general de Metro",style=MaterialTheme.typography.titleMedium)}
                 item { OutlinedCard(Modifier.fillMaxWidth()) {Column(Modifier.padding(12.dp)) {
                     Text("Casa: ${name(preferences.home)}",style=MaterialTheme.typography.titleSmall)
                     Row { OutlinedButton(onClick={pick="casa"}) { Text("Elegir Casa") };Spacer(Modifier.width(6.dp)); if(preferences.home!=null) FilledTonalButton(onClick={destination=preferences.home;searched=false;page="Planificar"}) { Text("Volver a casa") } }
                 } } }
-                if(preferences.favorites.isNotEmpty()) item {Text("Favoritos",style=MaterialTheme.typography.titleMedium)}
-                items(preferences.favorites.sorted()) { id->OutlinedButton(onClick={destination=id;searched=false;page="Planificar"},modifier=Modifier.fillMaxWidth()) { Text("★ ${name(id)}") } }
-                item {OutlinedButton(onClick={page="Líneas";managing=false},modifier=Modifier.fillMaxWidth()) {Text("Explorar líneas")}}
-                if(state.journeys.isNotEmpty()) item {Text("Guardados y recientes",style=MaterialTheme.typography.titleMedium)}
-                items(state.journeys.sortedByDescending {it.data.sessions.lastOrNull()?.start ?: 0L}.take(3)) {j->OutlinedCard(Modifier.fillMaxWidth().clickable {selectedId=j.row.id;page="Viajes"}) {Column(Modifier.padding(12.dp)) {RouteSummary(j.data.plan,net);Text("Ver viaje ›",style=MaterialTheme.typography.labelLarge)}}}
-                item { HorizontalDivider(); Text("Información y ajustes",style=MaterialTheme.typography.titleSmall);Text("${preferences.restrictions.closed.size+preferences.restrictions.avoided.size+preferences.restrictions.interrupted.size} restricciones locales · No son avisos oficiales.",style=MaterialTheme.typography.bodySmall) }
-                item { OutlinedButton(onClick={page="Restricciones"}) { Text("Gestionar restricciones") } /* Static reference panel retained below; no operational timetable engine. */ }
+                item {TextButton(onClick={editHours=true}) {Text("Horarios")}}
+            }
+            "Favoritos" -> LazyColumn(Modifier.weight(1f),verticalArrangement=Arrangement.spacedBy(8.dp)) {
+                item {Text("Estaciones favoritas",style=MaterialTheme.typography.titleMedium)}
+                if(preferences.favorites.isEmpty()) item {Text("No hay estaciones favoritas.")}
+                items(preferences.favorites.sorted()) {id->OutlinedButton(onClick={tapped=id},modifier=Modifier.fillMaxWidth()) {Text("★ ${name(id)}")}}
+                item {TextButton(onClick={page="Líneas"}) {Text("Consultar estaciones")}}
+            }
+            "Vibración" -> LazyColumn(Modifier.weight(1f)) {
+                item { Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {Text("Vibración previa");Text("Una estación antes de combinación o destino estimados",style=MaterialTheme.typography.bodySmall)}
+                    Switch(preferences.vibration,{enabled->work {repository.settings {it.copy(vibration=enabled)}}},enabled=!busy)
+                } }
             }
             "Líneas" -> {
                 if(!full) {
@@ -290,20 +353,21 @@ internal fun MetroScreen(nodes: List<Node>, projects: List<Project>, nodeId: Str
                     }}
                 }
                 item { Row { FilterChip(selected=!referenceSchedule && !express,onClick={referenceSchedule=false;express=false},label={Text("Normal")}); Spacer(Modifier.width(8.dp));FilterChip(selected=!referenceSchedule && express,onClick={referenceSchedule=false;express=true},label={Text("Expresa")}) }; Text("Elección manual, independiente del horario. No identifica el próximo tren.",style=MaterialTheme.typography.labelSmall)
-                    FilterChip(selected=referenceSchedule,onClick={referenceSchedule=!referenceSchedule;searched=false},label={Text("Simular horario de referencia")})
+                    FilterChip(selected=referenceSchedule,onClick={referenceSchedule=!referenceSchedule;searched=false},label={Text("Simular horario")})
                     if(referenceSchedule) MetroDepartureField(departure) {departure=it;searched=false}
                     if(referenceSchedule) Text("Referencia histórica, no horario vigente confirmado. Festivos y excepciones sin verificar. No inicia seguimiento.",style=MaterialTheme.typography.bodySmall) }
                 item {Button(enabled=stops!=null && !busy,onClick={searched=true},modifier=Modifier.fillMaxWidth()) {Text("Buscar ruta")}}
                 if(searched && scheduledResult?.ready==false) item {Text("Calculando horario de referencia…")}
                 if(searched && stops!=null && route==null && scheduledResult?.ready!=false) item { Text(if(referenceSchedule) "No hay ruta comprobable con este horario de referencia y restricciones. Puede cruzar una franja de servicio; prueba otra hora o revisa el servicio manualmente." else "No existe ruta con estas restricciones.") }
                 if(searched && route!=null) {
-                    item { RouteSummary(route,net); if(express && !route.usedExpress) Text("Este recorrido no utiliza servicio expreso.") }
+                    item { RouteSummary(route,net); MetroHoursNotice(if(referenceSchedule) departure else now.wall,route.minutes,hours); if(express && !route.usedExpress) Text("Este recorrido no utiliza servicio expreso.") }
                     item { Row { Button(enabled=!busy,onClick={work { selectedId=repository.savePlan(route,if(returnDraft) null else nodeId,traveler,selectedId);page="Viajes" }}) { Text(if(nodeId!=null && !returnDraft) "Guardar modo Viaje" else "Guardar viaje") }; if(nodeId==null) TextButton(onClick={taskDialog=true}) { Text("Crear tarea") } } }
                     item { Button(enabled=!busy && active==null,onClick={work {
                         selectedId=repository.savePlan(route,if(returnDraft) null else nodeId,traveler,selectedId)
                         val saved=repository.snapshot().journeys.first {it.row.id==selectedId}
                         if(needsNotificationPermission()) {pendingBegin=saved.row.id;notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)} else startJourney(saved)
                     }},modifier=Modifier.fillMaxWidth()) {Text("Iniciar viaje")} }
+                    item {ActiveJourneyNotice(active,selectedId,nodes,net)}
                     item {RouteTimeline(route,net,Modifier.fillMaxWidth().height(440.dp),selectedStation=mapSelection,onStation={mapSelection=it;tapped=it})}
                 }
             }
@@ -321,26 +385,30 @@ internal fun MetroScreen(nodes: List<Node>, projects: List<Project>, nodeId: Str
                     val completed=journey.data.sessions.lastOrNull()?.takeIf {it.ended!=null}
                     val viewed=completed?.route ?: journey.data.plan
                     val routeNet=MetroCatalogRevision.forRoute(net,viewed.networkVersion)
-                    RouteSummary(viewed,routeNet)
+                    RouteSummary(viewed,routeNet,showTechnical=false)
+                    MetroHoursNotice(now.wall,journey.data.plan.minutes,hours)
                     Text(if(completed!=null) "Finalizado" else "Pendiente",style=MaterialTheme.typography.labelLarge)
-                    if(completed!=null) {
-                        Text("Duración: ${MetroTracking.totalMillis(completed,now)/60_000} min · pausas: ${completed.pausedMillis/60_000} min")
-                        Text("Última posición estimada: ${MetroPresentation.positionText(viewed,MetroTracking.position(completed,now),routeNet)}",style=MaterialTheme.typography.bodySmall)
+                    FlowRow(horizontalArrangement=Arrangement.spacedBy(6.dp),verticalArrangement=Arrangement.spacedBy(0.dp),itemVerticalAlignment=Alignment.CenterVertically) {
+                        Button(enabled=!busy && active==null && journey.row.enabled,onClick={begin(journey)},
+                            contentPadding=PaddingValues(horizontal=10.dp,vertical=6.dp),shape=androidx.compose.foundation.shape.RoundedCornerShape(8.dp),elevation=null,
+                            colors=ButtonDefaults.buttonColors(containerColor=MaterialTheme.colorScheme.surfaceVariant,contentColor=MaterialTheme.colorScheme.onSurface)) {Text(if(completed!=null) "Iniciar nuevo seguimiento" else "Comenzar viaje")}
+                        JourneyMenu(journey,busy,onEdit={editJourney(journey)},onDuplicate={work {selectedId=repository.duplicate(journey.row.id,journey.row.revision);page="Recorrido"}},onDelete={deleteJourney(journey)})
+                        if(completed!=null) TextButton(onClick={planReturn(journey)}) {Text("Planificar regreso")}
                     }
-                    FlowRow {
-                        Button(enabled=!busy && active==null && journey.row.enabled && (nodes.firstOrNull {it.id==journey.row.nodeId}?.let {it.purpose==NodePurpose.ACTION && !it.hasChildren} ?: true),onClick={begin(journey)}) {Text(if(completed!=null) "Iniciar nuevo seguimiento" else "Comenzar viaje")}
-                        TextButton(onClick={editJourney(journey)}) {Text("Editar viaje")}
-                        TextButton(onClick={showJourneyHistory=true}) {Text("Historial del recorrido")}
-                        TextButton(onClick={planReturn(journey)}) {Text("Planificar regreso")}
+                    ActiveJourneyNotice(active,journey.row.id,nodes,net)
+                    Text(if(journey.row.enabled) "Modo Viaje" else "Modo normal · recorrido e historial conservados",style=MaterialTheme.typography.bodySmall)
+                    FlowRow(horizontalArrangement=Arrangement.spacedBy(6.dp),verticalArrangement=Arrangement.spacedBy(0.dp),itemVerticalAlignment=Alignment.CenterVertically) {
+                        TextButton(enabled=!busy,onClick={work {repository.enabled(journey.row.id,!journey.row.enabled)}}) {Text(if(journey.row.enabled) "Volver a modo normal" else "Activar modo Viaje")}
+                        ArrivalRecovery(journey,busy) {recoverArrival(journey,it)}
+                        TextButton(onClick={detailOptions=!detailOptions}) {Text("Opciones del viaje")}
                     }
-                    ArrivalRecovery(journey,busy) {recoverArrival(journey,it)}
-                    TextButton(onClick={detailOptions=!detailOptions}) {Text("Opciones del viaje")}
                     if(detailOptions) {
+                        RouteTechnicalDetails(viewed,routeNet)
                         Text("Persona: ${people.firstOrNull {it.id==journey.row.personId}?.name ?: "Sin Persona"}")
-                        OutlinedButton(enabled=!busy,onClick={work {repository.enabled(journey.row.id,!journey.row.enabled)}}) {Text(if(journey.row.enabled) "Volver a modo normal" else "Activar Viaje")}
-                        OutlinedButton(enabled=!busy,onClick={restrictionAction="¿Eliminar datos Metro de este viaje?" to {work {repository.remove(journey.row.id);page="Viajes"}}}) {Text("Eliminar datos Metro")}
-                        TextButton(onClick={showJourneyHistory=true}) {Text("Historial del recorrido")}
+                        TextButton(onClick={showJourneyHistory=true}) {Text("Historial")}
                         completed?.let {last->
+                            Text("Duración: ${MetroTracking.totalMillis(last,now)/60_000} min · pausas: ${last.pausedMillis/60_000} min",style=MaterialTheme.typography.bodySmall)
+                            Text("Última posición estimada: ${MetroPresentation.positionText(viewed,MetroTracking.position(last,now),routeNet)}",style=MaterialTheme.typography.bodySmall)
                             Text("Estimado ${last.originalRoute.minutes} min · real ${MetroTracking.totalMillis(last,now)/60_000} min · ${last.events.count {it.kind in setOf("CONFIRM","BETWEEN","REPLAN")}} correcciones")
                             last.control?.records?.forEachIndexed {i,r->Text("Etapa ${i+1}: ${r.railMillis/1000} s · combinación ${r.transferMillis/1000} s")}
                             if(!last.historyElapsedTrusted || last.startBoot!=last.boot) Text("Duración recuperada con reloj civil; puede ser incierta si cambió la hora.")
@@ -356,80 +424,76 @@ internal fun MetroScreen(nodes: List<Node>, projects: List<Project>, nodeId: Str
                 else {
                     val sessionNet=remember(preferences.catalog,session.route.networkVersion) {MetroCatalogRevision.forRoute(preferences.network,session.route.networkVersion)}
                     val position=MetroTracking.position(session,now)
-                    val pending=MetroTracking.remainingStops(session,now)
-                    if(!full) Card(Modifier.fillMaxWidth()) {Column(Modifier.padding(10.dp)) {
-                        Text("Posición estimada",style=MaterialTheme.typography.labelLarge)
-                        Text(MetroPresentation.positionText(session.route,position,sessionNet),style=MaterialTheme.typography.titleMedium)
-                        val step=session.route.steps.getOrNull(position.step)
-                        if(step!=null) {
-                            if(session.route.departure!=null && !MetroSchedule().permits(step,now.wall)) Text("El servicio previsto no coincide con este momento del horario de referencia. Verifica el andén y revisa el destino antes de embarcar.",style=MaterialTheme.typography.bodySmall)
-                            Text("Última estación: ${name(step.from)} · Próxima: ${name(step.to)}",style=MaterialTheme.typography.bodySmall)
-                            Text(MetroPresentation.instruction(session.route,position.step,sessionNet),style=MaterialTheme.typography.bodySmall)
+                    if(!full) Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f)) {
+                            Text("Posición estimada",style=MaterialTheme.typography.labelSmall)
+                            Text(MetroPresentation.positionText(session.route,position,sessionNet),style=MaterialTheme.typography.titleSmall)
+                            Text(listOfNotNull(session.route.steps.getOrNull(position.step)?.let {"Próxima: ${name(it.to)}"},
+                                "Destino: ${name(session.route.stops.last())}").joinToString(" · "),style=MaterialTheme.typography.bodySmall)
+                            Text("≈ ${((MetroStages.offset(session.route,MetroStages.boundary(session))-position.offset).coerceAtLeast(0)+59_999)/60_000} min hasta ${name(session.route.steps.getOrNull(MetroStages.boundary(session))?.from ?: session.route.stops.last())}",style=MaterialTheme.typography.bodySmall)
                         }
-                        Text("${MetroPresentation.ridesRemaining(session.route,position)} estaciones hasta destino · ${(session.route.minutes*60_000L-position.offset).coerceAtLeast(0)/60_000} min ≈",style=MaterialTheme.typography.labelMedium)
-                        MetroPresentation.untilTransfer(session.route,position)?.let {Text("$it estaciones hasta combinación",style=MaterialTheme.typography.labelMedium)}
-                        if(pending.size>1) Text("Destino inmediato: ${name(pending.first())}",style=MaterialTheme.typography.bodySmall)
-                    } }
-                    if(!full) OutlinedButton(onClick={trackingOptions=!trackingOptions}) {Text("Opciones de seguimiento ${if(trackingOptions) "▴" else "▾"}")}
-                    if(!full && trackingOptions) {
-                        Text("Estimación genérica de 2 min por tramo, incluyendo trayecto y detención sin medirlos por separado. No es ubicación real. Estoy aquí vuelve a anclar la etapa sin cambiar sus tiempos confirmados.",style=MaterialTheme.typography.bodySmall)
-                        Text("Tiempo estimado restante de la etapa: ${((MetroStages.offset(session.route,MetroStages.boundary(session))-position.offset).coerceAtLeast(0)+59_999)/60_000} min",style=MaterialTheme.typography.bodySmall)
-                        if(pending.size>1) Text("Paradas posteriores: ${pending.drop(1).joinToString { name(it) }}")
-                        Text("Real ${MetroTracking.totalMillis(session,now)/60_000} min · pausa ${(session.pausedMillis+MetroTracking.currentPauseMillis(session,now))/60_000} min",style=MaterialTheme.typography.labelSmall)
-                        TextButton(onClick={editJourney(journey)}) {Text("Editar viaje")}
-                        TextButton(onClick={showJourneyHistory=true}) {Text("Historial del recorrido")}
-                            TextButton(onClick={planReturn(journey)}) {Text("Planificar regreso")}
-                        TextButton(onClick={work { MetroTrackingService.start(context) }}) { Text("Recuperar notificación") }
-                        TextButton(onClick={page="Líneas"}) { Text("Explorar otras estaciones / corregir fuera de ruta") }
-                        TextButton(onClick={selectedId=journey.row.id;pick="persona-activa"}) { Text("Cambiar Persona") }
+                        MetroActions("Seguimiento",busy,listOf(
+                            "Detalle" to {selectedId=journey.row.id;page="Recorrido"},
+                            "Cambiar destino" to {destinationJourney=journey;pick="nuevo-destino"},
+                            "Corregir ubicación" to {page="Líneas"},
+                            "Historial" to {showJourneyHistory=true},
+                            "Tiempos" to {trackingOptions=!trackingOptions},
+                            "Cambiar Persona" to {selectedId=journey.row.id;pick="persona-activa"},
+                            "Recuperar notificación" to {work {MetroTrackingService.start(context)}},
+                            "Finalizar recorrido" to {restrictionAction="¿Finalizar recorrido?" to {updateSession(journey) {MetroTracking.finish(it,metroTime(context))}}}
+                        ))
                     }
-                    if(!full) Text(when { position.uncertain->"Recuperación incierta: toca una estación y confirma Estoy aquí.";session.pausedAt!=null->"Estimación pausada";position.offset==session.offset && session.confirmed!=null->"Posición confirmada: ${name(session.confirmed)}";else->"Posición estimada: ${name(position.station)}" })
-                    if(MetroPlanner.affected(session.route,net,preferences.restrictions)) TextButton(onClick={selectedId=journey.row.id;propose(session.route,true,position.station)}) {Text("Catálogo / restricciones: ¿Quieres buscar otra ruta?")}
-                    TrackingMap(session,position,sessionNet,people.firstOrNull { it.id==(session.personId ?: journey.row.personId) },full,Modifier.weight(1f),selectedStation=mapSelection,onExpand={full=!full},onStation={mapSelection=it;tapped=it})
+                    if(!full && trackingOptions) {
+                        Text("Real ${MetroTracking.totalMillis(session,now)/60_000} min · pausas ${(session.pausedMillis+MetroTracking.currentPauseMillis(session,now))/60_000} min. Estimación: 2 min por tramo; no es ubicación GPS.",style=MaterialTheme.typography.bodySmall)
+                        MetroStages.control(session).transferStarted?.let {Text("Tiempo de combinación (incluye pausas): ${MetroStages.duration(it,now,MetroStages.control(session).clockTrusted)/1000} s",style=MaterialTheme.typography.bodySmall)}
+                    }
+                    if(position.uncertain) Text("Posición incierta · confirma Estoy aquí en tu estación real.",style=MaterialTheme.typography.bodySmall)
+                    if(MetroPlanner.affected(session.route,net,preferences.restrictions)) TextButton(onClick={selectedId=journey.row.id;propose(session.route,true,position.station)}) {Text("Revisar ruta")}
+                    TrackingMap(session,position,sessionNet,full,Modifier.weight(1f),selectedStation=mapSelection,onExpand={full=!full},onStation={mapSelection=it;tapped=it})
                     val control=MetroStages.control(session)
                     val boundary=session.route.steps.getOrNull(MetroStages.boundary(session))
                     val arrivalContext=when(MetroStages.gateKind(session)) {MetroStepKind.TRANSFER,MetroStepKind.CHANGE->"Llegué a combinación";MetroStepKind.WAYPOINT->"Llegué a parada intermedia";else->"Llegué a destino"}
                     Text(MetroActivity.status(journey,now),style=MaterialTheme.typography.labelLarge)
-                    if(!full) TextButton(enabled=!busy,onClick={destinationJourney=journey;pick="nuevo-destino"}) {Text("Cambiar destino")}
                     if(control.phase==MetroPhase.READY) {
                         session.route.steps.firstOrNull()?.let {next->Text("${next.line} · Embarque: ${name(next.from)} · Dirección ${MetroPresentation.direction(sessionNet,next.line,next.from,next.to)}")}
-                        control.transferStarted?.let {Text("Tiempo de combinación (incluye pausas): ${MetroStages.duration(it,now,control.clockTrusted)/1000} s")}
                         if(session.pausedAt!=null) FilledTonalButton(enabled=!busy,onClick={updateSession(journey) {MetroTracking.resume(it,metroTime(context))}}) {Text("Reanudar")}
-                        else Button(enabled=!busy,onClick={updateSession(journey) {MetroStages.nextLine(it,metroTime(context))}}) {Text(if(control.transferStarted!=null) "Comenzar siguiente línea" else "Comenzar nueva etapa")}
+                        else Button(enabled=!busy,onClick={updateSession(journey) {MetroStages.nextLine(it,metroTime(context))}}) {Text(if(control.transferStarted!=null) "Iniciar etapa" else "Iniciar etapa")}
                     } else if(control.phase==MetroPhase.RIDING) {
                         Text("$arrivalContext: ${name(boundary?.from ?: session.route.stops.last())}",style=MaterialTheme.typography.labelMedium)
-                        FlowRow(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(8.dp)) {
+                        FlowRow(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(6.dp)) {
                             FilledTonalButton(enabled=!busy,onClick={updateSession(journey) {if(it.pausedAt==null) MetroTracking.pause(it,metroTime(context)) else MetroTracking.resume(it,metroTime(context))}},modifier=Modifier.weight(1f).widthIn(min=140.dp).heightIn(min=48.dp)) {
                                 Icon(if(session.pausedAt==null) Icons.Default.Pause else Icons.Default.PlayArrow,null,Modifier.size(18.dp));Spacer(Modifier.width(6.dp));Text(if(session.pausedAt==null) "Pausar" else "Reanudar")
                             }
-                            Button(enabled=!busy,onClick={updateSession(journey) {MetroStages.arrive(it,metroTime(context))}},modifier=Modifier.weight(1f).widthIn(min=140.dp).heightIn(min=48.dp)) {
+                            Button(enabled=!busy,onClick={updateSession(journey) {MetroStages.confirmArrival(it,metroTime(context))}},modifier=Modifier.weight(1f).widthIn(min=140.dp).heightIn(min=48.dp)) {
                                 Icon(Icons.Default.LocationOn,null,Modifier.size(18.dp));Spacer(Modifier.width(6.dp));Text("Llegué")
                             }
                         }
                     } else {
                         MetroStages.nextRide(session)?.let {next->Text("${next.line} · Embarque: ${name(next.from)} · Dirección ${MetroPresentation.direction(sessionNet,next.line,next.from,next.to)}")}
                         if(session.pausedAt!=null) FilledTonalButton(enabled=!busy,onClick={updateSession(journey) {MetroTracking.resume(it,metroTime(context))}}) {Text("Reanudar")}
-                        else if(control.phase==MetroPhase.ARRIVED && MetroStages.gateKind(session)!=MetroStepKind.WAYPOINT) Button(enabled=!busy,onClick={updateSession(journey) {MetroStages.beginTransfer(it,metroTime(context))}},modifier=Modifier.fillMaxWidth()) {Text("Iniciar combinación")}
+                        else if(control.phase==MetroPhase.ARRIVED && MetroStages.gateKind(session)!=MetroStepKind.WAYPOINT) Button(enabled=!busy,onClick={updateSession(journey) {MetroStages.beginTransfer(it,metroTime(context))}},contentPadding=PaddingValues(horizontal=10.dp,vertical=6.dp),shape=androidx.compose.foundation.shape.RoundedCornerShape(8.dp),elevation=null) {Text("Iniciar combinación")}
                         else {
-                            control.transferStarted?.let {Text("Tiempo de combinación (incluye pausas): ${MetroStages.duration(it,now,control.clockTrusted)/1000} s")}
-                            Button(enabled=!busy,onClick={updateSession(journey) {MetroStages.nextLine(it,metroTime(context))}},modifier=Modifier.fillMaxWidth()) {Text(if(MetroStages.gateKind(session)==MetroStepKind.WAYPOINT) "Continuar siguiente etapa" else "Comenzar siguiente línea")}
+                            Button(enabled=!busy,onClick={updateSession(journey) {MetroStages.nextLine(it,metroTime(context))}},contentPadding=PaddingValues(horizontal=10.dp,vertical=6.dp),shape=androidx.compose.foundation.shape.RoundedCornerShape(8.dp),elevation=null) {Text(if(MetroStages.gateKind(session)==MetroStepKind.WAYPOINT) "Iniciar etapa" else "Iniciar etapa")}
                         }
                     }
                     ArrivalRecovery(journey,busy) {recoverArrival(journey,it)}
                 }
             }
             else -> LazyColumn(Modifier.weight(1f),verticalArrangement=Arrangement.spacedBy(8.dp)) {
-                if(state.journeys.isEmpty()) item {OutlinedCard(Modifier.fillMaxWidth()) {Column(Modifier.padding(14.dp)) {Text("Tus viajes",style=MaterialTheme.typography.titleLarge);Text("Guarda un plan para reutilizarlo y consultar sus recorridos.");Button(onClick={page="Planificar"}) {Text("Planificar viaje")}}}}
-                items(state.journeys.sortedWith(compareBy<MetroJourney> {it.data.active==null}.thenByDescending {it.data.sessions.lastOrNull()?.start ?: 0L}),key={it.row.id}) {journey->
+                if(page=="Recientes" && state.journeys.none {it.data.sessions.isNotEmpty()}) item {Text("No hay viajes recientes.")}
+                if(state.journeys.isEmpty() && page!="Recientes") item {OutlinedCard(Modifier.fillMaxWidth()) {Column(Modifier.padding(14.dp)) {Text("Tus viajes",style=MaterialTheme.typography.titleLarge);Text("Guarda un plan para reutilizarlo y consultar sus recorridos.");Button(onClick={page="Planificar"}) {Text("Planificar viaje")}}}}
+                items((if(page=="Recientes") state.journeys.filter {it.data.sessions.isNotEmpty()}.sortedByDescending {it.data.sessions.last().start} else state.journeys.sortedWith(compareBy<MetroJourney> {it.data.active==null}.thenByDescending {it.data.sessions.lastOrNull()?.start ?: 0L})),key={it.row.id}) {journey->
                     val route=journey.data.active?.route ?: journey.data.plan
                     val routeNet=MetroCatalogRevision.forRoute(net,route.networkVersion)
-                    Card(Modifier.fillMaxWidth().testTag("metro-trip:${journey.row.id}").clickable {selectedId=journey.row.id;detailOptions=false;page=if(journey.data.active!=null) "Seguimiento" else "Recorrido"}) {
+                    Card(Modifier.fillMaxWidth().testTag("metro-trip:${journey.row.id}").clickable {selectedId=journey.row.id;detailOptions=false;page=if(journey.data.active!=null) "Seguimiento" else "Recorrido"},colors=CardDefaults.cardColors(containerColor=MaterialTheme.colorScheme.surface,contentColor=MaterialTheme.colorScheme.onSurface)) {
                         Row(Modifier.padding(horizontal=12.dp,vertical=8.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(10.dp)) {
                             Icon(Icons.Default.DirectionsSubway,"Metro",tint=MaterialTheme.colorScheme.primary)
                             Column(Modifier.weight(1f)) {
                                 Text("${routeNet.stations.getValue(route.stops.first()).name} → ${routeNet.stations.getValue(route.stops.last()).name}",maxLines=2,overflow=androidx.compose.ui.text.style.TextOverflow.Ellipsis,style=MaterialTheme.typography.titleSmall)
-                                Text(MetroActivity.summary(journey,net,now),maxLines=2,overflow=androidx.compose.ui.text.style.TextOverflow.Ellipsis,style=MaterialTheme.typography.labelSmall)
+                                Text(MetroTripPreview.facts(route),style=MaterialTheme.typography.bodySmall)
+                                Text(MetroTripPreview.status(journey),style=MaterialTheme.typography.labelSmall)
                             }
+                            JourneyMenu(journey,busy,onEdit={editJourney(journey)},onDuplicate={work {selectedId=repository.duplicate(journey.row.id,journey.row.revision);page="Recorrido"}},onDelete={deleteJourney(journey)})
                         }
                     }
                 }
@@ -456,7 +520,7 @@ internal fun MetroScreen(nodes: List<Node>, projects: List<Project>, nodeId: Str
         val correctionJourney=if(page in setOf("Recorrido","Seguimiento") || nodeId!=null) selected?.takeIf {it.data.active!=null} else if(page=="Líneas") active else null
         if(correctionJourney!=null) {
             val journey=correctionJourney
-            Button(enabled=!busy,onClick={val current=journey.data.active!!;if(current.route.stops.first()==id || current.route.steps.any {it.to==id}) updateSession(journey) {MetroTracking.confirm(it,id,metroTime(context))} else {selectedId=journey.row.id;propose(current.route,true,id)};tapped=null;page="Seguimiento"},modifier=Modifier.fillMaxWidth().heightIn(min=48.dp)) {
+            Button(enabled=!busy,onClick={val current=journey.data.active!!;if(current.route.stops.first()==id || current.route.steps.any {it.to==id}) updateSession(journey) {MetroTracking.confirm(it,id,metroTime(context))} else {selectedId=journey.row.id;propose(current.route,true,id)};tapped=null;page="Seguimiento"},modifier=Modifier.heightIn(min=48.dp).testTag("metro-confirm-location")) {
                 Icon(Icons.Default.LocationOn,null);Spacer(Modifier.width(8.dp));Text("Estoy aquí")
             }
             OutlinedButton(enabled=!busy,onClick={tapped=null;selectDestination(journey,id)}) {Text("Cambiar destino")}
@@ -477,7 +541,7 @@ internal fun MetroScreen(nodes: List<Node>, projects: List<Project>, nodeId: Str
         }
     }},confirmButton={OutlinedButton(onClick={tapped=null}) {Text("Cerrar")}}) }
     if(showJourneyHistory) selected?.data?.sessions?.lastOrNull()?.let {session->
-        AlertDialog(onDismissRequest={showJourneyHistory=false},title={Text("Historial del recorrido")},text={LazyColumn {
+        AlertDialog(onDismissRequest={showJourneyHistory=false},title={Text("Historial")},text={LazyColumn {
             item {Text("Origen original: ${MetroCatalogRevision.forRoute(preferences.network,session.originalRoute.networkVersion).stations.getValue(session.originalRoute.stops.first()).name}")}
             itemsIndexed(session.routeArchives+session) {index,record->
                 val historyNet=MetroCatalogRevision.forRoute(preferences.network,record.route.networkVersion)
@@ -499,7 +563,7 @@ internal fun MetroScreen(nodes: List<Node>, projects: List<Project>, nodeId: Str
             selectedId=owner.row.id;pendingTracking=owner.row.id;destinationRoute=null;destinationDraft=null
         }}) {Text("Confirmar cambio")}},dismissButton={TextButton(onClick={destinationRoute=null;destinationDraft=null}) {Text("Cancelar")}})
     }
-    restrictionAction?.let {(title,action)->AlertDialog(onDismissRequest={restrictionAction=null},title={Text(title)},text={Text("Restricción manual de este dispositivo. Afecta la planificación; no es un aviso oficial ni cambia la pausa del seguimiento.")},confirmButton={Button(onClick={restrictionAction=null;action()}) {Text("Confirmar")}},dismissButton={OutlinedButton(onClick={restrictionAction=null}) {Text("Cancelar")}})}
+    restrictionAction?.let {(title,action)->AlertDialog(onDismissRequest={restrictionAction=null},title={Text(title)},text={Text(if(title.startsWith("¿Eliminar este viaje")) "Eliminar borra el registro. Finalizar el seguimiento conserva su historial." else if(title=="¿Finalizar recorrido?") "Detiene el seguimiento y conserva el viaje y su historial." else "Restricción manual de este dispositivo. Afecta la planificación; no es un aviso oficial ni cambia la pausa del seguimiento.")},confirmButton={Button(onClick={restrictionAction=null;action()}) {Text("Confirmar")}},dismissButton={OutlinedButton(onClick={restrictionAction=null}) {Text("Cancelar")}})}
     candidate?.let { proposed->AlertDialog(onDismissRequest={candidate=null},title={Text(if(candidateActive) "Cambiar recorrido activo" else "Otra ruta")},text={LazyColumn { item { Text("Ruta anterior");RouteSummary(candidateOld!!,net);Text("Alternativa desde ${name(proposed.stops.first())}; conserva destinos pendientes");RouteSummary(proposed,net) };itemsIndexed(proposed.steps) {i,_->Text(MetroPresentation.instruction(proposed,i,net),Modifier.padding(vertical=6.dp),style=MaterialTheme.typography.bodyMedium)} }},confirmButton={TextButton(enabled=!busy,onClick={work {
         val current=state.journeys.first { it.row.id==selectedId }
         if(candidateActive) check(repository.tracking(current.row.id,current.row.revision) { MetroTracking.replan(it,proposed,metroTime(context)) }) else repository.savePlan(proposed,current.row.nodeId,current.row.personId,current.row.id)
@@ -513,10 +577,13 @@ private fun Set<String>.toggle(id: String)=if(id in this) this-id else this+id
 @Composable private fun TravelerAvatar(person: Person?) {
     if(person?.avatarFile!=null) PersonAvatar(person) else Icon(Icons.Default.Person,"Persona viajera",Modifier.size(32.dp))
 }
-@Composable private fun RouteSummary(route: MetroRoute,net: MetroNetwork) {
+@Composable private fun RouteSummary(route: MetroRoute,net: MetroNetwork,showTechnical:Boolean=true) {
     Text(route.stops.joinToString(" → ") { net.stations.getValue(it).name },style=MaterialTheme.typography.titleSmall)
     Text("≈ ${route.minutes} min · ${MetroPresentation.stations(route)} estaciones · ${route.transfers} combinaciones",style=MaterialTheme.typography.bodyMedium)
     if(route.usedExpress || route.departure!=null) Text(MetroSchedule().warning(route,route.departure ?: System.currentTimeMillis()),style=MaterialTheme.typography.bodySmall)
+    if(showTechnical) RouteTechnicalDetails(route,net)
+}
+@Composable private fun RouteTechnicalDetails(route:MetroRoute,net:MetroNetwork) {
     Text("${route.physicalSegments} tramos físicos · ${MetroPresentation.stoppingStations(route,net)} estaciones con detención · ${route.steps.map {it.line}.distinct().joinToString(" · ")}",style=MaterialTheme.typography.bodySmall)
 }
 @Composable private fun RouteTimeline(route:MetroRoute,net:MetroNetwork,modifier:Modifier,selectedStation:String?=null,onStation:(String)->Unit) {
@@ -555,7 +622,7 @@ private fun Set<String>.toggle(id: String)=if(id in this) this-id else this+id
     TextButton(onClick={open=!open}) {Text("Horarios y tipos de servicio ${if(open) "▴" else "▾"}")}
     if(open) Text("Ruta Expresa L2, L4 y L5: días hábiles 06:00–09:00 y 18:00–21:00, con inicio y término gradual. Punta tarifaria referencial: lunes a viernes 07:00–08:59 y 18:00–19:59; festivos excluidos. No cambia automáticamente tu ruta. Sin información de operación en tiempo real.\nFuentes oficiales Metro, Red y tarjeta bip! · revisión ${net.checkedAt} · catálogo ${net.version}.")
 }
-@Composable private fun TrackingMap(s: MetroSession,p: MetroPosition,net: MetroNetwork,person: Person?,full: Boolean,modifier: Modifier,selectedStation:String?,onExpand:()->Unit,onStation: (String)->Unit) {
+@Composable private fun TrackingMap(s: MetroSession,p: MetroPosition,net: MetroNetwork,full: Boolean,modifier: Modifier,selectedStation:String?,onExpand:()->Unit,onStation: (String)->Unit) {
     val list=rememberLazyListState()
     val scope=rememberCoroutineScope()
     var follow by rememberSaveable(s.id) { mutableStateOf(true) }
@@ -574,7 +641,7 @@ private fun Set<String>.toggle(id: String)=if(id in this) this-id else this+id
         MetroTimelineNode(s.route.stops.last(),s.route.steps.lastOrNull()?.line ?: net.accesses(s.route.stops.last()).first().id,"Destino · Confirma Llegué para finalizar",p.step==s.route.steps.size)
     Column(modifier) {
         MapToolbar(full,onExpand,onCenter={follow=true;scope.launch {list.animateScrollToItem(p.step.coerceAtMost(s.route.steps.size))}})
-        MetroVerticalTimeline(rows,net,Modifier.weight(1f),list=list,selectedStation=selectedStation,progress=p.step to p.fraction,avatar={TravelerAvatar(person)},onStation=onStation)
+        MetroVerticalTimeline(rows,net,Modifier.weight(1f),list=list,selectedStation=selectedStation,progress=p.step to p.fraction,avatar={Icon(Icons.Default.Train,"Tren · posición estimada",Modifier.size(20.dp).background(MaterialTheme.colorScheme.surface,androidx.compose.foundation.shape.RoundedCornerShape(3.dp)).testTag("metro-train"),tint=MaterialTheme.colorScheme.primary)},onStation=onStation)
     }
 }
 @Composable private fun MetroTaskDialog(projects: List<Project>,nodes: List<Node>,onDismiss: ()->Unit,onCreate: (String,String?,EditorDraft)->Unit) {
@@ -599,7 +666,7 @@ private fun Set<String>.toggle(id: String)=if(id in this) this-id else this+id
 
 @Composable private fun MapToolbar(full:Boolean,onExpand:()->Unit,onCenter:(()->Unit)?=null) {
     Row(Modifier.fillMaxWidth().padding(vertical=4.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(12.dp)) {
-        if(onCenter!=null) OutlinedButton(onClick=onCenter,modifier=Modifier.heightIn(min=48.dp)) {Text("Centrar avatar")}
+        if(onCenter!=null) IconButton(onClick=onCenter,modifier=Modifier.size(48.dp).testTag("metro-center")) {Icon(Icons.Default.MyLocation,"Centrar tren",Modifier.size(20.dp))}
         Spacer(Modifier.weight(1f))
         IconButton(onClick=onExpand,modifier=Modifier.size(48.dp).testTag("metro-expand")) {Icon(if(full) Icons.Default.FullscreenExit else Icons.Default.Fullscreen,if(full) "Contraer mapa" else "Ampliar mapa")}
     }
@@ -619,5 +686,18 @@ private fun Set<String>.toggle(id: String)=if(id in this) this-id else this+id
                 Icon(Icons.Default.EditLocationAlt,"Modificar $label")
             }
         }
+    }
+}
+
+/** Only a different journey prevents starting the consulted trip. */
+@Composable internal fun ActiveJourneyNotice(active:MetroJourney?,viewedId:String?,nodes:List<Node>,net:MetroNetwork) {
+    if(active==null || active.row.id==viewedId) return
+    val route=active.data.active!!.route
+    val historical=MetroCatalogRevision.forRoute(net,route.networkVersion)
+    val title=nodes.firstOrNull {it.id==active.row.nodeId}?.title
+        ?: "${historical.stations.getValue(route.stops.first()).name} → ${historical.stations.getValue(route.stops.last()).name}"
+    Column {
+        Text("Ya tienes otro viaje en curso: $title. Finalízalo antes de iniciar otro.",style=MaterialTheme.typography.bodySmall)
+        Text("Consulta el viaje activo en Viajes.",style=MaterialTheme.typography.bodySmall)
     }
 }

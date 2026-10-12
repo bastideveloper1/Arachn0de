@@ -5,6 +5,7 @@ import android.content.Intent
 import android.graphics.Bitmap
 import android.net.Uri
 import androidx.activity.compose.setContent
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.width
 import androidx.compose.ui.Modifier
@@ -199,9 +200,68 @@ class TechnologyUiTest {
         compose.onAllNodesWithText("Participante").onFirst().assertExists()
         compose.onNodeWithText("Cerrar").performClick()
     }
+    @Test fun peoplePickerIsLazySearchableAndCancelPreservesAssignments() {
+        val people=(1..100).map {com.r0ybt.arachn0de.domain.model.Person("$it","Persona $it")}
+        var saved:Set<String>?=null
+        compose.runOnUiThread {compose.activity.setContent {Arachn0deTheme {
+            ResponsibleDialog("owner",people,listOf(people.first()),false,{}, {saved=it})
+        }}}
+        compose.onNodeWithTag("person-choice:99").assertDoesNotExist()
+        compose.onNodeWithTag("person-choice:1").assertIsSelected()
+        compose.onNodeWithText("Buscar personas").performTextInput("Persona 100")
+        compose.onNodeWithTag("person-choice:100").performClick()
+        assertNull(saved)
+        compose.onNodeWithText("Guardar").performClick()
+        assertEquals(setOf("1","100"),saved)
+    }
+    @Test fun personConsultationShowsOnlySelectedIdentityAndFirstTechnologyIsHighlighted() {
+        val people=listOf(com.r0ybt.arachn0de.domain.model.Person("a","Ana"),com.r0ybt.arachn0de.domain.model.Person("b","Bea"))
+        compose.runOnUiThread {compose.activity.setContent {Arachn0deTheme {Column {
+            ResponsibleAvatars(people)
+            TechnologyLabels(listOf(TechnologyEntity("b","Beta",null),TechnologyEntity("a","Alpha",null)),true)
+        }}}}
+        compose.onNodeWithTag("first-assigned-technology").assert(hasContentDescription("Beta"))
+        compose.onNodeWithContentDescription("Ana").performClick()
+        compose.onNodeWithText("Ana").assertExists()
+        compose.onNodeWithText("Ana, Bea").assertDoesNotExist()
+        compose.onNodeWithContentDescription("Cerrar").performClick()
+        compose.onNodeWithContentDescription("Bea").assertExists()
+    }
+    @Test fun cardLogosAreThreeSmallOrderedDecorationsAndTapsOpenParent() {
+        val technologies=(1..5).map {TechnologyEntity("$it","Logo $it",null)}.reversed()
+        var opened=0
+        compose.runOnUiThread {compose.activity.setContent {Arachn0deTheme {
+            androidx.compose.foundation.layout.Box(Modifier.width(280.dp).then(Modifier.testTag("card")).then(Modifier.clickable {opened++})) {
+                TechnologyCardPreview(technologies)
+            }
+        }}}
+        compose.onNodeWithTag("technology-preview:2",useUnmergedTree=true).assertDoesNotExist()
+        val first=compose.onNodeWithTag("technology-preview:5",useUnmergedTree=true).fetchSemanticsNode().boundsInRoot
+        val third=compose.onNodeWithTag("technology-preview:3",useUnmergedTree=true).fetchSemanticsNode().boundsInRoot
+        assertTrue(first.left<third.left)
+        assertTrue(third.right-first.left<100 * compose.activity.resources.displayMetrics.density)
+        compose.onNodeWithTag("technology-preview:5",useUnmergedTree=true).performTouchInput {click()}
+        assertEquals(1,opened)
+        compose.onNodeWithText("Cerrar").assertDoesNotExist()
+        assertEquals(5,technologies.size)
+    }
+    @Test fun taskTechnologyAccessIsSingleCompactIconAndOpensExistingSelector() {
+        val project=runBlocking {app.projectRepository.createProject("Project")}
+        val task=runBlocking {app.nodeRepository.createNode(project.id,null,"Task")}
+        compose.runOnUiThread {compose.activity.setContent {Arachn0deTheme {TechnologyCardButton(task.id)}}}
+        compose.onNodeWithContentDescription("Tecnologías asociadas").assertDoesNotExist()
+        runBlocking {repository.save("python","Python",null,true);repository.assign(task.id,false,setOf("python"))}
+        compose.waitUntil(10000) {compose.onAllNodesWithContentDescription("Tecnologías asociadas").fetchSemanticsNodes().isNotEmpty()}
+        compose.onNodeWithText("Python").assertDoesNotExist()
+        val bounds=compose.onNodeWithContentDescription("Tecnologías asociadas").fetchSemanticsNode().boundsInRoot
+        assertTrue(bounds.width>=48*compose.activity.resources.displayMetrics.density)
+        compose.onNodeWithContentDescription("Tecnologías asociadas").performClick()
+        compose.onNodeWithText("Python").assertExists()
+        assertEquals(listOf("python"),runBlocking {app.database.technologyDao().nodes().map {it.technologyId}})
+    }
     @Test fun navigationMenuOpensLocalTechnologyCatalog() {
         compose.onNodeWithContentDescription("Abrir menú").performClick()
-        compose.onNodeWithText("Tecnologías").performScrollTo().performClick()
+        compose.onNodeWithText("Recursos").performScrollTo().performClick(); compose.onNodeWithText("Tecnologías").performScrollTo().performClick()
         compose.waitUntil(10_000) { compose.onAllNodesWithText("Nueva tecnología").fetchSemanticsNodes().isNotEmpty() }
         compose.onNodeWithText("Nueva tecnología").assertExists(); compose.onNodeWithText("Volver").performClick()
         compose.onNodeWithContentDescription("Abrir menú").assertExists()

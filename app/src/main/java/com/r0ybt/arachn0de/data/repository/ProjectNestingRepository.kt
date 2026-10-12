@@ -14,12 +14,51 @@ internal class ProjectNestingRepository(private val database: Arachn0deDatabase,
     private val projects get() = database.projectDao()
     private val nodes get() = database.nodeDao()
     private val conversion get() = database.conversionDao()
-    private suspend fun <T> atomic(work: suspend () -> T): T = withContext(Dispatchers.IO) {
+    private suspend fun <T> atomic(work: suspend (IterationRecords) -> T): T = withContext(Dispatchers.IO) {
         AttachmentRepository.fileOperations.withLock { database.withTransaction {
-            val result = work(); beforeCommit(); currentCoroutineContext().ensureActive(); result
+            val iterations=IterationRepository(database);val iterationRows=iterations.records()
+            val oldLinks=database.sprintLinkDao().all()
+            val linkedSprints=oldLinks.mapTo(hashSetOf()) {it.sprintId}+iterationRows.plans.map {it.sprintId}
+            val phaseIds=oldLinks.mapTo(hashSetOf()) {it.taskId}+iterationRows.commitments.map {it.taskId}
+            val phases=database.backupDao().nodes().filter {row->row.id in phaseIds || (row.parentId in linkedSprints && row.purpose=="ACTION")}.associate {it.id to it.workState}
+            val backlog=BacklogRepository(database);val backlogRows=backlog.records()
+            val participation=ParticipationRepository(database);val participationRows=participation.records()
+            val storyRefs=database.cascadeRelationDao().stories();val objectiveRefs=database.cascadeRelationDao().objectives()
+            val cascadeRows=database.managementLayerDao().all()
+            val contexts=database.managementContextDao().all()
+            val planning=database.planningDao()
+            val charters=planning.charters();val objectives=planning.objectives();val criteria=planning.criteria()
+            val result = work(iterationRows)
+            val roots=conversion.roots().mapTo(hashSetOf()) {it.id}
+            check(contexts.all {it.id in roots}) {"No se pudo conservar el contexto de gestión."}
+            val remaining=database.managementContextDao().all().mapTo(hashSetOf()) {it.id}
+            contexts.filter {it.id !in remaining}.forEach {database.managementContextDao().save(it)}
+            val charterIds=planning.charters().mapTo(hashSetOf()) {it.contextId}
+            charters.filter {it.contextId !in charterIds}.forEach {planning.save(it)}
+            val objectiveIds=planning.objectives().mapTo(hashSetOf()) {it.id}
+            objectives.filter {it.id !in objectiveIds}.forEach {planning.save(it)}
+            val criterionIds=planning.criteria().mapTo(hashSetOf()) {it.id}
+            criteria.filter {it.id !in criterionIds}.forEach {planning.save(it)}
+            backlogRows.validate(database.backupDao().nodes(),conversion.roots(),database.managementContextDao().all(),planning.objectives())
+            backlog.restore(backlogRows)
+            val currentNodes=database.backupDao().nodes().associateBy {it.id}
+            phases.forEach {(id,phase)->check(currentNodes[id]?.workState==phase && id in currentNodes) {"No se pudo conservar la fase Sprint."}}
+            val liveLinks=database.sprintLinkDao().all().toSet()
+            oldLinks.filter {it !in liveLinks}.forEach {database.sprintLinkDao().insert(it)}
+            participation.validate(participationRows)
+            participation.restore(participationRows)
+            iterationRows.validate(database.backupDao().nodes(),conversion.roots(),database.managementContextDao().all(),oldLinks)
+            iterations.restore(iterationRows)
+            val currentCascade=database.managementLayerDao().all().mapTo(hashSetOf()) {it.nodeId}
+            cascadeRows.filter {it.nodeId !in currentCascade}.forEach {database.managementLayerDao().insert(it)}
+            validateManagementLayers(database.managementLayerDao().all(),database.backupDao().nodes(),conversion.roots(),database.managementContextDao().all())
+            storyRefs.forEach {database.cascadeRelationDao().insert(it)}
+            objectiveRefs.forEach {database.cascadeRelationDao().insert(it)}
+            CascadeRelationsRepository(database).validate()
+            beforeCommit(); currentCoroutineContext().ensureActive(); result
         } }
     }
-    suspend fun move(sourceId: String, targetId: String, parentId: String?): String = atomic {
+    suspend fun move(sourceId: String, targetId: String, parentId: String?): String = atomic { iterationRows ->
         require(sourceId != targetId) { "El proyecto no puede convertirse dentro de sí mismo." }
         val source = requireNotNull(projects.getById(sourceId)) { "El proyecto ya no existe." }
         requireNotNull(projects.getById(targetId)) { "El proyecto de destino ya no existe." }
@@ -34,12 +73,15 @@ internal class ProjectNestingRepository(private val database: Arachn0deDatabase,
         val original = nodes.getProjectNodes(sourceId)
         validate(original)
         val saved = conversion.project(sourceId)
+        val originalIds=original.mapTo(hashSetOf()) {it.id}
+        val hasLinks=database.sprintLinkDao().all().any {it.taskId in originalIds || it.sprintId in originalIds} || iterationRows.plans.any {it.sprintId in originalIds} || iterationRows.commitments.any {it.taskId in originalIds}
+        if(hasLinks) require(nodes.getById(saved?.nodeIdentity ?: sourceId)==null) {"La identidad de conversión colisiona con otro nodo; no se modificaron datos."}
         val layerId = available(saved?.nodeIdentity ?: sourceId) { nodes.getById(it) != null }
         val root = saved ?: ConversionRootEntity(UUID.randomUUID().toString(), sourceId, null, sourceId, layerId,
             source.position, 0, null, null, "NONE", null, false)
         val group = root.creationGroupId?.let { validGroup(it, targetId, original.mapTo(hashSetOf()) { row -> row.id }) }
         val layer = NodeEntity(layerId, targetId, parentId, source.name, source.description, false,
-            nextNodePosition(targetId, parentId), source.createdAt, source.updatedAt, root.startAt, root.dueAt,
+            ((nodes.maxPosition(targetId,parentId) ?: -1).toLong()+1).coerceAtMost(Int.MAX_VALUE.toLong()).toInt(), source.createdAt, source.updatedAt, root.startAt, root.dueAt,
             purpose = "LAYER", priority = root.priority, creationGroupId = group, sprintMode = root.sprintMode)
         val effective = CreationDefaultsRepository(database).resolve(sourceId, null)
         val sort = database.nodeSortPreferenceDao().all()
@@ -51,10 +93,18 @@ internal class ProjectNestingRepository(private val database: Arachn0deDatabase,
         val photo = database.projectPhotoDao().forProject(sourceId)
         val attachments = database.attachmentDao().forProject(sourceId)
         val technologies = database.technologyDao().projects().filter { it.projectId == sourceId }
-        nodes.insert(layer)
-        transfer(bundle, targetId, layerId, root.id, hiddenWork, layer)
+        val mainRoot=root.copy(projectId=null,nodeId=layerId,projectIdentity=sourceId,nodeIdentity=layerId)
+        val ids=original.mapTo(hashSetOf()) {it.id}
+        val proposed=database.backupDao().nodes().filter {it.id !in ids}+layer+original.map {it.copy(projectId=targetId,parentId=it.parentId ?: layerId)}
+        val roots=conversion.roots().filter {it.id!=root.id}+mainRoot
+        val protected=preflight(ids,proposed,roots,iterationRows)
+        val committedLayer=layer.copy(position=nextNodePosition(targetId,parentId))
+        database.iterationDao().clear()
+        database.sprintLinkDao().all().filter {it.taskId in ids}.forEach {database.sprintLinkDao().delete(it.taskId)}
+        nodes.insert(committedLayer)
+        transfer(bundle, targetId, layerId, root.id, hiddenWork, committedLayer,preserve=protected)
         conversion.save(root.copy(projectId = null, nodeId = layerId, projectIdentity = sourceId,
-            nodeIdentity = layerId, projectPosition = source.position, nodePosition = layer.position))
+            nodeIdentity = layerId, projectPosition = source.position, nodePosition = committedLayer.position))
         database.personDao().assign(hiddenPeople.map { NodePersonEntity(layerId, it.personId) })
         database.tagDao().assignNodes(hiddenTags.map { NodeTagEntity(layerId, it.tagId) })
         database.nodeEventDao().insertAll(hiddenEvents.map { NodeEventEntity(it.id, layerId, it.type, it.occurredAt) })
@@ -67,7 +117,7 @@ internal class ProjectNestingRepository(private val database: Arachn0deDatabase,
         check(projects.deleteProjectRow(sourceId) == 1)
         layerId
     }
-    suspend fun promote(layerId: String): String = atomic {
+    suspend fun promote(layerId: String): String = atomic { iterationRows ->
         val layer = requireNotNull(nodes.getById(layerId)) { "La capa ya no existe." }
         require(layer.purpose == "LAYER" && layer.amountMinor == null) { "Solo una capa puede convertirse en proyecto." }
         val entire = nodes.getProjectNodes(layer.projectId)
@@ -75,8 +125,10 @@ internal class ProjectNestingRepository(private val database: Arachn0deDatabase,
         val ids = nodes.getSubtreeIds(layerId).toHashSet()
         val subtree = entire.filter { it.id in ids }
         val saved = conversion.node(layerId)
+        val hasLinks=database.sprintLinkDao().all().any {it.taskId in ids || it.sprintId in ids} || iterationRows.plans.any {it.sprintId in ids} || iterationRows.commitments.any {it.taskId in ids}
+        if(hasLinks) require(projects.getById(saved?.projectIdentity ?: layerId)==null) {"La identidad de conversión colisiona con otro proyecto; no se modificaron datos."}
         val projectId = available(saved?.projectIdentity ?: layerId) { projects.getById(it) != null }
-        val position = saved?.projectPosition ?: nextProjectPosition()
+        val position = saved?.projectPosition ?: ((projects.maxPosition() ?: -1).toLong()+1).coerceAtMost(Int.MAX_VALUE.toLong()).toInt()
         val root = (saved ?: ConversionRootEntity(UUID.randomUUID().toString(), null, layerId, projectId,
             layerId, position, layer.position, layer.startAt, layer.dueAt, layer.priority, layer.creationGroupId, layer.sprintMode))
             .copy(projectId = projectId, nodeId = null, projectIdentity = projectId, nodeIdentity = layerId,
@@ -91,10 +143,16 @@ internal class ProjectNestingRepository(private val database: Arachn0deDatabase,
         val rootPeople = database.personDao().assignmentsForNodes(listOf(layerId))
         val rootTags = database.tagDao().tagsForNodes(listOf(layerId))
         val rootEvents = database.nodeEventDao().forNode(layerId).asReversed()
-        val directWork = subtree.filter { it.parentId == layerId && it.workState != null }
-        projects.insert(ProjectEntity(projectId, layer.title, layer.description, position, layer.createdAt, layer.updatedAt))
-        val groups = transfer(bundle, projectId, null, root.id, emptyMap(), excluded = layerId)
-        conversion.save(root.copy(creationGroupId = layer.creationGroupId?.let(groups::getValue)))
+        val directWork = subtree.filter { layer.sprintMode && it.parentId == layerId && it.workState != null }
+        val proposed=database.backupDao().nodes().filter {it.id !in ids}+subtree.filter {it.id!=layerId}.map {it.copy(projectId=projectId,parentId=if(it.parentId==layerId) null else it.parentId)}
+        val roots=conversion.roots().filter {it.id!=root.id}+root
+        val protected=preflight(ids,proposed,roots,iterationRows)
+        val committedPosition=saved?.projectPosition ?: nextProjectPosition()
+        database.iterationDao().clear()
+        database.sprintLinkDao().all().filter {it.taskId in ids}.forEach {database.sprintLinkDao().delete(it.taskId)}
+        projects.insert(ProjectEntity(projectId, layer.title, layer.description, committedPosition, layer.createdAt, layer.updatedAt))
+        val groups = transfer(bundle, projectId, null, root.id, emptyMap(), excluded = layerId,preserve=protected)
+        conversion.save(root.copy(projectPosition=committedPosition,creationGroupId = layer.creationGroupId?.let(groups::getValue)))
         conversion.people(rootPeople.map { ConversionPersonEntity(root.id, it.personId) })
         conversion.tags(rootTags.map { ConversionTagEntity(root.id, it.tagId) })
         conversion.events(rootEvents.map { ConversionEventEntity(it.id, root.id, it.type, it.occurredAt) })
@@ -126,7 +184,7 @@ internal class ProjectNestingRepository(private val database: Arachn0deDatabase,
             database.recurrenceDao().rules().filter { it.projectId == projectId && (wholeProject || it.parentId in ids) })
     }
     private suspend fun transfer(bundle: Bundle, targetId: String, rootId: String?, mainIdentity: String,
-        hiddenWork: Map<String, ConversionWorkStateEntity>, insertedRoot: NodeEntity? = null, excluded: String? = null): Map<String, String> {
+        hiddenWork: Map<String, ConversionWorkStateEntity>, insertedRoot: NodeEntity? = null, excluded: String? = null,preserve:Set<String> = emptySet()): Map<String, String> {
         val ids = bundle.nodes.map { it.id }; val batches = ids.chunked(500)
         val rows = bundle.nodes.filter { it.id != excluded }
         val groups = bundle.nodes.mapNotNull { it.creationGroupId }.distinct().associateWith { validGroup(it, targetId, ids.toSet()) }
@@ -141,7 +199,7 @@ internal class ProjectNestingRepository(private val database: Arachn0deDatabase,
             val parent = if (row.parentId == null || row.parentId == excluded) rootId else row.parentId
             val sprint = row.purpose == "ACTION" && inserted[parent]?.sprintMode == true
             val remembered = hiddenWork[row.id]?.workState ?: row.workState
-            val state = if (!sprint) null else when {
+            val state = if(row.id in preserve) row.workState else if (!sprint) null else when {
                 row.isCompleted -> remembered?.takeIf { it == "DONE" || it == "VALIDATED" } ?: "DONE"
                 remembered == "DONE" || remembered == "VALIDATED" || remembered == null -> "UNPLANNED"
                 else -> remembered
@@ -170,6 +228,17 @@ internal class ProjectNestingRepository(private val database: Arachn0deDatabase,
         bundle.rules.forEach { row -> database.recurrenceDao().update(row.copy(projectId = targetId,
             parentId = if (row.parentId == null || row.parentId == excluded) rootId else row.parentId)) }
         return groups
+    }
+    private suspend fun preflight(ids:Set<String>,tree:List<NodeEntity>,roots:List<ConversionRootEntity>,iterationRows:IterationRecords):Set<String> {
+        val contexts=database.managementContextDao().all();val goals=database.planningDao().objectives()
+        BacklogRepository(database).records().validate(tree,roots,contexts,goals)
+        ParticipationRepository(database).records().validate(database.backupDao().persons(),contexts,goals,tree,roots,database.backlogDao().roles())
+        val links=database.sprintLinkDao().all()
+        iterationRows.validate(tree,roots,contexts,links)
+        val phases=iterationRows.commitments.mapTo(hashSetOf()) {it.taskId}
+        val before=database.backupDao().nodes()
+        iterationRows.plans.forEach {p->members(before,links,p.sprintId).forEach {phases.add(it.id)}}
+        return SprintLinkRepository(database).prepareConversion(ids,tree,roots)+phases
     }
     private fun validate(rows: List<NodeEntity>) {
         val parents = rows.mapNotNullTo(hashSetOf()) { it.parentId }

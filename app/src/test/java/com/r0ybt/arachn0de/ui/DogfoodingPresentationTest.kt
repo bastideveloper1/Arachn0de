@@ -82,7 +82,6 @@ class DogfoodingPresentationTest {
         runBlocking { app.nodeRepository.updateNode(layer.id, longTitle, "") }
         layer = runBlocking { app.nodeRepository.getNode(layer.id)!! }
         openLayer()
-        compose.onNodeWithTag("nodes-list").performScrollToNode(hasContentDescription("Ordenar"))
         compose.onNodeWithTag("detail-scope-title").assertTextEquals(longTitle)
         val title = compose.onNodeWithTag("detail-scope-title").fetchSemanticsNode().boundsInRoot
         for (description in listOf("Volver a la capa anterior", "Ordenar", "Opciones del elemento", "Filtros")) {

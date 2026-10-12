@@ -45,7 +45,7 @@ internal class MetroRepository(private val db: Arachn0deDatabase, context: Conte
     suspend fun begin(id: String,revision: Long,time: MetroTime)=act(id,revision) { data ->
         require(data.active==null)
         val row=requireNotNull(dao.journey(id)); require(row.enabled)
-        if(row.nodeId!=null) { val task=requireNotNull(db.nodeDao().getById(row.nodeId)); require(task.purpose=="ACTION" && !db.nodeDao().hasChildren(task.projectId,task.id)) }
+
         val p=preferences();val net=p.network
         if(data.plan.departure!=null) {
             val actual=MetroPlanner.planAt(p.planningNetwork,data.plan.stops,time.wall,p.restrictions)
@@ -82,8 +82,33 @@ internal class MetroRepository(private val db: Arachn0deDatabase, context: Conte
         val raw=MetroCodec.journey(data); MetroCodec.journey(raw,net)
         dao.save(row.copy(payload=raw,revision=Math.addExact(revision,1))); currentCoroutineContext().ensureActive(); true
     } }
-    suspend fun remove(id: String)=withContext(Dispatchers.IO) { db.withTransaction {
-        val row=requireNotNull(dao.journey(id)); require(MetroCodec.journey(row.payload,preferences().network).active==null); dao.delete(id)
+    /** Changes only the optional association; the encoded plan/session remains byte-for-byte intact. */
+    suspend fun link(id:String,revision:Long,nodeId:String?)=withContext(Dispatchers.IO) {db.withTransaction {
+        val row=requireNotNull(dao.journey(id)) {"El viaje ya no existe."}
+        require(row.revision==revision) {"El viaje cambió. Reabre la selección."}
+        if(nodeId!=null) {
+            val task=requireNotNull(db.nodeDao().getById(nodeId)) {"La tarea ya no existe."}
+            require(task.purpose=="ACTION" && !db.nodeDao().hasChildren(task.projectId,task.id)) {"Selecciona una tarea sin descendientes."}
+            require(row.nodeId==null || row.nodeId==nodeId) {"Desvincula primero el viaje de su tarea actual."}
+            require(dao.forNode(nodeId)?.id.let {it==null || it==id}) {"La tarea ya tiene otro viaje. Desvincúlalo primero."}
+        }
+        if(row.nodeId!=nodeId) dao.save(row.copy(nodeId=nodeId,revision=Math.addExact(row.revision,1)))
+        currentCoroutineContext().ensureActive()
+    }}
+    suspend fun duplicate(id:String,revision:Long):String=withContext(Dispatchers.IO) {db.withTransaction {
+        val row=requireNotNull(dao.journey(id)) {"El viaje ya no existe."}
+        require(row.revision==revision) {"El viaje cambió. Reabre el detalle."}
+        val data=MetroCodec.journey(row.payload,preferences().network)
+        val copyId=java.util.UUID.randomUUID().toString()
+        // A new reusable trip copies its plan, never the original live tracking or history.
+        dao.save(row.copy(id=copyId,nodeId=null,payload=MetroCodec.journey(MetroJourneyData(data.plan)),revision=0))
+        currentCoroutineContext().ensureActive();copyId
+    }}
+    suspend fun remove(id: String,revision:Long?=null)=withContext(Dispatchers.IO) { db.withTransaction {
+        val row=requireNotNull(dao.journey(id)) {"El viaje ya no existe."}
+        require(revision==null || row.revision==revision) {"El viaje cambió. Reabre el detalle antes de eliminarlo."}
+        require(MetroCodec.journey(row.payload,preferences().network).active==null) {"Finaliza el seguimiento antes de eliminar el viaje. Finalizar conserva su registro."}
+        dao.delete(id)
     } }
 }
 internal fun metroTime(context: Context)=MetroTime(System.currentTimeMillis(),android.os.SystemClock.elapsedRealtime(),android.provider.Settings.Global.getInt(context.contentResolver,android.provider.Settings.Global.BOOT_COUNT,0))

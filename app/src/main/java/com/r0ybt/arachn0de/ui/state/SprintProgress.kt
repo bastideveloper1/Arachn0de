@@ -5,8 +5,9 @@ import com.r0ybt.arachn0de.domain.model.NodePurpose
 import com.r0ybt.arachn0de.domain.model.WorkState
 
 /** All direct Sprint actions contribute equally, independently of completion and UI filters. */
-internal fun sprintProgressPercentage(nodes: List<Node>, layerId: String): Double? {
-    val phases = nodes.filter { it.parentId == layerId && it.purpose == NodePurpose.ACTION }
+internal fun sprintProgressPercentage(nodes: List<Node>, layerId: String, linkedTaskIds:Set<String> = emptySet()): Double? {
+    val phases = nodes.filter { (it.parentId == layerId || it.id in linkedTaskIds) && it.purpose == NodePurpose.ACTION }
+        .distinctBy {it.id}
         .mapNotNull { it.workState }
     if (phases.isEmpty()) return null
     return phases.sumOf { phase ->

@@ -54,8 +54,8 @@ class MetroSprint4BUiTest {
     @Test fun activeMapExpansionKeepsSessionAndSeparatesCenterFromExpandAndArrival()=runBlocking<Unit> {
         active();screen();await {exists("Reanudar")};val before=app.metroRepository.snapshot()
         val expand=compose.onNodeWithContentDescription("Ampliar mapa").fetchSemanticsNode().boundsInRoot
-        val center=compose.onNodeWithText("Centrar avatar").fetchSemanticsNode().boundsInRoot
-        assertTrue(expand.left>center.right)
+        val center=compose.onNodeWithTag("metro-center").fetchSemanticsNode().boundsInRoot
+        assertTrue(center.right+16*compose.activity.resources.displayMetrics.density<=expand.left)
         val normal=compose.onNodeWithTag("metro-timeline").fetchSemanticsNode().boundsInRoot.height
         compose.onNodeWithContentDescription("Ampliar mapa").performClick().also {compose.mainClock.advanceTimeBy(100)}
         compose.onNodeWithText("Inicio").assertDoesNotExist();compose.onNodeWithText("Reanudar").assertIsDisplayed()
@@ -73,18 +73,18 @@ class MetroSprint4BUiTest {
     }
     @Test fun destinationCancelDoesNotWriteAndConfirmKeepsPausedSessionAwaitingBoarding()=runBlocking<Unit> {
         active();screen();await {exists("Reanudar")};val before=app.metroRepository.snapshot()
-        compose.onNodeWithText("Cambiar destino").performClick().also {compose.mainClock.advanceTimeBy(100)};choose("tobalaba","Tobalaba")
+        compose.onNodeWithTag("metro-actions:Seguimiento").performClick();compose.onNodeWithText("Cambiar destino").performClick().also {compose.mainClock.advanceTimeBy(100)};choose("tobalaba","Tobalaba")
         await {exists("Confirma ubicación actual")};choose("los heroes","Los Héroes")
         await {exists("Confirmar cambio de destino")};compose.onNodeWithText("Cancelar").performClick().also {compose.mainClock.advanceTimeBy(100)}
         assertEquals(before,app.metroRepository.snapshot())
-        compose.onNodeWithText("Cambiar destino").performClick().also {compose.mainClock.advanceTimeBy(100)};choose("tobalaba","Tobalaba")
+        compose.onNodeWithTag("metro-actions:Seguimiento").performClick();compose.onNodeWithText("Cambiar destino").performClick().also {compose.mainClock.advanceTimeBy(100)};choose("tobalaba","Tobalaba")
         await {exists("Confirma ubicación actual")};choose("los heroes","Los Héroes")
         await {exists("Confirmar cambio de destino")};compose.onNodeWithText("Confirmar cambio").performClick().also {compose.mainClock.advanceTimeBy(100)}
         await {runBlocking {app.metroRepository.snapshot().journeys.single().data.active!!.control!!.phase==MetroPhase.READY}}
         val after=app.metroRepository.snapshot().journeys.single().data.active!!
         assertEquals(before.journeys.single().data.active!!.id,after.id);assertNotNull(after.pausedAt)
-        compose.onNodeWithText("Reanudar").performClick().also {compose.mainClock.advanceTimeBy(100)};await {exists("Comenzar nueva etapa")}
-        compose.onNodeWithText("Comenzar nueva etapa").performClick().also {compose.mainClock.advanceTimeBy(100)};await {exists("Pausar")}
+        compose.onNodeWithText("Reanudar").performClick().also {compose.mainClock.advanceTimeBy(100)};await {exists("Iniciar etapa")}
+        compose.onNodeWithText("Iniciar etapa").performClick().also {compose.mainClock.advanceTimeBy(100)};await {exists("Pausar")}
         assertEquals(MetroPhase.RIDING,app.metroRepository.snapshot().journeys.single().data.active!!.control!!.phase)
     }
     @Test fun inactiveScheduleIsHiddenAndPlanningStationActionsAreContextual() {

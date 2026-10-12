@@ -22,6 +22,7 @@ internal class VaultManager(private val base:Context,private val sync:(File)->Un
     private val stores=File(home,"stores").apply { check(mkdirs() || isDirectory) }
     private val index=File(home,"index")
     private val pending=File(home,"pending")
+    val captures=ScreenCaptureController()
     val current=MutableStateFlow<VaultSession?>(null)
     val backgrounded=MutableStateFlow(false)
     private val timerScope=CoroutineScope(SupervisorJob()+Dispatchers.IO)
@@ -78,6 +79,7 @@ internal class VaultManager(private val base:Context,private val sync:(File)->Un
         finally { password.fill(0) }
     }
     suspend fun unlock(password:CharArray)=withContext(Dispatchers.IO) {
+        captures.protectBeforeTransition()
         operations.withLock {
             require(current.value==null)
             val wait=retryAt-android.os.SystemClock.elapsedRealtime()
@@ -133,6 +135,7 @@ internal class VaultManager(private val base:Context,private val sync:(File)->Un
         }
     }
     suspend fun lock()=withContext(Dispatchers.IO+NonCancellable) {
+        captures.protectBeforeTransition()
         operations.withLock {
             backgroundJob?.cancel();backgroundJob=null
             val session=current.value ?: return@withLock
@@ -151,6 +154,28 @@ internal class VaultManager(private val base:Context,private val sync:(File)->Un
             AttachmentRepository.fileOperations.withLock { session.close() }
             com.r0ybt.arachn0de.metro.MetroNavigation.requests.value=null
         }
+    }
+    /** Reuses the current store's password envelope; never unlocks or switches stores. */
+    suspend fun authorizeCaptures(expected:VaultSession,password:CharArray)=withContext(Dispatchers.IO) {
+        captures.protectBeforeTransition()
+        val epoch=captures.epoch
+        try {
+            operations.withLock {
+                require(current.value===expected && expected.primary && !backgrounded.value)
+                val wait=retryAt-android.os.SystemClock.elapsedRealtime()
+                if(wait>0) delay(wait)
+                var key:ByteArray?=null
+                try {
+                    key=try {VaultCrypto.unwrap(expected.access.id,password,envelope(expected.access.id))}
+                    catch(_:Exception) {
+                        failures++;retryAt=android.os.SystemClock.elapsedRealtime()+minOf(30000L,1000L shl minOf(failures-1,5))
+                        throw VaultAuthenticationException()
+                    }
+                    check(captures.grant(epoch) {current.value===expected && expected.primary && !backgrounded.value})
+                    failures=0;retryAt=0
+                } finally {key?.fill(0)}
+            }
+        } finally {password.fill('\u0000')}
     }
     suspend fun changePassword(old:CharArray,new:CharArray)=withContext(Dispatchers.IO) {
         operations.withLock {
@@ -212,6 +237,7 @@ internal class VaultManager(private val base:Context,private val sync:(File)->Un
         check(manifest.delete());sync(ctx.session.root)
     }
     suspend fun setup(password:CharArray)=withContext(Dispatchers.IO) {
+        captures.protectBeforeTransition()
         operations.withLock {
             require(!configured && current.value==null && password.size>=8)
             var key:ByteArray?=null;var ctx:VaultContext?=null;var original:Arachn0deDatabase?=null

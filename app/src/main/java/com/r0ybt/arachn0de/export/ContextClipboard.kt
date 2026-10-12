@@ -12,6 +12,10 @@ class ContextClipboard(context: Context) {
         require(text.length <= NodeExportSnapshot.MAX_TEXT_CHARS)
         val clip=ClipData.newPlainText("Contexto de Arachn0de",text)
         clip.description.extras=android.os.PersistableBundle().apply {putBoolean("android.content.extra.IS_SENSITIVE",true)}
-        clipboard.setPrimaryClip(clip)
+        try {clipboard.setPrimaryClip(clip)} catch(_:android.os.TransactionTooLargeException) {throw ContextTooLargeException()}
+        catch(failure:RuntimeException) {
+            if(failure.cause is android.os.TransactionTooLargeException) throw ContextTooLargeException()
+            throw failure
+        }
     }
 }

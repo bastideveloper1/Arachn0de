@@ -79,13 +79,13 @@ class AppearanceUiTest {
         compose.waitUntil(10000) { compose.onAllNodesWithContentDescription("Abrir menú").fetchSemanticsNodes().isNotEmpty() }
         compose.onNodeWithContentDescription("Abrir menú").performClick()
         compose.onNodeWithText("Configuración").assertDoesNotExist()
-        compose.onNodeWithText("Apariencia").performScrollTo().performClick()
+        compose.onNodeWithText("Ajustes").performScrollTo().performClick(); compose.onNodeWithText("Apariencia").performScrollTo().performClick()
         compose.onNodeWithTag("appearance-theme:DeepMoss").performScrollTo().performClick()
         compose.onNodeWithTag("appearance-size:Medium").performScrollTo().performClick()
         compose.onNodeWithText("Apariencia").performScrollTo()
         compose.onNodeWithContentDescription("Volver").performClick()
         compose.onNodeWithContentDescription("Abrir menú").performClick()
-        compose.onNodeWithText("Apariencia").performScrollTo().performClick()
+        compose.onNodeWithText("Ajustes").performScrollTo().performClick(); compose.onNodeWithText("Apariencia").performScrollTo().performClick()
         compose.onNodeWithTag("appearance-theme:DeepMoss").assertIsSelected()
         compose.onNodeWithTag("appearance-size:Medium").performScrollTo().assertIsSelected()
     }

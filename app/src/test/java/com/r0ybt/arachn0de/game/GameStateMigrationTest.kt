@@ -25,6 +25,10 @@ class GameStateMigrationTest {
         val sql = helper.writableDatabase
         val entities = JSONObject(javaClass.classLoader!!.getResourceAsStream("com.r0ybt.arachn0de.data.local.Arachn0deDatabase/22.json")!!.bufferedReader().use { it.readText() }).getJSONObject("database").getJSONArray("entities")
         val tables = (0 until entities.length()).map { entities.getJSONObject(it).getString("tableName") }
+        val historicalColumns = (0 until entities.length()).associate { i ->
+            val entity = entities.getJSONObject(i); val fields = entity.getJSONArray("fields")
+            entity.getString("tableName") to (0 until fields.length()).map { fields.getJSONObject(it).getString("columnName") }
+        }
         repeat(entities.length()) { i -> val row = entities.getJSONObject(i); val name = row.getString("tableName")
             sql.execSQL(row.getString("createSql").replace("\${TABLE_NAME}", name))
             val indexes = row.optJSONArray("indices") ?: org.json.JSONArray()
@@ -35,7 +39,7 @@ class GameStateMigrationTest {
         sql.execSQL("INSERT INTO conversion_roots VALUES ('bridge',NULL,'n','former-project','n',0,0,NULL,NULL,'NONE',NULL,0)")
         sql.execSQL("INSERT INTO node_sort_preferences VALUES ('p:n','PRIORITY')")
         fun snapshot(database: androidx.sqlite.db.SupportSQLiteDatabase) = tables.associateWith { table ->
-            database.query("SELECT * FROM `$table` ORDER BY rowid").use { cursor -> buildList { while (cursor.moveToNext()) add((0 until cursor.columnCount).map { if (cursor.isNull(it)) null else cursor.getString(it) }) } }
+            database.query("SELECT ${historicalColumns.getValue(table).joinToString { "`$it`" }} FROM `$table` ORDER BY rowid").use { cursor -> buildList { while (cursor.moveToNext()) add((0 until cursor.columnCount).map { if (cursor.isNull(it)) null else cursor.getString(it) }) } }
         }
         val before = snapshot(sql); helper.close()
         val original = GameRules.roll(GameRules.beginTurn(GameRules.newGame(listOf("A", "B"), RatCharacter.entries.take(2), FirstGameMap.value)), 4)
@@ -44,6 +48,7 @@ class GameStateMigrationTest {
         try {
             assertEquals(27, db.openHelper.writableDatabase.version); assertEquals(before, snapshot(db.openHelper.writableDatabase))
             assertEquals(original, GameStateRepository(db).load().session)
+            assertFalse(db.nodeSortPreferenceDao().all().single().layersFirst)
             db.close(); context.getSharedPreferences("experimental_game", 0).edit().putString("session", "corrupt").commit()
             db = Arachn0deDatabase.create(context); assertEquals(original, GameStateRepository(db).load().session)
         } finally { db.close() }

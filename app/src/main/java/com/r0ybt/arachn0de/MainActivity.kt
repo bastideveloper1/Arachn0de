@@ -2,7 +2,6 @@ package com.r0ybt.arachn0de
 
 import android.os.Bundle
 import android.graphics.Color
-import android.view.WindowManager
 import androidx.activity.SystemBarStyle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -33,6 +32,9 @@ class MainActivity:ComponentActivity() {
         // The private map remains in process memory; nothing is added to the Android Bundle.
         super.onSaveInstanceState(outState)
     }
+    override fun onPause() {
+        super.onPause()
+    }
     override fun onStop() {
         if(!isChangingConfigurations) (application as Arachn0deApplication).security.background()
         super.onStop()
@@ -41,13 +43,17 @@ class MainActivity:ComponentActivity() {
         super.onResume()
         lifecycleScope.launch { (application as Arachn0deApplication).security.foreground() }
     }
+    override fun onDestroy() {
+        (application as Arachn0deApplication).security.captures.detach(window,closingSession=!isChangingConfigurations)
+        super.onDestroy()
+    }
     override fun onNewIntent(intent:android.content.Intent) {
         super.onNewIntent(intent)
         if(intent.getBooleanExtra("metro",false)) { com.r0ybt.arachn0de.metro.MetroNavigation.open();intent.removeExtra("metro") }
     }
     override fun onCreate(savedInstanceState:Bundle?) {
         super.onCreate(savedInstanceState)
-        window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
+        (application as Arachn0deApplication).security.captures.attach(window)
         enableEdgeToEdge(statusBarStyle=SystemBarStyle.dark(Color.TRANSPARENT),navigationBarStyle=SystemBarStyle.dark(Color.TRANSPARENT))
         if(intent.getBooleanExtra("metro",false)) {com.r0ybt.arachn0de.metro.MetroNavigation.open();intent.removeExtra("metro")}
         val app=application as Arachn0deApplication
@@ -82,8 +88,19 @@ class MainActivity:ComponentActivity() {
                         CompositionLocalProvider(LocalSaveableStateRegistry provides registry) {
                             Box(Modifier.fillMaxSize()) {
                                 Column(Modifier.fillMaxSize().then(if(backgrounded) Modifier.clearAndSetSemantics {} else Modifier)) {
-                                    SecurityControls(app.security,visible)
-                                    Box(Modifier.weight(1f)) {AppRoot(visible.projects,visible.nodes)}
+                                    var projectActions by remember {mutableStateOf(false)}
+                                    var lockAction by remember {mutableStateOf<com.r0ybt.arachn0de.ui.ProjectLockAction?>(null)}
+                                    var securityPage by remember {mutableStateOf<(@androidx.compose.runtime.Composable (()->Unit)->Unit)?>(null)}
+                                    var openSecurity by remember {mutableStateOf<(() -> Unit)?>(null)}
+                                    CompositionLocalProvider(
+                                        com.r0ybt.arachn0de.ui.LocalProjectLock provides lockAction,
+                                        com.r0ybt.arachn0de.ui.LocalOpenSecurity provides openSecurity,
+                                        com.r0ybt.arachn0de.ui.LocalSecurityPage provides securityPage,
+                                        com.r0ybt.arachn0de.ui.LocalProjectActionsVisibility provides {projectActions=it},
+                                    ) {
+                                        SecurityControls(app.security,visible,showLock=!projectActions,onLockReady={lockAction=it},showChrome=false,onSettingsReady={openSecurity=it},onPageReady={securityPage=it})
+                                        Box(Modifier.weight(1f)) {AppRoot(visible.projects,visible.nodes)}
+                                    }
                                 }
                                 // Keep editors/reservations during the configured grace period.
                                 // The opaque overlay prevents access until foreground verifies time.

@@ -19,6 +19,7 @@ import androidx.compose.material.icons.filled.ArrowUpward
 import androidx.compose.material.icons.filled.ArrowDownward
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Code
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.listSaver
@@ -45,13 +46,13 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
 @Composable
-internal fun TechnologyIcon(technology: TechnologyEntity) {
+internal fun TechnologyIcon(technology: TechnologyEntity, size: androidx.compose.ui.unit.Dp = 28.dp) {
     val context = LocalContext.current
     val storageContext=privateStorageContext(context)
     val bitmap by produceState<Bitmap?>(null, storageContext, technology.iconFile) {
         value = withContext(Dispatchers.IO) { technology.iconFile?.let { runCatching { TechnologyIconStore(storageContext).readThumbnail(it) }.getOrNull() } }
     }
-    Box(Modifier.size(28.dp).clip(RoundedCornerShape(7.dp)).background(Arachn0deColors.ControlSurface)
+    Box(Modifier.size(size).clip(RoundedCornerShape(7.dp)).background(Arachn0deColors.ControlSurface)
         .semantics { contentDescription = technology.name }, contentAlignment = Alignment.Center) {
         if (bitmap != null) Image(bitmap!!.asImageBitmap(), null, Modifier.fillMaxSize(), contentScale = ContentScale.Fit)
         else Text(technology.name.take(1).uppercase(), style = MaterialTheme.typography.labelSmall)
@@ -74,8 +75,9 @@ internal fun TechnologyLabels(assigned:List<TechnologyEntity>,compact:Boolean=fa
     var info by remember { mutableStateOf<TechnologyEntity?>(null) }
     var all by rememberSaveable { mutableStateOf(false) }
     FlowRow(modifier,horizontalArrangement=Arrangement.spacedBy(2.dp),verticalArrangement=Arrangement.spacedBy(2.dp)) {
-        assigned.take(3).forEach { t ->
-            TextButton(onClick={info=t},contentPadding=PaddingValues(2.dp),modifier=Modifier.heightIn(min=48.dp)) {
+        assigned.take(3).forEachIndexed { index, t ->
+            TextButton(onClick={info=t},contentPadding=PaddingValues(2.dp),modifier=Modifier.heightIn(min=48.dp).testTag(if(index == 0) "first-assigned-technology" else "assigned-technology")
+                    .then(if(index == 0) Modifier.background(Arachn0deColors.ControlSurface, RoundedCornerShape(7.dp)) else Modifier)) {
                 TechnologyIcon(t)
                 if(!compact) { Spacer(Modifier.width(4.dp));Text(t.name,Modifier.widthIn(max=120.dp)) }
             }
@@ -87,7 +89,7 @@ internal fun TechnologyLabels(assigned:List<TechnologyEntity>,compact:Boolean=fa
     if(all) TechnologyWideDialog("Tecnologías asignadas",{all=false}) {
         TechnologyGrid(assigned, emptyList(), true, false, {info=it})
     }
-    info?.let { t->AlertDialog(onDismissRequest={info=null},title={Text(t.name)},text={TechnologyIcon(t)},confirmButton={TextButton(onClick={info=null}) {Text("Cerrar")}}) }
+    info?.let { t->AlertDialog(onDismissRequest={info=null},title={InformationalTitle(t.name) {info=null}},text={TechnologyIcon(t)},confirmButton={}) }
 }
 
 @Composable
@@ -97,7 +99,7 @@ private fun TechnologyWideDialog(title:String,onDismiss:()->Unit,content:@Compos
             Column(Modifier.padding(12.dp),verticalArrangement=Arrangement.spacedBy(8.dp)) {
                 Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically) {
                     Text(title,Modifier.weight(1f),style=MaterialTheme.typography.titleLarge)
-                    IconButton(onClick=onDismiss) {Icon(Icons.Default.Close,"Cerrar selector")}
+                    IconButton(onClick=onDismiss) {LucideIcon(Icons.Default.Close,"Cerrar selector")}
                 }
                 content()
             }
@@ -155,7 +157,7 @@ private fun TechnologyPicker(catalog:List<TechnologyEntity>,selected:List<String
                 val t=catalog.find {it.id==id}
                 DisposableEffect(id) {onDispose {centers.remove(id)}}
                 Row(Modifier.fillMaxWidth().onGloballyPositioned {c->centers[id]=c.positionInRoot().y+c.size.height/2f},verticalAlignment=Alignment.CenterVertically) {
-                    Icon(Icons.Default.DragHandle,"Arrastrar ${t?.name ?: id}",Modifier.size(48.dp).pointerInput(id,enabled) {
+                    LucideIcon(Icons.Default.DragHandle,"Arrastrar ${t?.name ?: id}",Modifier.size(48.dp).pointerInput(id,enabled) {
                         var dy=0f;var initial=0f
                         detectDragGesturesAfterLongPress(onDragStart={dy=0f;initial=centers[id] ?: 0f}) {change,delta->
                             if(enabled) {change.consume();dy+=delta.y;val list=latestSelected.toMutableList();val target=list.filter {it in centers}.minByOrNull {kotlin.math.abs(requireNotNull(centers[it])-(initial+dy))};val from=list.indexOf(id);val to=list.indexOf(target);if(from>=0 && to>=0 && from!=to) {list.add(to,list.removeAt(from));latestChange(list)}}
@@ -163,9 +165,9 @@ private fun TechnologyPicker(catalog:List<TechnologyEntity>,selected:List<String
                     })
                     TextButton(onClick={if(t!=null) info=t},modifier=Modifier.weight(1f)) {if(t!=null) TechnologyIcon(t);Text(t?.name ?: "Tecnología no disponible")}
                     val index=selected.indexOf(id)
-                    IconButton(enabled=enabled && index>0,onClick={onChange(selected.toMutableList().apply {add(index-1,removeAt(index))})}) {Icon(Icons.Default.ArrowUpward,"Subir ${t?.name ?: id}")}
-                    IconButton(enabled=enabled && index<selected.lastIndex,onClick={onChange(selected.toMutableList().apply {add(index+1,removeAt(index))})}) {Icon(Icons.Default.ArrowDownward,"Bajar ${t?.name ?: id}")}
-                    IconButton(enabled=enabled,onClick={onChange(selected-id)}) {Icon(Icons.Default.Close,"Quitar ${t?.name ?: id}")}
+                    IconButton(enabled=enabled && index>0,onClick={onChange(selected.toMutableList().apply {add(index-1,removeAt(index))})}) {LucideIcon(Icons.Default.ArrowUpward,"Subir ${t?.name ?: id}")}
+                    IconButton(enabled=enabled && index<selected.lastIndex,onClick={onChange(selected.toMutableList().apply {add(index+1,removeAt(index))})}) {LucideIcon(Icons.Default.ArrowDownward,"Bajar ${t?.name ?: id}")}
+                    IconButton(enabled=enabled,onClick={onChange(selected-id)}) {LucideIcon(Icons.Default.Close,"Quitar ${t?.name ?: id}")}
                 }
             }
         } else TechnologyGrid(catalog,selected,enabled,true) {t->onChange(if(t.id in selected) selected-t.id else selected+t.id)}
@@ -174,7 +176,7 @@ private fun TechnologyPicker(catalog:List<TechnologyEntity>,selected:List<String
             TextButton(enabled=enabled,onClick=onConfirm) {Text("Confirmar")}
         }
     }
-    info?.let {t->AlertDialog(onDismissRequest={info=null},title={Text(t.name)},text={TechnologyIcon(t)},confirmButton={TextButton(onClick={info=null}) {Text("Cerrar")}})}
+    info?.let {t->AlertDialog(onDismissRequest={info=null},title={InformationalTitle(t.name) {info=null}},text={TechnologyIcon(t)},confirmButton={})}
 }
 
 @Composable
@@ -187,25 +189,54 @@ internal fun EditOwnerTechnologies(ownerId:String,project:Boolean,onDismiss:()->
 }
 
 @Composable
-internal fun DraftTechnologies(draft:com.r0ybt.arachn0de.ui.state.EditorDraft,enabled:Boolean,project:Boolean=false) {
+internal fun DraftTechnologies(draft:com.r0ybt.arachn0de.ui.state.EditorDraft,enabled:Boolean,project:Boolean=false,cardPreview:Boolean=false) {
     val app=LocalContext.current.applicationContext as? Arachn0deApplication ?: return
     val state by app.technologyRepository.state.collectAsState()
     LaunchedEffect(state.loaded,draft.creationId) {if(state.loaded && !draft.technologiesLoaded) {draft.technologyIds=draft.id?.let {state.forOwner(it,project).map {t->t.id}}.orEmpty();draft.originalTechnologyIds=draft.technologyIds;draft.technologiesLoaded=true}}
     if(state.loaded) TechnologySelection(state.catalog,draft.technologyIds,enabled) {draft.technologyIds=it}
 }
 
+/** Decorative preview: the enclosing card owns all taps, including taps on logos. */
 @Composable
-internal fun CompactAssignments(ownerId:String,people:List<com.r0ybt.arachn0de.domain.model.Person>,modifier:Modifier=Modifier,project:Boolean=false) {
-    val app=LocalContext.current.applicationContext as? Arachn0deApplication
-    val state by (app?.technologyRepository?.state ?: kotlinx.coroutines.flow.MutableStateFlow(com.r0ybt.arachn0de.data.repository.TechnologyState())).collectAsState()
-    val technologies=state.forOwner(ownerId,project)
-    if(technologies.isEmpty() && people.isEmpty()) return
-    BoxWithConstraints(modifier.fillMaxWidth()) {
-        val shared=technologies.isNotEmpty() && people.isNotEmpty()
-        val sectionWidth=if(shared) (maxWidth-8.dp)/2 else maxWidth
-        FlowRow(horizontalArrangement=Arrangement.spacedBy(8.dp),itemVerticalAlignment=Alignment.CenterVertically) {
-            if(technologies.isNotEmpty()) TechnologyLabels(technologies,true,Modifier.widthIn(max=sectionWidth))
-            if(people.isNotEmpty()) Box(Modifier.widthIn(max=sectionWidth)) {ResponsibleAvatars(people)}
+internal fun TechnologyCardPreview(assigned: List<TechnologyEntity>, modifier: Modifier = Modifier) {
+    if (assigned.isEmpty()) return
+    Row(modifier.testTag("technology-card-preview"), horizontalArrangement = Arrangement.spacedBy(3.dp), verticalAlignment = Alignment.CenterVertically) {
+        assigned.take(3).forEachIndexed { index, technology ->
+            Box(Modifier.then(if(index == 0) Modifier.background(Arachn0deColors.ControlSurface, RoundedCornerShape(7.dp)) else Modifier)
+                .padding(2.dp).testTag("technology-preview:${technology.id}")) {
+                TechnologyIcon(technology, 20.dp)
+            }
         }
     }
+}
+
+@Composable
+internal fun CompactAssignments(ownerId:String,people:List<com.r0ybt.arachn0de.domain.model.Person>,modifier:Modifier=Modifier,project:Boolean=false,cardPreview:Boolean=false,showTechnologies:Boolean=true,fillWidth:Boolean=true,compactSpacing:Boolean=false,showPeople:Boolean=true) {
+    val app=LocalContext.current.applicationContext as? Arachn0deApplication
+    val state by (app?.technologyRepository?.state ?: kotlinx.coroutines.flow.MutableStateFlow(com.r0ybt.arachn0de.data.repository.TechnologyState())).collectAsState()
+    val technologies=if(showTechnologies) state.forOwner(ownerId,project) else emptyList()
+    val visiblePeople=if(showPeople) people else emptyList()
+    if(technologies.isEmpty() && visiblePeople.isEmpty()) return
+    BoxWithConstraints(modifier.then(if(fillWidth) Modifier.fillMaxWidth() else Modifier)) {
+        val shared=technologies.isNotEmpty() && visiblePeople.isNotEmpty()
+        val sectionWidth=if(shared) (maxWidth-8.dp)/2 else maxWidth
+        FlowRow(horizontalArrangement=Arrangement.spacedBy(if(compactSpacing) 4.dp else 8.dp),verticalArrangement=Arrangement.spacedBy(0.dp),itemVerticalAlignment=Alignment.CenterVertically) {
+            if(technologies.isNotEmpty()) {
+                if(cardPreview) TechnologyCardPreview(technologies,Modifier.widthIn(max=sectionWidth))
+                else TechnologyLabels(technologies,true,Modifier.widthIn(max=sectionWidth))
+            }
+            if(visiblePeople.isNotEmpty()) Box(Modifier.widthIn(max=sectionWidth)) {ResponsibleAvatars(visiblePeople,interactive=!cardPreview)}
+        }
+    }
+}
+
+
+/** The card shows one generic control; the existing selector owns catalog/association UI. */
+@Composable internal fun TechnologyCardButton(ownerId:String) {
+    val app=LocalContext.current.applicationContext as? Arachn0deApplication ?: return
+    val state by app.technologyRepository.state.collectAsState()
+    val hasInformation=state.forOwner(ownerId,false).isNotEmpty()
+    var open by remember(ownerId) {mutableStateOf(false)}
+    CompactCardIconButton(androidx.compose.material.icons.Icons.Default.Code,if(hasInformation) "Tecnologías asociadas" else "Tecnologías",{open=true},Modifier.testTag("card-technology:$ownerId"),tint=if(hasInformation) com.r0ybt.arachn0de.ui.theme.Arachn0deColors.TextPrimary else com.r0ybt.arachn0de.ui.theme.BlackWhite90.Inactive)
+    if(open) EditOwnerTechnologies(ownerId,false) {open=false}
 }

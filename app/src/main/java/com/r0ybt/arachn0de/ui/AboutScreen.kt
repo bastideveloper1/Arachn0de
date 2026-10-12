@@ -33,8 +33,11 @@ internal fun AboutScreen(onBack: () -> Unit, repository: UpdateRepository = reme
     BackHandler(onBack = onBack)
     Surface(Modifier.fillMaxSize(), color = Arachn0deColors.Background) {
         Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(14.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Text("Acerca de Arachn0de", style = MaterialTheme.typography.headlineSmall)
-            TextButton(onClick = onBack) { Text("Volver") }
+            Row(Modifier.fillMaxWidth()) {
+                Text("Acerca de",Modifier.weight(1f),style=MaterialTheme.typography.headlineSmall)
+                TextButton(onClick=onBack) {Text("Volver")}
+                GlobalChromeActions()
+            }
             Text("Versión instalada: ${BuildConfig.VERSION_NAME}")
             Text("Canal Beta · GitHub Releases oficiales")
             Button(onClick = actions::check, enabled = !actions.busy) {
@@ -74,7 +77,8 @@ internal fun AboutScreen(onBack: () -> Unit, repository: UpdateRepository = reme
                     Button(onClick = actions::download, enabled = !actions.busy) { Text("Descargar actualización") }
                 }
             }
-            BackupSection(onRestored)
+            // In standalone callers retain the legacy backup access; AppRoot owns its dedicated destination.
+            if(LocalGlobalNavigation.current==null) BackupSection(onRestored)
             HorizontalDivider()
             Text("Autor", style = MaterialTheme.typography.titleMedium)
             Text("r0ybt")

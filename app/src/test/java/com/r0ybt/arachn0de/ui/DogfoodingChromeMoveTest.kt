@@ -51,7 +51,7 @@ class DogfoodingChromeMoveTest {
         compose.onNodeWithTag("nodes-list").performScrollToNode(hasText("Bugs"));compose.onNodeWithText("Bugs").performClick();await("Actualizador");title("Choroy Reader")
         compose.onNodeWithTag("nodes-list").performScrollToNode(hasText("Actualizador"));compose.onNodeWithText("Actualizador").performClick();await("CAPA 2");title("Choroy Reader")
         restoration.emulateSavedInstanceStateRestore();await("CAPA 2");title("Choroy Reader")
-        compose.onNodeWithTag("nodes-list").performScrollToNode(hasContentDescription("Volver a la capa anterior"));compose.onNodeWithContentDescription("Volver a la capa anterior").performClick();await("CAPA 1");title("Choroy Reader")
+        compose.onNodeWithContentDescription("Volver a la capa anterior").performClick();await("CAPA 1");title("Choroy Reader")
         runBlocking { app.projectRepository.updateProject(project.id,"Choroy Renamed","") }
         compose.waitUntil(10000) { compose.onAllNodes(hasTestTag("app-bar-title") and hasText("Choroy Renamed")).fetchSemanticsNodes().isNotEmpty() };title("Choroy Renamed")
         compose.onNodeWithContentDescription("Abrir menú").performClick();compose.onNodeWithText("Proyectos").performClick();await("Other project");title("Arachn0de")

@@ -25,6 +25,21 @@ class TagsUiTest {
         compose.onNodeWithText("Todas las etiquetas").performClick()
         compose.runOnIdle { assertTrue(selected.isEmpty()) }
     }
+    @Test fun compactSheetKeepsMultipleSelectionRemovalAndDone() {
+        var selected by mutableStateOf(emptySet<String>())
+        compose.setContent { com.r0ybt.arachn0de.ui.theme.Arachn0deTheme {
+            TagSelector(listOf(Tag("a","Alpha","alpha"),Tag("b","Beta","beta")),selected,{selected=it})
+        } }
+        compose.onNodeWithText("Etiquetas: Ninguna").performClick()
+        compose.onNodeWithText("Alpha").performClick();compose.onNodeWithText("Beta").performClick()
+        compose.runOnIdle {assertEquals(setOf("a","b"),selected)}
+        compose.onNodeWithText("✓ Alpha").performClick()
+        compose.runOnIdle {assertEquals(setOf("b"),selected)}
+        compose.onNodeWithText("Quitar todas").performClick()
+        compose.runOnIdle {assertTrue(selected.isEmpty())}
+        compose.onNodeWithText("Listo").assertIsDisplayed().performClick()
+        compose.onNodeWithText("Buscar o crear etiqueta").assertDoesNotExist()
+    }
     @Test fun selectionAndScopeSurviveRecreation() {
         val restorer = StateRestorationTester(compose)
         var editor: com.r0ybt.arachn0de.ui.state.EditorDraft? = null

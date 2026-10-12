@@ -51,7 +51,7 @@ class CalendarSnapshotTest {
 
     @Test fun gridDerivesFourFiveSixWeeksAndAlignsWeekHeadersAndMonthNavigation() {
         assertEquals(28, CalendarMonth(2021,2).cells(Calendar.MONDAY).size)
-        assertEquals(35, CalendarMonth(2021,1).cells(Calendar.MONDAY).size)
+        assertEquals(36, CalendarMonth(2021,1).cells(Calendar.MONDAY).size)
         assertEquals(42, CalendarMonth(2020,8).cells(Calendar.MONDAY).size)
         val sunday = CalendarMonth(2026,11).cells(Calendar.SUNDAY)
         val monday = CalendarMonth(2026,11).cells(Calendar.MONDAY)

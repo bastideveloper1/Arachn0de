@@ -47,8 +47,9 @@ internal fun ObligationsScreen(
     Surface(Modifier.fillMaxSize(), color = Arachn0deColors.Background) {
         Column(Modifier.fillMaxSize().padding(14.dp)) {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                Text("Obligaciones", style = MaterialTheme.typography.headlineSmall)
+                Text("Obligaciones",modifier=Modifier.weight(1f),maxLines=1,overflow=androidx.compose.ui.text.style.TextOverflow.Ellipsis, style = MaterialTheme.typography.titleLarge)
                 TextButton(onClick = onBack) { Text("Volver") }
+                GlobalChromeActions()
             }
             ObligationReportActions(if (ready) financial else null, projects, selectedPerson?.name, locale)
             LazyColumn(Modifier.weight(1f).testTag("obligations-list"), state = listState, verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -84,7 +85,7 @@ internal fun ObligationsScreen(
                                 else TaskDateIndicator(node, now)
                                 val assigned = financial!!.responsibleByNode[node.id].orEmpty()
                                 if (assigned.isNotEmpty()) {
-                                    ResponsibleAvatars(assigned)
+                                    ResponsibleAvatars(assigned,interactive=false)
                                     Text("Responsables: ${assigned.joinToString(" · ") { it.name }}", fontSize = 12.sp)
                                 }
                             }

@@ -1,6 +1,7 @@
 package com.r0ybt.arachn0de.ui
 
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
@@ -62,7 +63,6 @@ internal fun ProjectDashboardScreen(
     onOpenGame: () -> Unit = {},
     onOpenMetro: () -> Unit = {},
     onOpenAppearance: () -> Unit = {},
-    recurrenceContent: @Composable () -> Unit = {},
     exportTree: com.r0ybt.arachn0de.domain.model.NodeTreeSnapshot = com.r0ybt.arachn0de.domain.model.NodeTreeSnapshot(emptyList()),
     copyDescendantsReady: Boolean = false,
     onOpenTechnologies: () -> Unit = {},
@@ -71,6 +71,7 @@ internal fun ProjectDashboardScreen(
     val scope = rememberCoroutineScope()
     val context = androidx.compose.ui.platform.LocalContext.current
     val copyActions = remember(context,scope) { com.r0ybt.arachn0de.ui.state.NodeCopyActions(context,scope) { (context.applicationContext as com.r0ybt.arachn0de.Arachn0deApplication).personRepository.observeAllAssignments().first() } }
+    CopyTextChoiceDialog(copyActions)
     var photoProjectId by rememberSaveable { mutableStateOf<String?>(null) }
     projects.firstOrNull { it.id == photoProjectId }?.let { ProjectPhotoDialog(it, onClose = { photoProjectId = null }) }
     var moveProject by rememberSaveable { mutableStateOf<String?>(null) }
@@ -81,16 +82,34 @@ internal fun ProjectDashboardScreen(
     var deletingProjectId by rememberSaveable { mutableStateOf<String?>(null) }
     var deletingProjectName by rememberSaveable { mutableStateOf("") }
     var showDrawer by remember { mutableStateOf(false) }
+    var demoMenu by remember { mutableStateOf(false) }
+    var demoConfirm by remember { mutableStateOf(false) }
+    var demoBusy by remember { mutableStateOf(false) }
+    var demoError by remember { mutableStateOf<String?>(null) }
+    if(demoConfirm || demoBusy || demoError!=null) AlertDialog(
+        onDismissRequest={if(!demoBusy) {demoConfirm=false;demoError=null}},
+        title={Text("Crear proyecto de demostración")},
+        text={Text(demoError ?: if(demoBusy) "Creando demostración…" else "Creará un proyecto nuevo con 6 Personas ficticias, 3 épicas, 9 historias y 3 Sprints. No asociará Personas reales. Las Personas ficticias permanecen en el catálogo al eliminar el proyecto y pueden borrarse allí.")},
+        confirmButton={TextButton(enabled=!demoBusy,onClick={
+            if(demoError!=null) {demoError=null;demoConfirm=false} else {
+                demoBusy=true
+                scope.launch {
+                    try {
+                        val app=context.applicationContext as com.r0ybt.arachn0de.Arachn0deApplication
+                        com.r0ybt.arachn0de.gantt.GanttDemo.create(app.database,app.personRepository)
+                        demoConfirm=false
+                    } catch(c:kotlinx.coroutines.CancellationException) {throw c}
+                    catch(e:Exception) {demoError=e.message ?: "No se pudo crear la demostración."}
+                    finally {demoBusy=false}
+                }
+            }
+        }) {Text(if(demoError!=null) "Cerrar" else "Crear demostración")}},
+        dismissButton={if(!demoBusy) TextButton(onClick={demoConfirm=false;demoError=null}) {Text("Cancelar")}}
+    )
 
     BackHandler(enabled = showDrawer) { showDrawer = false }
 
-    val background = Brush.linearGradient(
-        listOf(
-            Arachn0deColors.Background,
-            Arachn0deColors.BackgroundMiddle,
-            Arachn0deColors.BackgroundEnd,
-        ),
-    )
+    val background = Arachn0deColors.Background
 
     Surface(
         modifier = Modifier.fillMaxSize(),
@@ -110,12 +129,18 @@ internal fun ProjectDashboardScreen(
             ) {
                 HeaderBar(
                     onMenuClick = { showDrawer = true },
+                    trailingAction = {
+                        Box {
+                            TextButton(onClick={demoMenu=true},enabled=!demoBusy) {Text("Opciones")}
+                            androidx.compose.material3.DropdownMenu(demoMenu,{demoMenu=false}) {
+                                androidx.compose.material3.DropdownMenuItem(text={Text("Crear proyecto de demostración")},onClick={demoMenu=false;demoConfirm=true})
+                            }
+                        }
+                    },
                 )
 
                 Spacer(modifier = Modifier.height(6.dp))
 
-                recurrenceContent()
-                Spacer(modifier = Modifier.height(12.dp))
 
                 if (projects.isEmpty()) {
                     Column(Modifier.weight(1f).verticalScroll(rememberScrollState())) {

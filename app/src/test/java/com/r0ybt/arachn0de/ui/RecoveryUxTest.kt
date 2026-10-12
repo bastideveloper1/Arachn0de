@@ -71,7 +71,7 @@ class RecoveryUxTest {
         runBlocking { assertEquals(rows[2].id,app.nodeRepository.getNode(rows[0].id)!!.parentId);assertEquals(rows[2].id,app.nodeRepository.getNode(rows[1].id)!!.parentId) }
         click("Destination");compose.waitUntil(10000) { compose.onAllNodesWithContentDescription("Volver a la capa anterior").fetchSemanticsNodes().isNotEmpty() };compose.onNodeWithTag("nodes-list").performScrollToNode(hasText("First"));await("First")
         compose.onAllNodesWithContentDescription("Más opciones")[0].performTouchInput { longClick() };await("1 seleccionados")
-        compose.onNodeWithContentDescription("Volver a la capa anterior").performScrollTo().performClick();compose.waitUntil(10000) { compose.onAllNodesWithText("1 seleccionados").fetchSemanticsNodes().isEmpty() }
+        compose.onNodeWithContentDescription("Volver a la capa anterior").performClick();compose.waitUntil(10000) { compose.onAllNodesWithText("1 seleccionados").fetchSemanticsNodes().isEmpty() }
     }
     @Test fun groupChoiceOnlyThisAndClosedDraftThenAllMembersKeepsIndividualDatesAndRetries() {
         val rows=runBlocking { app.nodeRepository.createBatch(project,null,"group",NodeBatchGenerator.generate(NodeBatchParameters("Cuota",12,NumberingMode.SUFFIX,1,description="Base",temporalRule=BatchTemporalRule.MONTHLY,firstDueAt=1769853600000,obligation=Obligation(10000,"CLP")),java.util.TimeZone.getTimeZone("UTC"))) }

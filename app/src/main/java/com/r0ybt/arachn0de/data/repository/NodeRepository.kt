@@ -242,6 +242,7 @@ class NodeRepository(
         appendEvent(entity.id, NodeEventType.CREATED, now)
         if (responsibleIds.isNotEmpty()) database.personDao().assign(responsibleIds.map { NodePersonEntity(entity.id, it) })
         tags.assignNode(entity.id, tagIds)
+        management.iterations.recordScope()
         entity.toNode(hasChildren = false)
     }
 
@@ -303,7 +304,7 @@ class NodeRepository(
                     })
                     tags.assignNode(entity.id, labels)
                     entity.toNode(hasChildren = false)
-                }
+                }.also {management.iterations.recordScope()}
             }
         }
     }
@@ -313,7 +314,7 @@ class NodeRepository(
         database.withTransaction {
             if (nodeDao.getById(id) == null) return@withTransaction false
             ensureNodeReferences(database, id, description)
-            nodeDao.updateContent(id, validateTitle(title), description, currentTimeMillis()) == 1
+            (nodeDao.updateContent(id, validateTitle(title), description, currentTimeMillis()) == 1).also {updated->if(updated) management.cascade.synchronizeText(id)}
         }
 
     /** Dates are operational only for leaves; content-only edits preserve dormant layer dates. */
@@ -365,8 +366,10 @@ class NodeRepository(
         val current = nodeDao.getById(id) ?: return@withTransaction false
         if (nodeDao.hasChildren(current.projectId, id)) return@withTransaction false
         if (current.purpose == purpose.name) return@withTransaction true
+        requireSprintLink(database.sprintLinkDao().task(id)==null) {"Desvincula la tarea del Sprint antes de cambiar su tipo."}
         require(purpose == NodePurpose.LAYER || database.conversionDao().node(id) == null) { "Esta capa conserva propiedades de un proyecto. Conviértela en proyecto antes de cambiar su tipo." }
         require(current.amountMinor == null || removeObligation) { "Confirma la eliminación de los datos financieros." }
+        management.backlog.validateStructure(database.backupDao().nodes().map {if(it.id==id) it.copy(purpose=purpose.name) else it})
         val at = currentTimeMillis()
         reopenBeforeConversion(id, at)
         check(nodeDao.updatePurpose(id, purpose.name, at, initialWorkState(current.parentId, purpose)) == 1) { "Purpose change was not written" }
@@ -378,23 +381,39 @@ class NodeRepository(
         val current = nodeDao.getById(id) ?: return@withTransaction false
         validateParent(current.projectId, parentId, movingId = id)
         if (current.parentId == parentId) return@withTransaction true
+        management.backlog.validateStructure(database.backupDao().nodes().map {if(it.id==id) it.copy(parentId=parentId) else it})
         val at = currentTimeMillis()
         reopenBeforeConversion(parentId, at)
         check(nodeDao.move(id, parentId, nextPosition(current.projectId, parentId), at, movedWorkState(current, parentId)) == 1) { "Move was not written" }
+        management.iterations.recordScope()
         true
     }
+
+    internal val management=ManagementRepository(database)
+    internal val sprintLinks=SprintLinkRepository(database)
 
     private suspend fun initialWorkState(parentId: String?, purpose: NodePurpose): String? =
         if (purpose == NodePurpose.ACTION && parentId?.let { nodeDao.getById(it)?.sprintMode } == true) WorkState.UNPLANNED.name else null
 
-    private suspend fun movedWorkState(current: NodeEntity, parentId: String?): String? =
-        if (current.purpose == "ACTION" && parentId?.let { nodeDao.getById(it)?.sprintMode } == true)
+    private suspend fun movedWorkState(current: NodeEntity, parentId: String?): String? {
+        val link=database.sprintLinkDao().task(current.id)
+        val destination=parentId?.let {nodeDao.getById(it)}
+        if(link!=null && destination?.sprintMode==true) {
+            requireSprintLink(destination.id==link.sprintId) {"La tarea pertenece a otro Sprint. Desvincúlala antes de moverla."}
+            database.sprintLinkDao().delete(current.id) // Becomes direct; phase and completion stay intact.
+        }
+        return if(current.purpose=="ACTION" && (destination?.sprintMode==true || link!=null))
             current.workState ?: WorkState.fromCompletion(current.isCompleted).name else null
+    }
 
     suspend fun setSprintMode(id: String, enabled: Boolean): Boolean = database.withTransaction {
         val layer = nodeDao.getById(id) ?: return@withTransaction false
         if (layer.purpose != "LAYER") return@withTransaction false
+        require(database.managementLayerDao().all().none {it.nodeId==id}) {"Esta capa tiene una función de gestión. Crea un Sprint dentro de Sprints."}
         if (layer.sprintMode == enabled) return@withTransaction true
+        if(!enabled) management.iterations.rejectDisable(id)
+        requireSprintLink(enabled || database.sprintLinkDao().all().none {it.sprintId==id}) {"Desvincula las tareas externas antes de desactivar el Sprint; confirma primero sus fases."}
+        if(enabled) requireSprintLink(nodeDao.getSiblings(layer.projectId,id).none {database.sprintLinkDao().task(it.id)!=null}) {"Hay tareas vinculadas a otro Sprint. Desvincúlalas primero."}
         val at = currentTimeMillis()
         nodeDao.getSiblings(layer.projectId, id).filter { it.purpose == "ACTION" }.forEach { child ->
             val state = if (enabled) WorkState.fromCompletion(child.isCompleted).name else null
@@ -427,7 +446,7 @@ class NodeRepository(
     }
 
     private suspend fun changeWorkState(current: NodeEntity, state: WorkState): Boolean {
-        if (current.purpose != "ACTION" || current.parentId?.let { nodeDao.getById(it)?.sprintMode } != true) return false
+        if (current.purpose != "ACTION" || current.parentId?.let { nodeDao.getById(it)?.sprintMode } != true && database.sprintLinkDao().task(current.id)==null) return false
         if (current.workState == state.name) return true
         val at = currentTimeMillis()
         check(nodeDao.setWorkState(current.id, state.name, current.isCompleted, at) == 1)
@@ -497,9 +516,12 @@ class NodeRepository(
             val id = stack.removeLast(); affected.add(id)
             children[id].orEmpty().forEach { stack.addLast(it.id) }
         }
+        management.backlog.rejectDeletion(affected.toSet())
+        sprintLinks.rejectDeletion(affected.toSet())
         val batches = affected.chunked(500)
         batches.forEach { nodeDao.detachNodes(it) }
         batches.forEach { nodeDao.deleteDetachedNodes(it) }
+        com.r0ybt.arachn0de.access.AccessRepository(database).cleanReferences()
         selected.size
     }
 
@@ -518,6 +540,7 @@ class NodeRepository(
         }
         val changing = roots.filter { byId.getValue(it).parentId != parentId }
         if (changing.isNotEmpty()) {
+            management.backlog.validateStructure(database.backupDao().nodes().map {if(it.id in changing) it.copy(parentId=parentId) else it})
             val at = currentTimeMillis()
             validateParent(projectId, parentId)
             var maximum = nodes.filter { it.parentId == parentId }.maxOfOrNull { it.position } ?: -1
@@ -528,6 +551,7 @@ class NodeRepository(
             check(maximum.toLong() + changing.size <= Int.MAX_VALUE) { "Orden agotado." }
             changing.forEachIndexed { index, id -> check(nodeDao.move(id,parentId,maximum+index+1,at,movedWorkState(checkNotNull(nodeDao.getById(id)),parentId)) == 1) }
         }
+        management.iterations.recordScope()
         selected.size
     }
 
@@ -538,7 +562,9 @@ class NodeRepository(
         val actual = runCatching { captureCreation(expected.map { it.id }) }.getOrNull() ?: return@withTransaction false
         if (expected.any { it.hasChildren } || actual != token) return@withTransaction false
         // Every captured node is still a leaf; direct chunks cannot cascade into new work.
+        if(runCatching {management.backlog.rejectDeletion(expected.mapTo(hashSetOf()) {it.id})}.isFailure) return@withTransaction false
         expected.map { it.id }.chunked(500).forEach { nodeDao.deleteDetachedNodes(it) }
+        com.r0ybt.arachn0de.access.AccessRepository(database).cleanReferences()
         true
     }
 
@@ -579,7 +605,13 @@ class NodeRepository(
         members.size
     }
 
-    suspend fun deleteNode(id: String): Boolean = database.withTransaction { nodeDao.delete(id) == 1 }
+    suspend fun deleteNode(id: String): Boolean = database.withTransaction {
+        management.backlog.rejectDeletion(nodeDao.getSubtreeIds(id).toSet())
+        sprintLinks.rejectDeletion(nodeDao.getSubtreeIds(id).toSet())
+        val deleted=nodeDao.delete(id)==1
+        com.r0ybt.arachn0de.access.AccessRepository(database).cleanReferences()
+        deleted
+    }
 
     suspend fun calculateProgress(nodeId: String): NodeProgress? = database.withTransaction {
         val current = nodeDao.getById(nodeId) ?: return@withTransaction null

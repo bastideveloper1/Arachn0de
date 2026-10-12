@@ -34,12 +34,12 @@ open class Arachn0deApplication:Application() {
                     suspend fun maintain() {
                         try {
                             active.backups.recover();active.people.cleanup();active.technologies.cleanup()
-                            active.photos.cleanup();active.attachments.cleanup()
+                            active.photos.cleanup();active.attachments.cleanup();com.r0ybt.arachn0de.report.CardShareFiles(active.context).cleanup()
                         } catch(cancelled:CancellationException) { throw cancelled }
                         catch(_:Exception) { android.util.Log.w("Storage","Limpieza pendiente; se reintentará.") }
                     }
                     active.scope.launch {
-                        active.database.invalidationTracker.createFlow("persons","technologies","project_photos","attachment_files","node_attachments","project_attachments")
+                        active.database.invalidationTracker.createFlow("persons","person_photos","technologies","project_photos","attachment_files","node_attachments","project_attachments")
                             .debounce(500).catch { failure ->
                                 if(failure is CancellationException) throw failure
                                 android.util.Log.w("Storage","Observación interrumpida; recuperación pendiente.")

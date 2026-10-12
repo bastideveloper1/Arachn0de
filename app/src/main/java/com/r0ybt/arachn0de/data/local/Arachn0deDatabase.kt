@@ -7,8 +7,17 @@ import androidx.room.RoomDatabase
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 
-@Database(entities = [ProjectEntity::class, NodeEntity::class, PersonEntity::class, NodePersonEntity::class, RecurrenceRuleEntity::class, RecurrenceOccurrenceEntity::class, RecurrencePersonEntity::class, TagEntity::class, NodeTagEntity::class, RecurrenceTagEntity::class, NodeEventEntity::class, CreationDefaultsEntity::class, CreationDefaultsTagEntity::class, CreationDefaultsPersonEntity::class, AttachmentFileEntity::class, NodeAttachmentEntity::class, ProjectAttachmentEntity::class, TechnologyEntity::class, NodeTechnologyEntity::class, ProjectTechnologyEntity::class, ProjectPhotoEntity::class, ConversionRootEntity::class, ConversionPersonEntity::class, ConversionTagEntity::class, ConversionEventEntity::class, ConversionWorkStateEntity::class, NodeSortPreferenceEntity::class, GameStateEntity::class, MetroPreferencesEntity::class, MetroJourneyEntity::class, SavedTemplateEntity::class, PrivatePreferenceEntity::class], version = 27, exportSchema = true)
+@Database(entities = [ProjectEntity::class, NodeEntity::class, PersonEntity::class, NodePersonEntity::class, RecurrenceRuleEntity::class, RecurrenceOccurrenceEntity::class, RecurrencePersonEntity::class, TagEntity::class, NodeTagEntity::class, RecurrenceTagEntity::class, NodeEventEntity::class, CreationDefaultsEntity::class, CreationDefaultsTagEntity::class, CreationDefaultsPersonEntity::class, AttachmentFileEntity::class, NodeAttachmentEntity::class, ProjectAttachmentEntity::class, TechnologyEntity::class, NodeTechnologyEntity::class, ProjectTechnologyEntity::class, ProjectPhotoEntity::class, ConversionRootEntity::class, ConversionPersonEntity::class, ConversionTagEntity::class, ConversionEventEntity::class, ConversionWorkStateEntity::class, NodeSortPreferenceEntity::class, GameStateEntity::class, MetroPreferencesEntity::class, MetroJourneyEntity::class, SavedTemplateEntity::class, PrivatePreferenceEntity::class, SprintLinkEntity::class, ManagementContextEntity::class, ProjectCharterEntity::class, ManagementObjectiveEntity::class, AcceptanceCriterionEntity::class, ManagementRoleEntity::class, ObjectiveEpicEntity::class, EpicStoryEntity::class, StoryTaskEntity::class, BacklogEntryEntity::class, ManagementParticipantEntity::class, ParticipantRoleEntity::class, ObjectiveResponsibilityEntity::class, NodeResponsibilityEntity::class, IterationPlanEntity::class, IterationCycleEntity::class, IterationCommitmentEntity::class, IterationClosureEntity::class, PersonProfileEntity::class, PersonRelationEntity::class, PersonTechnologyEntity::class, PersonPhotoEntity::class, PersonBirthdayEntity::class, ManagementLayerEntity::class, SprintStoryEntity::class, ObjectiveWorkEntity::class, LocalIdentityEntity::class, GanttAnnotationEntity::class], version = 38, exportSchema = true)
 abstract class Arachn0deDatabase : RoomDatabase() {
+    abstract fun ganttAnnotationDao(): GanttAnnotationDao
+    abstract fun cascadeRelationDao(): CascadeRelationDao
+    abstract fun managementLayerDao(): ManagementLayerDao
+    abstract fun iterationDao(): IterationDao
+    abstract fun participationDao(): ParticipationDao
+    abstract fun backlogDao(): BacklogDao
+    abstract fun planningDao(): PlanningDao
+    abstract fun managementContextDao(): ManagementContextDao
+    abstract fun sprintLinkDao(): SprintLinkDao
     internal abstract fun privatePreferenceDao(): PrivatePreferenceDao
     internal abstract fun savedTemplateDao(): SavedTemplateDao
     internal abstract fun metroDao(): MetroDao
@@ -25,6 +34,9 @@ abstract class Arachn0deDatabase : RoomDatabase() {
     abstract fun nodeEventDao(): NodeEventDao
     abstract fun tagDao(): TagDao
     abstract fun personDao(): PersonDao
+    abstract fun personGalleryDao(): PersonGalleryDao
+    abstract fun personProfileDao(): PersonProfileDao
+    internal abstract fun personIntegrationDao(): PersonIntegrationDao
     internal abstract fun backupDao(): BackupDao
 
     companion object {
@@ -47,7 +59,7 @@ abstract class Arachn0deDatabase : RoomDatabase() {
                 openHelperFactory(net.zetetic.database.sqlcipher.SupportOpenHelperFactory((context as? com.r0ybt.arachn0de.security.VaultContext)?.rememberSecret(encryptedKey.copyOf()) ?: encryptedKey.copyOf(),hook,false))
             }
         }
-            .addMigrations(MIGRATION_1_2, NodeMigration2To3, ProjectMigration3To4, PersonMigration4To5, TaskDatesMigration5To6, NodePurposeMigration6To7, ObligationMigration7To8, RecurrenceMigration8To9, TagMigration9To10, NodeEventMigration10To11, PriorityMigration11To12, CreationGroupMigration12To13, CreationDefaultsMigration13To14, ExplicitLayerMigration14To15, SprintMigration15To16, SprintMigration16To17, AttachmentMigration17To18, TechnologyMigration18To19, AvatarMigration19To20, ProjectPhotoMigration20To21, ConversionMigration21To22(if(encryptedKey==null) context.getSharedPreferences("node_sort_preferences", Context.MODE_PRIVATE).all else emptyMap()), GameMigration22To23(if(encryptedKey==null) context.getSharedPreferences("experimental_game", Context.MODE_PRIVATE).getString("session", "") ?: "" else ""), MetroMigration23To24, SavedTemplatesMigration24To25, SecurityMigration25To26, LayerSortMigration26To27)
+            .addMigrations(MIGRATION_1_2, NodeMigration2To3, ProjectMigration3To4, PersonMigration4To5, TaskDatesMigration5To6, NodePurposeMigration6To7, ObligationMigration7To8, RecurrenceMigration8To9, TagMigration9To10, NodeEventMigration10To11, PriorityMigration11To12, CreationGroupMigration12To13, CreationDefaultsMigration13To14, ExplicitLayerMigration14To15, SprintMigration15To16, SprintMigration16To17, AttachmentMigration17To18, TechnologyMigration18To19, AvatarMigration19To20, ProjectPhotoMigration20To21, ConversionMigration21To22(if(encryptedKey==null) context.getSharedPreferences("node_sort_preferences", Context.MODE_PRIVATE).all else emptyMap()), GameMigration22To23(if(encryptedKey==null) context.getSharedPreferences("experimental_game", Context.MODE_PRIVATE).getString("session", "") ?: "" else ""), MetroMigration23To24, SavedTemplatesMigration24To25, SecurityMigration25To26, LayerSortMigration26To27, SprintLinkMigration27To28, ManagementMigration28To29, PlanningMigration29To30, BacklogMigration30To31, ParticipationMigration31To32, IterationMigration32To33, PersonProfileMigration33To34, PersonIntegrationMigration34To35, PersonGalleryMigration35To36, CascadeMigration36To37, GanttMigration37To38)
             .addCallback(object : Callback() {
                 override fun onCreate(db: SupportSQLiteDatabase) {
                     importLegacyGame(db, if(encryptedKey==null) context.getSharedPreferences("experimental_game", Context.MODE_PRIVATE).getString("session", "") ?: "" else "")
@@ -56,6 +68,12 @@ abstract class Arachn0deDatabase : RoomDatabase() {
                     NodeInvariants.install(db)
                     ExplicitLayerInvariants.install(db)
                     SprintInvariants.install(db)
+                    SprintLinkInvariants.install(db)
+                    ManagementMigration28To29.install(db)
+                    PlanningMigration29To30.install(db)
+                    BacklogMigration30To31.install(db)
+                    ParticipationMigration31To32.install(db)
+                    IterationMigration32To33.install(db)
                     ObligationInvariants.install(db)
                 }
             })

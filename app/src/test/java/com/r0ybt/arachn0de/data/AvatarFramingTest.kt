@@ -86,7 +86,7 @@ class AvatarFramingTest {
         encoded.getJSONArray("persons").getJSONObject(0).put("avatarZoom", "2")
         assertTrue(runCatching { BackupJson.decode(encoded.toString().toByteArray()) }.isFailure)
     }
-    @Test fun hundredPeoplePersistSharedFramingInAssignmentsAndStayWithinThumbnailCache() = runBlocking {
+    @Test fun hundredPeopleAndFiveHundredTechnologiesKeepSharedMediaAndBoundedCache() = runBlocking {
         val data = BackupFixture.complete()
         data.projects.forEach { db.projectDao().insert(it) }; data.validate().forEach { db.nodeDao().insert(it) }
         repeat(100) { index ->
@@ -100,7 +100,15 @@ class AvatarFramingTest {
         assertTrue(assigned.all { it.avatarX == .5f && it.avatarY == -.5f })
         assertEquals(assigned.toSet(), people.observeAllAssignments().first().getValue("task").toSet())
         val repo = BackupRepository(db, context, BackupAvatarFiles(context, BackupFixture::syncDirectory))
-        assertEquals(100, repo.snapshot().persons.size)
+        val icons=TechnologyIconStore(context,BackupFixture::syncDirectory)
+        val icon=icons.import(Uri.fromFile(File(context.cacheDir,"framing.png")))
+        repeat(500) {i->db.technologyDao().insert(TechnologyEntity("tool-$i","Tool $i",icon))}
+        icons.lifecycle.release(icon)
+        val snapshot=repo.snapshot()
+        assertEquals(100,snapshot.persons.size);assertEquals(500,snapshot.technologies.size)
+        assertEquals(1,snapshot.technologyIcons.size)
+        repeat(500) {icons.readThumbnail(icon);assertTrue(PrivateImageCache.sizeBytes()<=PrivateImageCache.MAX_BYTES)}
+
     }
     @Test fun gestureStartsWithoutJumpAndClampsToCoveredFrameAtEveryScale() {
         val original = AvatarFraming(2f, .25f, -.5f)
@@ -121,4 +129,52 @@ class AvatarFramingTest {
         val small = next.geometry(300f, 400f, 28f)
         assertEquals(after.left / 240f, small.left / 28f, .00001f); assertEquals(after.top / 240f, small.top / 28f, .00001f)
     }
+    private suspend fun highResolutionPhoto():String {
+        val bitmap=android.graphics.Bitmap.createBitmap(3072,1536,android.graphics.Bitmap.Config.ARGB_8888)
+        bitmap.eraseColor(android.graphics.Color.CYAN)
+        val source=File(context.cacheDir,"high-resolution.png")
+        source.outputStream().use {bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG,100,it)}
+        bitmap.recycle()
+        return people.importAvatar(Uri.fromFile(source))
+    }
+    @Test fun highResolutionSourceZoomAwareThumbnailsAndBackupRetainBytesAndFraming()=runBlocking<Unit> {
+        val name=highResolutionPhoto();val bytes=file(name).readBytes()
+        val original=store.read(name)!!
+        assertEquals(1536,original.width);assertEquals(768,original.height);original.recycle()
+        val size=com.r0ybt.arachn0de.ui.personThumbnailSize(3f,5f)
+        assertEquals(512,size)
+        val thumbnail=store.readThumbnail(name,size)!!
+        assertTrue(thumbnail.width<=512);assertTrue(thumbnail.width>96)
+        assertSame(thumbnail,store.readThumbnail(name,size))
+        assertTrue(PrivateImageCache.sizeBytes()<=PrivateImageCache.MAX_BYTES)
+        people.save("a","A",name,zoom=5f,x=.4f,y=-.3f)
+        db.close();db=Arachn0deDatabase.create(context);people=PersonRepository(db,store)
+        assertEquals(5f,db.personDao().get("a")!!.avatarZoom)
+        assertArrayEquals(bytes,file(name).readBytes())
+        val backup=BackupRepository(db,context,BackupAvatarFiles(context,BackupFixture::syncDirectory))
+        val archive=backup.create();val inspection=archive.inputStream().use {backup.inspect(it)}
+        people.delete("a");assertFalse(file(name).exists())
+        backup.restore(inspection);backup.discard(inspection)
+        val row=db.personDao().get("a")!!
+        assertEquals(5f,row.avatarZoom);assertEquals(.4f,row.avatarX);assertEquals(-.3f,row.avatarY)
+        assertArrayEquals(bytes,file(row.avatarFile!!).readBytes())
+        val replacement=highResolutionPhoto()
+        people.save("a",row.name,replacement,false,zoom=row.avatarZoom,x=row.avatarX,y=row.avatarY)
+        assertFalse(file(row.avatarFile!!).exists());assertEquals(5f,db.personDao().get("a")!!.avatarZoom)
+        assertEquals(setOf(replacement),File(context.filesDir,"avatars").listFiles()!!.filter {it.extension=="png"}.map {it.name}.toSet())
+    }
+    @Test fun avatarValidationRejectsOversizedDimensionsAndPreservesTechnologyLimits() {
+        fun png(width:Int):ByteArray {
+            val bitmap=android.graphics.Bitmap.createBitmap(width,1,android.graphics.Bitmap.Config.ARGB_8888)
+            return java.io.ByteArrayOutputStream().also {bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG,100,it);bitmap.recycle()}.toByteArray()
+        }
+        validateAvatar(png(2048))
+        assertTrue(runCatching {validateAvatar(png(2049))}.isFailure)
+        assertTrue(runCatching {validateAvatar(ByteArray(BackupLimits.PERSON_AVATAR_BYTES+1))}.isFailure)
+        assertTrue(runCatching {validatePrivateImage("technology-icons",png(1024))}.isFailure)
+        assertTrue(runCatching {validateAvatar(png(2048).copyOf(30))}.isFailure)
+        assertEquals(96,com.r0ybt.arachn0de.ui.personThumbnailSize(1f,1f))
+        assertEquals(512,com.r0ybt.arachn0de.ui.personThumbnailSize(4f,5f))
+    }
+
 }

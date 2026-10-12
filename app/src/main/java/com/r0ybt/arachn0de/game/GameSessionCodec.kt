@@ -145,7 +145,7 @@ object GameSessionCodec {
         }, tiles.associateBy { it.id }, o.string("start"), o.string("goal"), o.longValue("seed"), strings(o.getJSONArray("main"))).also(::validateGeneratedMap)
     }
     /** Bounded strict parser before JSONObject: reject duplicate keys, fractions, and excessive nesting. */
-    private fun validateJson(raw: String) {
+    internal fun validateJson(raw: String) {
         android.util.JsonReader(java.io.StringReader(raw)).use { reader ->
             fun value(depth: Int) {
                 require(depth <= 10)

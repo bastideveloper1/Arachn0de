@@ -3,7 +3,7 @@ package com.r0ybt.arachn0de.data.repository
 import android.net.Uri
 import androidx.room.withTransaction
 import com.r0ybt.arachn0de.data.local.*
-import com.r0ybt.arachn0de.backup.validateAvatar
+import com.r0ybt.arachn0de.backup.validateTechnologyIcon
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.sync.withLock
@@ -69,7 +69,7 @@ internal class TechnologyRepository(private val database: Arachn0deDatabase, pri
     suspend fun save(id: String, name: String, iconFile: String?, isNew: Boolean, draftId: String? = null): Boolean = files {
         require(id.isNotBlank() && id.length <= 256 && name.trim().isNotEmpty())
         recoverLocked()
-        iconFile?.let { validateAvatar(icons.durable.read(it)) }
+        iconFile?.let { validateTechnologyIcon(icons.durable.read(it)) }
         try {
             val result = database.withTransaction {
                 val old = dao.get(id)

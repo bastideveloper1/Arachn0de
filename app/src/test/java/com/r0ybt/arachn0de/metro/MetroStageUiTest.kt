@@ -46,12 +46,12 @@ class MetroStageUiTest {
         assertNotNull(repo.snapshot().journeys.single().data.active!!.pausedAt)
         compose.onNodeWithText("Deshacer llegada").performClick();await {runBlocking {repo.snapshot().journeys.single().data.active?.control?.phase==MetroPhase.RIDING} && exists("Reanudar")}
         compose.onNodeWithText("Reanudar").performClick();await {exists("Pausar")}
-        compose.onNodeWithText("Llegué").performClick();await {exists("Iniciar combinación")}
-        compose.onNodeWithText("Iniciar combinación").performClick();await {exists("Comenzar siguiente línea")}
+        compose.onNodeWithText("Llegué").performClick();await {exists("Iniciar etapa")}
+        compose.onNodeWithText("Iniciar combinación").assertDoesNotExist()
         compose.onNodeWithText("Combinando").assertExists();compose.onNodeWithText("Pausar").assertDoesNotExist()
         val before=repo.snapshot().journeys.single().data.active!!
         assertEquals(before.offset,MetroTracking.position(before,metroTime(compose.activity).copy(elapsed=before.anchorElapsed+999999)).offset)
-        compose.onNodeWithText("Comenzar siguiente línea").performClick();await {exists("Pausar")}
+        compose.onNodeWithText("Iniciar etapa").performClick();await {exists("Pausar")}
         compose.onNodeWithText("Deshacer llegada").assertDoesNotExist();compose.onNodeWithText("Corregir estación actual").assertExists()
         assertEquals(sessionId,repo.snapshot().journeys.single().data.active!!.id)
         compose.onNodeWithText("Llegué").performClick();await {exists("Finalizado")}
@@ -67,10 +67,10 @@ class MetroStageUiTest {
         assertTrue(card.fetchSemanticsNode().boundsInRoot.height<150*compose.activity.resources.displayMetrics.density)
         compose.onNodeWithText("Editar plan").assertDoesNotExist();compose.onNodeWithText("Eliminar datos Metro").assertDoesNotExist()
         card.performClick();await {exists("Pendiente")}
-        compose.onNodeWithText("Comenzar viaje").assertExists();compose.onNodeWithText("Editar viaje").assertExists()
+        compose.onNodeWithText("Comenzar viaje").assertExists();compose.onNodeWithTag("metro-actions:$id").performClick();compose.onNodeWithText("Editar viaje").assertExists()
         assertEquals(before,app.metroRepository.snapshot())
     }
-    @Test fun hierarchyIndicatorMarksOnlyActiveBranchAndOpensExistingTracking()=runBlocking<Unit> {
+    @Test fun hierarchyIndicatorMarksOnlyActiveBranchAndOpensCard()=runBlocking<Unit> {
         val project=app.projectRepository.createProject("Proyecto actividad")
         val other=app.projectRepository.createProject("Proyecto ajeno")
         val layer=app.nodeRepository.createNode(project.id,null,"Capa actividad",purpose=NodePurpose.LAYER)
@@ -84,17 +84,17 @@ class MetroStageUiTest {
         val map=MetroActivity.hierarchy(app.nodeRepository.getProjectNodes(project.id),before,metroTime(compose.activity))
         assertEquals(setOf("project:${project.id}","node:${layer.id}","node:${nested.id}","node:${task.id}"),map.keys)
         compose.setContent {Arachn0deTheme {AppRoot(app.projectRepository,app.nodeRepository)}}
-        await {compose.onAllNodesWithTag("metro-activity:project:${project.id}").fetchSemanticsNodes().isNotEmpty()}
-        compose.onNodeWithTag("metro-activity:project:${other.id}").assertDoesNotExist()
-        compose.onNodeWithTag("metro-activity:project:${project.id}").performClick();await {exists("Pausar")}
-        assertEquals(before,repo.snapshot());compose.onNodeWithText("Volver").performClick();await {exists("Proyecto actividad")}
-        compose.onNodeWithText("Proyecto actividad",useUnmergedTree=true).performClick();await {exists("Capa actividad")}
-        compose.onNodeWithTag("metro-activity:node:${unrelated.id}").assertDoesNotExist()
-        compose.onNodeWithTag("nodes-list").performScrollToNode(hasTestTag("metro-activity:node:${layer.id}"))
-        compose.onNodeWithTag("metro-activity:node:${layer.id}").assertExists()
+        await {compose.onAllNodesWithTag("metro-activity:project:${project.id}",useUnmergedTree=true).fetchSemanticsNodes().isNotEmpty()}
+        compose.onNodeWithTag("metro-activity:project:${other.id}",useUnmergedTree=true).assertDoesNotExist()
+        compose.onNodeWithTag("metro-activity:project:${project.id}",useUnmergedTree=true).assert(hasClickAction().not()).performTouchInput {click()}
+        await {exists("Capa actividad")}
+        assertEquals(before,repo.snapshot())
+        compose.onNodeWithTag("metro-activity:node:${unrelated.id}",useUnmergedTree=true).assertDoesNotExist()
+        compose.onNodeWithTag("nodes-list").performScrollToNode(hasText("Capa actividad"))
+        compose.onNodeWithTag("metro-activity:node:${layer.id}",useUnmergedTree=true).assertExists()
         val j=repo.snapshot().journeys.single();val time=metroTime(compose.activity)
         repo.tracking(id,j.row.revision) {MetroTracking.finish(it,time)}
-        await {compose.onAllNodesWithTag("metro-activity:node:${layer.id}").fetchSemanticsNodes().isEmpty()}
+        await {compose.onAllNodesWithTag("metro-activity:node:${layer.id}",useUnmergedTree=true).fetchSemanticsNodes().isEmpty()}
         assertTrue(MetroActivity.hierarchy(app.nodeRepository.getProjectNodes(project.id),repo.snapshot(),time).isEmpty())
     }
     @Test fun multipleEntryIndicatorOffersSelectorAndReducedMotionIsFixed() {

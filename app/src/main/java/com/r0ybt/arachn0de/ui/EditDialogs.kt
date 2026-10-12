@@ -6,6 +6,8 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.isImeVisible
 import androidx.compose.foundation.layout.padding
 import androidx.compose.ui.platform.testTag
 import androidx.compose.material3.FilterChip
@@ -35,6 +37,7 @@ import com.r0ybt.arachn0de.domain.model.TitleLimits
 import com.r0ybt.arachn0de.ui.state.EditorDraft
 import com.r0ybt.arachn0de.ui.theme.Arachn0deColors
 
+@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 @Composable
 internal fun NodeDialog(
     draft: EditorDraft,
@@ -78,6 +81,13 @@ internal fun NodeDialog(
         }
     }
 
+    val pinnedNoteTools = draft.purpose == NodePurpose.NOTE && !templateEditing && WindowInsets.isImeVisible
+    val currentSubmitting by androidx.compose.runtime.rememberUpdatedState(isSubmitting)
+    val noteTools = remember(draft) {
+        androidx.compose.runtime.movableContentOf<Boolean> { compact ->
+            AttachmentDescriptionTools(draft, !currentSubmitting, compact = compact)
+        }
+    }
     NodeFullscreenDialog(
         containerColor = Arachn0deColors.Surface,
         titleContentColor = Arachn0deColors.TextPrimary,
@@ -88,6 +98,7 @@ internal fun NodeDialog(
             Column {
                 if (draft.id == null || templateEditing) FormChoices((if(templateEditing) listOf(NodePurpose.ACTION to "Tarea", NodePurpose.NOTE to "Nota") else listOf(NodePurpose.ACTION to "Tarea", NodePurpose.NOTE to "Nota", NodePurpose.LAYER to "Capa")), draft.purpose, !isSubmitting) { draft.purpose = it }
                 else Text("Tipo: ${when(draft.purpose) { NodePurpose.NOTE -> "Nota";NodePurpose.ACTION -> "Tarea";NodePurpose.LAYER -> "Capa" }}")
+                if(!templateEditing) SavedTemplatesAccess(draft,!isSubmitting && !draft.attachmentBusy)
                 Column(modifier = Modifier.weight(1f, fill = false).verticalScroll(rememberSaveable(draft.creationId, saver = androidx.compose.foundation.ScrollState.Saver) { androidx.compose.foundation.ScrollState(0) }), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     OutlinedTextField(
                         value = title,
@@ -95,17 +106,19 @@ internal fun NodeDialog(
                         label = { Text("Título") },
                         supportingText = { Text("${TitleLimits.count(title)} / ${TitleLimits.NODE}") },
                         isError = TitleLimits.count(title) > TitleLimits.NODE,
-                        singleLine = true,
+                        singleLine = false, minLines = 1, maxLines = 5,
                         modifier = Modifier
                             .fillMaxWidth()
                             .focusRequester(titleFocusRequester),
                         enabled = !isSubmitting,
                     )
-                    if(draft.id==null) SavedTemplatesAccess(draft,!isSubmitting && !draft.attachmentBusy)
                     extraFields()
                     com.r0ybt.arachn0de.metro.MetroDraftFields(draft,!isSubmitting) {metroValid=it}
                     if(templateEditing) OutlinedTextField(description,{description=it},label={Text("Descripción")},modifier=Modifier.fillMaxWidth())
-                    else AttachmentDescriptionEditor(draft, !isSubmitting, focusRequester = descriptionFocusRequester.takeIf { initialField == "description" })
+                    else AttachmentDescriptionEditor(draft, !isSubmitting,
+                        focusRequester = descriptionFocusRequester.takeIf { initialField == "description" },
+                        maxLines = if(pinnedNoteTools) 5 else Int.MAX_VALUE,
+                        tools = if(draft.purpose == NodePurpose.NOTE) ({ if(!pinnedNoteTools) noteTools(false) }) else null)
                     DraftTechnologies(draft,!isSubmitting)
                     if(!specializedCreationValid) Text("Las tecnologías ordenadas y el plan Metro requieren creación individual. Desactiva Crear varios / Recurrente o quita estas propiedades para continuar.",color=Arachn0deColors.Destructive)
                     AdaptiveFormRow(buildList {
@@ -150,6 +163,7 @@ internal fun NodeDialog(
                 }
             }
         },
+        editingTools = { if(pinnedNoteTools) noteTools(true) },
         confirmButton = {
             androidx.compose.material3.Button(
                 enabled = metroValid && extraValid && specializedCreationValid && !isSubmitting && draft.attachmentsLoaded && !draft.attachmentBusy && imageModeValid && !(draft.batchEnabled && draft.purpose == NodePurpose.ACTION && draft.recurrenceFrequency != "NONE") && batchValid && datesValid && peopleLoaded && financialValid && recurrenceValid && title.trim().isNotEmpty() && TitleLimits.count(title) <= TitleLimits.NODE &&
@@ -218,7 +232,7 @@ internal fun ProjectDialog(
                     label = { Text("Nombre") },
                     supportingText = { Text("${TitleLimits.count(name)} / ${TitleLimits.PROJECT}") },
                     isError = TitleLimits.count(name) > TitleLimits.PROJECT,
-                    singleLine = true,
+                    singleLine = false, minLines = 1, maxLines = 5,
                     modifier = Modifier.fillMaxWidth(),
                 )
                 AttachmentDescriptionEditor(draft, !isSubmitting, project = true)
@@ -258,7 +272,8 @@ internal fun ProjectDialog(
 private fun NodeFullscreenDialog(containerColor: androidx.compose.ui.graphics.Color,
     titleContentColor: androidx.compose.ui.graphics.Color, textContentColor: androidx.compose.ui.graphics.Color,
     onDismissRequest: () -> Unit, title: @Composable () -> Unit, text: @Composable () -> Unit,
-    confirmButton: @Composable () -> Unit, dismissButton: @Composable () -> Unit) {
+    confirmButton: @Composable () -> Unit, dismissButton: @Composable () -> Unit,
+    editingTools: @Composable () -> Unit = {}) {
     androidx.compose.ui.window.Dialog(onDismissRequest = onDismissRequest,
         properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)) {
         androidx.compose.material3.Surface(modifier = Modifier.fillMaxSize().testTag("node-editor"), color = containerColor) {
@@ -271,6 +286,7 @@ private fun NodeFullscreenDialog(containerColor: androidx.compose.ui.graphics.Co
                         androidx.compose.material3.ProvideTextStyle(androidx.compose.material3.MaterialTheme.typography.bodyMedium, text)
                     }
                 }
+                editingTools()
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End, verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
                     dismissButton(); confirmButton()
                 }

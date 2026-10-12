@@ -82,8 +82,9 @@ internal fun CalendarScreen(
     Surface(Modifier.fillMaxSize(), color = Arachn0deColors.Background) {
         Column(Modifier.fillMaxSize().padding(14.dp)) {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                Text("Calendario", style = MaterialTheme.typography.headlineSmall)
+                Text("Calendario",modifier=Modifier.weight(1f),maxLines=1,overflow=androidx.compose.ui.text.style.TextOverflow.Ellipsis, style = MaterialTheme.typography.titleLarge)
                 TextButton(onClick = onBack) { Text("Volver") }
+                GlobalChromeActions()
             }
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                 for ((view, label) in listOf(CalendarView.DAY to "Hoy", CalendarView.WEEK to "Semana", CalendarView.MONTH to "Mes")) {
@@ -145,7 +146,7 @@ internal fun CalendarScreen(
                                     Text(path, fontSize = 12.sp, color = Arachn0deColors.TextSecondary, maxLines = 2, overflow = TextOverflow.Ellipsis)
                                     ObligationIndicator(node)
                                     TaskDateIndicator(node, now)
-                                    ResponsibleAvatars(responsibleByNode[node.id].orEmpty())
+                                    ResponsibleAvatars(responsibleByNode[node.id].orEmpty(),interactive=false)
                                 }
                             }
                         }

@@ -21,6 +21,8 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.window.Dialog
@@ -61,18 +63,6 @@ internal fun AttachmentViewer(id: String, repository: AttachmentRepository, onEd
         loaded = true
     }
     // Leave bitmap lifetime to the renderer/GC: recycling while a frame still owns it is unsafe.
-    var zoom by remember(id) { mutableFloatStateOf(1f) }
-    var offset by remember(id) { mutableStateOf(Offset.Zero) }
-    var viewport by remember { mutableStateOf(IntSize.Zero) }
-    val state = rememberTransformableState { scale, pan, _ ->
-        zoom = (zoom * scale).coerceIn(1f, 5f)
-        val bitmap = image
-        val fit = if (bitmap == null) 0f else min(viewport.width.toFloat() / bitmap.width, viewport.height.toFloat() / bitmap.height)
-        val boundX = ((bitmap?.width ?: 0) * fit * zoom - viewport.width).coerceAtLeast(0f) / 2
-        val boundY = ((bitmap?.height ?: 0) * fit * zoom - viewport.height).coerceAtLeast(0f) / 2
-        val moved = offset + pan
-        offset = Offset(moved.x.coerceIn(-boundX, boundX), moved.y.coerceIn(-boundY, boundY))
-    }
     BackHandler(onBack = onClose)
     Dialog(onDismissRequest = onClose, properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)) {
         Column(Modifier.fillMaxSize().background(Arachn0deColors.Background).safeDrawingPadding().testTag("attachment-viewer")) {
@@ -81,12 +71,40 @@ internal fun AttachmentViewer(id: String, repository: AttachmentRepository, onEd
                 onRemove?.let { TextButton(onClick = it) { Text("Quitar") } }
                 TextButton(onClick = onClose) { Text("Cerrar", color = Arachn0deColors.Accent) }
             }
-            Box(Modifier.fillMaxWidth().weight(1f).clipToBounds().onSizeChanged { viewport = it }.transformable(state), contentAlignment = Alignment.Center) {
-                val bitmap = image
-                if (bitmap != null) Image(bitmap.asImageBitmap(), "Imagen adjunta", contentScale = ContentScale.Fit,
-                    modifier = Modifier.fillMaxSize().graphicsLayer { scaleX = zoom; scaleY = zoom; translationX = offset.x; translationY = offset.y })
-                else Text(if (loaded) "Imagen no disponible" else "Cargando imagen…", color = Arachn0deColors.TextSecondary)
-            }
+            ZoomableImage(image, loaded, "Imagen adjunta", Modifier.fillMaxWidth().weight(1f))
         }
     }
+}
+
+
+/** Shared image stage: Fit at rest, bounded zoom/pan, no file writes. */
+@Composable internal fun ZoomableImage(image: Bitmap?, loaded: Boolean, description: String, modifier: Modifier = Modifier, controls: Boolean = false) {
+    var zoom by remember(image) { mutableFloatStateOf(1f) }
+    var offset by remember(image) { mutableStateOf(Offset.Zero) }
+    var viewport by remember { mutableStateOf(IntSize.Zero) }
+    fun transform(scale: Float, pan: Offset) {
+        zoom = (zoom * scale).coerceIn(1f, 5f)
+        val bitmap = image
+        val fit = if (bitmap == null) 0f else min(viewport.width.toFloat() / bitmap.width, viewport.height.toFloat() / bitmap.height)
+        val boundX = ((bitmap?.width ?: 0) * fit * zoom - viewport.width).coerceAtLeast(0f) / 2
+        val boundY = ((bitmap?.height ?: 0) * fit * zoom - viewport.height).coerceAtLeast(0f) / 2
+        val moved = offset + pan
+        offset = Offset(moved.x.coerceIn(-boundX, boundX), moved.y.coerceIn(-boundY, boundY))
+    }
+    val state=rememberTransformableState {scale,pan,_->transform(scale,pan)}
+    Column(modifier) {
+        Box(Modifier.fillMaxWidth().weight(1f).clipToBounds().onSizeChanged {viewport=it}.transformable(state)
+            .testTag("zoomable-image").semantics {stateDescription="Zoom ${(zoom*100).toInt()} %"},contentAlignment=Alignment.Center) {
+            val bitmap=image
+            if(bitmap!=null) Image(bitmap.asImageBitmap(),description,contentScale=ContentScale.Fit,
+                modifier=Modifier.fillMaxSize().graphicsLayer {scaleX=zoom;scaleY=zoom;translationX=offset.x;translationY=offset.y})
+            else Text(if(loaded) "Imagen no disponible" else "Cargando imagen…",color=Arachn0deColors.TextSecondary)
+        }
+        if(controls) Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.Center) {
+            TextButton(enabled=image!=null && zoom<5f,onClick={transform(1.5f,Offset.Zero)}) {Text("Ampliar")}
+            TextButton(enabled=image!=null && zoom>1f,onClick={transform(1/1.5f,Offset.Zero)}) {Text("Alejar")}
+            TextButton(enabled=image!=null,onClick={zoom=1f;offset=Offset.Zero}) {Text("Restablecer")}
+        }
+    }
+
 }

@@ -11,10 +11,10 @@ import androidx.compose.ui.text.style.TextOverflow
 
 /** Consultation only: this action neither saves a plan nor starts a session. */
 @Composable
-internal fun MetroRoutePreview(nodeId: String, label: String) {
-    TextButton(onClick = { MetroNavigation.open(nodeId) }, modifier = Modifier.fillMaxWidth().testTag("metro-preview:$nodeId")) {
+internal fun MetroRoutePreview(nodeId: String, label: String,journeyId:String?=null) {
+    TextButton(onClick = { if(journeyId!=null) MetroNavigation.openJourney(journeyId) else MetroNavigation.open(nodeId) }, modifier = Modifier.fillMaxWidth().testTag("metro-preview:$nodeId")) {
         Column {
-            Text("Ver recorrido · $label", maxLines = 2, overflow = TextOverflow.Ellipsis)
+            Text("Viaje · $label", maxLines = 2, overflow = TextOverflow.Ellipsis)
             LocalMetroPreview.current[nodeId]?.let {Text(it,maxLines=2,overflow=TextOverflow.Ellipsis,style=androidx.compose.material3.MaterialTheme.typography.labelSmall)}
         }
     }

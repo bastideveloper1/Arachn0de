@@ -92,7 +92,7 @@ class NotesUiTest {
         await("No hay tareas por realizar")
         compose.onNodeWithText("Contiene 1 vencida").assertDoesNotExist()
         compose.onNodeWithContentDescription("Abrir menú").performClick()
-        compose.onNodeWithText("Atención").performClick()
+        compose.onNodeWithText("Seguimiento").performScrollTo().performClick(); compose.onNodeWithText("Avisos").performClick()
         compose.waitUntil(10_000) { compose.onAllNodesWithTag("attention-list").fetchSemanticsNodes().isNotEmpty() }
         compose.onNodeWithTag("attention-task:$task").assertDoesNotExist()
         runBlocking { app.nodeRepository.convertPurpose(task, NodePurpose.ACTION) }

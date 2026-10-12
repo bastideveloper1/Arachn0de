@@ -30,7 +30,8 @@ internal fun AppearanceScreen(onBack: () -> Unit, preferences: AppearancePrefere
         Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Volver") }
-                Text("Apariencia", style = MaterialTheme.typography.titleLarge)
+                Text("Apariencia",modifier=Modifier.weight(1f), style = MaterialTheme.typography.titleLarge)
+                GlobalChromeActions()
             }
             Text("Preview", style = MaterialTheme.typography.titleSmall)
             AppearancePreview()

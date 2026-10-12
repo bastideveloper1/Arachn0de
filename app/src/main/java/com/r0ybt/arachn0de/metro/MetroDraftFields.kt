@@ -39,15 +39,21 @@ import com.r0ybt.arachn0de.ui.state.EditorDraft
     val metro=hasPlan || adding || draft.templateMetroCatalog!=null || draft.metroJourneyId!=null
     Text("Contenido",style=MaterialTheme.typography.labelLarge)
     Row(horizontalArrangement=Arrangement.spacedBy(6.dp)) {
-        FilterChip(selected=!metro,enabled=enabled && existing==null,onClick={
+        FilterChip(selected=existing?.row?.enabled==false || !metro,enabled=enabled && existing==null,onClick={
             draft.templateMetroPlan=null;draft.templateMetroCatalog=null;draft.templateTraveler=null
             draft.metroJourneyId=null;draft.metroJourneyRevision=null;draft.metroOriginalPlan=null;draft.metroOriginalTraveler=null
             adding=false;onValidity(true)
-        },label={Text("Habitual")})
-        FilterChip(selected=metro,enabled=enabled,onClick={
+        },label={Text("Modo normal")})
+        FilterChip(selected=metro && existing?.row?.enabled!=false,enabled=enabled && existing==null,onClick={
             if(draft.id==null || isTemplate) draft.purpose=NodePurpose.ACTION
             adding=true
         },label={Text("Viaje Metro")})
+    }
+    if(existing!=null) {
+        Text(if(existing.row.enabled) "Modo Viaje · ${if(existing.data.active!=null) "seguimiento activo" else if(existing.data.sessions.lastOrNull()?.ended!=null) "seguimiento finalizado" else "sin seguimiento activo"}"
+            else "Modo normal · recorrido e historial conservados",style=MaterialTheme.typography.bodySmall)
+        Text("El modo se cambia desde el recorrido, sin borrar su vínculo ni historial. Los cambios de este formulario se guardan por separado.",style=MaterialTheme.typography.bodySmall)
+        TextButton(enabled=enabled,onClick={MetroNavigation.open(existing.row.nodeId)}) {Text("Abrir recorrido para cambiar modo")}
     }
     if(existing!=null && draft.metroJourneyId==null) {LaunchedEffect(Unit) {onValidity(false)};Text("Cargando itinerario…");return}
     val selected=snapshot?.journeys?.firstOrNull {it.row.id==draft.metroJourneyId}

@@ -35,6 +35,7 @@ data class ConversionWorkStateEntity(@PrimaryKey val nodeId: String, val rootId:
 data class NodeSortPreferenceEntity(@PrimaryKey val context: String, val mode: String, @ColumnInfo(defaultValue="0") val layersFirst:Boolean=false)
 
 @Dao interface ConversionDao {
+    @Query("SELECT * FROM conversion_roots ORDER BY id") fun observeRoots(): Flow<List<ConversionRootEntity>>
     @Query("SELECT * FROM conversion_roots ORDER BY id") suspend fun roots(): List<ConversionRootEntity>
     @Query("SELECT * FROM conversion_roots WHERE projectId = :id") suspend fun project(id: String): ConversionRootEntity?
     @Query("SELECT * FROM conversion_roots WHERE nodeId = :id") suspend fun node(id: String): ConversionRootEntity?

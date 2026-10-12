@@ -33,7 +33,7 @@ internal class OperationState(private val scope: CoroutineScope) {
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (failure: Exception) {
-                error = failureMessage
+                error = if(failure is com.r0ybt.arachn0de.data.repository.SprintLinkConflictException) failure.message else failureMessage
                 false
             } finally {
                 busy = false

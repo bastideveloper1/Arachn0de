@@ -34,7 +34,7 @@ import java.util.TimeZone
     val format = remember(locale, zone.id) { DateFormat.getDateTimeInstance(DateFormat.MEDIUM, DateFormat.SHORT, locale).apply { timeZone = zone } }
     AlertDialog(containerColor = Arachn0deColors.Surface, titleContentColor = Arachn0deColors.TextPrimary,
         textContentColor = Arachn0deColors.TextSecondary, onDismissRequest = onDismiss,
-        title = { Text("Historial · ${node.title}", maxLines = 2, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis) },
+        title = { InformationalTitle("Historial · ${node.title}", onDismiss) },
         text = { Column {
             when {
                 failed -> { Text("No se pudo cargar el historial."); TextButton(onClick = onRetry) { Text("Reintentar") } }
@@ -51,5 +51,5 @@ import java.util.TimeZone
                     } }
                 }
             }
-        } }, confirmButton = { TextButton(onClick = onDismiss) { Text("Cerrar") } })
+        } }, confirmButton = {})
 }

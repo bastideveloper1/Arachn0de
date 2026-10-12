@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.4.0 — preparación local, pendiente de firma
+
+- Gestión de proyectos integrada: Acta, Equipo, Objetivos, Backlog, planificación de
+  Sprints, Kanban directo, Gantt y demostración explícita con datos locales reales.
+- Cuadrículas de Personas de tres columnas con fotos completas en cuadros rectos,
+  nombre separado y menú inferior, sin margen dentro de la región fotográfica.
+- Previsualizaciones compactas sin descripción; contenido íntegro en detalle/editor.
+- Pagos agrupa Este mes, Próximo mes y Total pendiente por moneda, usando el cálculo
+  existente y excluyendo pagos completados de esos importes.
+- Código Android 12, Room 38 y backup hasta JSON 30. Reutiliza firma oficial existente;
+  no modifica la paleta ni añade mecanismos de seguridad. No se ha publicado.
+
+
 ## 0.3.0 — Preparación para distribución manual
 
 Versión Android `0.3.0`, código `9`, posterior al código `8` del build de pruebas. Firma oficial e identificador conservados; APK pendiente de introducir credenciales localmente, sin publicación.

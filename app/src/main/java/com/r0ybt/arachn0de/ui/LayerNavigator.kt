@@ -26,7 +26,6 @@ import androidx.compose.material.icons.filled.ExpandMore
 import com.r0ybt.arachn0de.ui.state.LayerHierarchyIndex
 import com.r0ybt.arachn0de.ui.state.LayerHierarchyRow
 import androidx.compose.ui.platform.testTag
-import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -108,7 +107,7 @@ private fun NavigatorRoot(title: String, subtitle: String, isCurrent: Boolean, t
             ) {
                 if (tag == "navigator-home") {
                     Image(
-                        painter = painterResource(id = R.drawable.iconohome),
+                        painter = painterResource(id = R.drawable.bw90_brand_mark),
                         colorFilter = null,
                         contentDescription = "Inicio",
                         contentScale = ContentScale.Fit,
@@ -182,7 +181,7 @@ internal fun LayerDestination(
                             contentAlignment = Alignment.Center,
                         ) {
                             Image(
-                                painter = painterResource(id = R.drawable.cebolla_icon),
+                                painter = painterResource(id = R.drawable.bw90_layer),
                                 contentDescription = "Capa",
                                 contentScale = ContentScale.Fit,
 
@@ -219,7 +218,7 @@ internal fun LayerDestination(
 
                     if (row.hasChildren) {
                         IconButton(enabled = enabled, onClick = { onToggle(row.node.id) }, modifier = Modifier.testTag("expand:${row.node.id}")) {
-                            Icon(
+                            LucideIcon(
                                 imageVector = if (isExpanded) Icons.Default.ExpandMore else Icons.Default.ChevronRight,
                                 contentDescription = if (isExpanded) "Contraer rama" else "Expandir rama",
                                 tint = Arachn0deColors.PathHighlight,

@@ -16,7 +16,7 @@ class AppearancePreferencesTest {
     private val storage get() = RuntimeEnvironment.getApplication().getSharedPreferences(AppearancePreferences.FILE, 0)
     @Test fun exactlyFiveThemesAndThreeSizesDefaultToCurrentAppearance() {
         storage.edit().clear().commit()
-        assertEquals(listOf("Arachn0de", "King Crimson", "Deep Moss", "Heavy Gold", "Minimalist"), AppearanceTheme.entries.map { it.label })
+        assertEquals(listOf("Black & White 90", "King Crimson", "Deep Moss", "Heavy Gold", "Minimalist"), AppearanceTheme.entries.map { it.label })
         assertEquals(listOf("Pequeña", "Mediana", "Grande"), AppearanceTextSize.entries.map { it.label })
         assertEquals(AppearanceSettings(), AppearancePreferences(storage).settings)
     }
@@ -38,7 +38,7 @@ class AppearancePreferencesTest {
     @Test fun designedSizesKeepSmallValuesAndCompactControlsUnscaled() {
         assertEquals(ContentSizes(14,16,12,14,17,14,20,12,11,24,15), contentSizes(AppearanceTextSize.Small))
         val medium = contentSizes(AppearanceTextSize.Medium); val large = contentSizes(AppearanceTextSize.Large)
-        assertEquals(16, medium.cardTitle); assertEquals(14, medium.description); assertEquals(20, medium.projectTitle)
+        assertEquals(16, medium.cardTitle); assertEquals(14, medium.description); assertEquals(19, medium.projectTitle)
         assertEquals(18, large.cardTitle); assertEquals(16, large.description); assertEquals(21, large.projectTitle)
         assertEquals(13, large.smallMetadata)
         AppearanceTextSize.entries.forEach {
@@ -63,7 +63,7 @@ class AppearancePreferencesTest {
             assertNotEquals(p.primary, SemanticColors.Error); assertNotEquals(p.secondary, SemanticColors.Error)
             if (theme != AppearanceTheme.Arachn0de) assertNotEquals(p.secondary, SemanticColors.HighPriority)
             assertEquals(Color(0xFF83CFFF), SemanticColors.ImageLink)
-            assertEquals(Color(0xFF7E61FF), SemanticColors.SprintDoing)
+            assertEquals(BlackWhite90.Text, SemanticColors.SprintDoing)
         }
     }
     @Test fun minimalistHasNoDecorativeColorInPaletteOrMaterialSurfaces() {
@@ -73,5 +73,16 @@ class AppearancePreferencesTest {
         (colors + listOf(scheme.primary,scheme.secondary,scheme.tertiary,scheme.surfaceContainer,scheme.surfaceContainerHigh,scheme.surfaceContainerLow,scheme.surfaceContainerHighest,scheme.surfaceTint,scheme.primaryFixed,scheme.secondaryFixed)).forEach {
             assertEquals(it.red, it.green, .0001f); assertEquals(it.red, it.blue, .0001f)
         }
+    }
+    @Test fun blackWhite90UsesSoftNeutralTokensAndKeepsExistingPreferenceKey() {
+        val p=AppearanceTheme.Arachn0de.palette
+        assertEquals(Color(0xFF202124),p.background)
+        assertEquals(Color(0xFF2B2D30),p.surface)
+        assertEquals(Color(0xFFD6D6D6),p.text)
+        assertEquals(p.background,p.middle);assertEquals(p.background,p.end)
+        storage.edit().putString("theme","Arachn0de").commit()
+        assertEquals(AppearanceTheme.Arachn0de,AppearancePreferences(storage).settings.theme)
+        assertTrue(contrast(p.text,p.surface)>=4.5f)
+        assertTrue(contrast(BlackWhite90.Inactive,p.surface)>=3f)
     }
 }

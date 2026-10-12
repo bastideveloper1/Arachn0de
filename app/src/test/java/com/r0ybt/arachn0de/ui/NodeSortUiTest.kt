@@ -69,10 +69,10 @@ class NodeSortUiTest {
     @Test fun dashboardUsesExistingHierarchyFallbackAndTagsRemainAccessibleFromDrawer() {
         await(project.name)
         compose.onNodeWithText("Proyectos").assertDoesNotExist()
-        compose.onNodeWithText("Gestionar etiquetas").assertDoesNotExist()
+        compose.onNodeWithText("Etiquetas").assertDoesNotExist()
         compose.onNodeWithContentDescription("Proyecto sin fotografía").assertExists()
         compose.onNodeWithContentDescription("Abrir menú").performClick()
-        compose.onNodeWithText("Gestionar etiquetas").performScrollTo().performClick()
+        compose.onNodeWithText("Recursos").performScrollTo().performClick(); compose.onNodeWithText("Etiquetas").performScrollTo().performClick()
         await("Etiquetas globales")
         compose.onNodeWithText("Cerrar").performClick()
         await(project.name)
@@ -105,9 +105,10 @@ class NodeSortUiTest {
         }
         sort(NodeSortMode.DUE_ASC)
         compose.onNodeWithTag("nodes-list").performScrollToIndex(0)
-        compose.onNodeWithContentDescription("Opciones del proyecto").performScrollTo().performClick()
-        compose.onNodeWithText("Copiar con descendientes").performScrollTo().performClick()
-        val expected=PendingChatRenderer.render(NodeTreeSnapshot(original),null,project)
+        compose.onNodeWithContentDescription("Opciones del proyecto").performClick()
+        compose.onNodeWithText("Copiar texto con descendientes").performScrollTo().performClick()
+        compose.onNodeWithText("Copiar").performClick()
+        val expected=PendingChatRenderer.render(NodeTreeSnapshot(original),null,project,completeHierarchy=true)
         val clipboard=app.getSystemService(ClipboardManager::class.java)
         compose.waitUntil(10000) { org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle();clipboard.primaryClip?.getItemAt(0)?.text?.toString()==expected }
         sort(NodeSortMode.MANUAL);first("A")

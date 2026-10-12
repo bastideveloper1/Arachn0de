@@ -1,6 +1,9 @@
 package com.r0ybt.arachn0de.metro
 
 import androidx.activity.ComponentActivity
+import androidx.compose.foundation.layout.*
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.unit.dp
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.test.*
@@ -28,6 +31,48 @@ class MetroUiTest {
         androidx.compose.runtime.snapshots.Snapshot.sendApplyNotifications();compose.mainClock.advanceTimeByFrame();predicate()
     }
     private fun exists(text: String)=compose.onAllNodesWithText(text).fetchSemanticsNodes().isNotEmpty()
+    @Test fun contextualGroupsPreservePreferencesAndExposeEveryDestination() {
+        compose.setContent {Arachn0deTheme {MetroScreen(emptyList(),emptyList(),onBack={})}}
+        await {exists("Opciones de Metro") && exists("Tu próximo recorrido")}
+        compose.onNodeWithText("Opciones de Metro").performClick();compose.onNodeWithText("Viajar").assertDoesNotExist()
+        compose.onNodeWithText("Viajes").performClick();compose.onNodeWithText("Viajar").performClick()
+        await {exists("Buscar ruta")}
+        compose.onNodeWithText("Opciones de Metro").performClick();compose.onNodeWithText("Viajes guardados").performClick()
+        await {exists("Tus viajes")}
+        compose.onNodeWithText("Opciones de Metro").performClick();compose.onNodeWithText("Viajes recientes").performClick()
+        await {exists("No hay viajes recientes.")}
+        compose.onNodeWithText("Opciones de Metro").performClick();compose.onNodeWithText("Preferencias").performClick()
+        compose.onNodeWithText("Configurar vibración").performClick();await {exists("Vibración previa")}
+        val before=runBlocking {app.metroRepository.snapshot().preferences}
+        compose.onNodeWithText("Opciones de Metro").performClick();compose.onNodeWithText("Estaciones favoritas").performClick()
+        await {exists("No hay estaciones favoritas.")}
+        assertEquals(before,runBlocking {app.metroRepository.snapshot().preferences})
+        compose.onNodeWithText("Opciones de Metro").performClick();compose.onNodeWithText("Configuración").performClick()
+        compose.onNodeWithText("Configuración general de Metro").performClick();await {exists("Horarios")}
+        compose.onNodeWithText("Opciones de Metro").performClick();compose.onNodeWithText("Restricciones de viaje").performClick()
+        await {compose.onAllNodesWithText("Locales y manuales.",substring=true).fetchSemanticsNodes().isNotEmpty()}
+    }
+    @Test fun metroHamburgerUsesSameHeaderGeometryAndCallback() {
+        var calls=0
+        compose.setContent {Arachn0deTheme {
+            androidx.compose.runtime.CompositionLocalProvider(com.r0ybt.arachn0de.ui.LocalGlobalNavigation provides com.r0ybt.arachn0de.ui.GlobalNavigation({calls++},false)) {
+                androidx.compose.foundation.layout.Column {
+                    androidx.compose.foundation.layout.Column(androidx.compose.ui.Modifier.testTag("reference-header").padding(horizontal=12.dp,vertical=10.dp)) {
+                        com.r0ybt.arachn0de.ui.HeaderBar({})
+                    }
+                    androidx.compose.foundation.layout.Box(androidx.compose.ui.Modifier.weight(1f).testTag("metro-region")) {MetroScreen(emptyList(),emptyList(),onBack={})}
+                }
+            }
+        }}
+        await {exists("Tu próximo recorrido")}
+        val controls=compose.onAllNodesWithContentDescription("Abrir menú")
+        controls.assertCountEquals(2)
+        val reference=controls[0].fetchSemanticsNode().boundsInRoot;val metro=controls[1].fetchSemanticsNode().boundsInRoot
+        assertEquals(reference.left,metro.left,1f);assertEquals(reference.width,metro.width,1f);assertEquals(reference.height,metro.height,1f)
+        val region=compose.onNodeWithTag("metro-region").fetchSemanticsNode().boundsInRoot
+        assertEquals(reference.top,metro.top-region.top,1f)
+        controls[1].performClick();assertEquals(1,calls)
+    }
     @Test fun explorerFullScreenKeepsStationContextAndHomeAfterSavedStateRestore() {
         val restoration=StateRestorationTester(compose)
         restoration.setContent {Arachn0deTheme {MetroScreen(emptyList(),emptyList(),onBack={})}}

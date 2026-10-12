@@ -17,7 +17,7 @@ import java.util.Date
 import java.util.Locale
 
 @Composable
-internal fun BackupSection(onRestored: () -> Unit, backupRepository: com.r0ybt.arachn0de.backup.BackupRepository? = null) {
+internal fun BackupSection(onRestored: () -> Unit, backupRepository: com.r0ybt.arachn0de.backup.BackupRepository? = null, onBusyChange:(Boolean)->Unit = {}) {
     val context = LocalContext.current
     val repository = backupRepository ?: (context.applicationContext as Arachn0deApplication).backupRepository
     val documents = remember(context) { BackupDocuments(context.contentResolver) }
@@ -38,22 +38,23 @@ internal fun BackupSection(onRestored: () -> Unit, backupRepository: com.r0ybt.a
         else if (name != null) actions.save(name, uri)
     }
     val open = rememberLauncherForActivityResult(com.r0ybt.arachn0de.backup.OpenBackupDocument()) { uri ->
-        if (uri != null) { restoreUri=uri;passwordAction="restore" }
+        if (uri != null) { (context.applicationContext as Arachn0deApplication).security.captures.revoke();restoreUri=uri;passwordAction="restore" }
     }
+    SideEffect {onBusyChange(actions.busy || pendingName!=null)}
     LaunchedEffect(actions) { actions.recover() }
     BackHandler(enabled = actions.busy) { }
     HorizontalDivider()
     Text("Backup y restauración", style = MaterialTheme.typography.titleMedium)
     Text("Incluye tus datos, archivos y preferencias. Los nuevos backups se protegen con contraseña; puedes importar los anteriores.")
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Button(enabled = !actions.busy && pendingName == null, onClick = { passwordAction="create" }) { Text("Crear backup") }
+        Button(enabled = !actions.busy && pendingName == null, onClick = { (context.applicationContext as Arachn0deApplication).security.captures.revoke();passwordAction="create" }) { Text("Crear backup") }
         OutlinedButton(enabled = !actions.busy && pendingName == null, onClick = {
             try { open.launch(arrayOf("application/octet-stream", "application/json", "*/*")) }
             catch (_: Exception) { actions.noticeSelectionFailed() }
         }) { Text("Restaurar backup") }
     }
     passwordAction?.let { action ->
-        AlertDialog(onDismissRequest={ clearPassword() },title={ Text(if(action=="create") "Contraseña del backup" else "Abrir backup") },
+        AlertDialog(properties=androidx.compose.ui.window.DialogProperties(securePolicy=androidx.compose.ui.window.SecureFlagPolicy.SecureOn),onDismissRequest={ clearPassword() },title={ Text(if(action=="create") "Contraseña del backup" else "Abrir backup") },
             text={ Column(verticalArrangement=Arrangement.spacedBy(8.dp)) {
                 Text(if(action=="create") "Necesitarás esta contraseña para restaurarlo. Si la pierdes, el backup puede ser irrecuperable." else "Introduce la contraseña del archivo. Déjala vacía únicamente si es un backup antiguo sin cifrar.")
                 OutlinedTextField(value=password,onValueChange={password=it;passwordError=false},label={Text("Contraseña")},singleLine=true,

@@ -69,6 +69,45 @@ class VaultManagerTest {
             assertEquals(before,vault.current.value!!.metro.snapshot())
         } finally {vault.lock();root.deleteRecursively()}
     }
+    @Test fun capturesRequireCurrentPrimaryPasswordAndAreRevokedByBackgroundLockAndStoreChanges()=runBlocking<Unit> {
+        val original=ApplicationProvider.getApplicationContext<Context>()
+        val root=File(original.filesDir,"capture-test-${UUID.randomUUID()}").apply {mkdirs()}
+        val base=object:ContextWrapper(original) {
+            override fun getApplicationContext():Context=this
+            override fun getFilesDir()=File(root,"files").apply {mkdirs()}
+            override fun getCacheDir()=File(root,"cache").apply {mkdirs()}
+        }
+        seed(base,"capture-main-fixture");val vault=manager(base)
+        try {
+            assertFalse(vault.captures.allowed.value)
+            vault.unlock("capture-main-fixture".toCharArray());val main=vault.current.value!!
+            assertFalse(vault.captures.allowed.value)
+            vault.createSecondary("capture-main-fixture".toCharArray(),"capture-decoy-fixture".toCharArray())
+            val wrong="incorrect-fixture".toCharArray()
+            assertTrue(runCatching {vault.authorizeCaptures(main,wrong)}.isFailure)
+            assertTrue(wrong.all {it=='\u0000'});assertFalse(vault.captures.allowed.value)
+            assertTrue(runCatching {vault.authorizeCaptures(main,"capture-decoy-fixture".toCharArray())}.isFailure)
+            assertFalse(vault.captures.allowed.value)
+            vault.authorizeCaptures(main,"capture-main-fixture".toCharArray());assertTrue(vault.captures.allowed.value)
+            vault.captures.revoke();assertFalse(vault.captures.allowed.value)
+            vault.authorizeCaptures(main,"capture-main-fixture".toCharArray());vault.lock()
+            assertFalse(vault.captures.allowed.value)
+            vault.unlock("capture-decoy-fixture".toCharArray());val decoy=vault.current.value!!
+            assertFalse(decoy.primary);assertFalse(vault.captures.allowed.value)
+            assertTrue(runCatching {vault.authorizeCaptures(decoy,"capture-main-fixture".toCharArray())}.isFailure)
+            assertTrue(runCatching {vault.authorizeCaptures(main,"capture-main-fixture".toCharArray())}.isFailure)
+            assertFalse(vault.captures.allowed.value)
+            vault.lock();vault.unlock("capture-main-fixture".toCharArray())
+            val reopened=vault.current.value!!;assertFalse(vault.captures.allowed.value)
+            reopened.context.getSharedPreferences("security_preferences",0).edit().putLong("background_timeout",0).commit()
+            vault.authorizeCaptures(reopened,"capture-main-fixture".toCharArray())
+            vault.background();assertFalse(vault.captures.allowed.value)
+            kotlinx.coroutines.withTimeout(5000) {while(vault.current.value!=null) kotlinx.coroutines.delay(10)}
+            vault.foreground();assertFalse(vault.captures.allowed.value)
+            val restarted=manager(base);assertFalse(restarted.captures.allowed.value)
+            restarted.unlock("capture-main-fixture".toCharArray());assertFalse(restarted.captures.allowed.value);restarted.lock()
+        } finally {vault.lock();root.deleteRecursively()}
+    }
     /** Native SQLCipher is replaced ONLY in this test. Auth, envelopes, files and controller are real. */
     private fun manager(base:Context)=VaultManager(base,BackupFixture::syncDirectory) { ctx,_ ->
         Room.databaseBuilder(base,Arachn0deDatabase::class.java,ctx.getDatabasePath("arachn0de.db").absolutePath).build()
@@ -98,6 +137,8 @@ class VaultManagerTest {
             manager.unlock("principal-123".toCharArray());val main=manager.current.value!!
             assertTrue(main.primary);assertEquals(primary,main.access.id)
             val project=main.projects.createProject("Privado principal")
+            val access=com.r0ybt.arachn0de.access.AccessRepository(main.database)
+            access.toggle("project:${project.id}");access.opened("project:${project.id}")
             main.database.technologyDao().insert(com.r0ybt.arachn0de.data.local.TechnologyEntity("main-tech","Tecnología principal",null))
             kotlinx.coroutines.withTimeout(10000) {main.technologies.state.first {it.loaded && it.catalog.any {row->row.id=="main-tech"}}}
             val photo=File(main.context.filesDir,"photo.bin");SecureFiles.write(photo,byteArrayOf(7,8,9))
@@ -118,6 +159,8 @@ class VaultManagerTest {
             assertTrue(runCatching {SecureFiles.read(photo)}.isFailure)
             manager.unlock("secundaria-123".toCharArray());val secondary=manager.current.value!!
             assertFalse(secondary.primary);assertNotEquals(primary,secondary.access.id)
+            val secondaryAccess=com.r0ybt.arachn0de.access.AccessRepository(secondary.database)
+            assertTrue(secondaryAccess.snapshot().favorites.isEmpty());assertTrue(secondaryAccess.snapshot().recent.isEmpty())
             assertTrue(secondary.database.backupDao().projects().isEmpty())
             assertTrue(secondary.database.technologyDao().catalog().isEmpty())
             assertTrue(runCatching {manager.createSecondary("secundaria-123".toCharArray(),"third-password".toCharArray())}.isFailure)

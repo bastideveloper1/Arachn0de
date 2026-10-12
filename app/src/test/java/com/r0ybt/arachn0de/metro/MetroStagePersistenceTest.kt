@@ -32,6 +32,25 @@ class MetroStagePersistenceTest {
         val id=repo.savePlan(route,task.id);repo.begin(id,repo.snapshot().journeys.single().row.revision,time(0));return id
     }
     private suspend fun track(id:String,action:(MetroSession)->MetroSession) {assertTrue(repo.tracking(id,repo.snapshot().journeys.single().row.revision,action))}
+    @Test fun vibrationPreferencesAndAlertMarkerSurviveReopenAndBackupWithHistoricalDefaults()=runBlocking<Unit> {
+        val old=org.json.JSONObject(MetroCodec.preferences(repo.snapshot().preferences)).apply {put("version",1);remove("vibration")}.toString()
+        assertFalse(MetroCodec.preferences(old).vibration)
+        assertTrue(runCatching {MetroCodec.preferences(org.json.JSONObject(old).put("version",2).put("vibration","true").toString())}.isFailure)
+        repo.settings {it.copy(vibration=true)}
+        val id=seed()
+        val s=repo.snapshot().journeys.single().data.active!!
+        val t=time(MetroStages.offset(s.route,MetroStages.boundary(s)-1))
+        track(id) {MetroArrivalAlert.mark(it,t)}
+        val before=repo.snapshot()
+        assertTrue(before.journeys.single().data.active!!.events.any {it.kind.startsWith("PASS_")})
+        db.close();open();assertEquals(before,repo.snapshot())
+        val backups=BackupRepository(db,context,BackupAvatarFiles(context,BackupFixture::syncDirectory))
+        val exported=backups.create();val inspection=backups.inspect(exported.inputStream())
+        repo.settings {it.copy(vibration=false)}
+        backups.restore(inspection);backups.discard(inspection)
+        assertTrue(repo.snapshot().preferences.vibration)
+        assertEquals(before.journeys.single().data.active!!.events,repo.snapshot().journeys.single().data.active!!.events)
+    }
     @Test fun reopenDuringCombinationKeepsProgressUndoIdentityAndTiming()=runBlocking<Unit> {
         val id=seed();track(id) {MetroStages.arrive(it,time(30_000))};track(id) {MetroStages.beginTransfer(it,time(40_000))}
         val before=repo.snapshot();db.close();open();assertEquals(before,repo.snapshot())
@@ -92,4 +111,24 @@ class MetroStagePersistenceTest {
         assertThrows(IllegalArgumentException::class.java) {MetroCodec.journey(good.toString(),before.preferences.network)}
         assertEquals(before,repo.snapshot())
     }
+    @Test fun explicitFinishDuringCombinationRoundTripsCodecReopenAndFullBackup()=runBlocking<Unit> {
+        val id=seed();track(id) {MetroStages.confirmArrival(it,time(30000))}
+        val active=repo.snapshot().journeys.single().data.active!!
+        track(id) {MetroTracking.finish(it,time(90000))}
+        val before=repo.snapshot();val finished=before.journeys.single().data.sessions.single()
+        assertNull(before.journeys.single().data.active);assertEquals(active.id,finished.id)
+        assertEquals(30000L,finished.control!!.records.first().railMillis)
+        assertEquals(60000L,finished.control!!.records.first().transferMillis)
+        db.close();open();assertEquals(before,repo.snapshot())
+        val backups=BackupRepository(db,context,BackupAvatarFiles(context,BackupFixture::syncDirectory))
+        val exported=backups.create();val inspection=backups.inspect(exported.inputStream())
+        try {backups.restore(inspection)} finally {backups.discard(inspection)}
+        val restored=repo.snapshot().journeys.single()
+        assertEquals(id,restored.row.id);assertEquals(before.journeys.single().row.nodeId,restored.row.nodeId)
+        assertEquals(finished.control!!.records,restored.data.sessions.single().control!!.records)
+        assertEquals(finished.events,restored.data.sessions.single().events)
+        assertTrue(repo.undoArrival(id,restored.row.revision,time(100000)))
+        assertEquals(MetroPhase.TRANSFERRING,repo.snapshot().journeys.single().data.active!!.control!!.phase)
+    }
+
 }

@@ -56,7 +56,7 @@ class CalendarUiTest {
     private fun open() {
         awaitText("Personal")
         compose.onNodeWithContentDescription("Abrir menú").performClick()
-        compose.onNodeWithText("Calendario").performClick()
+        compose.onNodeWithText("Seguimiento").performScrollTo().performClick(); compose.onNodeWithText("Calendario").performClick()
         awaitTag("calendar-month")
     }
     private fun row() {

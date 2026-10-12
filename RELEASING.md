@@ -1,5 +1,99 @@
 # Publicar Arachn0de manualmente
 
+## Cierre actual — 0.4.1 / 14, preflight aprobado; firma manual pendiente
+
+El código 13 ya tiene una APK oficial local. Se conserva ese archivo y se prepara código 14 para actualización, sin cambiar versionName, applicationId, clave ni alias. El helper habitual añade código 13 como referencia y mantiene todos sus controles y la lectura silenciosa desde /dev/tty. Salida prevista, todavía no generada: release-assets/Arachn0de-v0.4.1-code14-BlackWhite90.apk.
+
+El usuario autorizó expresamente ADB solo en emulador para renovar las seis pruebas oficiales, con paquete aislado y datos sintéticos. Se utilizó emulator-5554 (API 37, páginas de 16384 bytes) y com.r0ybt.arachn0de.securityvalidation / código 14. El checkout temporal coincide con el oficial tras la normalización de applicationId prevista en el verificador. Aprobaron tres pruebas SQLCipher y las migraciones genuinas 26/36/37→38. Evidencia y logs renovados solo después de aprobar; los anteriores se conservan en release-assets/native-evidence-before-code14-20261012T234318Z/.
+
+El comando oficial --check quedó aprobado con ocho referencias locales (códigos 5, 6, 7, 9, 10, 11, 12 y 13), mismo paquete y certificado oficial. La instalación exacta del teléfono sigue sin comprobarse. No se conectó un teléfono, no se instaló el paquete principal y no se solicitó ninguna contraseña de firma.
+
+El siguiente paso corresponde al usuario, desde la raíz del proyecto en su propia terminal:
+
+```bash
+bash release-assets/preparar-apk-0.3.0.sh
+```
+
+El helper solicitará silenciosamente la contraseña del keystore y la clave; Enter en la segunda reutiliza la primera. No introducirlas en chat, argumentos o logs. Solo después construirá y verificará la APK oficial, la copiará al destino y generará su SHA-256. No se ejecuta la firma desde el agente ni se informa una APK nueva como generada. No modificar fuentes entre esta validación y la firma: invalidaría otra vez la evidencia.
+
+## Preparación pendiente — 0.4.1 / 13 (Black & White 90)
+
+Autorizada la versión correctiva 0.4.1 / código 13. No se encontraron artefactos ni reservas locales de esta numeración. Se conserva `com.r0ybt.arachn0de`, la clave y el certificado oficiales, Room 38 y JSON 30. El helper histórico mantiene todas sus protecciones y añade la APK oficial 0.4.0 / 12 como referencia de actualización.
+
+Salida prevista: `release-assets/Arachn0de-v0.4.1-code13-BlackWhite90.apk`; no sobrescribir artefactos anteriores. No generada ni firmada todavía. Las seis pruebas nativas obligatorias aprobaron sobre este checkout en emulator-5554, exclusivamente con com.r0ybt.arachn0de.securityvalidation y datos sintéticos, según autorización expresa. Se renovaron la huella y los hashes de logs; la evidencia anterior permanece en release-assets/native-evidence-before-code13/. No se usó un teléfono físico ni se instaló el paquete principal.
+
+Los comandos del helper y la lectura silenciosa de contraseñas permanecen iguales. La preparación 0.4.0 / 12 descrita a continuación es el registro de la release anterior.
+
+
+## Preparación vigente — 0.4.0 / 12 (ajustes visuales y UX 1–6)
+
+**Preferencia del usuario:** la instalación habitual se realiza enviándose la APK por
+WhatsApp como Documento y abriéndola en el teléfono para actualizar. No utiliza ADB
+como flujo habitual de instalación. Los comandos ADB de este documento son una vía
+opcional de comprobación, no un requisito de su forma de instalar. La comprobación de
+compatibilidad pendiente deberá resolverse con un método acordado antes de firmar;
+el usuario autorizó comprobar los antecedentes locales y declarar la limitación de
+la instalación desconocida. No asumir conexión ADB.
+
+Se prepara `com.r0ybt.arachn0de`, versión **0.4.0**, código **12**, Room **38** y
+backup lógico hasta JSON **30**. No se cambian identidad, clave, alias, `allowBackup`,
+almacenamiento ni mecanismos de seguridad. La versión menor recoge Gestión de proyectos
+integrada; el código supera todas las APK oficiales locales conservadas (hasta 11).
+La clave oficial sigue en `~/.local/share/arachn0de/signing/arachn0de-release.jks`,
+alias `arachn0de-release`, certificado SHA-256
+`d0e8d7aa348a3b50ac380dd0586b608cc7425693be0433a8dad8df4125791437`.
+
+**Firma autorizada expresamente para 0.4.0 / 12.** El usuario permite preparar la APK
+sin conectar el teléfono por ADB. Se verifican previamente las seis referencias oficiales
+locales (códigos 5, 6, 7, 9, 10 y 11): mismo applicationId y certificado oficial,
+códigos inferiores a 12. La versión y firma exactas instaladas en el teléfono no se
+han podido verificar; esta limitación no bloquea la preparación autorizada. No se
+instala ni se modifica ningún dispositivo.
+
+Las 39 pruebas dirigidas y seis nativas ya aprobaron y no se repiten. La evidencia
+nativa del checkout se verifica con su huella y logs íntegros, incluidos los casos
+SQLCipher y migraciones genuinas 26/36/37→38. Se conserva la evidencia anterior.
+
+El helper conserva el nombre histórico `release-assets/preparar-apk-0.3.0.sh` y la
+lectura silenciosa desde `/dev/tty`, utilizando la clave y alias oficiales habituales.
+No escribir contraseñas en chat, argumentos, scripts ni registros. Ejecutar desde
+la raíz del proyecto en una terminal local:
+
+```bash
+bash release-assets/preparar-apk-0.3.0.sh --check
+bash release-assets/preparar-apk-0.3.0.sh
+```
+
+La variable `ARACHNODE_INSTALLED_APK` es opcional. Si se proporciona una copia local,
+se comprueba también; no se solicita conexión ADB. Sin ella se informa la limitación
+expresamente autorizada. El helper comprueba referencias oficiales antes de pedir
+contraseñas y vuelve a verificar el artefacto generado antes de copiarlo.
+
+APK oficial generada y verificada: `release-assets/Arachn0de-v0.4.0-code12.apk`
+(153.37 MiB) y su `.apk.sha256`. Firma oficial válida; versión 0.4.0 / 12.
+SHA-256: `89910b3acd81f2ddcb99d0b6665073d916d1f896acff0747629dae6b63a1611d`.
+No se considera lista hasta firmar y verificar ZIP, certificado, identidad, versión,
+ausencia de debuggable/instrumentación, recursos y bibliotecas ARM. No se cambian
+políticas de almacenamiento ni backup. Se conservan APK anteriores y se bloquea una
+salida ya existente. No se envía, instala ni publica automáticamente.
+
+Después de verificar, compartir como Documento por WhatsApp y abrir en el teléfono
+para actualizar. No desinstalar ni borrar datos para resolver una eventual firma
+incompatible; la compatibilidad acreditada es con las referencias oficiales locales.
+
+Los apartados siguientes son registros históricos; sus versiones y evidencias no
+sustituyen las comprobaciones de 0.4.0 / 12.
+
+
+## Estado después de la carrera táctica
+
+Se conserva **0.3.0 / 10** y la clave oficial; este sprint no crea una release ni incrementa la versión. La APK de revisión del juego es `release-assets/Arachn0de-v0.3.0-code10-carrera-DEBUG.apk`, firmada con Debug: **no puede reemplazar la instalación oficial**. La APK oficial anterior se conserva.
+
+La evidencia nativa se renovó sobre este checkout después de aprobar las tres pruebas oficiales SQLCipher en un paquete aislado del emulador. Otras dos pruebas nativas aprobaron la recuperación cifrada de una carrera con premio pendiente y la migración 26→27 de ambos almacenes con fotografías y respaldos. `--check` vuelve a aprobar sin contraseñas. Las advertencias de evidencia anterior en los apartados históricos describen esos sprints, no esta validación. Cualquier cambio posterior en fuentes o recursos vuelve a invalidar la huella.
+
+El helper manual mantiene exactamente keystore, alias y lectura de contraseñas anteriores. Ahora verifica también los veinte PNG de la carrera junto a las cinco texturas históricas, comparando sus bytes con el APK. No se ha ejecutado la firma oficial. Para generarla manualmente se conserva el comando indicado más abajo; los resultados del juego y los límites de instalación se detallan en [GAME_TACTICAL_RACE.md](GAME_TACTICAL_RACE.md).
+
+
 Preparación vigente para WhatsApp: **0.3.0 / 10**, `com.r0ybt.arachn0de`, con la firma oficial existente. El código 10 permite actualizar la APK 0.3.0 / 9. No cambia el esquema ni el formato de backup por este incremento.
 
 Ejecutar desde la raíz del repositorio:

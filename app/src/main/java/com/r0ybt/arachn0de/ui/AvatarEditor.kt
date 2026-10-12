@@ -48,7 +48,7 @@ internal fun AvatarEditor(file: String, initial: AvatarFraming, onConfirm: (Avat
     shape: androidx.compose.ui.graphics.Shape = CircleShape) {
     val context = LocalContext.current
     val storageContext=privateStorageContext(context)
-    val bitmap by produceState<Bitmap?>(null, file, directoryName) { value = withContext(Dispatchers.IO) { runCatching { AvatarStore(storageContext, directoryName).read(file) }.getOrNull() } }
+    val bitmap by produceState<Bitmap?>(null, storageContext,file, directoryName) { value = withContext(Dispatchers.IO) { runCatching { AvatarStore(storageContext, directoryName).read(file) }.getOrNull() } }
     var zoom by rememberSaveable(file) { mutableFloatStateOf(initial.zoom) }
     var x by rememberSaveable(file) { mutableFloatStateOf(initial.x) }
     var y by rememberSaveable(file) { mutableFloatStateOf(initial.y) }

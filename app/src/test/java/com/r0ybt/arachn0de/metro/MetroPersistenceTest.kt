@@ -163,4 +163,79 @@ class MetroPersistenceTest {
         assertEquals(next,restored.plan);assertEquals(route,restored.active!!.route);assertTrue(restored.active!!.automatic);assertTrue(restored.active!!.uncertain)
     }
 
+    @Test fun linkingAndUnlinkingActiveJourneyPreservesPayloadAndSurvivesReopening()=runBlocking<Unit> {
+        val project=ProjectRepository(db.projectDao()).createProject("P")
+        val task=NodeRepository(db).createNode(project.id,null,"T")
+        val id=repo.savePlan(plan());assertTrue(repo.begin(id,db.metroDao().journey(id)!!.revision,time))
+        val original=db.metroDao().journey(id)!!
+        repo.link(id,original.revision,task.id)
+        val linked=db.metroDao().journey(id)!!
+        assertEquals(original.payload,linked.payload);assertEquals(task.id,linked.nodeId)
+        repo.link(id,linked.revision,task.id);assertEquals(linked,db.metroDao().journey(id))
+        repo.link(id,linked.revision,null)
+        val unlinked=db.metroDao().journey(id)!!
+        assertEquals(original.payload,unlinked.payload);assertNull(unlinked.nodeId)
+        db.close();open();assertEquals(unlinked,db.metroDao().journey(id))
+        val active=repo.snapshot().journeys.single().data.active!!
+        assertTrue(repo.tracking(id,unlinked.revision) {MetroTracking.pause(it,time)})
+        assertEquals(active.id,repo.snapshot().journeys.single().data.active!!.id)
+    }
+    @Test fun staleAndConflictingLinksAreAtomicAndCannotStealAnAssociation()=runBlocking<Unit> {
+        val p=ProjectRepository(db.projectDao()).createProject("P");val nodes=NodeRepository(db)
+        val a=nodes.createNode(p.id,null,"A");val b=nodes.createNode(p.id,null,"B")
+        val first=repo.savePlan(plan());val second=repo.savePlan(plan());repo.link(first,db.metroDao().journey(first)!!.revision,a.id)
+        val before=repo.snapshot()
+        for (change in listOf<suspend ()->Unit>({repo.link(first,0,null)},{repo.link(first,db.metroDao().journey(first)!!.revision,b.id)},{repo.link(second,db.metroDao().journey(second)!!.revision,a.id)},{repo.link(second,db.metroDao().journey(second)!!.revision,"missing")})) {
+            assertThrows(IllegalArgumentException::class.java) {runBlocking {change()}}
+            assertEquals(before,repo.snapshot())
+        }
+    }
+    @Test fun duplicateCopiesPlanAndTravelerWithoutTaskOrSessionAndDoesNotTouchSource()=runBlocking<Unit> {
+        val p=ProjectRepository(db.projectDao()).createProject("P")
+        db.personDao().insert(PersonEntity("person","Ana",null))
+        val id=repo.createTask(plan(),p.id,null,"Trip","person",Priority.HIGH)
+        assertTrue(repo.begin(id,db.metroDao().journey(id)!!.revision,time));val source=repo.snapshot().journeys.single()
+        val copyId=repo.duplicate(id,source.row.revision)
+        val copy=repo.snapshot().journeys.single {it.row.id==copyId}
+        assertNotEquals(id,copyId);assertEquals(source.data.plan,copy.data.plan)
+        assertEquals("person",copy.row.personId);assertNull(copy.row.nodeId)
+        assertTrue(copy.data.sessions.isEmpty());assertEquals(source.row,db.metroDao().journey(id))
+        assertEquals(1,repo.snapshot().journeys.count {it.data.active!=null})
+    }
+    @Test fun deletingTaskPreservesActiveJourneyAndDeletingFinishedJourneyPreservesTask()=runBlocking<Unit> {
+        val p=ProjectRepository(db.projectDao()).createProject("P");val nodes=NodeRepository(db)
+        val a=nodes.createNode(p.id,null,"A");val b=nodes.createNode(p.id,null,"B")
+        val id=repo.savePlan(plan(),a.id);assertTrue(repo.begin(id,db.metroDao().journey(id)!!.revision,time))
+        val before=db.metroDao().journey(id)!!;nodes.deleteNode(a.id)
+        val preserved=db.metroDao().journey(id)!!
+        assertNull(preserved.nodeId);assertEquals(before.payload,preserved.payload)
+        assertThrows(IllegalArgumentException::class.java) {runBlocking {repo.remove(id,preserved.revision)}}
+        assertEquals(preserved,db.metroDao().journey(id))
+        repo.tracking(id,preserved.revision) {MetroTracking.finish(it,time)}
+        var row=db.metroDao().journey(id)!!;repo.link(id,row.revision,b.id);row=db.metroDao().journey(id)!!
+        assertThrows(IllegalArgumentException::class.java) {runBlocking {repo.remove(id,row.revision-1)}}
+        val taskBefore=db.nodeDao().getById(b.id)!!
+        repo.remove(id,row.revision);assertNull(db.metroDao().journey(id));assertEquals(taskBefore,db.nodeDao().getById(b.id))
+        db.openHelper.writableDatabase.query("PRAGMA foreign_key_check").use {assertFalse(it.moveToFirst())}
+    }
+    @Test fun historicalAndCurrentBackupsRestoreIndependentLinkedAndFinishedJourneysOnce()=runBlocking<Unit> {
+        val p=ProjectRepository(db.projectDao()).createProject("P");val t=NodeRepository(db).createNode(p.id,null,"T")
+        val independent=repo.savePlan(plan());val linked=repo.savePlan(plan(),t.id)
+        assertTrue(repo.begin(independent,db.metroDao().journey(independent)!!.revision,time));repo.tracking(independent,db.metroDao().journey(independent)!!.revision) {MetroTracking.finish(it,time)}
+        val before=repo.snapshot();val archive=backup.create().readBytes()
+        val inspected=backup.inspect(archive.inputStream());try {backup.restore(inspected)} finally {backup.discard(inspected)}
+        assertEquals(before.journeys.map {it.row.id},repo.snapshot().journeys.map {it.row.id})
+        assertEquals(t.id,db.metroDao().journey(linked)!!.nodeId)
+        val current=backup.snapshot()
+        val historical=JSONObject(String(BackupJson.encode(current))).put("dataVersion",16)
+        for(key in listOf("savedTemplates","sprintLinks","managementContexts","projectCharters","managementObjectives","acceptanceCriteria","backlogEntries","backlogRoles","backlogObjectiveLinks","backlogEpicLinks","backlogTaskLinks","projectParticipants","participantRoles","responsibilityAssignments","iterationPlans","iterationItems","personProfiles","personContacts","personTags","personRelations","personTechnologies","personPhotos")) historical.remove(key)
+        val decoded=BackupJson.decode(historical.toString().toByteArray())
+        backup.restore(decoded);backup.restore(decoded)
+        val restored=repo.snapshot();assertEquals(2,restored.journeys.size)
+        assertEquals(before.journeys.map {it.data.plan},restored.journeys.map {it.data.plan})
+        assertEquals(before.journeys.first {it.row.id==independent}.data.sessions.single().events,restored.journeys.first {it.row.id==independent}.data.sessions.single().events)
+        assertNull(restored.journeys.first {it.row.id==independent}.row.nodeId)
+        assertEquals(t.id,restored.journeys.first {it.row.id==linked}.row.nodeId)
+    }
+
 }

@@ -78,9 +78,22 @@ internal object MetroTracking {
     }
     fun finish(s:MetroSession,now:MetroTime):MetroSession {
         if(s.ended!=null) return s
-        val atDestination=s.copy(control=MetroStages.control(s).copy(firstStep=s.route.steps.size))
-        val finished=MetroStages.arrive(atDestination,now)
-        return finished.copy(control=finished.control?.copy(undo=MetroArrivalUndo(s.copy(offset=position(s,now).offset,anchorWall=now.wall,anchorElapsed=now.elapsed,boot=now.boot,control=MetroStages.control(s).copy(undo=null)),now)))
+        val c=MetroStages.control(s)
+        val records=c.records.toMutableList()
+        if(c.phase==MetroPhase.RIDING) records.add(MetroStageRecord(c.firstStep,s.route.steps.size,MetroStages.railMillis(s,now)))
+        else if(c.transferStarted!=null) {
+            val duration=MetroStages.duration(c.transferStarted,now,c.clockTrusted)
+            if(records.isEmpty()) records.add(MetroStageRecord(c.firstStep,c.firstStep,0,duration))
+            else records[records.lastIndex]=records.last().copy(transferMillis=duration)
+        }
+        if(c.phase!=MetroPhase.RIDING) records.add(MetroStageRecord(s.route.steps.size,s.route.steps.size,0))
+        val previous=s.copy(offset=position(s,now).offset,anchorWall=now.wall,anchorElapsed=now.elapsed,boot=now.boot,control=c.copy(undo=null))
+        // Explicit finalization uses the existing ARRIVED contract, including its reversible history.
+        return s.copy(offset=s.route.minutes*60_000L,anchorWall=now.wall,anchorElapsed=now.elapsed,boot=now.boot,
+            ended=now.wall,realMillis=totalMillis(s,now),pausedMillis=s.pausedMillis+currentPauseMillis(s,now),
+            pausedAt=null,pausedElapsed=null,pausedBoot=null,
+            confirmed=s.route.stops.last(),control=c.copy(firstStep=s.route.steps.size,phase=MetroPhase.ARRIVED,transferStarted=null,records=records,undo=MetroArrivalUndo(previous,now)),
+            events=s.events+MetroEvent("ARRIVED",now.wall,s.route.minutes*60_000L,s.route.stops.last()))
     }
     fun remainingStops(s: MetroSession, now: MetroTime): List<String> {
         val p = position(s,now)

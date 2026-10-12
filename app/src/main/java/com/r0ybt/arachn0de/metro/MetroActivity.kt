@@ -55,9 +55,12 @@ internal object MetroActivity {
         return result.mapValues {(_,list)->list.distinctBy {it.journeyId}}
     }
 }
-@Composable internal fun MetroActivityIndicator(key:String) {
+@Composable internal fun MetroActivityIndicator(key:String, configured:Boolean=false, informative:Boolean=false,iconSize:androidx.compose.ui.unit.Dp=20.dp,iconTint:androidx.compose.ui.graphics.Color?=null) {
     val entries=LocalMetroActivity.current[key].orEmpty()
-    if(entries.isEmpty()) return
+    if(entries.isEmpty()) {
+        if(configured) Icon(Icons.Default.DirectionsSubway,"Viaje Metro asociado",Modifier.size(iconSize).testTag("metro-configured:$key"),tint=iconTint ?: MaterialTheme.colorScheme.secondary)
+        return
+    }
     var selecting by remember {mutableStateOf(false)}
     val context=LocalContext.current
     val motion=Settings.Global.getFloat(context.contentResolver,Settings.Global.ANIMATOR_DURATION_SCALE,1f)>0 && (Build.VERSION.SDK_INT<26 || ValueAnimator.areAnimatorsEnabled())
@@ -66,8 +69,13 @@ internal object MetroActivity {
         val alpha by transition.animateFloat(.65f,1f,infiniteRepeatable(tween(1400),RepeatMode.Reverse),label="Metro gentle pulse")
         alpha
     } else 1f
+    if(informative) {
+        Icon(Icons.Default.DirectionsSubway,"Metro: ${entries.map {it.status}.distinct().joinToString()}",
+            Modifier.size(iconSize).alpha(opacity).testTag("metro-activity:$key").semantics {stateDescription=if(!motion) "Indicador fijo: movimiento reducido" else "Actividad Metro"},tint=iconTint ?: MaterialTheme.colorScheme.primary)
+        return
+    }
     IconButton(onClick={if(entries.size==1) MetroNavigation.open(entries.single().nodeId) else selecting=true},modifier=Modifier.size(48.dp).testTag("metro-activity:$key").semantics {stateDescription=if(!motion) "Indicador fijo: movimiento reducido" else if(entries.any {it.pulse}) "Actividad Metro" else "Indicador fijo"}) {
-        Icon(Icons.Default.DirectionsSubway,"Metro: ${entries.map {it.status}.distinct().joinToString()}",modifier=Modifier.size(20.dp).alpha(opacity),tint=if(entries.all {it.waiting}) MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.primary)
+        Icon(Icons.Default.DirectionsSubway,"Metro: ${entries.map {it.status}.distinct().joinToString()}",modifier=Modifier.size(iconSize).alpha(opacity),tint=iconTint ?: if(entries.all {it.waiting}) MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.primary)
     }
     if(selecting) AlertDialog(onDismissRequest={selecting=false},title={Text("Elegir seguimiento")},text={LazyColumn {items(entries,key={it.journeyId}) {entry->TextButton(onClick={selecting=false;MetroNavigation.open(entry.nodeId)}) {Text("${entry.label} · ${entry.status}")}}}},confirmButton={TextButton(onClick={selecting=false}) {Text("Cancelar")}})
 }

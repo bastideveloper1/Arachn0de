@@ -1,8 +1,6 @@
 package com.r0ybt.arachn0de.ui
 
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.listSaver
@@ -29,8 +27,8 @@ internal class ScopeFilterStore {
         restore = { values -> ScopeFilterStore().apply { (if (values.firstOrNull() == "priority-v1") values.drop(1).chunked(7) else values.chunked(6)).forEach { row -> scopes[row[0]] = ScopeFilters().apply { time = TimeFilter.valueOf(row[1]); person = row[2].ifEmpty { null }; completion = CompletionFilter.valueOf(row[3]); tag = row[4].ifEmpty { null }; open = row[5].toBoolean(); priority = row.getOrNull(6)?.takeIf { it.isNotEmpty() }?.let(Priority::valueOf) } } } }) }
 }
 @Composable internal fun ScopeFiltersDialog(state: ScopeFilters, people: List<Person>, tags: List<Tag>) {
-    AlertDialog(onDismissRequest = { state.open = false }, title = { Text("Filtros de esta vista") }, text = {
-        Column(Modifier.verticalScroll(rememberScrollState())) {
+    ModularPanelDialog(onDismissRequest = { state.open = false }, title = { Text("Filtros de esta vista") }, text = {
+        Column {
             ScopeMenu("Tiempo: ${timeFilterLabel(state.time)}") { close -> TimeFilter.entries.forEach { value -> DropdownMenuItem(text = { Text(timeFilterLabel(value)) }, onClick = { state.time = value; close() }) } }
             ScopeMenu("Persona: ${people.firstOrNull { it.id == state.person }?.name ?: "Todas"}") { close ->
                 DropdownMenuItem(text = { Text("Todas") }, onClick = { state.person = null; close() })

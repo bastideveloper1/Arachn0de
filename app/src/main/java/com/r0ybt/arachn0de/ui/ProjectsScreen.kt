@@ -1,5 +1,6 @@
 package com.r0ybt.arachn0de.ui
 
+import androidx.compose.material.icons.filled.Add
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
@@ -8,6 +9,9 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -16,6 +20,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Surface
@@ -27,6 +32,7 @@ import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -70,6 +76,7 @@ internal fun ProjectDashboardScreen(
 ) {
     val scope = rememberCoroutineScope()
     val context = androidx.compose.ui.platform.LocalContext.current
+    val projectTagState by remember(context) {(context.applicationContext as com.r0ybt.arachn0de.Arachn0deApplication).nodeRepository.tags.observe()}.collectAsState(initial=com.r0ybt.arachn0de.domain.model.TagState())
     val copyActions = remember(context,scope) { com.r0ybt.arachn0de.ui.state.NodeCopyActions(context,scope) { (context.applicationContext as com.r0ybt.arachn0de.Arachn0deApplication).personRepository.observeAllAssignments().first() } }
     CopyTextChoiceDialog(copyActions)
     var photoProjectId by rememberSaveable { mutableStateOf<String?>(null) }
@@ -109,13 +116,15 @@ internal fun ProjectDashboardScreen(
 
     BackHandler(enabled = showDrawer) { showDrawer = false }
 
+    val bottomControlsDensity=androidx.compose.ui.platform.LocalDensity.current
+    var bottomControlsHeight by remember { mutableStateOf(70.dp) }
     val background = Arachn0deColors.Background
 
     Surface(
         modifier = Modifier.fillMaxSize(),
         color = Arachn0deColors.Background,
     ) {
-        Box(
+        BoxWithConstraints(
             modifier = Modifier
                 .fillMaxSize()
                 .background(background),
@@ -127,7 +136,7 @@ internal fun ProjectDashboardScreen(
                     .padding(horizontal = 12.dp, vertical = 10.dp)
                     .padding(horizontal = 2.dp),
             ) {
-                HeaderBar(
+                HeaderBar(compactLock=true,
                     onMenuClick = { showDrawer = true },
                     trailingAction = {
                         Box {
@@ -142,35 +151,55 @@ internal fun ProjectDashboardScreen(
                 Spacer(modifier = Modifier.height(6.dp))
 
 
-                if (projects.isEmpty()) {
-                    Column(Modifier.weight(1f).verticalScroll(rememberScrollState())) {
-                        EmptyProjectsState(onCreateProject = { drafts.open(null) { EditorDraft(null, null, "", "") } })
+                Box(Modifier.weight(1f).fillMaxWidth()) {
+                    if (projects.isEmpty()) {
+                        Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(bottom=bottomControlsHeight)) {
+                            EmptyProjectsState(onCreateProject = { drafts.open(null) { EditorDraft(null, null, "", "") } })
+                        }
+                    } else {
+                        ProjectList(
+                            projects = projects,
+                            onPhoto = { photoProjectId = it.id },
+                            onMoveInside = { moveProject=it.id },
+                            onCopy = { project, descendants -> copyActions.copyProject(project,exportTree,descendants) },
+                            canCopy = !copyActions.busy,
+                            canCopyDescendants = copyDescendantsReady,
+                            projectAlertsById = projectAlertsById,
+                            projectTagsById = projects.associate {it.id to projectTagState.forProject(it.id)},
+                            reorderBusy = actions.operation.busy,
+                            reorderError = actions.operation.error,
+                            listState = listState,
+                            bottomContentPadding = bottomControlsHeight,
+                            onCreateProject = { drafts.open(null) { EditorDraft(null, null, "", "") } },
+                            onEdit = { project ->
+                                drafts.open(null, project.id) { EditorDraft(project.id, null, project.name, project.description) }
+                            },
+                            onDelete = { project ->
+                                deletingProjectId = project.id
+                                deletingProjectName = project.name
+                            },
+                            onOpenProject = onOpenProject,
+                            onReorderTo = { fromId, toId ->
+                                actions.reorderTo(fromId, toId)
+                            },
+                        )
                     }
-                } else {
-                    ProjectList(
-                        projects = projects,
-                        onPhoto = { photoProjectId = it.id },
-                        onMoveInside = { moveProject=it.id },
-                        onCopy = { project, descendants -> copyActions.copyProject(project,exportTree,descendants) },
-                        canCopy = !copyActions.busy,
-                        canCopyDescendants = copyDescendantsReady,
-                        projectAlertsById = projectAlertsById,
-                        reorderBusy = actions.operation.busy,
-                        reorderError = actions.operation.error,
-                        listState = listState,
-                        onCreateProject = { drafts.open(null) { EditorDraft(null, null, "", "") } },
-                        onEdit = { project ->
-                            drafts.open(null, project.id) { EditorDraft(project.id, null, project.name, project.description) }
-                        },
-                        onDelete = { project ->
-                            deletingProjectId = project.id
-                            deletingProjectName = project.name
-                        },
-                        onOpenProject = onOpenProject,
-                        onReorderTo = { fromId, toId ->
-                            actions.reorderTo(fromId, toId)
-                        },
-                    )
+                }
+            }
+            Row(Modifier.align(Alignment.BottomEnd).fillMaxWidth().padding(horizontal=14.dp,vertical=10.dp)
+                .then(if(showDrawer) Modifier.clearAndSetSemantics {} else Modifier)
+                .onSizeChanged {bottomControlsHeight=with(bottomControlsDensity) {it.height.toDp()}}
+                .padding(top=6.dp).background(Arachn0deColors.Surface),horizontalArrangement=Arrangement.Center) {
+                androidx.compose.material3.TextButton(
+                    onClick={drafts.open(null) {EditorDraft(null,null,"","")}},
+                    modifier=Modifier.weight(1f).height(48.dp),
+                    contentPadding=androidx.compose.foundation.layout.PaddingValues(horizontal=8.dp),
+                    colors=androidx.compose.material3.ButtonDefaults.textButtonColors(contentColor=Arachn0deColors.TextPrimary),
+                ) {
+                    androidx.compose.material3.Icon(androidx.compose.material.icons.Icons.Default.Add,null,Modifier.size(20.dp))
+                    Spacer(Modifier.width(6.dp))
+                    Text("Crear Núcleo",maxLines=1,style=androidx.compose.material3.MaterialTheme.typography.labelSmall,
+                        textAlign=androidx.compose.ui.text.style.TextAlign.Center)
                 }
             }
 

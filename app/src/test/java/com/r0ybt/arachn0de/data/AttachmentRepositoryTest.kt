@@ -280,4 +280,52 @@ class AttachmentRepositoryTest {
         assertEquals(listOf("Gráfico", "Gráfico"), parserParts.filter { it.imageId != null }.map { it.label })
         assertEquals("Bug de interfaz", DescriptionParser.parse(projectText).last().label)
     }
+    @Test fun pendingDeletionRetainsImportAndGalleryReservationsUntilExplicitRelease() = runBlocking {
+        val file=imported()
+        val expected=store.file(file.storageName).readBytes()
+        db.attachmentDao().pending(file.id)
+        attachments.cleanup()
+        assertNotNull(db.attachmentDao().get(file.id))
+        assertArrayEquals(expected,store.file(file.storageName).readBytes())
+        store.retainGallery(file.id,"gallery-editor",file.storageName)
+        store.release(file.id)
+        attachments.cleanup()
+        assertNotNull(db.attachmentDao().get(file.id))
+        assertArrayEquals(expected,store.file(file.storageName).readBytes())
+        store.releaseGallery(file.id,"gallery-editor")
+        attachments.cleanup()
+        assertNull(db.attachmentDao().get(file.id))
+        assertFalse(store.file(file.storageName).exists())
+    }
+
+    @Test fun restoreJournalProtectsReadyAndPendingFilesAcrossReopenAndReleasesOrphans() = runBlocking {
+        val ready=imported();val pending=imported()
+        store.release(ready.id);store.release(pending.id)
+        db.attachmentDao().pending(pending.id)
+        val journal=com.r0ybt.arachn0de.backup.BackupAttachmentFiles(context,com.r0ybt.arachn0de.backup.BackupFixture::syncDirectory)
+        journal.record(setOf(ready.storageName,pending.storageName))
+        try {
+            db.close();db=Arachn0deDatabase.create(context)
+            val restarted=AttachmentRepository(db,store)
+            restarted.cleanup()
+            assertEquals("READY",db.attachmentDao().get(ready.id)!!.lifecycleState)
+            assertEquals("DELETE_PENDING",db.attachmentDao().get(pending.id)!!.lifecycleState)
+            assertTrue(store.file(ready.storageName).exists())
+            assertTrue(store.file(pending.storageName).exists())
+        } finally {journal.clearJournal()}
+        AttachmentRepository(db,store).cleanup()
+        assertNull(db.attachmentDao().get(ready.id));assertNull(db.attachmentDao().get(pending.id))
+        assertFalse(store.file(ready.storageName).exists());assertFalse(store.file(pending.storageName).exists())
+    }
+
+    @Test fun pendingDeletionKeepsReferencedFileUntilLastReferenceIsRemoved() = runBlocking {
+        val file=imported()
+        attachments.associateNode(node.id,file.id)
+        attachments.cleanup()
+        assertNotNull(db.attachmentDao().get(file.id));assertTrue(store.file(file.storageName).exists())
+        db.attachmentDao().detachNode(node.id,file.id)
+        attachments.cleanup()
+        assertNull(db.attachmentDao().get(file.id));assertFalse(store.file(file.storageName).exists())
+    }
+
 }

@@ -40,7 +40,9 @@ class MetroSprint4CUiTest {
         compose.onNodeWithText("Origen: República").assertExists();compose.onNodeWithText("Destino: Las Parcelas").assertExists()
         compose.onAllNodesWithText("Parada 1: Santa Ana").assertCountEquals(0)
         assertEquals(before,repo.snapshot())
-        compose.onNodeWithText("Guardar viaje").performScrollTo();click("Guardar viaje")
+        compose.onNodeWithText("Buscar viaje").performScrollTo();click("Buscar viaje")
+        await {compose.onAllNodesWithTag("metro-search-result").fetchSemanticsNodes().isNotEmpty()}
+        compose.onNodeWithContentDescription("Opciones de Metro").performClick();click("Guardar ruta")
         await {runBlocking {repo.snapshot().journeys.size==2}}
         val after=repo.snapshot();assertEquals(before.journeys.single(),after.journeys.first {it.row.id==id})
         val other=after.journeys.first {it.row.id!=id};assertNull(other.row.nodeId);assertTrue(other.data.sessions.isEmpty())

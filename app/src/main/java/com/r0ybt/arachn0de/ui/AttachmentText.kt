@@ -2,6 +2,7 @@ package com.r0ybt.arachn0de.ui
 
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
+import kotlinx.coroutines.launch
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -24,10 +25,12 @@ import com.r0ybt.arachn0de.ui.theme.Arachn0deColors
 @Composable
 internal fun AttachmentText(text: String, modifier: Modifier = Modifier, color: Color = Arachn0deColors.TextSecondary,
     fontSize: TextUnit = 12.sp, style: TextStyle = TextStyle.Default, maxLines: Int = Int.MAX_VALUE,
-    overflow: TextOverflow = TextOverflow.Clip, softWrap: Boolean = true, lineHeight: TextUnit = TextUnit.Unspecified) {
+    overflow: TextOverflow = TextOverflow.Clip, softWrap: Boolean = true, lineHeight: TextUnit = TextUnit.Unspecified, ownerNodeId:String?=null, webLinks:Boolean=false) {
+    val linkContext=LocalContext.current
+    val onWeb:((String)->Unit)?=if(webLinks) ({url->openDescriptionWebLink(linkContext,url)}) else null
     val parts = remember(text) { DescriptionParser.parse(text) }
     if (parts.none { it.imageId != null }) {
-        Text(descriptionBody(parts, emptyMap()) {}, modifier, color = color, fontSize = fontSize, style = style.copy(fontWeight = FontWeight.Normal), maxLines = maxLines, overflow = overflow, softWrap = softWrap, lineHeight = lineHeight)
+        Text(descriptionBody(parts, emptyMap(),Arachn0deColors.ImageLink,{},onWeb), modifier, color = color, fontSize = fontSize, style = style.copy(fontWeight = FontWeight.Normal), maxLines = maxLines, overflow = overflow, softWrap = softWrap, lineHeight = lineHeight)
         return
     }
     val app = LocalContext.current.applicationContext as Arachn0deApplication
@@ -35,14 +38,22 @@ internal fun AttachmentText(text: String, modifier: Modifier = Modifier, color: 
     var available by remember { mutableStateOf(emptyMap<String, AttachmentFileEntity>()) }
     LaunchedEffect(rows) { available = app.attachmentRepository.availableFiles() }
     var viewing by rememberSaveable { mutableStateOf<String?>(null) }
-    val body = descriptionBody(parts, available) { viewing = it }
+    val body = descriptionBody(parts, available,Arachn0deColors.ImageLink,{ viewing = it },onWeb)
     Text(body, modifier, color = color, fontSize = fontSize, style = style.copy(fontWeight = FontWeight.Normal), maxLines = maxLines, overflow = overflow, softWrap = softWrap, lineHeight = lineHeight)
-    viewing?.let { id -> AttachmentViewer(id, app.attachmentRepository) { viewing = null } }
+        val scope=rememberCoroutineScope()
+    val removal=remember(scope) {com.r0ybt.arachn0de.ui.state.OperationState(scope)}
+    OperationErrorDialog(removal)
+    viewing?.let { id -> AttachmentViewer(id, app.attachmentRepository,
+        onRemove=if(ownerNodeId!=null && available[id]?.mimeType=="audio/aac") ({removal.submit("No se pudo eliminar el audio.",{app.security.current.value?.audio?.beforeDelete(id);app.attachmentRepository.detachNode(ownerNodeId,id);true}) {viewing=null}}) else null,
+        onClose={viewing=null}) }
 }
+
+internal fun descriptionBody(parts:List<DescriptionParser.Part>,files:Map<String,AttachmentFileEntity>,onImage:(String)->Unit)=
+    descriptionBody(parts,files,com.r0ybt.arachn0de.ui.theme.SemanticColors.ImageLink,onImage,null)
 
 /** Shared annotated renderer: caller keeps its existing size, wrapping and preview limits. */
 internal fun descriptionBody(parts: List<DescriptionParser.Part>, files: Map<String, AttachmentFileEntity>,
-    onImage: (String) -> Unit): AnnotatedString = buildAnnotatedString {
+    linkColor:Color,onImage: (String) -> Unit,onWeb:((String)->Unit)?=null): AnnotatedString = buildAnnotatedString {
     parts.forEach { part ->
         withStyle(SpanStyle(
             fontWeight = if (DescriptionParser.Format.Bold in part.formats) FontWeight.Bold else null,
@@ -50,18 +61,18 @@ internal fun descriptionBody(parts: List<DescriptionParser.Part>, files: Map<Str
             textDecoration = if (DescriptionParser.Format.Underline in part.formats) TextDecoration.Underline else null
         )) {
             val id = part.imageId
-            if (id == null) append(part.text)
+            if (id == null) {if(onWeb==null) append(part.text) else appendWebLinks(part.text,linkColor,onWeb)}
             else withLink(LinkAnnotation.Clickable(id,
-                TextLinkStyles(style = SpanStyle(color = Arachn0deColors.ImageLink)),
+                TextLinkStyles(style = SpanStyle(color = linkColor)),
                 linkInteractionListener = { onImage(id) })) {
-                append("${part.label ?: files[id]?.originalName ?: "Imagen no disponible"}")
+                append("${part.label ?: files[id]?.originalName ?: if(part.audio) "Audio no disponible" else "Imagen no disponible"}")
             }
         }
     }
 }
 
 /** The field displays labels/filenames; saved text retains atomic, stable image references. */
-internal class AttachmentVisualTransformation(private val files: Map<String, AttachmentFileEntity>) : VisualTransformation {
+internal class AttachmentVisualTransformation(private val files: Map<String, AttachmentFileEntity>,private val linkColor:Color=com.r0ybt.arachn0de.ui.theme.SemanticColors.ImageLink) : VisualTransformation {
     override fun filter(text: AnnotatedString): TransformedText {
         val original = text.text
         val forward = IntArray(original.length + 1)
@@ -74,7 +85,7 @@ internal class AttachmentVisualTransformation(private val files: Map<String, Att
                 forward[cursor] = output.length; output.append(original[cursor++]); reverse.add(cursor)
             }
             val begin = output.length; val from = cursor; val to = match.range.last + 1
-            val label = "${AttachmentReferences.label(match) ?: files[match.groupValues[1]]?.originalName ?: "Imagen no disponible"}"
+            val label = "${AttachmentReferences.label(match) ?: files[match.groupValues[1]]?.originalName ?: if(AttachmentReferences.isAudio(match)) "Audio no disponible" else "Imagen no disponible"}"
             for (i in from until to) forward[i] = if (i - from < (to - from) / 2) begin else begin + label.length
             output.append(label)
             labelRanges.add(begin until output.length)
@@ -87,7 +98,7 @@ internal class AttachmentVisualTransformation(private val files: Map<String, Att
         forward[original.length] = output.length
         return TransformedText(buildAnnotatedString {
             append(output.toString())
-            labelRanges.forEach { addStyle(SpanStyle(color = Arachn0deColors.ImageLink), it.first, it.last + 1) }
+            labelRanges.forEach { addStyle(SpanStyle(color = linkColor), it.first, it.last + 1) }
         }, object : OffsetMapping {
             override fun originalToTransformed(offset: Int) = forward[offset.coerceIn(0, original.length)]
             override fun transformedToOriginal(offset: Int) = reverse[offset.coerceIn(0, output.length)]

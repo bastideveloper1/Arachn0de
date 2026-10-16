@@ -31,6 +31,7 @@ class NodeRepository(
     private val database: Arachn0deDatabase,
     private val currentTimeMillis: () -> Long = System::currentTimeMillis,
 ) {
+    internal var beforeDelete:suspend (Set<String>)->Unit = {}
     internal suspend fun <T> withEditorAssignments(nodeId: String, technologyIds: List<String>?, metroCatalog: String?, metroPlan: String?, traveler: String?, metroJourneyId: String? = null, metroRevision: Long? = null, work: suspend () -> T): T = database.withTransaction {
         require((metroCatalog==null)==(metroPlan==null)) {"Completa el itinerario Metro antes de guardar."}
         require(metroJourneyId==null || metroPlan!=null) {"El viaje seleccionado requiere su configuración."}
@@ -103,6 +104,12 @@ class NodeRepository(
         emitAll(observeProjectState(projectId))
     }.flowOn(Dispatchers.Default)
 
+    internal suspend fun reserveAudioCreation(owner:String,provisionalTitle:String?) {
+        require(nodeDao.getById(owner)?.purpose=="ACTION")
+        database.attachmentDao().beginRecording(com.r0ybt.arachn0de.data.local.AudioRecordingOperationEntity(owner,"WAITING",owner,provisionalTitle))
+    }
+    suspend fun setPinned(id:String,pinned:Boolean):Boolean = database.withTransaction {nodeDao.setPinned(id,pinned)==1}
+
     suspend fun normalizeProjectOrder(projectId: String) = database.withTransaction {
         nodeDao.getProjectNodes(projectId).groupBy { it.parentId }.values.forEach { siblings ->
             writeOrder(sortSiblingsForDisplay(siblings))
@@ -114,14 +121,14 @@ class NodeRepository(
         val current = nodeDao.getById(id) ?: return@withTransaction false
         if (current.parentId != expectedParentId) return@withTransaction false
         val siblings = sortSiblingsForDisplay(nodeDao.getSiblings(current.projectId, current.parentId))
-        if(layersOnly || contentOnly) {
-            if((current.purpose=="LAYER")!=layersOnly) return@withTransaction false
-            val layers=siblings.filter {(it.purpose=="LAYER")==layersOnly && it.isCompleted==current.isCompleted && it.workState==current.workState}
+        if(layersOnly || contentOnly || current.isPinned) {
+            if(contentOnly && current.purpose=="LAYER" || layersOnly && current.purpose!="LAYER") return@withTransaction false
+            val layers=siblings.filter {(it.purpose=="LAYER")== (current.purpose=="LAYER") && it.isPinned==current.isPinned && it.isCompleted==current.isCompleted && it.workState==current.workState}
             val from=layers.indexOfFirst {it.id==id};val to=from+if(moveUp) -1 else 1
             if(to in layers.indices) writeLayerOrder(layers,layers.toMutableList().apply {val other=this[to];this[to]=this[from];this[from]=other})
             return@withTransaction true
         }
-        val sameGroup = siblings.filter { it.isCompleted == current.isCompleted && it.workState == current.workState }
+        val sameGroup = siblings.filter { !it.isPinned && it.isCompleted == current.isCompleted && it.workState == current.workState }
         val from = sameGroup.indexOfFirst { it.id == id }
         check(from >= 0)
         val to = from + if (moveUp) -1 else 1
@@ -132,7 +139,7 @@ class NodeRepository(
             val toIndex = ordered.indexOfFirst { it.id == other.id }
             ordered[fromIndex] = other
             ordered[toIndex] = current
-            writeOrder(ordered, setOf(id, other.id))
+            if(siblings.any {it.isPinned}) writeLayerOrder(siblings.filterNot {it.isPinned},ordered.filterNot {it.isPinned}) else writeOrder(ordered, setOf(id, other.id))
             setOf(id, other.id)
         } else emptySet()
         if (changedIds.isEmpty()) return@withTransaction true
@@ -144,19 +151,20 @@ class NodeRepository(
         val current = nodeDao.getById(id) ?: return@withTransaction false
         val target = nodeDao.getById(targetId) ?: return@withTransaction false
         if (current.parentId != expectedParentId || target.parentId != expectedParentId ||
-            current.projectId != target.projectId || current.isCompleted != target.isCompleted || current.workState != target.workState) return@withTransaction false
-        if(layersOnly || contentOnly) {
-            if((current.purpose=="LAYER")!=layersOnly || (target.purpose=="LAYER")!=layersOnly) return@withTransaction false
-            val layers=sortSiblingsForDisplay(nodeDao.getSiblings(current.projectId,expectedParentId)).filter {(it.purpose=="LAYER")==layersOnly && it.isCompleted==current.isCompleted && it.workState==current.workState}
+            current.projectId != target.projectId || current.isPinned!=target.isPinned || current.isCompleted != target.isCompleted || current.workState != target.workState) return@withTransaction false
+        if(layersOnly || contentOnly || current.isPinned) {
+            if((current.purpose=="LAYER")!=(target.purpose=="LAYER") || current.isPinned!=target.isPinned || (contentOnly && current.purpose=="LAYER") || (layersOnly && current.purpose!="LAYER")) return@withTransaction false
+            val layers=sortSiblingsForDisplay(nodeDao.getSiblings(current.projectId,expectedParentId)).filter {(it.purpose=="LAYER")== (current.purpose=="LAYER") && it.isPinned==current.isPinned && it.isCompleted==current.isCompleted && it.workState==current.workState}
             val reordered=layers.toMutableList();val from=reordered.indexOfFirst {it.id==id};val to=reordered.indexOfFirst {it.id==targetId}
             reordered.add(to,reordered.removeAt(from));writeLayerOrder(layers,reordered)
             return@withTransaction true
         }
-        val ordered = sortSiblingsForDisplay(nodeDao.getSiblings(current.projectId, expectedParentId)).toMutableList()
+        val before=sortSiblingsForDisplay(nodeDao.getSiblings(current.projectId,expectedParentId))
+        val ordered=before.filterNot {it.isPinned}.toMutableList()
         val from = ordered.indexOfFirst { it.id == id }
         val to = ordered.indexOfFirst { it.id == targetId }
         ordered.add(to, ordered.removeAt(from))
-        writeOrder(ordered, if (from == to) emptySet() else setOf(id, targetId))
+        if(before.any {it.isPinned}) writeLayerOrder(before.filterNot {it.isPinned},ordered) else writeOrder(ordered, if (from == to) emptySet() else setOf(id, targetId))
         true
     }
 
@@ -317,6 +325,48 @@ class NodeRepository(
             (nodeDao.updateContent(id, validateTitle(title), description, currentTimeMillis()) == 1).also {updated->if(updated) management.cascade.synchronizeText(id)}
         }
 
+    /** Apply only the selected property to current rows, retaining the ordinary group rules. */
+    suspend fun updateProperty(id:String,field:com.r0ybt.arachn0de.domain.model.NodeProperty,original:List<String>,
+        value:List<String>,groupIds:Set<String>?=null,removeObligation:Boolean=false):Boolean = database.withTransaction {
+        val source=getNode(id) ?: return@withTransaction false
+        val current=com.r0ybt.arachn0de.domain.model.nodePropertyValues(field,source,
+            database.tagDao().nodeIds(id),database.personDao().assignmentIds(id),
+            database.technologyDao().forNodes(listOf(id)).sortedBy {it.position}.map {it.technologyId})
+        check(current==original) {"La propiedad cambió durante la edición. Tu borrador se conserva."}
+        val shared=field in setOf(com.r0ybt.arachn0de.domain.model.NodeProperty.DESCRIPTION,com.r0ybt.arachn0de.domain.model.NodeProperty.PAYMENT,
+            com.r0ybt.arachn0de.domain.model.NodeProperty.PRIORITY,com.r0ybt.arachn0de.domain.model.NodeProperty.PEOPLE,com.r0ybt.arachn0de.domain.model.NodeProperty.TAGS)
+        val targets=if(groupIds!=null) {
+            require(shared)
+            val group=requireNotNull(source.creationGroupId)
+            val members=nodeDao.groupMembers(group)
+            check(members.map {it.id}.toSet()==groupIds) {"El grupo cambió. Vuelve a revisar sus miembros."}
+            require(members.all {it.projectId==source.projectId})
+            groupIds
+        } else setOf(id)
+        targets.forEach {target->
+            val latest=requireNotNull(getNode(target))
+            check(when(field) {
+                com.r0ybt.arachn0de.domain.model.NodeProperty.TITLE->updateNode(target,value.single().trim(),latest.description)
+                com.r0ybt.arachn0de.domain.model.NodeProperty.DESCRIPTION->updateNode(target,latest.title,value.single().trim())
+                com.r0ybt.arachn0de.domain.model.NodeProperty.DATES->updateNodeWithDates(target,latest.title,latest.description,value[0].toLongOrNull(),value[1].toLongOrNull())
+                com.r0ybt.arachn0de.domain.model.NodeProperty.PRIORITY->setPriority(target,Priority.valueOf(value.single()))
+                com.r0ybt.arachn0de.domain.model.NodeProperty.PAYMENT->{
+                    val money=value[0].toLongOrNull()?.let {Obligation(it,value[1])}
+                    updateLeaf(target,latest.title,latest.description,latest.startAt,latest.dueAt,money,removeObligation)
+                }
+                com.r0ybt.arachn0de.domain.model.NodeProperty.TAGS->{tags.assignNode(target,value.toSet());true}
+                com.r0ybt.arachn0de.domain.model.NodeProperty.PEOPLE->{
+                    value.forEach {requireNotNull(database.personDao().get(it))}
+                    database.personDao().clearAssignments(target)
+                    if(value.isNotEmpty()) database.personDao().assign(value.distinct().map {NodePersonEntity(target,it)})
+                    true
+                }
+                com.r0ybt.arachn0de.domain.model.NodeProperty.TECHNOLOGIES->withEditorAssignments(target,value,null,null,null) {true}
+            }) {"El elemento ya no admite esa propiedad."}
+        }
+        true
+    }
+
     /** Dates are operational only for leaves; content-only edits preserve dormant layer dates. */
     suspend fun updateNodeWithDates(id: String, title: String, description: String, startAt: Long?, dueAt: Long?): Boolean =
         database.withTransaction {
@@ -362,7 +412,9 @@ class NodeRepository(
     }
 
     /** Conversion retains identity, content, dates, position and assignments; completion is cleared. */
-    suspend fun convertPurpose(id: String, purpose: NodePurpose, removeObligation: Boolean = false): Boolean = database.withTransaction {
+    suspend fun convertPurpose(id: String, purpose: NodePurpose, removeObligation: Boolean = false): Boolean {
+        beforeDelete(setOf(id))
+        return database.withTransaction {
         val current = nodeDao.getById(id) ?: return@withTransaction false
         if (nodeDao.hasChildren(current.projectId, id)) return@withTransaction false
         if (current.purpose == purpose.name) return@withTransaction true
@@ -374,6 +426,7 @@ class NodeRepository(
         reopenBeforeConversion(id, at)
         check(nodeDao.updatePurpose(id, purpose.name, at, initialWorkState(current.parentId, purpose)) == 1) { "Purpose change was not written" }
         true
+    }
     }
 
     /** A null parent explicitly moves the node to the project root. */
@@ -506,7 +559,12 @@ class NodeRepository(
             ids.associateWith { id->technologies[id].orEmpty().sortedWith(compareBy({it.position},{it.technologyId})).map {it.technologyId} }.filterValues {it.isNotEmpty()})
     }
 
-    suspend fun deleteSelected(projectId: String, selected: Set<String>): Int = database.withTransaction {
+    suspend fun deleteSelected(projectId: String, selected: Set<String>): Int {
+        beforeDelete(selected)
+        return deleteSelectedInTransaction(projectId,selected)
+    }
+
+    internal suspend fun deleteSelectedInTransaction(projectId:String,selected:Set<String>):Int = database.withTransaction {
         val nodes = nodeDao.getProjectNodes(projectId).map { it.toNode(false) }
         val roots = com.r0ybt.arachn0de.domain.model.SelectionRoots.normalize(nodes, selected)
         val children = nodes.groupBy { it.parentId }
@@ -556,7 +614,9 @@ class NodeRepository(
     }
 
     /** Refuse undo if any captured row changed, vanished or acquired children. Never delete new work. */
-    suspend fun undoCreation(token: com.r0ybt.arachn0de.domain.model.CreationUndo): Boolean = database.withTransaction {
+    suspend fun undoCreation(token: com.r0ybt.arachn0de.domain.model.CreationUndo): Boolean {
+        beforeDelete(token.nodes.mapTo(hashSetOf()) {it.id})
+        return database.withTransaction {
         val expected = token.nodes
         if (expected.isEmpty() || expected.any {database.metroDao().forNode(it.id)!=null}) return@withTransaction false
         val actual = runCatching { captureCreation(expected.map { it.id }) }.getOrNull() ?: return@withTransaction false
@@ -566,6 +626,7 @@ class NodeRepository(
         expected.map { it.id }.chunked(500).forEach { nodeDao.deleteDetachedNodes(it) }
         com.r0ybt.arachn0de.access.AccessRepository(database).cleanReferences()
         true
+    }
     }
 
     suspend fun updateGroup(sourceId: String, patch: com.r0ybt.arachn0de.domain.model.SharedNodePatch,
@@ -605,12 +666,15 @@ class NodeRepository(
         members.size
     }
 
-    suspend fun deleteNode(id: String): Boolean = database.withTransaction {
+    suspend fun deleteNode(id: String): Boolean {
+        beforeDelete(setOf(id))
+        return database.withTransaction {
         management.backlog.rejectDeletion(nodeDao.getSubtreeIds(id).toSet())
         sprintLinks.rejectDeletion(nodeDao.getSubtreeIds(id).toSet())
         val deleted=nodeDao.delete(id)==1
         com.r0ybt.arachn0de.access.AccessRepository(database).cleanReferences()
         deleted
+    }
     }
 
     suspend fun calculateProgress(nodeId: String): NodeProgress? = database.withTransaction {

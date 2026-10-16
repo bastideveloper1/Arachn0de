@@ -12,11 +12,11 @@ internal object MetroStages {
         historyElapsedTrusted=if(s.ended==null) false else s.historyElapsedTrusted,
         routeArchives=s.routeArchives.map(::portable),control=s.control?.let {c->c.copy(clockTrusted=false,undo=c.undo?.let {it.copy(previous=portable(it.previous))})})
     fun duration(start:MetroTime,now:MetroTime,trusted:Boolean=true):Long=(if(trusted && start.boot==now.boot && now.elapsed>=start.elapsed) now.elapsed-start.elapsed else now.wall-start.wall).coerceAtLeast(0)
-    fun offset(route:MetroRoute,index:Int)=route.steps.take(index).sumOf {it.minutes*60_000L}
+    fun offset(route:MetroRoute,index:Int)=route.durations.take(index).sum()
     fun control(s:MetroSession):MetroControl=s.control ?: atOffset(s,s.offset,MetroTime(s.anchorWall,s.anchorElapsed,s.boot))
     fun atOffset(s:MetroSession,offset:Long,time:MetroTime):MetroControl {
         var consumed=0L;var first=0
-        s.route.steps.forEachIndexed {i,step->consumed+=step.minutes*60_000L;if(step.kind!=MetroStepKind.RIDE && consumed<=offset) first=i+1}
+        s.route.steps.forEachIndexed {i,step->consumed+=s.route.duration(i);if(step.kind!=MetroStepKind.RIDE && consumed<=offset) first=i+1}
         val existing=s.control
         if(existing!=null && existing.phase!=MetroPhase.RIDING && offset==s.offset)
             return existing.copy(undo=existing.undo?.copy(reversible=false))

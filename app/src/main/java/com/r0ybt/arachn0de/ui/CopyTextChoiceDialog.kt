@@ -12,8 +12,8 @@ import com.r0ybt.arachn0de.ui.state.NodeCopyActions
 @Composable
 internal fun CopyTextChoiceDialog(actions: NodeCopyActions) {
     val request = actions.pendingCopy ?: return
-    var onlyPending by remember(request) { mutableStateOf(false) }
-    AlertDialog(onDismissRequest = actions::cancelChoice,
+    var onlyPending by remember(request) { mutableStateOf(true) }
+    ModularPanelDialog(onDismissRequest = actions::cancelChoice,
         title = { Text("Copiar texto con descendientes") },
         text = { Column {
             listOf(false to "Todas", true to "Solo pendientes").forEach { (value, label) ->

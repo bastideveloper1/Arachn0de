@@ -1,6 +1,35 @@
 # Respaldo offline de Arachn0de
 
-La extensión sigue siendo `.arachnode`. El esquema actual es Room **37**, con la cadena histórica completa de migraciones. La última APK oficial conservada es **0.3.0 / 11** y el protocolo de firma no cambia.
+## Datos personales de Personas — JSON 39 / Room 47
+
+JSON 39 conserva `persons.name` como identidad pública (Apodo) y añade a cada
+`personProfiles` las cadenas opcionales `givenName`, `familyName` y `documentId`
+(Nombre, Apellidos y DNI / RUT). Se emite cuando hay Personas; los archivos sin
+Personas conservan la selección histórica de versión. No cambia el contenedor
+v2 ni la envoltura cifrada ANBACK01.
+
+Los tres campos se incluyen en el snapshot transaccional, la estimación de bytes,
+la exportación y la restauración genérica de perfiles. Se validan tipos,
+propietarios, unicidad y límites antes de reemplazar datos. Un DNI / RUT es texto
+opcional; no se infiere país ni se exige un formato nacional. Apellidos y documento
+siguen el límite de 16.000 caracteres de las secciones. Nombre conserva la
+capacidad histórica de `persons.name`, sin truncar nombres antiguos; siguen
+vigentes los límites globales de tamaño del respaldo.
+
+El lector admite versiones 1–39. En fuentes 1–38 conserva el antiguo Nombre
+completo en `givenName`, sin separarlo automáticamente; inicializa Apellidos y
+DNI / RUT vacíos. Utiliza el Apodo histórico no vacío como identidad pública o,
+si falta, conserva el nombre visible anterior como Apodo hasta que se edite.
+Genera la ficha personal correspondiente cuando una Persona antigua carecía
+de ella. Valida los perfiles originales antes de transformarlos para no ocultar
+duplicados ni referencias inválidas. Los lectores anteriores rechazan JSON 39.
+
+La migración no destructiva Room 46→47 aplica la misma regla, conserva los IDs,
+relaciones, fotografías y asignaciones, y añade únicamente tres columnas de texto
+a `person_profiles`. Datos personales permanece dentro de la base cifrada de su
+bóveda; no se copia a preferencias externas, índices públicos ni servicios.
+
+La extensión sigue siendo `.arachnode`. El esquema actual es Room **47**, con la cadena histórica completa de migraciones. Las secciones siguientes conservan la documentación de los formatos anteriores. No cambia el protocolo de firma.
 
 ## Seguridad local: formato actual
 
@@ -637,3 +666,514 @@ La caché privada `card-shares` (PNG derivados, staging `.part` y diarios `.dele
 ### Rediseño compacto de Gantt — sin migración ni formato nuevo
 
 Se conserva Room 38, JSON 30 para anotaciones y su compatibilidad anterior. Los números HU y de comentarios son proyecciones deterministas; no se exportan contadores nuevos. Los valores existentes de títulos, IDs, relaciones, fechas, progreso, texto, epochDay y lane permanecen en las colecciones originales. Abrir/filtrar no transforma registros; un movimiento confirmado actualiza únicamente epochDay/lane del mismo UUID mediante la transacción existente. Cancelar conserva el registro anterior. Las nuevas imágenes de gráfico/comentarios son derivados externos SAF, no archivos privados necesarios para restaurar. No se cambia el ciclo de vida del almacenamiento privado.
+
+## JSON 31 / Room 39 — eventos originales del aprendizaje Metro (bloque 1)
+
+Añade `metroLearningEvents` cuando existen eventos; sin ellos se mantiene la
+selección histórica de la versión mínima. Los lectores admiten JSON 1–31 y los
+respaldos 1–30 producen historial vacío. Se conservan contenedor, cifrado y los
+payloads de viaje Metro v1–v5; este bloque no cambia las sesiones históricas.
+
+Cada fila contiene exactamente `id`, `sessionId`, `sequence` (entero >=0),
+`payload` y `invalidReason` (nulo o UNDONE). ID y pareja sesión/secuencia son
+únicos; las secuencias de cada sesión son completas desde cero. El array mantiene
+el orden original de registro (también tras restaurar), independiente de saltos
+del reloj civil; ese orden define la ventana de observaciones recientes. El payload v1 exige `route` (plan Metro sin sesiones), `station`,
+`stepIndex`, `line`, `direction`, `service`, `kind`, `wall`, `elapsed`, `boot`,
+`clockDomain`, `paused`, `pauseMillis`, `valid`, `exclusion`, `estimatedOffset`
+y `etaMillis`, además de `version`. Tipos, claves duplicadas/desconocidas,
+versión, reloj no negativo, UUID del dominio, geometría, estación/índice,
+línea/sentido/servicio, rangos temporales y coherencia de validez se comprueban
+antes de sustituir datos. El catálogo Metro es necesario aunque se hayan eliminado
+los viajes que originaron el aprendizaje. No se requiere una sesión vigente:
+los eventos contienen su recorrido y sobreviven a eliminar el viaje.
+
+Los eventos originales, incluida la captura invalidada al deshacer, se incluyen
+en el snapshot transaccional y se restauran íntegramente. Observaciones, ventanas
+y estimaciones se derivan de ellos; no se serializan como mediciones duplicadas.
+Se mantienen los límites globales de 100.000 registros y 16 MiB de JSON; superar
+los límites falla explícitamente sin truncar el historial. No contiene rutas de
+dispositivo ni archivos adicionales.
+
+`metro_learning_clock` identifica el reloj del dispositivo abierto. Es metadata
+regenerable excluida del respaldo: se borra dentro de la transacción de restore y
+se genera al registrar la primera nueva captura. Los eventos preservan sus dominios
+originales; los intervalos históricos siguen siendo utilizables, pero nunca se
+une un evento restaurado con una captura del dispositivo receptor. Un fallo o
+cancelación de restauración conserva eventos y dominio anteriores por rollback.
+Las aplicaciones que no soportan JSON 31 rechazan estos backups; no se promete
+downgrade de Room 39. Los eventos no se borran por antigüedad: el límite de 100
+rige la ventana de cálculo, no la fuente durable para futuros algoritmos.
+
+Validación dirigida del bloque 1: `MetroLearningTest`,
+`MetroLearningPersistenceTest`, `MetroLearningMigrationTest`, `MetroMigrationTest`,
+`MetroStagePersistenceTest`, `BackupFormatTest` y `BackupRepositoryTest`: 70 casos
+aprobados. Verifican exportación/inspección/restauración real del contenedor,
+compatibilidad histórica, orden de registro, datos corruptos, fallos durante el
+reemplazo, cancelación de captura, invalidez reversible y separación de bases.
+Compilación debug aprobada; comprobación física del dispositivo pendiente.
+
+## Metro bloque 2 — payload de viaje v6: predicción fija y evidencia
+
+Se admite viaje Metro v1–v6. El escritor conserva v4/v5 para rutas sin modelo y
+emite v6 cuando un plan, ruta original/vigente, archivo de recorrido o undo contiene
+una predicción adaptativa. No cambian Room 39, contenedor ni colecciones exteriores
+(JSON hasta 31). Los backups antiguos mantienen exactamente su estimación estándar,
+sin reescribir filas al leer ni aplicarles aprendizaje posterior.
+
+La ruta añade `prediction` opcional: objeto v1 con `version`, `window` y `parts`.
+Cada parte exige `first`, `end`, `millis`, `mean` (nullable), `accepted`,
+`discarded` (motivo→cantidad), `lastMillis` y `lastAt` (ambos nullable). Las partes
+cubren todos los pasos en orden y sin huecos/solapamientos. Se validan tipos,
+versión, índices, cobertura, continuidad de contexto para acumulados, límites,
+coherencia media/cantidad, motivos admitidos, tiempos y fórmula del estimador v1
+(mínimo 5 muestras, peso min(n/30,1)). El resultado admite una diferencia de 1 ms
+por el redondeo de la media. WAYPOINT conserva duración cero; combinaciones
+medidas son partes individuales. La distribución interna de un acumulado se
+deriva de su duración total y estándar, nunca se exporta como nuevas mediciones.
+El contexto de combinaciones distingue también la línea/sentido/servicio siguiente.
+
+La evidencia de la predicción es una referencia histórica fija, separada de los
+eventos originales y de la ventana actual de entrenamiento. Invalidar/deshacer
+una confirmación modifica sus contribuciones futuras, pero no la predicción
+original de un viaje ya iniciado. Todos los modelos se exportan y restauran
+íntegros, incluidos `originalRoute`, `routeHistory`, `routeArchives` y el viaje
+anterior del undo. La portabilidad sigue marcando relojes activos como inciertos;
+no cambia los tiempos estimados. Un modelo corrupto se rechaza antes de reemplazar
+el estado confirmado, con la restauración transaccional existente.
+
+El payload de captura v1 conserva campos y lectores; se admiten además los motivos
+NO_RAIL (sin ferrocarril) y NO_STOP (sin detención del servicio seleccionado).
+La corrección entre estaciones se registra como CORRECTION y nunca como puertas.
+La posición/ETA que mostró la UI puede capturarse directamente, sin reconstruirlo
+más tarde a partir del reloj del gesto. No hay archivos, preferencias ni cachés
+privadas nuevas que exportar o liberar. Los lectores anteriores al bloque 2 pueden
+rechazar los payloads v6 y estos motivos nuevos; no se ofrece downgrade ni una
+restauración parcial omitiendo datos.
+
+Validación de bloque 2: 150 pruebas dirigidas aprobadas, con nuevos casos en
+`MetroPredictionTest`, `MetroPredictionPersistenceTest`, `MetroAdaptiveUiTest`
+y `MetroAdaptiveServiceTest`. Incluye round-trip real de un viaje v6 con undo,
+archivo del modelo anterior tras cambiar destino, predicción original íntegra,
+reapertura y rollback ante modelo inconsistente. Pasan regresiones de backup
+histórico, rechazo de campos/tipos/versiones no compatibles y compilación debug.
+
+
+## Metro — bloque 3: resultado de búsqueda temporal
+
+Separar formulario y recorrido no añade tablas, preferencias, archivos ni campos
+al backup. Se mantienen Room 39, JSON exterior 31 y payload de viaje Metro v6.
+`Buscar viaje` solo cambia estado de UI restaurable; el formulario y el resultado
+sin guardar no forman parte del almacén confirmado ni se exportan. Guardar viaje,
+crear tarea e iniciar seguimiento siguen usando los repositorios y validaciones
+existentes, con predicciones adaptadas y referencias originales del bloque 2.
+
+Validación del bloque 3: pasan 110 pruebas dirigidas, incluidas regresiones de
+formato y repositorio de backup, guardado explícito y predicciones persistidas.
+La búsqueda y navegación de regreso se verifican sin modificar el snapshot del
+almacén. `assembleDebug` y `git diff --check` pasan.
+
+
+## Metro — sesiones canceladas: payload de viaje v7
+
+Se admite v1–v7. Un viaje que contiene una sesión cancelada emite v7; sin ese
+estado se mantiene la selección de formato v4/v5/v6 anterior. No cambia Room 39,
+JSON exterior 31, el contenedor ni la captura de aprendizaje v1. CANCELLED es un
+evento terminal de sesión, no una apertura de puertas: conserva offset actual,
+última estación confirmada, fin, duración del seguimiento, pausas, predicciones,
+etapas confirmadas e instantáneas históricas de ruta dentro del payload existente.
+No incluye estación de llegada ni añade una etapa final. El estado cancelado se
+deriva del último evento, sin un flag redundante. Los eventos de aprendizaje
+previos se exportan y restauran sin invalidarlos.
+
+El lector exige fin de sesión para ARRIVED/CANCELLED y lo rechaza sin evento
+terminal; CANCELLED solo se admite desde v7, al final, sin estación, con offset
+igual al de la sesión y sin undo de llegada. Conserva controles READY cancelados
+tras un cambio de destino. La validación común de backup ocurre antes de sustituir
+datos; un payload incoherente mantiene el almacén anterior. Aplicaciones anteriores
+rechazan v7; no se ofrece downgrade que lo convierta falsamente en llegada.
+
+Retirar la selección de Persona no borra IDs ni asociaciones históricas. Estos
+siguen exportándose/restaurándose con las validaciones anteriores. La animación
+del tren es temporal y no introduce datos, archivos ni preferencias de backup.
+
+Validación: 149 pruebas dirigidas aprobadas. La cancelación conserva las capturas
+originales y observaciones al reabrir y después de exportar/inspeccionar/restaurar
+un backup real. Se rechaza un evento CANCELLED sin cierre, conservando el almacén,
+y un payload cancelado falsamente rebajado a v6. Se verifica codec de controles
+cancelados en etapas, combinación y READY, y se mantienen pruebas históricas de
+backup. `assembleDebug` y `git diff --check` pasan.
+
+
+## Metro — originales de pausa y posición durante pausa (captura v2)
+
+La tabla y JSON exterior no cambian (Room 39 / JSON 31). `metroLearningEvents`
+transporta íntegramente los payloads de captura v1 y v2. V1 conserva DOORS,
+CORRECTION y ARRIVAL. V2 usa exactamente las mismas claves y tipos, con PAUSE,
+RESUME y PAUSED_LOCATION. Los dos primeros conservan estación/índice estimados;
+PAUSED_LOCATION representa una estación confirmada durante la pausa, sin afirmar
+apertura de puertas. En todos los casos `valid=false`; PAUSE/RESUME usan motivo
+PAUSE, PAUSED_LOCATION usa PAUSED. PAUSE y PAUSED_LOCATION exigen `paused=true`,
+RESUME exige `paused=false`. Una versión o combinación incoherente se rechaza.
+Se mantienen validaciones de reloj, dominio, ruta, geometría, límites, unicidad y
+secuencia sin huecos. Los lectores antiguos rechazan v2; no hay downgrade que
+convierta estos eventos en mediciones limpias.
+
+Cada pausa/reanudación y actualización de sesión se escriben en la misma
+transacción. Los originales sobreviven al borrado de un viaje y se exportan
+sin depender de su existencia. El estado de la sesión mantiene el codec v1–v7.
+El motor separa eventos de interrupción de referencias de puertas y conserva una
+observación atravesada por una pausa con PAUSE, incluso de duración cero. No
+resta tiempo para limpiar muestras ni genera mediciones de estaciones ausentes.
+Las capturas v1 históricas mantienen la exclusión por acumulado de pausa.
+
+No se añaden archivos, cachés, preferencias ni datos fuera del snapshot de backup.
+Restaurar preserva los originales y regenera únicamente el dominio local del
+reloj, con rollback transaccional si falla la validación. Las posibles cotas y
+mediciones de salida no se implementan en esta fase.
+
+Validación: 153 pruebas dirigidas pasan, más 18 verificaciones finales tras
+precisar el texto de diagnóstico. Se prueba pausa/reanudación de duración cero,
+lectura v1/v2, rechazo de versiones/flags incoherentes con rollback, reapertura,
+borrado de viaje seguido de backup real y restauración de todos los originales
+sin reconstruirlos desde el historial eliminado. Se verifica que las mediciones
+limpias a ambos lados se conservan y que un acumulado con pausa no se distribuye
+como tiempos individuales. `assembleDebug` y `git diff --check` pasan.
+
+
+## Jerarquía — lote 1: cambios de presentación sin migración
+
+No se modifica el esquema ni el formato de backup. LOW/MEDIUM históricos se
+exportan/restauran sin normalizar; la UI los presenta como No prioritario según
+la decisión del usuario, y HIGH como Prioritario. Fechas de vencimiento mantienen
+los campos y validaciones existentes. Retirar accesos Metro de la jerarquía no
+borra viajes, vínculos históricos ni configuraciones de plantillas. Los datos
+siguen incluidos en el snapshot confirmado. La nueva variante del icono de nota
+es un vector empaquetado de la APK; no hay archivos privados nuevos que exportar.
+
+## Metro — modo viaje permanente sin cambiar datos históricos
+
+Room 39 y JSON exterior 31 se mantienen. `metroJourneys.enabled` conserva sus
+valores históricos y sigue siendo obligatorio en los formatos que lo incluyen.
+Ya no condiciona el inicio de seguimiento: un viaje restaurado con false puede
+iniciarse directamente sin convertir ese campo a true. No se modifica el
+snapshot, el lector ni la restauración, ni se omiten relaciones, sesiones o
+capturas originales. La retirada del selector de modo no añade datos o archivos.
+
+## Capturas persistentes — preferencia opcional sin migración
+
+`security_preferences` admite `captures_until_reenabled` de tipo booleano.
+True conserva Hasta volver a activar; false o ausencia histórica mantienen la
+protección inicial, salvo autorización temporal explícita de la sesión.
+El permiso temporal sigue sin exportarse; la elección persistente sí se incluye
+íntegramente en `privatePreferences` (JSON >=18), con su namespace y tipo.
+Se rechazan otros tipos antes de sustituir el almacén. No cambia el formato
+exterior, Room 39 ni los lectores históricos de backup. Restaurar preserva los
+demás ajustes del namespace y usa rollback/recarga existentes. El ajuste solo
+se aplica al almacén principal abierto, sin cambiar el bloqueo de la aplicación
+ni permitir capturas de diálogos de contraseña o del almacén señuelo.
+
+## Etiquetas únicas y propiedades de Núcleos
+
+La selección manual única es una regla del formulario, no una restricción del
+formato histórico. node_tag, recurrence_tag y conversion_tags siguen admitiendo
+las asociaciones múltiples ya guardadas; exportar/restaurar no normaliza ni
+elige etiquetas. El usuario debe seleccionar expresamente una o ninguna para
+reemplazar una asignación histórica múltiple.
+
+Las etiquetas, responsables y prioridad editables del Núcleo reutilizan sus
+conversion_roots/conversion_tags/conversion_people existentes. El snapshot, la
+validación de referencias y la restauración transaccional ya incluyen esas
+filas. Un backup anterior sin raíz de conversión representa propiedades vacías;
+la ausencia no genera filas ni asociaciones. No cambian Room 39, las versiones
+JSON compatibles ni los lectores históricos; no se necesita migración y no se
+añaden archivos o rutas del dispositivo.
+
+ProjectTagsTest comprueba contenedor real, restauración íntegra, reapertura,
+datos históricos sin propiedades, rechazo de referencias corruptas conservando
+el estado anterior y conservación de asociaciones al convertir Núcleo/Capa.
+
+## Personas — entradas fotográficas privadas (Room 40 / JSON 32)
+
+JSON 32 añade `personMemories` (id, personId, date nullable, description,
+position) y `personMemoryImages` (id, memoryId, attachmentId nullable,
+legacyPhotoId nullable, position, date nullable, description). Cada imagen
+referencia exactamente un original READY de `attachmentFiles` o una fotografía
+histórica de `personPhotos` perteneciente a la misma Persona. Las entradas no
+pueden estar vacías; dentro de cada entrada no se repiten fuentes ni posiciones.
+Fechas ISO locales opcionales, años 1–9999; descripciones hasta 16.000 caracteres.
+Se validan propietarios, IDs, orden y referencias antes de reemplazar datos.
+
+Los lectores aceptan JSON 1–32. Los respaldos anteriores a 32 que contienen
+`personPhotos` se adaptan a una entrada por fotografía, con el mismo ID, sin
+copiar archivos, fechas null y descripciones vacías. La migración Room 39→40
+aplica la misma regla y conserva tablas antiguas, encuadres y avatar seleccionado.
+Los lectores antiguos rechazan la versión nueva; no se degrada el formato
+eliminando metadatos. La biografía y el enlace reutilizan description y links de
+`personProfiles`; la edad se calcula y no se exporta como campo nuevo.
+
+Los originales nuevos PNG/JPEG reutilizan el contenedor binario de adjuntos y
+su manifiesto: bytes completos, nombre portable, MIME, tamaño y SHA-256; nunca
+rutas absolutas. La exportación y restauración son por streaming. No existe un
+límite de cuatro fotos en la galería. Se mantienen el límite de 20 MiB por
+original, dimensiones máximas de 32.000 píxeles y las cotas generales de metadatos
+(16 MiB / 100.000 registros). Los originales usados exclusivamente por galerías
+no consumen la cota agregada de 2 GiB de adjuntos de tareas/Núcleos; un original
+compartido con esos elementos sí cuenta en ella. El espacio disponible y esas
+cotas de integridad condicionan la capacidad real. Las fotografías antiguas
+conservan exactamente sus PNG existentes, sin simular resolución perdida.
+
+Las miniaturas de galería son regenerables y quedan solo en la caché LRU de
+memoria existente de 4 MiB; no se incluyen en backup. Reservas de editores y
+limpieza pendiente son estado operacional local, no contenido confirmado del
+respaldo. Cada reserva durable conserva propietario y nombre portable del
+archivo; no caduca por antigüedad. La restauración conserva archivos que aún
+están reservados aunque remapee nombres de los originales confirmados.
+Al liberar la última reserva, se reintenta la limpieza con el bloqueo común.
+Eliminar entradas, imágenes o Personas confirma primero las relaciones en Room;
+solo después libera originales sin referencias ni reservas. Los PNG históricos
+siguen el diario de imágenes existente y se conservan si son avatar o están
+compartidos. Fallos de eliminación quedan pendientes para reintentar. Un backup
+inválido conserva el estado anterior y la restauración utiliza el staging,
+transacción y diarios existentes. Se conserva el cifrado y aislamiento de vaults.
+
+## Ajustes finales — bloqueo y apariencia (sin nuevo esquema)
+
+Room 40 y JSON 32 se conservan. El namespace privado security_preferences
+reutiliza background_timeout, de tipo long. Los valores históricos 0, 30.000,
+60.000 y 300.000 ms mantienen su significado; ausencia equivale a 30.000 ms.
+La configuración añade -1 para «Hasta bloquear manualmente» durante
+la sesión autenticada vigente, sin exportar claves ni una sesión abierta.
+Se validan tipo y valores admitidos antes de restaurar; los demás campos del
+namespace permanecen intactos. Un lector antiguo que desconoce -1 aplica su
+fallback seguro de bloqueo inmediato. La validación dirigida del modo manual
+pasa: respaldo cifrado real, restauración de -1 y campos ajenos, rechazo de tipos
+y valores inválidos sin reemplazar datos, ausencia histórica con 30.000 ms
+predeterminados y reapertura que conserva la preferencia, pero exige autenticar
+una nueva sesión. No se respaldan claves ni sesiones abiertas.
+
+appearance_preferences conserva theme y text_size. NightBlue y DayGrey se
+exportan y restauran como strings mediante privatePreferences. Leer Minimalist
+lo reemplaza durablemente por Arachn0de, sin cambiar tamaño de texto ni campos
+ajenos; la adaptación también se aplica al recargar preferencias restauradas.
+Se rechazan tipos incompatibles antes de sustituir datos. No se renumeran temas
+ni se modifica el contenido de los respaldos históricos para normalizarlos.
+
+appearance_unlock_cache es una copia regenerable del nombre del tema principal,
+fuera del almacén cifrado, para dibujar el desbloqueo antes de autenticar. Solo
+contiene un nombre admitido: no contraseñas, claves, IDs de almacenes, tamaños de
+texto ni datos de Personas. No se exporta; la fuente confirmada sigue siendo la
+preferencia cifrada, incluida en el respaldo. Se sobrescribe al aplicar/restaurar
+la apariencia del principal y no incorpora ajustes del señuelo. Si falta o está
+mal formada, se usa Black & White 90. Es un único valor gestionado por Android,
+sin crecimiento de archivos; borrar los datos de la aplicación lo elimina.
+No conserva ni reconstruye sesiones. Los colores del logotipo se adaptan solo
+al renderizar: no hay variantes privadas, bytes nuevos de imágenes ni archivos
+que añadir al manifiesto. El vector Lucide de Capas es un recurso de la APK.
+
+## Fijar Núcleos y Capas — JSON 33 / Room 41
+
+Room 41 agrega `isPinned INTEGER NOT NULL DEFAULT 0` a `projects` y `nodes`.
+La migración 40 → 41 conserva filas, relaciones y posiciones; los registros
+anteriores quedan sin fijar. Solo `nodes.purpose = LAYER` admite la marca.
+
+Cuando existe algún elemento fijado, el exportador usa JSON 33 e incluye
+`isPinned` booleano en cada proyecto y nodo. Sin marcas continúa seleccionando
+el formato histórico mínimo compatible con los demás datos. JSON 1–32 restaura
+las marcas como `false`. JSON 33 exige booleanos válidos y rechaza nodos fijados
+que no sean Capas antes de sustituir datos. El contenedor de respaldo, las imágenes
+y las preferencias no cambian. La restauración usa el staging y la transacción
+existentes; no hay nuevos archivos privados ni reglas de liberación.
+
+## Audio — JSON 34 / Room 42
+
+Los adjuntos admiten además AAC-LC ADTS mono de 16 kHz (audio/aac, extensión aac,
+width/height 0). Se conservan los límites de 20 MiB por archivo y 2 GiB agregados.
+JSON 34 se selecciona cuando existe algún audio e incorpora durationMs,
+playbackMs y bookmarkMs a cada entrada de attachmentFiles. Las imágenes usan
+0, 0 y null; audios exigen duración positiva, posición/marcador dentro de ella.
+Sin audios se conserva la selección del formato histórico mínimo. El lector
+admite JSON 1–34; versiones anteriores aplican los valores de imagen históricos.
+Los manifiestos y el contenedor cifrado/streaming existentes incluyen los bytes
+AAC originales con tamaño, SHA-256 y validación ADTS/duración, sin rutas absolutas.
+Los nombres físicos se renuevan al restaurar; IDs, enlaces, posición y marcador
+se conservan. Audios no pueden presentarse como fotografías de Personas.
+
+Room 41 → 42 agrega las tres columnas y audio_recording_operations. Este diario,
+las reservas y fragmentos de audio-drafts son estado operativo de una grabación
+sin confirmar: no hay un respaldo paralelo. El backup/restore se rechaza mientras
+queda una reserva WAITING, grabación o diario de fragmentos pendiente de resolver;
+nunca se comunica éxito omitiendo material. El backup confirmado incluye todas
+las filas/bytes del audio y sus referencias. Restaurar exige cerrar el reproductor.
+Los respaldos antiguos conservan las imágenes y restauran sin marcas de escucha.
+
+COMMITTED/DISCARDED se confirman antes de liberar fragmentos, para no resucitar
+adjuntos eliminados ni perder una decisión de descarte tras un fallo físico.
+La recuperación se ejecuta al autenticar; las reservas no caducan. Los archivos
+temporales están cifrados con la clave del almacén correspondiente. La exportación
+individual por SAF/URI entrega el sonido o la imagen original y conserva la fuente;
+no requiere archivos públicos por defecto ni una caché persistente de sonido.
+
+Validación dirigida de Audio: 28 casos distintos aprobados (persistencia/lifecycle,
+UI, exportación por URI, cifrado/señuelo y migración), assembleDebug correcto una
+vez y comprobación del esquema 42/diff. Se verificó restauración de un archivo
+cifrado real con bytes de audio, posición y marcador, y de imágenes históricas;
+rechazo de corrupción sin reemplazar datos; limpieza interrumpida que no resucita
+material eliminado; y pérdida de proceso antes de abrir micrófono. No se ejecutó
+la suite general ni se generó Release. Las pruebas nativas en dispositivo siguen
+pendientes; los tonos de prueba son sintéticos y no contienen datos del usuario.
+
+## Antisocial — fijado y orden de entradas (Room 43 / JSON 35)
+
+Room 42→43 añade exclusivamente `person_memories.isPinned`, booleano NOT NULL
+con valor inicial falso. Conserva entradas, posiciones, fechas, textos individuales,
+referencias y bytes originales. `position` sigue representando el orden manual,
+ahora independiente dentro de fijadas/no fijadas de cada Persona. Las fechas no
+ordenan la galería. Crear inserta al principio de no fijadas; fijar/desfijar añade
+al final del destino y normaliza las posiciones afectadas transaccionalmente.
+
+JSON 35 incluye `isPinned` en cada registro de `personMemories` y se emite cuando
+existe alguna entrada fijada. Sin fijadas se conserva el formato anterior adecuado
+a los datos. El lector acepta 1–35; versiones anteriores a 35 asignan falso.
+Se rechazan tipos de flag inválidos antes de restaurar. La captura y restauración
+existentes transportan posiciones, fijado, descripciones y archivos completos;
+no se añaden rutas ni archivos operativos al backup. El contenedor no cambia.
+
+El editor y visor habituales solo muestran la descripción compartida. Los textos
+individuales siguen en `personMemoryImages.description`, sin concatenación ni
+truncamiento, y pueden consultarse/seleccionarse en Textos históricos únicamente
+en entradas que los contienen. Sus fechas individuales también se conservan.
+
+## Recurrencias finalizadas eliminadas — Room 44 / JSON 36
+
+Room 43→44 agrega `recurrence_rules.isDeleted INTEGER NOT NULL DEFAULT 0`.
+JSON 36 se emite cuando hay alguna regla eliminada e incluye `isDeleted` booleano
+en todas las reglas. Sin marcas se mantiene la selección del formato mínimo
+anterior. El lector acepta 1–36; versiones 1–35 restauran como no eliminadas.
+Se rechazan tipos no booleanos y reglas eliminadas cuyo estado no sea FINISHED.
+Las reglas ocultas, ocurrencias, asociaciones y Tareas siguen incluidas completas;
+se conservan las validaciones referenciales y el reemplazo transaccional existente.
+No cambia el contenedor ni se incorporan archivos o rutas nuevas.
+
+## Capturas compartidas pendientes (diario operativo)
+
+Las filas `share_pending:<UUID>` no forman parte del formato exportable: son
+estado temporal de una captura todavía sin guardar dentro del almacén cifrado.
+Crear/restaurar exige que la cola esté vacía; no se omiten filas o bytes de una
+captura aceptada informando éxito. Guardar integra la Tarea y los adjuntos en el
+snapshot normal y retira el diario transaccionalmente. Cancelar marca primero
+CANCELLED y libera sus reservas mediante la limpieza existente, recuperable tras
+fallos. No hay migración Room ni nueva versión de JSON/contenedor. Los respaldos
+históricos se restauran normalmente cuando no hay una captura pendiente.
+
+## Eventos independientes — Room 45 / JSON 37
+
+La migración 44→45 añade `calendar_events` y `calendar_event_people`, sin cambiar
+las tarjetas. JSON 37 se emite cuando existen Eventos e incorpora:
+
+- `calendarEvents`: id UUID canónico, title obligatorio (hasta 100 puntos Unicode),
+  date civil canónica YYYY-MM-DD (años 1–9999), minute entero 0–1439 o null para día
+  completo, description (hasta 16000 unidades UTF-16).
+- `calendarEventPeople`: pares únicos eventId/personId, con referencias existentes.
+
+El lector admite 1–37; los formatos 1–36 producen listas de Eventos vacías. Sin
+Eventos se conserva la selección previa del formato mínimo. No cambia el
+contenedor ni la envoltura cifrada. Los eventos y vínculos cuentan en los límites
+globales de registros/texto. Se rechazan duplicados, referencias rotas, fechas,
+horas y títulos inválidos antes de preparar o sustituir datos.
+
+El snapshot incluye ambas tablas en la transacción existente. Restaurar limpia
+Eventos antes de reemplazar Personas y repone eventos/vínculos dentro de la misma
+transacción; un fallo conserva el estado anterior. Restaurar un backup histórico
+reemplaza también la colección de Eventos por la colección vacía de ese backup.
+No hay bytes externos, rutas, recordatorios ni archivos operativos nuevos. Fecha
+y hora son civiles y se conservan independientemente de la zona del receptor.
+Cada bóveda exporta únicamente su colección; siguen las validaciones de identidad
+y tipo de almacén de los respaldos cifrados existentes.
+
+## Colores de indicadores (preferencia visual por bóveda)
+
+Dentro del namespace existente `appearance_preferences` se admiten ocho claves
+opcionales `indicator_color_<id>`, para people, technologies, notes, tasks, files,
+due, today y high. Sus valores son strings tipados: WHITE, GREY, RED, ORANGE,
+YELLOW, GREEN, BLUE o VIOLET. Se valida tanto la identidad como el valor antes de
+restaurar; colores o identificadores desconocidos en este prefijo se rechazan.
+
+Las claves viajan en privatePreferences del snapshot transaccional y el respaldo
+cifrado existentes. No cambia Room 45, JSON hasta 37 ni el contenedor: son valores
+opcionales del mecanismo de preferencias vigente desde JSON 18. Los respaldos
+anteriores sin estas claves conservan el aspecto original del tema; restaurar un
+backup histórico sin preferencias elimina las elecciones anteriores como parte
+del reemplazo transaccional. Restablecer colores retira estas claves únicamente.
+No hay archivos ni cachés nuevos, ni rutas del dispositivo ni metadatos externos.
+
+## Color individual de Eventos — Room 46 / JSON 38
+
+45→46 añade calendar_events.color TEXT NOT NULL DEFAULT 'LIGHT_GREY'; conserva los
+Eventos y responsables existentes. Valores admitidos: LIGHT_GREY, RED, ORANGE,
+YELLOW, GREEN, BLUE, VIOLET. No depende de los colores de miniindicadores.
+
+JSON 38 se emite cuando algún Evento tiene color distinto de LIGHT_GREY y añade
+color a todos los registros calendarEvents. Sin colores personalizados se conserva
+JSON 37 (o el formato mínimo anterior sin Eventos). El lector acepta 1–38; en
+1–37 el color de Evento se inicializa como LIGHT_GREY. Se rechazan valores/tipos
+inválidos antes de reemplazar datos. La columna viaja en el snapshot y la
+restauración transaccional existentes, dentro de la bóveda autenticada. No cambia
+el contenedor, no hay archivos nuevos ni metadatos de color fuera de la bóveda.
+
+### Antisocial: visor, Red y copia de fotografías (2026-10-15)
+
+Esta integración no añade datos persistentes ni cambia el formato. La identidad
+principal, Personas, relaciones, entradas, fotografías y encuadres reutilizan sus
+tablas y respaldo existentes. El recuento de publicaciones y Red son proyecciones,
+no copias ni relaciones nuevas. La mejora de miniaturas solo cambia decodificación
+en memoria; no sustituye los bytes confirmados que transporta el backup.
+Guardar copia exporta mediante SAF los bytes de la fotografía almacenada, sin
+rutas privadas ni recodificación, bajo el bloqueo de archivos y una reserva del
+ciclo de vida existente. Cancelar libera esa reserva y conserva la fuente. La
+copia externa elegida por el usuario no se registra ni se incorpora al respaldo;
+las reservas operativas siguen excluidas y no se crean archivos privados nuevos.
+
+### Favoritos de Antisocial en preferencias existentes (2026-10-15)
+
+Sin migración Room ni cambio de versión de JSON/contenedor. privatePreferences
+transporta la fila antisocial_favorites mediante el codec tipado existente:
+version es int 1 y people es un set de ids de Personas. No modifica element_access,
+relaciones ni la identidad SELF, ya respaldada. Cada bóveda conserva su fila propia.
+
+BackupData valida las dos claves, tipo/versión, ids no vacíos de hasta 200 caracteres
+y que todos pertenezcan a las Personas del mismo backup. Se valida antes del
+reemplazo. Un backup histórico sin la fila restaura ausencia de favoritos; los
+lectores históricos de preferencias genéricas pueden conservar el namespace sin
+interpretarlo. Eliminar una Persona quita su id de la preferencia en la misma
+transacción. Perder una relación no borra la marca, pero no incluye a esa Persona
+en una Red a la que no pertenece. No hay archivos, rutas ni bytes multimedia nuevos.
+
+Pruebas dirigidas aprobadas de reapertura, round-trip, ausencia histórica, rechazo
+de payload/versión/referencia inválidos sin pérdida de datos, conservación de otros
+namespaces y aislamiento/restauración cifrada principal/señuelo en JVM. La verificación
+nativa en teléfono sigue pendiente y no se sustituye por estas pruebas.
+
+### Recepción de enlaces compartidos
+
+Las nuevas capturas externas de enlaces conservan `linkNote` booleano en el diario
+operativo `share_pending:` v2; se leen diarios v1 con `linkNote=false`, sin reinterpretar
+borradores antiguos. La marca no admite imágenes. Los diarios siguen excluidos del
+backup y bloquean exportación/restauración hasta guardar o cancelar, como antes.
+Al guardar un enlace se crea un Node NOTE normal con título y URL HTTP/HTTPS;
+se respalda y restaura mediante el formato existente, sin archivos ni metadatos nuevos.
+No cambia Room ni la versión del JSON de backup. Captura habitual e imágenes
+conservan su comportamiento anterior.
+
+## Limpieza de tareas completadas
+
+La preferencia privada `completed_cleanup` reutiliza `privatePreferences` dentro
+del almacén SQLCipher y del backup existente. Payload con el codec de preferencias:
+`version` int 1 y `days` int de 0, 1, 7, 30, 90, 180 o 365. Cero significa Nunca;
+la ausencia histórica también significa Nunca. Se validan claves, versión, tipo y
+valor antes de restaurar. No cambia Room ni la versión del JSON/contenedor.
+Restaurar conserva el plazo elegido; un backup histórico sin la fila desactiva
+la limpieza. El observador de la sesión actualiza o cancela la programación.
+No se añaden archivos ni copias permanentes de tareas eliminadas. Las notas,
+Capas, Núcleos, Personas, comprobantes de ocurrencias y archivos compartidos o
+reservados conservan las protecciones existentes.

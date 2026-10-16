@@ -9,6 +9,7 @@ import java.io.*
 import java.util.UUID
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import org.json.JSONArray
@@ -17,6 +18,12 @@ import org.json.JSONObject
 /** Authentication owns opening, migration and lifetime. No key or password is persisted plain. */
 internal class VaultManager(private val base:Context,private val sync:(File)->Unit=::syncBackupDirectory,
     private val openEncrypted:(VaultContext,ByteArray)->Arachn0deDatabase={ctx,key->Arachn0deDatabase.create(ctx,key)}) {
+    internal var loadInitial:suspend (VaultSession)->List<com.r0ybt.arachn0de.domain.model.Project> = {it.projects.observeProjects().first()}
+    private suspend fun prepareInitial(session:VaultSession) {
+        try {session.initialProjects=loadInitial(session);currentCoroutineContext().ensureActive()}
+        catch(cancelled:CancellationException) {throw cancelled}
+        catch(failure:Exception) {throw VaultInitialDataException(failure)}
+    }
     private val operations=Mutex()
     private val home=File(base.filesDir,"security-v1").apply { check(mkdirs() || isDirectory) }
     private val stores=File(home,"stores").apply { check(mkdirs() || isDirectory) }
@@ -29,18 +36,20 @@ internal class VaultManager(private val base:Context,private val sync:(File)->Un
     private var backgroundJob:Job?=null
     private var backgroundAt:Long?=null
     private fun timeout():Long {
-        val value=runCatching { current.value?.context?.getSharedPreferences("security_preferences",0)?.getLong("background_timeout",30000L) ?: 0L }.getOrDefault(0L)
-        return if(value in setOf(0L,30000L,60000L,300000L)) value else 0L
+        return runCatching {current.value?.context?.getSharedPreferences(ScreenCapturePreference.NAME,0)?.let(AutoLockPreference::read) ?: 0L}.getOrDefault(0L)
     }
     fun background() {
         backgrounded.value=true;backgroundAt=android.os.SystemClock.elapsedRealtime();backgroundJob?.cancel()
-        val wait=timeout();backgroundJob=timerScope.launch { delay(wait);lock() }
+        val wait=timeout();backgroundJob=null
+        if(wait!=AutoLockPreference.MANUAL && current.value?.audio?.active!=true) backgroundJob=timerScope.launch { delay(wait);if(current.value?.audio?.active!=true) lock() }
     }
     suspend fun foreground() {
         backgroundJob?.cancel();backgroundJob=null
         val elapsed=backgroundAt?.let { android.os.SystemClock.elapsedRealtime()-it }
-        if(elapsed!=null && (elapsed<0 || elapsed>=timeout())) lock()
+        val wait=timeout()
+        if(wait!=AutoLockPreference.MANUAL && current.value?.audio?.active!=true && elapsed!=null && (elapsed<0 || elapsed>=wait)) lock()
         backgroundAt=null;backgrounded.value=false
+        current.value?.let {restoreCapturePreference(it)}
     }
     var savedUi:Map<String,List<Any?>>?=null
     private var failures=0
@@ -96,8 +105,9 @@ internal class VaultManager(private val base:Context,private val sync:(File)->Un
                 }
                 val (id,key)=match!!
                 val opened=open(context(id,key),key)
-                try { AttachmentRepository.fileOperations.withLock { cleanupOriginals(opened.context) } } catch(failure:Throwable) { opened.close();throw failure }
+                try { AttachmentRepository.fileOperations.withLock { cleanupOriginals(opened.context) };prepareInitial(opened) } catch(failure:Throwable) { opened.close();throw failure }
                 SecureFiles.activeProfile=id;current.value=opened;failures=0;retryAt=0
+                restoreCapturePreference(opened)
             } finally { match?.second?.fill(0);password.fill('\u0000') }
         }
     }
@@ -134,15 +144,20 @@ internal class VaultManager(private val base:Context,private val sync:(File)->Un
             } finally {ctx?.let {SecureFiles.revoke(it.session)};match?.second?.fill(0);password.fill('\u0000');backupPassword.fill('\u0000')}
         }
     }
+    internal fun audioStopped(expected:VaultSession) {
+        if(current.value===expected && backgrounded.value && !expected.audio.active) background()
+    }
     suspend fun lock()=withContext(Dispatchers.IO+NonCancellable) {
         captures.protectBeforeTransition()
         operations.withLock {
             backgroundJob?.cancel();backgroundJob=null
             val session=current.value ?: return@withLock
+            session.audio.lock()
             current.value=null;savedUi=null;SecureFiles.activeProfile=null
             base.stopService(android.content.Intent(base,com.r0ybt.arachn0de.metro.MetroTrackingService::class.java))
             base.getSystemService(android.app.NotificationManager::class.java)?.let { it.cancel(843);it.cancel(844) }
             base.revokeUriPermission(android.net.Uri.parse("content://${base.packageName}.reports"),android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            base.revokeUriPermission(android.net.Uri.parse("content://${base.packageName}.attachments"),android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
             runCatching {
                 val clipboard=base.getSystemService(android.content.ClipboardManager::class.java)
                 if(clipboard?.primaryClipDescription?.label?.toString()=="Contexto de Arachn0de") {
@@ -156,7 +171,21 @@ internal class VaultManager(private val base:Context,private val sync:(File)->Un
         }
     }
     /** Reuses the current store's password envelope; never unlocks or switches stores. */
-    suspend fun authorizeCaptures(expected:VaultSession,password:CharArray)=withContext(Dispatchers.IO) {
+    suspend fun restoreCapturePreference(expected:VaultSession) {
+        if(current.value===expected && expected.primary && !backgrounded.value &&
+            expected.context.getSharedPreferences(ScreenCapturePreference.NAME,0).getBoolean(ScreenCapturePreference.KEY,false)) {
+            captures.grant(captures.epoch) {current.value===expected && expected.primary && !backgrounded.value}
+        }
+    }
+    suspend fun blockCaptures(expected:VaultSession)=withContext(Dispatchers.IO) {
+        captures.protectBeforeTransition()
+        operations.withLock {
+            check(current.value===expected && expected.primary)
+            check(expected.context.getSharedPreferences(ScreenCapturePreference.NAME,0).edit()
+                .putBoolean(ScreenCapturePreference.KEY,false).commit()) {"No se pudo guardar el bloqueo de capturas."}
+        }
+    }
+    suspend fun authorizeCaptures(expected:VaultSession,password:CharArray,persistent:Boolean=false)=withContext(Dispatchers.IO) {
         captures.protectBeforeTransition()
         val epoch=captures.epoch
         try {
@@ -171,7 +200,11 @@ internal class VaultManager(private val base:Context,private val sync:(File)->Un
                         failures++;retryAt=android.os.SystemClock.elapsedRealtime()+minOf(30000L,1000L shl minOf(failures-1,5))
                         throw VaultAuthenticationException()
                     }
-                    check(captures.grant(epoch) {current.value===expected && expected.primary && !backgrounded.value})
+                    check(captures.grant(epoch,beforeGrant={
+                        if(persistent || expected.context.getSharedPreferences(ScreenCapturePreference.NAME,0).contains(ScreenCapturePreference.KEY))
+                            check(expected.context.getSharedPreferences(ScreenCapturePreference.NAME,0).edit()
+                                .putBoolean(ScreenCapturePreference.KEY,persistent).commit()) {"No se pudo guardar la autorización de capturas."}
+                    }) {current.value===expected && expected.primary && !backgrounded.value})
                     failures=0;retryAt=0
                 } finally {key?.fill(0)}
             }
@@ -307,6 +340,7 @@ internal class VaultManager(private val base:Context,private val sync:(File)->Un
                     val session=open(storeContext,master)
                     // The active index is the final durable decision. Originals remain recoverable.
                     try {
+                        prepareInitial(session)
                         durableDatabase(storeContext)
                         DurableVaultFile.replace(index,JSONArray(listOf(id.toString())).toString().toByteArray(),sync)
                         cleanupOriginals(storeContext)
@@ -323,3 +357,5 @@ internal class VaultManager(private val base:Context,private val sync:(File)->Un
         }
     }
 }
+
+internal class VaultInitialDataException(cause:Exception):Exception("No se pudieron preparar los datos iniciales.",cause)

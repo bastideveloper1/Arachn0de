@@ -20,11 +20,12 @@ internal object CardShareSource {
         app.database.projectPhotoDao().forNodes(listOf(id)).forEach {photo->pictures+=CardSharePicture("Fotografía") {AvatarStore(storage,"project-photos").read(photo.file)}}
         val attachmentRepository=app.attachmentRepository
         val attached=attachmentRepository.filesForNode(id).associateBy {it.id}
-        AttachmentReferences.ids(node.description).forEach {key->
+        val referenced=AttachmentReferences.ids(node.description)
+        referenced.forEach {key->
             val image=requireNotNull(attached[key]) {"Falta una imagen asociada a la tarjeta."}
             val label=AttachmentReferences.matches(node.description).firstOrNull {it.groupValues[1]==key}?.let(AttachmentReferences::label)
                 ?: image.originalName.substringAfterLast('/')
-            pictures+=CardSharePicture(label) {com.r0ybt.arachn0de.ui.decodeAttachment(attachmentRepository.localFile(image))}
+            if(image.mimeType.startsWith("image/")) pictures+=CardSharePicture(label) {com.r0ybt.arachn0de.ui.decodeAttachment(attachmentRepository.localFile(image))}
         }
         people.forEach {person->person.avatarFile?.let {name->pictures+=CardSharePicture(person.name,compact=true) {AvatarStore(storage).read(name)}}}
         technologies.forEach {technology->technology.iconFile?.let {name->pictures+=CardSharePicture(technology.name,compact=true) {TechnologyIconStore(storage).read(name)}}}
@@ -36,6 +37,7 @@ internal object CardShareSource {
             node.obligation?.let {add("Obligación: ${com.r0ybt.arachn0de.domain.model.Money.format(java.math.BigInteger.valueOf(it.amountMinor),it.currencyCode,java.util.Locale.getDefault())}")}
             if(people.isNotEmpty()) add("Responsables: ${people.joinToString {it.name}}")
             if(technologies.isNotEmpty()) add("Tecnologías: ${technologies.joinToString {it.name}}")
+            attached.values.filter {it.mimeType=="audio/aac" && it.id in referenced}.forEach {add("Audio: ${it.originalName}")}
             val description=AttachmentReferences.withoutReferences(node.description).trim()
             if(description.isNotEmpty()) add(description)
         }.joinToString("\n\n")

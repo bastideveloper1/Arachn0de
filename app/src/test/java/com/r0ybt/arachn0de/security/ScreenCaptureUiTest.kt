@@ -36,6 +36,24 @@ class ScreenCaptureUiTest {
         compose.runOnUiThread {compose.activity.setContent {Arachn0deTheme {SecurityControls(manager,session)}}}
     }
     @After fun close() {manager.captures.revoke();app.database.close()}
+    @Test fun persistentOptionAuthorizesTheWindowAndManualBlockClearsTheSavedChoice() {
+        compose.onNodeWithText("Seguridad").performClick()
+        compose.onNodeWithText("Permitir capturas de pantalla").performScrollTo().performClick()
+        compose.onNodeWithText("Hasta volver a activar").performClick()
+        compose.onNodeWithText("Contraseña principal").performTextInput("capture-ui-fixture")
+        compose.onNodeWithText("Autorizar").performClick()
+        waitText("Capturas permitidas hasta volver a activar")
+        assertFalse(secure())
+        val preferences=manager.current.value!!.context.getSharedPreferences(ScreenCapturePreference.NAME,0)
+        assertTrue(preferences.getBoolean(ScreenCapturePreference.KEY,false))
+        compose.onNodeWithText("Bloquear capturas de pantalla").performScrollTo().performClick()
+        compose.waitUntil(15000) {
+            org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle()
+            androidx.compose.runtime.snapshots.Snapshot.sendApplyNotifications();compose.mainClock.advanceTimeByFrame()
+            !preferences.getBoolean(ScreenCapturePreference.KEY,true)
+        }
+        assertTrue(secure());assertFalse(manager.captures.allowed.value)
+    }
     @Test fun correctAuthorizationChangesWindowAndManualDisableNeedsNoPassword() {
         assertTrue(secure());compose.onNodeWithText("Capturas bloqueadas").assertExists()
         compose.onNodeWithText("Seguridad").performClick()

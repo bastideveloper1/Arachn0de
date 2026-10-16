@@ -37,8 +37,8 @@ class MetroSprint4BUiTest {
         val now=metroTime(compose.activity)
         repo.tracking(id,j.row.revision) {MetroTracking.pause(MetroTracking.confirm(it,"los-heroes",now,between=true),now)}
     }
-    @Test fun planFieldsAreVerticalSelectedAndIntermediateStopsAndPersonRemainAccessible() {
-        screen();compose.onNodeWithText("Planificar").performClick().also {compose.mainClock.advanceTimeBy(100)}
+    @Test fun planFieldsAreVerticalSelectedAndIntermediateStopsRemainAccessibleWithoutPersonSelection() {
+        screen();compose.onNodeWithText("Planificar viaje").performClick();await {exists("Origen: Elegir estación")}
         compose.onNodeWithText("Origen: Elegir estación").assertExists();compose.onNodeWithText("Destino: Elegir estación").assertExists()
         val origin=compose.onNodeWithTag("metro-field:Origen").fetchSemanticsNode().boundsInRoot
         val destination=compose.onNodeWithTag("metro-field:Destino").fetchSemanticsNode().boundsInRoot
@@ -48,8 +48,8 @@ class MetroSprint4BUiTest {
         compose.onAllNodesWithText("Seleccionada · tocar para modificar").assertCountEquals(2)
         compose.onNodeWithText("+ Agregar parada").performClick().also {compose.mainClock.advanceTimeBy(100)};choose("santa ana","Santa Ana")
         compose.onNodeWithText("Parada 1: Santa Ana").assertExists()
-        compose.onNodeWithText("Persona: Sin Persona").performClick().also {compose.mainClock.advanceTimeBy(100)};compose.onNodeWithText("Persona").assertExists()
-        compose.onNodeWithText("Sin Persona").performClick().also {compose.mainClock.advanceTimeBy(100)};compose.onNodeWithText("Parada 1: Santa Ana").assertExists()
+        compose.onNodeWithText("Persona: Sin Persona").assertDoesNotExist()
+        compose.onNodeWithText("Sin Persona").assertDoesNotExist()
     }
     @Test fun activeMapExpansionKeepsSessionAndSeparatesCenterFromExpandAndArrival()=runBlocking<Unit> {
         active();screen();await {exists("Reanudar")};val before=app.metroRepository.snapshot()
@@ -64,7 +64,7 @@ class MetroSprint4BUiTest {
         compose.onNodeWithText("Estoy aquí").assertExists();compose.onNodeWithText("Cambiar destino").assertExists()
         compose.onNodeWithText("Usar como origen").assertDoesNotExist();compose.onNodeWithText("Usar como destino").assertDoesNotExist()
         compose.onNodeWithText("Estoy entre estaciones (desde aquí, aproximado)").assertDoesNotExist()
-        compose.onNodeWithText("Cerrar").performClick().also {compose.mainClock.advanceTimeBy(100)};compose.onNodeWithContentDescription("Contraer mapa").performClick().also {compose.mainClock.advanceTimeBy(100)}
+        compose.onNodeWithTag("context-action:Cancelar").performClick().also {compose.mainClock.advanceTimeBy(100)};compose.onNodeWithContentDescription("Contraer mapa").performClick().also {compose.mainClock.advanceTimeBy(100)}
         compose.onNodeWithTag("metro-row-0").assertIsSelected()
         compose.onNodeWithContentDescription("Ampliar mapa").performClick().also {compose.mainClock.advanceTimeBy(100)}
         compose.onNodeWithTag("metro-row-0").assertIsSelected()
@@ -102,7 +102,7 @@ class MetroSprint4BUiTest {
         val net=app.metroRepository.snapshot().preferences.network
         val line=net.lines.getValue("L5")
         val ids=listOf("R","V","C").map {classification->line.stations[line.express.indexOf(classification)]}
-        var theme by androidx.compose.runtime.mutableStateOf(com.r0ybt.arachn0de.ui.theme.AppearanceTheme.Minimalist)
+        var theme by androidx.compose.runtime.mutableStateOf(com.r0ybt.arachn0de.ui.theme.AppearanceTheme.Arachn0de)
         val inherited=mutableMapOf<Int,androidx.compose.ui.graphics.Color>()
         compose.setContent {Arachn0deTheme {
             androidx.compose.runtime.CompositionLocalProvider(com.r0ybt.arachn0de.ui.theme.LocalAppearancePalette provides theme.palette) {

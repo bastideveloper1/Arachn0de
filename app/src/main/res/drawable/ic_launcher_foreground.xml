@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Keep the original artwork inside the adaptive icon safe zone. -->
+<!-- Official mark, without wordmark, inside the adaptive icon safe zone. -->
 <inset xmlns:android="http://schemas.android.com/apk/res/android"
-    android:insetLeft="20%" android:insetTop="20%"
-    android:insetRight="20%" android:insetBottom="20%">
-    <bitmap android:src="@drawable/arachn0de_logo" android:gravity="fill" android:filter="true" />
+    android:insetLeft="20%" android:insetTop="35%"
+    android:insetRight="20%" android:insetBottom="35%">
+    <bitmap android:src="@drawable/bw90_brand_mark" android:gravity="fill" android:filter="true" />
 </inset>

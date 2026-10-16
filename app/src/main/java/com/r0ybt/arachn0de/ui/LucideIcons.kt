@@ -4,6 +4,8 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
@@ -48,4 +50,10 @@ import com.r0ybt.arachn0de.ui.theme.Arachn0deColors
     }
     if(resource!=null) Icon(painterResource(resource),contentDescription,modifier.then(if(imageVector.name.substringAfterLast('.')=="ExpandLess") Modifier.rotate(180f) else Modifier),tint=tint)
     else if(contentDescription!=null) Text(contentDescription,modifier,color=tint,style=MaterialTheme.typography.labelSmall)
+}
+
+/** The same note outline, with an inner mark only when there is content. */
+@Composable internal fun NoteContentIcon(hasContent:Boolean,contentDescription:String?,modifier:Modifier=Modifier,tint:Color=Arachn0deColors.TextPrimary) {
+    Icon(painterResource(if(hasContent) R.drawable.lucide_sticky_note_marked else R.drawable.lucide_sticky_note),contentDescription,
+        modifier.then(Modifier.semantics {stateDescription=if(hasContent) "Con contenido" else "Sin contenido"}),tint=tint)
 }

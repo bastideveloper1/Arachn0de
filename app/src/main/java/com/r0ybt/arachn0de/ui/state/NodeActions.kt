@@ -45,20 +45,31 @@ internal class NodeActions(private val repository: NodeRepository, private val s
     }, { onSuccess(); feedback("${members.size} elementos actualizados") })
     fun save(projectId: String, parentId: String?, id: String?, title: String, description: String, creationId: String = UUID.randomUUID().toString(), startAt: Long? = null, dueAt: Long? = null, editDates: Boolean = true, purpose: com.r0ybt.arachn0de.domain.model.NodePurpose = com.r0ybt.arachn0de.domain.model.NodePurpose.ACTION, obligation: com.r0ybt.arachn0de.domain.model.Obligation? = null, removeObligation: Boolean = false, responsibleIds: Set<String> = emptySet(), tagIds: Set<String> = emptySet(), priority: com.r0ybt.arachn0de.domain.model.Priority = com.r0ybt.arachn0de.domain.model.Priority.NONE, editResponsible: Boolean = false, attachmentDraft: EditorDraft? = null, onSuccess: () -> Unit) {
         var created: CreationUndo? = null
+        val audioRequested=attachmentDraft?.audioCreationRequested==true
+        val provisionalTitle=attachmentDraft?.audioProvisionalTitle
+        attachmentDraft?.audioCreationRequested=false
         operation.submit("No se pudo guardar el elemento. Tus cambios siguen en el formulario.", {
+            require(id!=null || tagIds.size<=1) {"Selecciona una etiqueta o ninguna antes de crear el elemento."}
             suspend fun write(description: String): Boolean = repository.withEditorAssignments(id ?: creationId, attachmentDraft?.technologyIds?.takeIf { attachmentDraft.technologiesLoaded }, attachmentDraft?.templateMetroCatalog, attachmentDraft?.templateMetroPlan, attachmentDraft?.templateTraveler,attachmentDraft?.metroJourneyId,attachmentDraft?.metroJourneyRevision) {
-                if (id == null) { created = repository.createNodeWithUndo(projectId, parentId, title, description, creationId, startAt.takeIf { purpose == com.r0ybt.arachn0de.domain.model.NodePurpose.ACTION }, dueAt.takeIf { purpose == com.r0ybt.arachn0de.domain.model.NodePurpose.ACTION }, purpose, obligation, responsibleIds, tagIds, if (purpose == com.r0ybt.arachn0de.domain.model.NodePurpose.ACTION) priority else com.r0ybt.arachn0de.domain.model.Priority.NONE); true }
+                val saved=if (id == null) { created = repository.createNodeWithUndo(projectId, parentId, title, description, creationId, startAt.takeIf { purpose == com.r0ybt.arachn0de.domain.model.NodePurpose.ACTION }, dueAt.takeIf { purpose == com.r0ybt.arachn0de.domain.model.NodePurpose.ACTION }, purpose, obligation, responsibleIds, tagIds, if (purpose == com.r0ybt.arachn0de.domain.model.NodePurpose.ACTION) priority else com.r0ybt.arachn0de.domain.model.Priority.NONE); true }
                 else repository.updateEditor(id, title, description, startAt, dueAt, obligation, removeObligation, editDates, tagIds, if (editDates) priority else null, if (editResponsible) responsibleIds else null)
+                if(saved && audioRequested) repository.reserveAudioCreation(id ?: creationId,provisionalTitle)
+                saved
             }
             val result = if (attachments != null && attachmentDraft != null) attachments.saveNodeDraft(
                 attachmentDraft.attachmentDraftId, listOf(id ?: creationId), description, attachmentDraft.removedAttachmentIds.toSet(), ::write)
                 else write(description)
-            if (created != null) created = if(attachmentDraft?.templateMetroPlan!=null) null else repository.captureCreation(listOf(creationId))
+            if (created != null) created = if(audioRequested || attachmentDraft?.templateMetroPlan!=null) null else repository.captureCreation(listOf(creationId))
             result
         }, { onSuccess(); created?.let { showCreated(it) } })
     }
 
     fun saveDraft(projectId: String, draft: EditorDraft, editDates: Boolean, onSuccess: () -> Unit) {
+        if(draft.id==null && draft.tagIds.size>1) {
+            operation.submit("No se pudo guardar el elemento. Tus cambios siguen en el formulario.", {error("Selecciona una etiqueta o ninguna antes de crear el elemento.")})
+            return
+        }
+
         when {
             draft.id == null && draft.batchEnabled && draft.purpose != com.r0ybt.arachn0de.domain.model.NodePurpose.LAYER -> {
                 val batch = draft.batchDraft()
@@ -71,6 +82,16 @@ internal class NodeActions(private val repository: NodeRepository, private val s
                 draft.responsibleIds.toSet(), draft.tagIds.toSet(), draft.priority, editResponsible = true, attachmentDraft = draft, onSuccess = onSuccess)
         }
     }
+
+    fun saveProperty(draft:EditorDraft,field:com.r0ybt.arachn0de.domain.model.NodeProperty,original:List<String>,values:List<String>,
+        groupIds:Set<String>?=null,onSuccess:()->Unit) = operation.submit(
+        "No se pudo guardar la propiedad. Revisa si cambió en otro editor; tu borrador se conserva.", {
+            suspend fun write(description:String)=repository.updateProperty(requireNotNull(draft.id),field,original,
+                if(field==com.r0ybt.arachn0de.domain.model.NodeProperty.DESCRIPTION) listOf(description) else values,groupIds,draft.financialRemovalConfirmed)
+            if(field==com.r0ybt.arachn0de.domain.model.NodeProperty.DESCRIPTION && attachments!=null)
+                attachments.saveNodeDraft(draft.attachmentDraftId,groupIds?.toList() ?: listOf(requireNotNull(draft.id)),draft.description.trim(),draft.removedAttachmentIds.toSet(),::write)
+            else write(draft.description)
+        },onSuccess)
 
     fun discardDraft(draft: EditorDraft, onSuccess: () -> Unit) = operation.submit("No se pudo descartar el borrador. Puedes reintentar.", {
         attachments?.discardDraft(draft.attachmentDraftId); true

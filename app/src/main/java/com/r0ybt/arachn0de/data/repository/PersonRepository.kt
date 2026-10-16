@@ -7,8 +7,22 @@ import com.r0ybt.arachn0de.domain.model.Person
 import kotlinx.coroutines.*
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.flowOn
 
 class PersonRepository(private val database: Arachn0deDatabase, private val avatars: AvatarStore) {
+    internal suspend fun favoritePeople():Set<String> = withContext(Dispatchers.IO) {
+        val row=database.privatePreferenceDao().get(PersonFavorites.NAME)
+        row?.let {PersonFavorites.decode(it.payload)} ?: emptySet()
+    }
+    internal fun observeFavorites()=database.invalidationTracker.createFlow("private_preferences").map {favoritePeople()}.distinctUntilChanged().flowOn(Dispatchers.IO)
+    internal suspend fun toggleFavorite(person:String)=withContext(Dispatchers.IO) {database.withTransaction {
+        require(dao.get(person)!=null) {"La Persona ya no existe."}
+        val ids=favoritePeople()
+        database.privatePreferenceDao().save(PrivatePreferenceEntity(PersonFavorites.NAME,PersonFavorites.encode(if(person in ids) ids-person else ids+person)))
+    }}
+    internal fun observePublications()=database.personMemoryDao().observeMemories()
+    internal suspend fun exportAvatar(file:String,destination:Uri)=files {avatars.export(file,destination)}
     internal fun observeSelf()=database.cascadeRelationDao().observeSelf()
     internal suspend fun identifySelf(person:String?)=database.withTransaction {
         if(person==null) database.cascadeRelationDao().clearIdentity() else {
@@ -47,6 +61,7 @@ class PersonRepository(private val database: Arachn0deDatabase, private val avat
                 validatePersonGallery(database.backupDao().persons().mapTo(hashSetOf()) {it.id},existing.filter {it.id!=photo.id}+photo,database.personGalleryDao().birthdays())
                 avatars.durable.record(setOfNotNull(photo.file,existing.firstOrNull {it.id==photo.id}?.file))
                 database.personGalleryDao().save(photo)
+                database.personMemoryDao().legacyMemories();database.personMemoryDao().legacyImages()
             }
             withContext(NonCancellable) {runCatching {avatars.lifecycle.release(photo.file);avatars.lifecycle.release(photo.file,draftId)}}
         } finally {withContext(NonCancellable) {runCatching {recoverLocked()}}}
@@ -54,10 +69,17 @@ class PersonRepository(private val database: Arachn0deDatabase, private val avat
     internal suspend fun removePhoto(id:String)=files {
         try {database.withTransaction {
             database.personGalleryDao().photos().firstOrNull {it.id==id}?.let {removed->
-                avatars.durable.record(setOf(removed.file));database.personGalleryDao().remove(id)
+                avatars.durable.record(setOf(removed.file));database.personMemoryDao().removeLegacy(id);database.personMemoryDao().removeEmpty();database.personGalleryDao().remove(id)
                 database.personGalleryDao().photos().filter {it.personId==removed.personId}.sortedBy {it.position}.forEachIndexed {index,photo->database.personGalleryDao().save(photo.copy(position=index))}
             }
         }} finally {withContext(NonCancellable) {runCatching {recoverLocked()}}}
+    }
+    /** Caller holds the common file lock and Room transaction; physical cleanup follows commit. */
+    internal suspend fun releaseGalleryLegacy(ids:Set<String>) {
+        val used=database.personMemoryDao().images().mapNotNullTo(hashSetOf()) {it.legacyPhotoId}
+        database.personGalleryDao().photos().filter {it.id in ids && it.id !in used}.forEach {
+            avatars.durable.record(setOf(it.file));database.personGalleryDao().remove(it.id)
+        }
     }
     internal suspend fun reorderPhotos(personId:String,ids:List<String>)=database.withTransaction {
         val photos=database.personGalleryDao().photos().filter {it.personId==personId}
@@ -91,11 +113,12 @@ class PersonRepository(private val database: Arachn0deDatabase, private val avat
     private suspend fun <T> files(work: suspend () -> T): T = withContext(Dispatchers.IO) {
         AttachmentRepository.fileOperations.withLock { work() }
     }
-    suspend fun importAvatar(uri: Uri): String {
+    suspend fun importAvatar(uri: Uri, source:java.io.File?=null): String {
         var file: String? = null
         try { return files {
             val coroutine = currentCoroutineContext()
-            avatars.import(uri) { coroutine.ensureActive() }.also { file = it }
+            source?.let {require(it.canonicalFile.parentFile in listOf(java.io.File(avatars.privateRoot(),"attachments").canonicalFile,java.io.File(avatars.privateRoot(),"avatars").canonicalFile))}
+            avatars.import(uri,sourceFile=source) { coroutine.ensureActive() }.also { file = it }
         } } catch (cancelled: CancellationException) {
             withContext(NonCancellable) { discardAvatar(file) }; throw cancelled
         }
@@ -109,7 +132,7 @@ class PersonRepository(private val database: Arachn0deDatabase, private val avat
         }
         Unit
     }
-    suspend fun save(id: String, name: String, avatarFile: String?, isNew: Boolean = true, draftId: String? = null, zoom: Float = 1f, x: Float = 0f, y: Float = 0f, birthday: String? = null): Boolean = files {
+    suspend fun save(id: String, name: String, avatarFile: String?, isNew: Boolean = true, draftId: String? = null, zoom: Float = 1f, x: Float = 0f, y: Float = 0f, birthday: String? = null, profile: PersonProfileEntity? = null, identity: Boolean? = null): Boolean = files {
         com.r0ybt.arachn0de.domain.model.AvatarFraming(zoom, x, y).validate()
         val trimmed = name.trim(); require(trimmed.isNotEmpty())
         recoverLocked()
@@ -123,7 +146,11 @@ class PersonRepository(private val database: Arachn0deDatabase, private val avat
                 if (names.isNotEmpty()) avatars.durable.record(names)
                 val saved=if (current == null) { dao.insert(PersonEntity(id, trimmed, avatarFile, zoom, x, y)); true }
                 else dao.update(id, trimmed, avatarFile, zoom, x, y) == 1
-                if(saved && birthday!=null) saveBirthday(id,birthday)
+                if(saved) {
+                    profile?.let {require(it.personId==id);saveProfile(it)}
+                    if(birthday!=null) saveBirthday(id,birthday)
+                    if(identity!=null) identifySelf(if(identity) id else null)
+                }
                 saved
             }
             if (result && avatarFile != null) withContext(NonCancellable) { runCatching {
@@ -153,7 +180,13 @@ class PersonRepository(private val database: Arachn0deDatabase, private val avat
         try { database.withTransaction {
             val old = dao.get(id) ?: return@withTransaction false
             avatars.durable.record(database.personGalleryDao().photos().filter {it.personId==id}.map {it.file}.toSet()+setOfNotNull(old.avatarFile))
-            dao.delete(id) == 1
+            database.personMemoryDao().removeOwner(id)
+            val removed=dao.delete(id)==1
+            if(removed) {
+                val ids=favoritePeople()
+                if(id in ids) database.privatePreferenceDao().save(PrivatePreferenceEntity(PersonFavorites.NAME,PersonFavorites.encode(ids-id)))
+            }
+            removed
         } } finally { withContext(NonCancellable) { runCatching { recoverLocked() } } }
     }
     suspend fun cleanup() = files {

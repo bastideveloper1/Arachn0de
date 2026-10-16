@@ -82,7 +82,7 @@ internal class ProjectNestingRepository(private val database: Arachn0deDatabase,
         val group = root.creationGroupId?.let { validGroup(it, targetId, original.mapTo(hashSetOf()) { row -> row.id }) }
         val layer = NodeEntity(layerId, targetId, parentId, source.name, source.description, false,
             ((nodes.maxPosition(targetId,parentId) ?: -1).toLong()+1).coerceAtMost(Int.MAX_VALUE.toLong()).toInt(), source.createdAt, source.updatedAt, root.startAt, root.dueAt,
-            purpose = "LAYER", priority = root.priority, creationGroupId = group, sprintMode = root.sprintMode)
+            purpose = "LAYER", priority = root.priority, creationGroupId = group, sprintMode = root.sprintMode,isPinned=source.isPinned)
         val effective = CreationDefaultsRepository(database).resolve(sourceId, null)
         val sort = database.nodeSortPreferenceDao().all()
         val bundle = capture(original, sourceId, wholeProject = true)
@@ -150,7 +150,7 @@ internal class ProjectNestingRepository(private val database: Arachn0deDatabase,
         val committedPosition=saved?.projectPosition ?: nextProjectPosition()
         database.iterationDao().clear()
         database.sprintLinkDao().all().filter {it.taskId in ids}.forEach {database.sprintLinkDao().delete(it.taskId)}
-        projects.insert(ProjectEntity(projectId, layer.title, layer.description, committedPosition, layer.createdAt, layer.updatedAt))
+        projects.insert(ProjectEntity(projectId, layer.title, layer.description, committedPosition, layer.createdAt, layer.updatedAt,isPinned=layer.isPinned))
         val groups = transfer(bundle, projectId, null, root.id, emptyMap(), excluded = layerId,preserve=protected)
         conversion.save(root.copy(projectPosition=committedPosition,creationGroupId = layer.creationGroupId?.let(groups::getValue)))
         conversion.people(rootPeople.map { ConversionPersonEntity(root.id, it.personId) })

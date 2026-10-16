@@ -45,7 +45,7 @@ internal fun DrawScope.drawFramedAvatar(image: ImageBitmap, framing: AvatarFrami
 
 @Composable
 internal fun AvatarEditor(file: String, initial: AvatarFraming, onConfirm: (AvatarFraming) -> Unit, onCancel: () -> Unit, directoryName: String = "avatars", title: String = "Encuadrar avatar",
-    shape: androidx.compose.ui.graphics.Shape = CircleShape) {
+    shape: androidx.compose.ui.graphics.Shape = CircleShape, enabled:Boolean=true) {
     val context = LocalContext.current
     val storageContext=privateStorageContext(context)
     val bitmap by produceState<Bitmap?>(null, storageContext,file, directoryName) { value = withContext(Dispatchers.IO) { runCatching { AvatarStore(storageContext, directoryName).read(file) }.getOrNull() } }
@@ -53,25 +53,25 @@ internal fun AvatarEditor(file: String, initial: AvatarFraming, onConfirm: (Avat
     var x by rememberSaveable(file) { mutableFloatStateOf(initial.x) }
     var y by rememberSaveable(file) { mutableFloatStateOf(initial.y) }
     fun set(value: AvatarFraming) { zoom = value.zoom; x = value.x; y = value.y }
-    AlertDialog(onDismissRequest = onCancel, title = { Text(title) }, text = {
+    AlertDialog(onDismissRequest = {if(enabled) onCancel()}, title = { Text(title) }, text = {
         Column(Modifier.verticalScroll(rememberScrollState())) {
             bitmap?.let { image ->
-                FramedAvatar(image, AvatarFraming(zoom, x, y), Modifier.size(240.dp).semantics { contentDescription = "Vista previa del avatar" }.pointerInput(file, image) {
-                    detectTransformGestures { centroid, pan, factor, _ ->
+                FramedAvatar(image, AvatarFraming(zoom, x, y), Modifier.size(240.dp).semantics { contentDescription = "Vista previa del avatar" }.pointerInput(file, image, enabled) {
+                    if(enabled) detectTransformGestures { centroid, pan, factor, _ ->
                         set(AvatarFraming(zoom, x, y).transform(image.width.toFloat(), image.height.toFloat(), size.width.toFloat(), pan.x, pan.y, factor, centroid.x, centroid.y))
                     }
                 }, shape = shape)
                 Text("Arrastra la fotografía o pellizca para ajustar el zoom.")
                 Row {
-                    TextButton(onClick = { set(AvatarFraming(zoom, x, y).transform(image.width.toFloat(), image.height.toFloat(), 240f, 0f, 0f, 1 / 1.2f)) }, enabled = zoom > 1f) { Text("Alejar") }
-                    TextButton(onClick = { set(AvatarFraming(zoom, x, y).transform(image.width.toFloat(), image.height.toFloat(), 240f, 0f, 0f, 1.2f)) }, enabled = zoom < 5f) { Text("Ampliar") }
+                    TextButton(onClick = { set(AvatarFraming(zoom, x, y).transform(image.width.toFloat(), image.height.toFloat(), 240f, 0f, 0f, 1 / 1.2f)) }, enabled = enabled && zoom > 1f) { Text("Alejar") }
+                    TextButton(onClick = { set(AvatarFraming(zoom, x, y).transform(image.width.toFloat(), image.height.toFloat(), 240f, 0f, 0f, 1.2f)) }, enabled = enabled && zoom < 5f) { Text("Ampliar") }
                 }
                 Text("Zoom: ${"%.2f".format(zoom)}×")
                 Row {
-                    TextButton(onClick = { x = 0f; y = 0f }) { Text("Centrar") }
-                    TextButton(onClick = { set(AvatarFraming()) }) { Text("Restablecer") }
+                    TextButton(enabled=enabled,onClick = { x = 0f; y = 0f }) { Text("Centrar") }
+                    TextButton(enabled=enabled,onClick = { set(AvatarFraming()) }) { Text("Restablecer") }
                 }
             } ?: Text("No se pudo cargar la fotografía.")
         }
-    }, confirmButton = { TextButton(enabled = bitmap != null, onClick = { onConfirm(AvatarFraming(zoom, x, y)) }) { Text("Confirmar") } }, dismissButton = { TextButton(onClick = onCancel) { Text("Cancelar") } })
+    }, confirmButton = { TextButton(enabled = enabled && bitmap != null, onClick = { onConfirm(AvatarFraming(zoom, x, y)) }) { Text("Confirmar") } }, dismissButton = { TextButton(enabled=enabled,onClick = onCancel) { Text("Cancelar") } })
 }

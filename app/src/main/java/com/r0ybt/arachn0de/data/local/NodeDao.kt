@@ -9,6 +9,9 @@ import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface NodeDao {
+    @Query("UPDATE nodes SET isPinned=:pinned WHERE id=:id AND purpose='LAYER'")
+    suspend fun setPinned(id:String,pinned:Boolean):Int
+
     @Query("SELECT * FROM nodes WHERE id IN (:ids)") suspend fun byIds(ids: List<String>): List<NodeEntity>
     @Query("SELECT DISTINCT parentId FROM nodes WHERE parentId IN (:ids)") suspend fun parentsWithChildren(ids: List<String>): List<String>
 
@@ -54,7 +57,7 @@ interface NodeDao {
     @Query("UPDATE nodes SET title = :title, description = :description, startAt = :startAt, dueAt = :dueAt, updatedAt = :updatedAt WHERE id = :id")
     suspend fun updateContentAndDates(id: String, title: String, description: String, startAt: Long?, dueAt: Long?, updatedAt: Long): Int
 
-    @Query("UPDATE nodes SET purpose = :purpose, sprintMode = 0, workState = :workState, isCompleted = 0, amountMinor = NULL, currencyCode = NULL, updatedAt = :updatedAt WHERE id = :id AND NOT EXISTS(SELECT 1 FROM nodes AS child WHERE child.parentId = nodes.id)")
+    @Query("UPDATE nodes SET purpose = :purpose, isPinned = CASE WHEN :purpose = 'LAYER' THEN isPinned ELSE 0 END, sprintMode = 0, workState = :workState, isCompleted = 0, amountMinor = NULL, currencyCode = NULL, updatedAt = :updatedAt WHERE id = :id AND NOT EXISTS(SELECT 1 FROM nodes AS child WHERE child.parentId = nodes.id)")
     suspend fun updatePurpose(id: String, purpose: String, updatedAt: Long, workState: String? = null): Int
 
     @Query("UPDATE nodes SET title = :title, description = :description, startAt = :startAt, dueAt = :dueAt, amountMinor = :amountMinor, currencyCode = :currencyCode, updatedAt = :updatedAt WHERE id = :id")

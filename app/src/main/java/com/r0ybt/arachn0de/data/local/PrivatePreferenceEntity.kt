@@ -11,6 +11,7 @@ internal data class PrivatePreferenceEntity(@PrimaryKey val name:String,val payl
     @Query("SELECT * FROM private_preferences ORDER BY name") suspend fun all():List<PrivatePreferenceEntity>
     @Query("SELECT * FROM private_preferences WHERE name = :name") suspend fun get(name:String):PrivatePreferenceEntity?
     @Insert(onConflict=OnConflictStrategy.REPLACE) suspend fun save(row:PrivatePreferenceEntity)
+    @Query("DELETE FROM private_preferences WHERE name = :name") suspend fun delete(name:String)
     @Query("DELETE FROM private_preferences") suspend fun clear()
 }
 internal object SecurityMigration25To26:Migration(25,26) {

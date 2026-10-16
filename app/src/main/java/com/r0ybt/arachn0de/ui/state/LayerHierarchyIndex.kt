@@ -8,7 +8,7 @@ internal data class LayerHierarchyRow(val node: Node, val depth: Int, val hasChi
 internal class LayerHierarchyIndex(nodes: List<Node>) {
     private val byId = nodes.associateBy { it.id }
     private val children = nodes.groupBy { it.parentId }.mapValues { (_, siblings) ->
-        siblings.sortedWith(compareBy<Node> { it.position }.thenBy { it.createdAt }.thenBy { it.id })
+        siblings.sortedWith(compareBy<Node> { !(it.isStructural && it.isPinned) }.thenBy { it.position }.thenBy { it.createdAt }.thenBy { it.id })
     }
     init {
         require(byId.size == nodes.size) { "Duplicate node ID" }

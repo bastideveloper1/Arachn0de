@@ -19,13 +19,25 @@ open class AttachmentStore(context: Context, private val syncDirectory: (File) -
     private val staging = File(root, "staging")
     private fun uuid(id: String) { require(UUID.fromString(id).toString() == id) }
     private fun lease(id: String) = File(staging, "$id.lease").also { uuid(id) }
-    fun reserved(id: String) = lease(id).isFile
+    private fun galleryLease(id:String,draft:String):File {uuid(id);return File(staging,"$id.${UUID.nameUUIDFromBytes(draft.toByteArray())}.gallery")}
+    private fun galleryLeases()=staging.listFiles().orEmpty().filter {it.isFile && it.name.matches(Regex("[a-f0-9-]{36}\\.[a-f0-9-]{36}\\.gallery")) && it.canonicalFile.parentFile==staging.canonicalFile}
+    fun retainGallery(id:String,draft:String,name:String) {
+        require(file(name).isFile)
+        check(staging.isDirectory || staging.mkdirs())
+        SecureFiles.output(galleryLease(id,draft)).use {it.write("$draft\n$name".toByteArray());it.flush()};syncDirectory(staging)
+    }
+    fun releaseGallery(id:String,draft:String) {
+        val file=galleryLease(id,draft);if(file.exists()) {check(file.delete());syncDirectory(staging)}
+        if(lease(id).isFile && SecureFiles.text(lease(id))==draft) release(id)
+    }
+    fun protectedGalleryNames():Set<String> = galleryLeases().map {SecureFiles.text(it).substringAfter('\n',"")}.filter {it.matches(Regex("[a-f0-9-]{36}\\.(png|jpg)"))}.toSet()
+    fun reserved(id: String) = lease(id).isFile || galleryLeases().any {it.name.substringBefore('.')==id}
     fun release(id: String) {
         if (lease(id).exists()) { check(lease(id).delete()); syncDirectory(staging) }
     }
-    fun reservations(draftId: String): Set<String> = staging.listFiles().orEmpty().filter { it.extension == "lease" && SecureFiles.text(it) == draftId }.map { it.nameWithoutExtension }.toSet()
+    fun reservations(draftId: String): Set<String> = staging.listFiles().orEmpty().filter { it.extension == "lease" && SecureFiles.text(it) == draftId }.map { it.nameWithoutExtension }.toSet() + galleryLeases().filter {SecureFiles.text(it).substringBefore('\n')==draftId}.map {it.name.substringBefore('.')}
     fun file(name: String): File {
-        require(name.matches(Regex("[a-f0-9-]{36}\\.(png|jpg)")))
+        require(name.matches(Regex("[a-f0-9-]{36}\\.(png|jpg|aac)")))
         uuid(name.substringBefore('.'))
         return File(root, name)
     }
@@ -87,13 +99,13 @@ open class AttachmentStore(context: Context, private val syncDirectory: (File) -
     /** Run only while imports are serialized. Known reservations are never expired by age. */
     fun recover(known: List<AttachmentFileEntity>, protected: Set<String> = emptySet()) {
         require(root.canonicalFile == File(context.filesDir.canonicalFile, "attachments") && staging.canonicalFile == File(root.canonicalFile, "staging")) { "Directorio de adjuntos fuera del almacenamiento controlado." }
-        val names = known.mapTo(hashSetOf()) { it.storageName } + protected
+        val names = known.mapTo(hashSetOf()) { it.storageName } + protected + protectedGalleryNames()
         val ids = known.mapTo(hashSetOf()) { it.id }
         val rootFiles = root.listFiles().orEmpty().filter { it.isFile && it.canonicalFile.parentFile == root.canonicalFile }
         fun canonicalId(file: File) = runCatching { uuid(file.nameWithoutExtension); true }.getOrDefault(false)
         staging.listFiles().orEmpty().filter { it.isFile && it.extension == "part" && canonicalId(it) && it.canonicalFile.parentFile == staging.canonicalFile }.forEach { check(it.delete()) }
         rootFiles.filter { it.name !in names }.forEach { file ->
-            if (file.name.matches(Regex("[a-f0-9-]{36}\\.(png|jpg)")) && canonicalId(file) && delete(file.name)) release(file.nameWithoutExtension)
+            if (file.name.matches(Regex("[a-f0-9-]{36}\\.(png|jpg|aac)")) && canonicalId(file) && delete(file.name)) release(file.nameWithoutExtension)
         }
         val remaining = root.listFiles().orEmpty().mapTo(hashSetOf()) { it.nameWithoutExtension }
         staging.listFiles().orEmpty().filter { it.isFile && it.extension == "lease" && canonicalId(it) && it.nameWithoutExtension !in ids && it.nameWithoutExtension !in remaining }.forEach { check(it.delete()) }

@@ -51,12 +51,23 @@ class PersonGalleryUiTest {
     private fun click(text:String) {await(text);val node=compose.onNodeWithText(text);if(runCatching {node.assertIsDisplayed()}.isFailure) node.performScrollTo();compose.waitUntil(15000) {pump();runCatching {node.assertIsEnabled()}.isSuccess};node.performClick()}
     private fun scroll(text:String)=compose.waitUntil(15000) {pump();runCatching {compose.onNodeWithTag("participation-list").performScrollToNode(hasText(text))}.isSuccess}
     private fun section(text:String) {click(text)}
+    private fun chooseBirthday(year:Int,month:Int,day:Int) {
+        val yearControl=compose.onNodeWithTag("birthday-year")
+        if(runCatching {yearControl.assertIsDisplayed()}.isFailure) yearControl.performScrollTo()
+        yearControl.performClick()
+        compose.onNodeWithTag("birthday-years").performScrollToNode(hasTestTag("birthday-year:$year"))
+        compose.onNodeWithTag("birthday-year:$year").performClick()
+        compose.onNodeWithTag("birthday-month").performClick()
+        compose.onNodeWithTag("birthday-month:$month").performScrollTo().performClick()
+        compose.onNodeWithTag("birthday-day").performClick()
+        compose.onNodeWithTag("birthday-day:$day").performScrollTo().performClick()
+    }
     private fun photoMenu(index:Int) {
         compose.waitUntil(15000) {pump();runCatching {compose.onAllNodesWithText("⋮")[index].assertIsEnabled()}.isSuccess}
         compose.onAllNodesWithText("⋮")[index].performClick()
     }
     private fun work(text:String) {compose.onNodeWithTag("person-work-list").performScrollToNode(hasText(text));compose.onNode(hasText(text) and hasAnyAncestor(hasTestTag("person-work-list"))).performClick()}
-    @Test fun gridSearchesAliasesAndMultipleRelationshipCategories() {
+    @Test fun horizontalCardsKeepSearchAliasesCategoriesAndRelationNavigation() {
         runBlocking {
             app.personRepository.save("a","Ana",null);app.personRepository.save("b","Bruno",null);app.personRepository.save("c","Carla",null)
             app.personRepository.saveProfile(PersonProfileEntity("a",alias="Anita"))
@@ -65,7 +76,7 @@ class PersonGalleryUiTest {
         compose.setContent {Arachn0deTheme {PeopleScreen(app.personRepository) {}}}
         await("Buscar Personas");await("Carla")
         val firstRow=listOf("Ana","Bruno","Carla").map {compose.onNodeWithText(it).fetchSemanticsNode().boundsInRoot.top}
-        assertEquals(firstRow[0],firstRow[1],1f);assertEquals(firstRow[0],firstRow[2],1f)
+        assertTrue(firstRow[0]<firstRow[1]);assertTrue(firstRow[1]<firstRow[2])
         compose.onNodeWithText("Buscar Personas").performTextReplacement("Anita");await("Ana");compose.onAllNodesWithText("Bruno").assertCountEquals(0)
         compose.onNodeWithText("Buscar Personas").performTextReplacement("");click("Familiares");await("Bruno");compose.onAllNodesWithText("Carla").assertCountEquals(0)
         click("Laborales");await("Ana");click("Ana");await("Anita");click("Relaciones");compose.onAllNodesWithText("Bruno")[0].performClick();await("Editar nombre y avatar");click("Volver");await("Anita")
@@ -73,20 +84,48 @@ class PersonGalleryUiTest {
     @Test fun birthdaySaveAndReferencePhotosAreAccessibleWithLargeText() {
         runBlocking {app.personRepository.save("a","Ana",null);app.personRepository.saveProfile(PersonProfileEntity("a",alias="Anita",description="A long description that remains readable with large fonts"))}
         compose.setContent {Arachn0deTheme {val density=LocalDensity.current;CompositionLocalProvider(LocalDensity provides Density(density.density,1.6f)) {PeopleScreen(app.personRepository,initialPersonId="a") {}}}}
-        click("Añadir fecha de nacimiento");compose.onNodeWithText("AAAA-MM-DD").performTextReplacement("2000-01-02");click("Guardar")
+        click("Añadir fecha de nacimiento");chooseBirthday(2000,1,2);click("Guardar")
         compose.waitUntil(15000) {pump();runBlocking {app.database.personGalleryDao().birthdays().size==1}}
         click("Fotos de referencia (0/4)");await("Añadir foto");click("Cerrar");click("Contacto");click("Editar Contacto");click("Cancelar");click("General");await("Anita")
     }
     @Test fun creationAndIdentityEditKeepBirthdayInExistingFormat() {
         compose.setContent {Arachn0deTheme {PeopleScreen(app.personRepository) {}}}
         click("Nueva Persona");await("Nombre");compose.onNodeWithText("Nombre").performTextInput("Nueva")
-        compose.onNodeWithText("AAAA-MM-DD").performTextInput("1930-02-28")
-        click("Elegir fecha de nacimiento");click("Seleccionar");click("Guardar")
+        chooseBirthday(1930,2,28);click("Guardar")
         await("Nueva");click("Nueva");await("Editar nombre y avatar");click("Editar nombre y avatar")
-        compose.waitUntil(15000) {pump();compose.onAllNodes(hasSetTextAction() and hasText("1930-02-28")).fetchSemanticsNodes().isNotEmpty()}
+        compose.waitUntil(15000) {pump();compose.onAllNodesWithText("1930").fetchSemanticsNodes().isNotEmpty()}
         compose.onNodeWithText("Nombre").performTextReplacement("Renombrada");click("Guardar")
         compose.waitUntil(15000) {pump();runBlocking {app.database.backupDao().persons().any {it.name=="Renombrada"}}}
         runBlocking {assertEquals("1930-02-28",app.database.personGalleryDao().birthdays().single().date)}
+    }
+    @Test fun horizontalCardShowsWholePhotoFrameBirthdayAndOnlyThreeTechnologyIcons() {
+        runBlocking {
+            app.personRepository.save("a","Cumpleañera",null)
+            app.personRepository.saveBirthday("a",java.time.Instant.ofEpochMilli(System.currentTimeMillis()).atZone(java.time.ZoneId.systemDefault()).toLocalDate().toString())
+            repeat(4) {index->
+                app.database.technologyDao().insert(TechnologyEntity("t$index","Herramienta $index",null))
+                app.personRepository.saveTechnology("a","t$index",PersonProficiency.EXPERT)
+            }
+        }
+        compose.setContent {Arachn0deTheme {PeopleScreen(app.personRepository) {}}}
+        await("Cumpleañera")
+        compose.waitUntil(15000) {pump();compose.onAllNodesWithContentDescription("Herramienta 2",useUnmergedTree=true).fetchSemanticsNodes().isNotEmpty() && compose.onAllNodesWithContentDescription("Cumpleaños hoy",useUnmergedTree=true).fetchSemanticsNodes().isNotEmpty()}
+        compose.onNodeWithContentDescription("Cumpleaños hoy",useUnmergedTree=true).assertExists()
+        compose.onNodeWithContentDescription("Herramienta 3",useUnmergedTree=true).assertDoesNotExist()
+        compose.onNodeWithText("Dominio: Experto").assertDoesNotExist()
+        val photo=compose.onNodeWithTag("person-photo:a",useUnmergedTree=true).fetchSemanticsNode().boundsInRoot
+        assertEquals(.8f,photo.width/photo.height,.02f)
+        val card=compose.onNodeWithTag("person-card:a").fetchSemanticsNode().boundsInRoot
+        assertTrue(card.width>card.height)
+        compose.onNodeWithText("Nueva Persona").assertIsDisplayed()
+        compose.onNodeWithText("Buscar Personas").assertIsDisplayed()
+    }
+    @Test fun initiallyRequestedWorkSectionIsVisibleInTheBottomNavigation() {
+        runBlocking {app.personRepository.save("a","Ana",null)}
+        compose.setContent {Arachn0deTheme {PeopleScreen(app.personRepository,initialPersonId="a",initialSection="Proyectos y trabajo") {}}}
+        await("Proyectos y trabajo")
+        compose.onNodeWithText("Proyectos y trabajo").assertIsSelected().assertIsDisplayed()
+        compose.onNodeWithText("Volver").assertIsDisplayed()
     }
     @Test fun referenceViewerOnlyChangesAvatarAfterExplicitAction() {
         val repository=PersonRepository(app.database,AvatarStore(app.security.current.value!!.context, syncDirectory=com.r0ybt.arachn0de.backup.BackupFixture::syncDirectory))

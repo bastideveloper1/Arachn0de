@@ -41,7 +41,7 @@ internal object DrawerWidthPolicy {
 internal fun AppIdentityDrawer(onDismiss: () -> Unit, onPeople: (() -> Unit)? = null,
     onAttention: (() -> Unit)? = null, onCalendar: (() -> Unit)? = null,
     onObligations: (() -> Unit)? = null, onAbout: (() -> Unit)? = null,
-    onMetro: (() -> Unit)? = null, onGame: (() -> Unit)? = null, onAppearance: (() -> Unit)? = null, onProjects: (() -> Unit)? = null, projectsSelected: Boolean = false, onTechnologies: (() -> Unit)? = null,onTags:(()->Unit)?=null, onSearch:(()->Unit)?=null, onFavorites:(()->Unit)?=null, onSecurity:(()->Unit)?=null, onBackups:(()->Unit)?=null, onQuickCapture:(()->Unit)?=null,onRecurrences:(()->Unit)?=null) {
+    onMetro: (() -> Unit)? = null, onGame: (() -> Unit)? = null, onAppearance: (() -> Unit)? = null, onProjects: (() -> Unit)? = null, projectsSelected: Boolean = false, onTechnologies: (() -> Unit)? = null,onTags:(()->Unit)?=null, onSearch:(()->Unit)?=null, onFavorites:(()->Unit)?=null, onSecurity:(()->Unit)?=null, onBackups:(()->Unit)?=null, onQuickCapture:(()->Unit)?=null,onRecurrences:(()->Unit)?=null, onMetroStatistics:(()->Unit)?=null,peopleSelected:Boolean=false) {
     BackHandler(onBack = onDismiss)
     BoxWithConstraints(Modifier.fillMaxSize()) {
         val compact = DrawerWidthPolicy.fullWidth(maxWidth)
@@ -64,29 +64,30 @@ internal fun AppIdentityDrawer(onDismiss: () -> Unit, onPeople: (() -> Unit)? = 
             OfficialIcon(R.drawable.bw90_brand_logo,"Logo de Arachn0de",size=96.dp,modifier=Modifier.fillMaxWidth().height(88.dp).testTag("drawer-logo"))
             fun navigate(action: () -> Unit) { onDismiss(); action() }
             onSearch?.let { NavigationDrawerItem(label={Text("Buscar")},selected=false,icon={LucideIcon(Icons.Default.Search,null,Modifier.size(24.dp))},onClick={navigate(it)},modifier=Modifier.heightIn(min=48.dp).testTag("drawer-search")) }
-            onProjects?.let { NavigationDrawerItem(label = { Text("Proyectos") }, selected = projectsSelected,
+            onProjects?.let { NavigationDrawerItem(label = { Text("Núcleos") }, selected = projectsSelected,
                 icon = { OfficialIcon(R.drawable.bw90_project,size=24.dp) }, onClick = { navigate(it) }, modifier = Modifier.heightIn(min = 48.dp)) }
+            onPeople?.let {NavigationDrawerItem(label={Text("Antisocial")},selected=peopleSelected,icon={LucideIcon(Icons.Default.Person,null,Modifier.size(24.dp))},onClick={navigate(it)},modifier=Modifier.heightIn(min=48.dp).testTag("drawer-antisocial"))}
+            onCalendar?.let {NavigationDrawerItem(label={Text("Calendario")},selected=false,icon={LucideIcon(Icons.Default.CalendarMonth,null,Modifier.size(24.dp))},onClick={navigate(it)},modifier=Modifier.heightIn(min=48.dp).testTag("drawer-calendar"))}
             onMetro?.let { NavigationDrawerItem(label = { Text("Metro") }, selected = false,
+                 icon = { Icon(Icons.Default.DirectionsSubway, null, Modifier.size(24.dp), tint = Arachn0deColors.TextPrimary) },
                  onClick = { navigate(it) }, modifier = Modifier.heightIn(min = 48.dp)) }
             Column(Modifier.fillMaxWidth().then(if(pinPrimary) Modifier.weight(1f).verticalScroll(rememberScrollState()) else Modifier).testTag("drawer-sections")) {
-            if(onFavorites!=null || onAttention!=null || onObligations!=null || onCalendar!=null || onRecurrences!=null) DrawerSection("Seguimiento") {
+            if(onFavorites!=null || onAttention!=null || onObligations!=null || onRecurrences!=null) DrawerSection("Seguimiento") {
                 onRecurrences?.let {NavigationDrawerItem(label={Text("Recurrencias")},selected=false,icon={LucideIcon(Icons.Default.Refresh,null,Modifier.size(24.dp))},onClick={navigate(it)})}
                 onFavorites?.let {NavigationDrawerItem(label={Text("Favoritos")},selected=false,icon={LucideIcon(Icons.Default.Star,null,Modifier.size(24.dp))},onClick={navigate(it)})}
                 onAttention?.let {NavigationDrawerItem(label={Text("Avisos")},selected=false,icon={LucideIcon(Icons.Default.NotificationsActive,null,Modifier.size(24.dp))},onClick={navigate(it)})}
                 onObligations?.let {NavigationDrawerItem(label={Text("Obligaciones")},selected=false,icon={Icon(painterResource(R.drawable.lucide_receipt),null,Modifier.size(24.dp).testTag("drawer-obligations-icon"),tint=Arachn0deColors.TextPrimary)},onClick={navigate(it)},modifier=Modifier.heightIn(min=48.dp).testTag("drawer-obligations"))}
-                onCalendar?.let {NavigationDrawerItem(label={Text("Calendario")},selected=false,icon={LucideIcon(Icons.Default.CalendarMonth,null,Modifier.size(24.dp))},onClick={navigate(it)})}
             }
             HorizontalDivider(color=Arachn0deColors.Outline,thickness=.5.dp)
-            if(onPeople!=null || onTechnologies!=null || onTags!=null) DrawerSection("Recursos") {
-                onPeople?.let {NavigationDrawerItem(label={Text("Personas")},selected=false,icon={LucideIcon(Icons.Default.Groups,null,Modifier.size(24.dp))},onClick={navigate(it)})}
+            if(onTechnologies!=null || onTags!=null) DrawerSection("Recursos") {
                 onTechnologies?.let {NavigationDrawerItem(label={Text("Tecnologías")},selected=false,icon={LucideIcon(Icons.Default.Code,null,Modifier.size(24.dp))},onClick={navigate(it)})}
                 onTags?.let {NavigationDrawerItem(label={Text("Etiquetas")},selected=false,icon={LucideIcon(Icons.Default.Label,null,Modifier.size(24.dp))},onClick={navigate(it)})}
             }
             HorizontalDivider(color=Arachn0deColors.Outline,thickness=.5.dp)
-            if(onSecurity!=null || onBackups!=null || onAppearance!=null) DrawerSection("Ajustes") {
-                onSecurity?.let {NavigationDrawerItem(label={Text("Seguridad")},selected=false,icon={LucideIcon(Icons.Default.Security,null,Modifier.size(24.dp))},onClick={navigate(it)})}
-                onBackups?.let {NavigationDrawerItem(label={Text("Respaldo")},selected=false,icon={LucideIcon(Icons.Default.Backup,null,Modifier.size(24.dp))},onClick={navigate(it)})}
-                onAppearance?.let {NavigationDrawerItem(label={Text("Apariencia")},selected=false,icon={LucideIcon(Icons.Default.Palette,null,Modifier.size(24.dp))},onClick={navigate(it)})}
+            if(onSecurity!=null || onBackups!=null || onAppearance!=null || onMetroStatistics!=null) DrawerSection("Ajustes") {
+                (onSecurity ?: onBackups)?.let {NavigationDrawerItem(label={Text("Seguridad y respaldos")},selected=false,icon={LucideIcon(Icons.Default.Security,null,Modifier.size(24.dp))},onClick={navigate(it)})}
+                onAppearance?.let {NavigationDrawerItem(label={Text("Diseño")},selected=false,icon={LucideIcon(Icons.Default.Palette,null,Modifier.size(24.dp))},onClick={navigate(it)})}
+                onMetroStatistics?.let {NavigationDrawerItem(label={Text("Estadísticas de Metro")},selected=false,onClick={navigate(it)})}
             }
             if(onQuickCapture!=null || onAbout!=null || onGame!=null) HorizontalDivider(Modifier.padding(vertical=4.dp))
             onQuickCapture?.let {NavigationDrawerItem(label={Text("Captura rápida")},selected=false,onClick={navigate(it)})}
@@ -115,7 +116,7 @@ private fun DrawerSection(title: String, content: @Composable ColumnScope.() -> 
 }
 
 @Composable
-internal fun HeaderBar(onMenuClick: () -> Unit, trailingAction: (@Composable () -> Unit)? = null, title: String = "Arachn0de", onBack:(()->Unit)?=null, backDescription:String="Volver") {
+internal fun HeaderBar(onMenuClick: () -> Unit, trailingAction: (@Composable () -> Unit)? = null, title: String = "Arachn0de", onBack:(()->Unit)?=null, backDescription:String="Volver", compactLock:Boolean=false) {
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         val navigation=LocalGlobalNavigation.current
         IconButton(onClick = navigation?.menu ?: onMenuClick, modifier = Modifier.size(48.dp)) {
@@ -128,6 +129,6 @@ internal fun HeaderBar(onMenuClick: () -> Unit, trailingAction: (@Composable () 
             maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
             modifier = Modifier.weight(1f).testTag("app-bar-title"))
         trailingAction?.invoke()
-        if(navigation?.showLock==true) ProjectLockButton()
+        if(compactLock) HeaderLockButton() else if(navigation?.showLock==true) ProjectLockButton()
     }
 }

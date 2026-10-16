@@ -22,6 +22,8 @@ internal class EditorDraft(
     priority: com.r0ybt.arachn0de.domain.model.Priority = com.r0ybt.arachn0de.domain.model.Priority.NONE,
     val attachmentDraftId: String = UUID.randomUUID().toString(),
 ) {
+    var audioCreationRequested=false
+    var audioProvisionalTitle:String?=null
     var removedAttachmentIds by mutableStateOf(emptyList<String>())
     var descriptionSelectionStart by mutableStateOf(description.length)
     var descriptionSelectionEnd by mutableStateOf(description.length)
@@ -93,6 +95,7 @@ internal class EditorDraft(
     var templateMetroPlan by mutableStateOf<String?>(null)
     var templateMetroCatalog by mutableStateOf<String?>(null)
     var templateTraveler by mutableStateOf<String?>(null)
+    var projectPropertiesLoaded by mutableStateOf(false)
     var tagIds by mutableStateOf(emptyList<String>())
     var responsibleIds by mutableStateOf(emptyList<String>())
     var showResponsible by mutableStateOf(false)

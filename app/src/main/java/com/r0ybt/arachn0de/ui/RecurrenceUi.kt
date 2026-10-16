@@ -66,15 +66,47 @@ internal fun RecurrenceManager(repository: RecurrenceRepository, projectId: Stri
     LaunchedEffect(externalRule) { if (externalRule != null) { open = true; selected = externalRule.takeIf { it.isNotEmpty() }; onConsumed() } }
     var projects by remember(repository) { mutableStateOf(emptyList<com.r0ybt.arachn0de.data.local.ProjectEntity>()) }
     var rules by remember(repository) { mutableStateOf(emptyList<RecurrenceRuleEntity>()) }
+    var rulesLoaded by remember(repository) { mutableStateOf(false) }
     val projectsLoad = remember(repository) { LoadState() }
     val rulesLoad = remember(repository) { LoadState() }
     LaunchedEffect(repository, projectsLoad.attempt) { projectsLoad.collect(repository.destinationProjects) { projects = it } }
-    LaunchedEffect(repository, rulesLoad.attempt) { rulesLoad.collect(repository.rules) { rules = it } }
+    LaunchedEffect(repository, rulesLoad.attempt) { rulesLoad.collect(repository.rules) { rules = it; rulesLoaded = true } }
     val scope = rememberCoroutineScope()
     val operation = remember(repository, scope) { OperationState(scope) }
 
     if(showLauncher) OutlinedButton(onClick={ open=true }) { Text("Recurrencias") }
-    if (open && selected == null) ModalBottomSheet(
+    if (open && selected == null && projectId.isEmpty() && !showLauncher) androidx.compose.ui.window.Dialog(
+        onDismissRequest = { open = false },
+        properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false),
+    ) {
+        Surface(Modifier.fillMaxSize(), color = Arachn0deColors.Background, contentColor = Arachn0deColors.TextPrimary) {
+            Column(Modifier.fillMaxSize().safeDrawingPadding().imePadding().padding(14.dp)) {
+                Row(Modifier.fillMaxWidth(), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                    Text("Recurrencias", Modifier.weight(1f), style = MaterialTheme.typography.titleLarge)
+                    TextButton(onClick = { open = false }) { Text("Volver") }
+                }
+                val current = rules.filter { projectId.isEmpty() || it.projectId == projectId || projects.none { project -> project.id == it.projectId } }
+                if (!rulesLoaded) Text("Cargando recurrencias…")
+                else if (current.isEmpty()) Text("No hay recurrencias.", Modifier.padding(vertical = 12.dp), color = Arachn0deColors.TextSecondary)
+                LazyColumn(Modifier.fillMaxWidth().weight(1f).testTag("recurrence-list"), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    items(current, key = { it.id }) { rule ->
+                        Card(onClick = { selected = rule.id }, modifier = Modifier.fillMaxWidth().testTag("recurrence-card:${rule.id}"),
+                            colors = CardDefaults.cardColors(containerColor = Arachn0deColors.Surface)) {
+                            Column(Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                Text(rule.title, style = MaterialTheme.typography.titleMedium)
+                                Text(if (rule.status == "ACTIVE") "Activa" else "Inactiva", style = MaterialTheme.typography.bodyMedium)
+                                val frequency = RecurrenceFrequency.valueOf(rule.frequency)
+                                Text(recurrenceSummary(frequency, rule.interval.toString(), rule.startDay),
+                                    color = Arachn0deColors.TextSecondary, style = MaterialTheme.typography.bodySmall)
+                                if (rule.status != "ACTIVE") Text(statusLabel(rule.status), color = Arachn0deColors.TextSecondary, style = MaterialTheme.typography.bodySmall)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    else if (open && selected == null) ModalBottomSheet(
         onDismissRequest = { open = false },
         sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
         containerColor = Arachn0deColors.Surface,
@@ -114,6 +146,7 @@ private fun RecurrenceRuleDialog(rule: RecurrenceRuleEntity, repository: Recurre
     var discard by rememberSaveable(rule.id) { mutableStateOf(false) }
     var edit by rememberSaveable(rule.id) { mutableStateOf(false) }
     var confirmRemoval by rememberSaveable(rule.id) { mutableStateOf(false) }
+    var delete by rememberSaveable(rule.id) { mutableStateOf(false) }
     var finish by rememberSaveable(rule.id) { mutableStateOf(false) }
     val editorState = rememberSaveable(rule.id, stateSaver = EditorDraft.Saver) { mutableStateOf<EditorDraft?>(EditorDraft(rule.id, rule.parentId, rule.title, rule.description,
         priority = Priority.valueOf(rule.priority), obligation = rule.amountMinor?.let { Obligation(it, checkNotNull(rule.currencyCode)) })) }
@@ -188,6 +221,8 @@ private fun RecurrenceRuleDialog(rule: RecurrenceRuleEntity, repository: Recurre
                     })
                 }) { Text(if (rule.status == "ACTIVE") "Pausar recurrencia" else "Reanudar desde hoy") }
                 TextButton(enabled = !operation.busy, onClick = { finish = true }) { Text("Finalizar recurrencia", color = Arachn0deColors.Destructive) }
+            } else {
+                TextButton(enabled = !operation.busy, onClick = { delete = true }) { Text("Eliminar", color = Arachn0deColors.Destructive) }
             }
         } }, confirmButton = { TextButton(enabled = !operation.busy, onClick = onDismiss) { Text("Cerrar") } })
     LoadErrorDialog(projectsLoad)
@@ -202,6 +237,12 @@ private fun RecurrenceRuleDialog(rule: RecurrenceRuleEntity, repository: Recurre
     if (confirmRemoval) RemoveObligationDialog(operation.busy, false, onDismiss = { confirmRemoval = false }, onConfirm = {
         editor.financialRemovalConfirmed = true; saveTemplate()
     })
+    if (delete) AlertDialog(onDismissRequest = { if (!operation.busy) delete = false }, title = { Text("¿Eliminar recurrencia finalizada?") },
+        text = { Text("Se retirará de la gestión. Se conservarán las ocurrencias históricas y las Tareas generadas.") },
+        confirmButton = { TextButton(enabled = !operation.busy, onClick = { operation.submit("No se pudo eliminar la recurrencia.", {
+            repository.deleteFinished(rule.id); true
+        }, { delete = false; onClearDraft() }) }) { Text("Eliminar", color = Arachn0deColors.Destructive) } },
+        dismissButton = { TextButton(enabled = !operation.busy, onClick = { delete = false }) { Text("Cancelar") } })
     if (finish) AlertDialog(onDismissRequest = { if (!operation.busy) finish = false }, title = { Text("¿Finalizar recurrencia?") },
         text = { Text("Es definitivo. Se conservan las ocurrencias anteriores y no se generarán nuevas.") },
         confirmButton = { TextButton(enabled = !operation.busy, onClick = { operation.submit("No se pudo finalizar la recurrencia.", {

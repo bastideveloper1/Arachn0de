@@ -15,6 +15,7 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 
+@org.robolectric.annotation.GraphicsMode(org.robolectric.annotation.GraphicsMode.Mode.NATIVE)
 @RunWith(RobolectricTestRunner::class)
 @Config(application=com.r0ybt.arachn0de.security.LegacyUiTestApplication::class,sdk = [28])
 class TaskDatesIntegrationTest {
@@ -42,8 +43,8 @@ class TaskDatesIntegrationTest {
         await("Dates project"); compose.onNodeWithText("Dates project").performClick()
         await("Dated task")
         compose.onNodeWithTag("nodes-list").performScrollToNode(hasText("Dated task"))
-        compose.onNodeWithContentDescription("Roy").assertExists()
-        compose.onNodeWithContentDescription("Más opciones").performClick()
+        compose.onNodeWithTag("card-signal:node:$task:people",useUnmergedTree=true).assertExists()
+        compose.onNodeWithTag("node-options:$task").performClick()
         compose.onNodeWithText("Editar").performClick()
         await("Guardar")
         compose.onNodeWithText("Inicio: ${formatTaskDate(start)}").assertExists()
@@ -52,7 +53,7 @@ class TaskDatesIntegrationTest {
         compose.activityRule.scenario.recreate()
         await("Guardar")
         compose.onNodeWithText("Inicio: Sin fecha").assertDoesNotExist()
-        compose.onNode(hasText("Guardar") or hasText("Crear")).performClick()
+        compose.onNodeWithText("Guardar").performClick()
         compose.waitUntil(10_000) { runBlocking { app.nodeRepository.getNode(task)!!.startAt == null } }
         runBlocking {
             assertEquals(due, app.nodeRepository.getNode(task)!!.dueAt)
@@ -61,12 +62,12 @@ class TaskDatesIntegrationTest {
             app.nodeRepository.createNode(project, task, "Child")
         }
         compose.waitUntil(10_000) { compose.onAllNodesWithContentDescription("Capa").fetchSemanticsNodes().isNotEmpty() }
-        compose.onNodeWithContentDescription("Más opciones").performClick()
+        compose.onNodeWithTag("node-options:$task").performClick()
         compose.onNodeWithText("Editar").performClick()
         await("Guardar")
         compose.onNodeWithText("Vencimiento: ${formatTaskDate(due)}").assertDoesNotExist()
         compose.onNodeWithText("Título").performTextReplacement("Layer renamed")
-        compose.onNode(hasText("Guardar") or hasText("Crear")).performClick()
+        compose.onNodeWithText("Guardar").performClick()
         compose.waitUntil(10_000) { runBlocking { app.nodeRepository.getNode(task)!!.title == "Layer renamed" } }
         runBlocking {
             assertEquals(due, app.nodeRepository.getNode(task)!!.dueAt)

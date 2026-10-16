@@ -101,11 +101,38 @@ class VaultManagerTest {
             val reopened=vault.current.value!!;assertFalse(vault.captures.allowed.value)
             reopened.context.getSharedPreferences("security_preferences",0).edit().putLong("background_timeout",0).commit()
             vault.authorizeCaptures(reopened,"capture-main-fixture".toCharArray())
-            vault.background();assertFalse(vault.captures.allowed.value)
+            vault.background()
             kotlinx.coroutines.withTimeout(5000) {while(vault.current.value!=null) kotlinx.coroutines.delay(10)}
+            assertFalse(vault.captures.allowed.value)
             vault.foreground();assertFalse(vault.captures.allowed.value)
             val restarted=manager(base);assertFalse(restarted.captures.allowed.value)
             restarted.unlock("capture-main-fixture".toCharArray());assertFalse(restarted.captures.allowed.value);restarted.lock()
+        } finally {vault.lock();root.deleteRecursively()}
+    }
+    @Test fun persistentCapturesSurviveNewManagersAndManualBlockingIsDurable()=runBlocking<Unit> {
+        val original=ApplicationProvider.getApplicationContext<Context>()
+        val root=File(original.filesDir,"persistent-capture-${UUID.randomUUID()}").apply {mkdirs()}
+        val base=object:ContextWrapper(original) {
+            override fun getApplicationContext():Context=this
+            override fun getFilesDir()=File(root,"files").apply {mkdirs()}
+            override fun getCacheDir()=File(root,"cache").apply {mkdirs()}
+        }
+        seed(base,"persistent-capture-fixture")
+        var vault=manager(base)
+        try {
+            vault.unlock("persistent-capture-fixture".toCharArray())
+            val initial=vault.current.value!!
+            vault.authorizeCaptures(initial,"persistent-capture-fixture".toCharArray(),persistent=true)
+            assertTrue(vault.captures.allowed.value)
+            assertTrue(initial.context.getSharedPreferences(ScreenCapturePreference.NAME,0).getBoolean(ScreenCapturePreference.KEY,false))
+            vault.lock();assertFalse(vault.captures.allowed.value)
+            vault=manager(base);vault.unlock("persistent-capture-fixture".toCharArray())
+            assertTrue(vault.captures.allowed.value)
+            vault.captures.revoke();vault.foreground();assertTrue(vault.captures.allowed.value)
+            vault.blockCaptures(vault.current.value!!);assertFalse(vault.captures.allowed.value)
+            assertFalse(vault.current.value!!.context.getSharedPreferences(ScreenCapturePreference.NAME,0).getBoolean(ScreenCapturePreference.KEY,true))
+            vault.lock();vault=manager(base);vault.unlock("persistent-capture-fixture".toCharArray())
+            assertFalse(vault.captures.allowed.value)
         } finally {vault.lock();root.deleteRecursively()}
     }
     /** Native SQLCipher is replaced ONLY in this test. Auth, envelopes, files and controller are real. */

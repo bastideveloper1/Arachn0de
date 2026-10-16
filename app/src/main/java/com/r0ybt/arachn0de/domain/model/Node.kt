@@ -20,6 +20,7 @@ data class Node(
     val creationGroupId: String? = null,
     val sprintMode: Boolean = false,
     val workState: WorkState? = null,
+    val isPinned:Boolean=false,
 ) {
     val effectivePriority: Priority get() = if (isCompletable) priority else Priority.NONE
     val canReceiveChildren: Boolean get() = obligation == null && (isStructural || (purpose == NodePurpose.ACTION && !isCompleted))

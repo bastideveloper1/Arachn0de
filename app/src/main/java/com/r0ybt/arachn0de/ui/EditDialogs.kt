@@ -9,6 +9,13 @@ import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.isImeVisible
 import androidx.compose.foundation.layout.padding
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.material.icons.filled.Groups
+import androidx.compose.material.icons.filled.LocalFireDepartment
+import androidx.compose.foundation.layout.size
 import androidx.compose.ui.platform.testTag
 import androidx.compose.material3.FilterChip
 import androidx.compose.foundation.layout.Row
@@ -19,6 +26,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
@@ -55,7 +63,6 @@ internal fun NodeDialog(
     extraFields: @Composable () -> Unit = {},
     extraValid: Boolean = true,
 ) {
-    var metroValid by remember(draft.creationId) {mutableStateOf(true)}
     val hasImages = com.r0ybt.arachn0de.domain.model.AttachmentReferences.ids(draft.description).isNotEmpty()
     val imageModeValid = draft.id != null || !hasImages || (!draft.batchEnabled && draft.recurrenceFrequency == "NONE")
     var confirmDiscard by rememberSaveable(draft.creationId) { mutableStateOf(false) }
@@ -81,7 +88,7 @@ internal fun NodeDialog(
         }
     }
 
-    val pinnedNoteTools = draft.purpose == NodePurpose.NOTE && !templateEditing && WindowInsets.isImeVisible
+    val pinnedNoteTools = !templateEditing
     val currentSubmitting by androidx.compose.runtime.rememberUpdatedState(isSubmitting)
     val noteTools = remember(draft) {
         androidx.compose.runtime.movableContentOf<Boolean> { compact ->
@@ -113,24 +120,42 @@ internal fun NodeDialog(
                         enabled = !isSubmitting,
                     )
                     extraFields()
-                    com.r0ybt.arachn0de.metro.MetroDraftFields(draft,!isSubmitting) {metroValid=it}
                     if(templateEditing) OutlinedTextField(description,{description=it},label={Text("Descripción")},modifier=Modifier.fillMaxWidth())
                     else AttachmentDescriptionEditor(draft, !isSubmitting,
                         focusRequester = descriptionFocusRequester.takeIf { initialField == "description" },
-                        maxLines = if(pinnedNoteTools) 5 else Int.MAX_VALUE,
-                        tools = if(draft.purpose == NodePurpose.NOTE) ({ if(!pinnedNoteTools) noteTools(false) }) else null)
-                    DraftTechnologies(draft,!isSubmitting)
+                        maxLines = if(draft.purpose == NodePurpose.NOTE && !templateEditing && WindowInsets.isImeVisible) 5 else Int.MAX_VALUE,
+                        tools = if(pinnedNoteTools || draft.purpose == NodePurpose.NOTE) ({ if(!pinnedNoteTools) noteTools(false) }) else null)
                     if(!specializedCreationValid) Text("Las tecnologías ordenadas y el plan Metro requieren creación individual. Desactiva Crear varios / Recurrente o quita estas propiedades para continuar.",color=Arachn0deColors.Destructive)
-                    AdaptiveFormRow(buildList {
-                        if (editDates && draft.purpose == NodePurpose.ACTION) add({ PrioritySelector(draft.priority, { draft.priority = checkNotNull(it) }, enabled = !isSubmitting) })
-                        add({
-                            androidx.compose.material3.OutlinedButton(enabled = !isSubmitting && peopleLoaded, onClick = { draft.showResponsible = true }) {
-                                Text("Responsables (${draft.responsibleIds.size})")
-                            }
-                        })
-                    })
-                    tagRepository?.let { repo -> val state by remember(repo) { repo.observe() }.collectAsState(initial = com.r0ybt.arachn0de.domain.model.TagState())
-                        TagSelector(state.tags, draft.tagIds.toSet(), { draft.tagIds = it.toList() }, repository = repo, enabled = !isSubmitting) }
+                    androidx.compose.foundation.layout.FlowRow(Modifier.fillMaxWidth(),verticalArrangement=Arrangement.spacedBy(0.dp),itemVerticalAlignment=androidx.compose.ui.Alignment.CenterVertically) {
+                        androidx.compose.material3.IconButton(enabled=!isSubmitting && peopleLoaded,onClick={draft.showResponsible=true},modifier=Modifier.size(48.dp)) {
+                            LucideIcon(androidx.compose.material.icons.Icons.Default.Groups,"Responsables (${draft.responsibleIds.size})",tint=if(draft.responsibleIds.isEmpty()) Arachn0deColors.TextSecondary else Arachn0deColors.TextPrimary)
+                        }
+                        DraftTechnologies(draft,!isSubmitting,iconOnly=true)
+                        tagRepository?.let {repo->val state by remember(repo) {repo.observe()}.collectAsState(initial=com.r0ybt.arachn0de.domain.model.TagState())
+                            TagSelector(state.tags,draft.tagIds.toSet(),{draft.tagIds=it.toList()},repository=repo,enabled=!isSubmitting,iconOnly=true,singleAssignment=true)
+                        }
+                    }
+                    if (editDates && draft.purpose == NodePurpose.ACTION) {
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                            val prioritized = draft.priority == com.r0ybt.arachn0de.domain.model.Priority.HIGH
+                            FilterChip(
+                                selected = prioritized,
+                                onClick = { draft.priority = if (prioritized) com.r0ybt.arachn0de.domain.model.Priority.NONE else com.r0ybt.arachn0de.domain.model.Priority.HIGH },
+                                enabled = !isSubmitting,
+                                label = { Text(if (prioritized) "Prioritario" else "Común") },
+                                leadingIcon = if (prioritized) ({ LucideIcon(androidx.compose.material.icons.Icons.Default.LocalFireDepartment, "Prioritario") }) else null,
+                            )
+                            FilterChip(
+                                selected = draft.financialEnabled,
+                                onClick = {
+                                    draft.financialEnabled = !draft.financialEnabled
+                                    draft.financialRemovalConfirmed = false
+                                },
+                                enabled = !isSubmitting,
+                                label = { Text(if (draft.financialEnabled) "Pago" else "No pago") },
+                            )
+                        }
+                    }
                     if (editDates && draft.purpose == NodePurpose.ACTION) {
                         if(!templateEditing) FormSection("Planificación")
                         if(!templateEditing) TaskDatesEditor(draft, enabled = !isSubmitting, picker = datePicker, includeStart = !draft.batchEnabled, progressive = true)
@@ -146,7 +171,7 @@ internal fun NodeDialog(
                     }
                     if (editDates && draft.purpose == NodePurpose.ACTION) {
                         FormSection("Pago")
-                        ObligationFields(draft, enabled = !isSubmitting)
+                        ObligationFields(draft, enabled = !isSubmitting, showToggle = false)
                     }
                     if (draft.id == null && draft.purpose != NodePurpose.LAYER) {
                         FormSection("Creación")
@@ -163,10 +188,12 @@ internal fun NodeDialog(
                 }
             }
         },
-        editingTools = { if(pinnedNoteTools) noteTools(true) },
+        editingTools = if(pinnedNoteTools) ({ actions -> AttachmentDescriptionTools(draft,!isSubmitting,compact=true,trailingActions=actions) }) else null,
         confirmButton = {
             androidx.compose.material3.Button(
-                enabled = metroValid && extraValid && specializedCreationValid && !isSubmitting && draft.attachmentsLoaded && !draft.attachmentBusy && imageModeValid && !(draft.batchEnabled && draft.purpose == NodePurpose.ACTION && draft.recurrenceFrequency != "NONE") && batchValid && datesValid && peopleLoaded && financialValid && recurrenceValid && title.trim().isNotEmpty() && TitleLimits.count(title) <= TitleLimits.NODE &&
+                modifier=if(pinnedNoteTools) Modifier.heightIn(min=48.dp) else Modifier,
+                contentPadding=if(pinnedNoteTools) androidx.compose.foundation.layout.PaddingValues(horizontal=12.dp,vertical=8.dp) else androidx.compose.material3.ButtonDefaults.ContentPadding,
+                enabled = (draft.id!=null || draft.tagIds.size<=1) && extraValid && specializedCreationValid && !isSubmitting && draft.attachmentsLoaded && !draft.attachmentBusy && imageModeValid && !(draft.batchEnabled && draft.purpose == NodePurpose.ACTION && draft.recurrenceFrequency != "NONE") && batchValid && datesValid && peopleLoaded && financialValid && recurrenceValid && title.trim().isNotEmpty() && TitleLimits.count(title) <= TitleLimits.NODE &&
                     (!editDates || draft.purpose != NodePurpose.ACTION || draft.batchEnabled || draft.activeStart == null || draft.activeDue == null || draft.activeDue!! >= draft.activeStart!!),
                 onClick = {
                     val cleanTitle = title.trim()
@@ -176,16 +203,18 @@ internal fun NodeDialog(
                     }
                 },
             ) {
-                Text(if (isSubmitting) "Guardando..." else if (draft.id == null) "Crear" else "Guardar")
+                Text(if (isSubmitting) "Guardando..." else if (draft.id == null) "Crear" else "Guardar",maxLines=1)
             }
         },
         dismissButton = {
-            TextButton(onClick = {
+            TextButton(modifier=if(pinnedNoteTools) Modifier.size(48.dp) else Modifier,
+                contentPadding=if(pinnedNoteTools) androidx.compose.foundation.layout.PaddingValues(0.dp) else androidx.compose.material3.ButtonDefaults.TextButtonContentPadding, onClick = {
                 if (initialField == null) onDismiss()
                 else if (hasUnsavedChanges || draft.technologyEdited || draft.metroEdited) confirmDiscard = true
                 else onDiscard()
             }, enabled = !isSubmitting && !draft.attachmentBusy) {
-                Text(if (initialField != null) "Cancelar" else "Cerrar")
+                if(pinnedNoteTools) androidx.compose.material3.Icon(androidx.compose.material.icons.Icons.Default.Close,if(initialField!=null) "Cancelar" else "Cerrar")
+                else Text(if (initialField != null) "Cancelar" else "Cerrar")
             }
         },
     )
@@ -205,6 +234,7 @@ internal fun NodeDialog(
         })
 }
 
+@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 @Composable
 internal fun ProjectDialog(
     draft: EditorDraft,
@@ -212,8 +242,26 @@ internal fun ProjectDialog(
     onDismiss: () -> Unit,
     onSave: (String, String) -> Unit,
     onDiscard: () -> Unit = onDismiss,
+    initialField: String? = null,
 ) {
+    val titleFocus=remember(draft.attachmentDraftId) { FocusRequester() }
+    val descriptionFocus=remember(draft.attachmentDraftId) { FocusRequester() }
     var confirmDiscard by rememberSaveable(draft.attachmentDraftId) { mutableStateOf(false) }
+    val projectApp=androidx.compose.ui.platform.LocalContext.current.applicationContext as? com.r0ybt.arachn0de.Arachn0deApplication
+    var projectPropertiesLoaded by rememberSaveable(draft.attachmentDraftId) {mutableStateOf(projectApp==null)}
+    LaunchedEffect(draft.attachmentDraftId) {
+        if(!projectPropertiesLoaded && projectApp!=null) {
+            val metadata=kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                val conversion=projectApp.database.conversionDao()
+                val root=draft.id?.let {conversion.project(it)}
+                Triple(root,root?.let {r->conversion.tags().filter {it.rootId==r.id}.map {it.tagId}}.orEmpty(),root?.let {r->conversion.people().filter {it.rootId==r.id}.map {it.personId}}.orEmpty())
+            }
+            draft.tagIds=metadata.second;draft.responsibleIds=metadata.third
+            draft.priority=metadata.first?.priority?.let {com.r0ybt.arachn0de.domain.model.Priority.valueOf(it)} ?: com.r0ybt.arachn0de.domain.model.Priority.NONE
+            projectPropertiesLoaded=true
+        }
+    }
+    SideEffect {draft.projectPropertiesLoaded=projectPropertiesLoaded && projectApp!=null}
     var name by draft::title
     var description by draft::description
 
@@ -222,9 +270,18 @@ internal fun ProjectDialog(
         titleContentColor = Arachn0deColors.TextPrimary,
         textContentColor = Arachn0deColors.TextSecondary,
         onDismissRequest = if (isSubmitting) ({}) else onDismiss,
-        title = { Text(if (draft.id == null) "Nuevo proyecto" else "Editar proyecto") },
+        title = { Text(if (draft.id == null) "Nuevo Núcleo" else "Editar proyecto") },
         text = {
             Column(modifier = Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                val windowFocused=androidx.compose.ui.platform.LocalWindowInfo.current.isWindowFocused
+                var initialFocusRequested by remember(draft.attachmentDraftId,initialField) {mutableStateOf(false)}
+                LaunchedEffect(windowFocused,draft.attachmentsLoaded,initialField) {
+                    if(windowFocused && draft.attachmentsLoaded && !initialFocusRequested && initialField!=null) {
+                        if(initialField=="title") titleFocus.requestFocus()
+                        else if(initialField=="description") descriptionFocus.requestFocus()
+                        initialFocusRequested=true
+                    }
+                }
                 OutlinedTextField(
                     value = name,
                     onValueChange = { name = it },
@@ -233,16 +290,32 @@ internal fun ProjectDialog(
                     supportingText = { Text("${TitleLimits.count(name)} / ${TitleLimits.PROJECT}") },
                     isError = TitleLimits.count(name) > TitleLimits.PROJECT,
                     singleLine = false, minLines = 1, maxLines = 5,
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier.fillMaxWidth().focusRequester(titleFocus),
                 )
-                AttachmentDescriptionEditor(draft, !isSubmitting, project = true)
-                DraftTechnologies(draft,!isSubmitting,project=true)
+                AttachmentDescriptionEditor(draft, !isSubmitting, project = true,
+                    focusRequester=descriptionFocus.takeIf {initialField=="description"})
+                if(projectApp!=null) {
+                    val projectPeople by remember(projectApp) {projectApp.personRepository.observePeople()}.collectAsState(initial=null)
+                    val projectTags by remember(projectApp) {projectApp.nodeRepository.tags.observe()}.collectAsState(initial=com.r0ybt.arachn0de.domain.model.TagState())
+                    androidx.compose.foundation.layout.FlowRow(Modifier.fillMaxWidth(),itemVerticalAlignment=androidx.compose.ui.Alignment.CenterVertically) {
+                        androidx.compose.material3.IconButton(enabled=!isSubmitting && projectPropertiesLoaded && projectPeople!=null,onClick={draft.showResponsible=true},modifier=Modifier.size(48.dp)) {LucideIcon(androidx.compose.material.icons.Icons.Default.Groups,"Responsables (${draft.responsibleIds.size})",tint=if(draft.responsibleIds.isEmpty()) Arachn0deColors.TextSecondary else Arachn0deColors.TextPrimary)}
+                        DraftTechnologies(draft,!isSubmitting,project=true,iconOnly=true)
+                        TagSelector(projectTags.tags,draft.tagIds.toSet(),{draft.tagIds=it.toList()},repository=projectApp.nodeRepository.tags,enabled=!isSubmitting && projectPropertiesLoaded,iconOnly=true,singleAssignment=true)
+                        val prioritized = draft.priority == com.r0ybt.arachn0de.domain.model.Priority.HIGH
+                        FilterChip(selected=prioritized,
+                            onClick={draft.priority=if(prioritized) com.r0ybt.arachn0de.domain.model.Priority.NONE else com.r0ybt.arachn0de.domain.model.Priority.HIGH},
+                            enabled=!isSubmitting && projectPropertiesLoaded,
+                            label={Text(if(prioritized) "Prioritario" else "Común")},
+                            leadingIcon=if(prioritized) ({LucideIcon(androidx.compose.material.icons.Icons.Default.LocalFireDepartment,"Prioritario")}) else null)
+                    }
+                    if(draft.showResponsible && projectPeople!=null) ResponsibleDialog(draft.creationId,projectPeople.orEmpty(),projectPeople.orEmpty().filter {it.id in draft.responsibleIds},isSubmitting,{draft.showResponsible=false}) {draft.responsibleIds=it.toList();draft.showResponsible=false}
+                }
                 if (draft.hasWork) DestructiveAction("Descartar", { confirmDiscard = true }, enabled = !isSubmitting && !draft.attachmentBusy)
             }
         },
         confirmButton = {
             TextButton(
-                enabled = !isSubmitting && draft.attachmentsLoaded && !draft.attachmentBusy && name.trim().isNotEmpty() && TitleLimits.count(name) <= TitleLimits.PROJECT,
+                enabled = projectPropertiesLoaded && (draft.id!=null || draft.tagIds.size<=1) && !isSubmitting && draft.attachmentsLoaded && !draft.attachmentBusy && name.trim().isNotEmpty() && TitleLimits.count(name) <= TitleLimits.PROJECT,
                 onClick = {
                     val cleanName = name.trim()
                     if (!isSubmitting && cleanName.isNotEmpty() && TitleLimits.count(cleanName) <= TitleLimits.PROJECT) {
@@ -273,7 +346,7 @@ private fun NodeFullscreenDialog(containerColor: androidx.compose.ui.graphics.Co
     titleContentColor: androidx.compose.ui.graphics.Color, textContentColor: androidx.compose.ui.graphics.Color,
     onDismissRequest: () -> Unit, title: @Composable () -> Unit, text: @Composable () -> Unit,
     confirmButton: @Composable () -> Unit, dismissButton: @Composable () -> Unit,
-    editingTools: @Composable () -> Unit = {}) {
+    editingTools: (@Composable (@Composable () -> Unit) -> Unit)? = null) {
     androidx.compose.ui.window.Dialog(onDismissRequest = onDismissRequest,
         properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)) {
         androidx.compose.material3.Surface(modifier = Modifier.fillMaxSize().testTag("node-editor"), color = containerColor) {
@@ -286,9 +359,12 @@ private fun NodeFullscreenDialog(containerColor: androidx.compose.ui.graphics.Co
                         androidx.compose.material3.ProvideTextStyle(androidx.compose.material3.MaterialTheme.typography.bodyMedium, text)
                     }
                 }
-                editingTools()
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End, verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
-                    dismissButton(); confirmButton()
+                Column(Modifier.fillMaxWidth()) {
+                    AudioBar(inEditor=true)
+                    if(editingTools!=null) editingTools {dismissButton();confirmButton()}
+                    else Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End, verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                        dismissButton(); confirmButton()
+                    }
                 }
             }
         }

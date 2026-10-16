@@ -80,7 +80,7 @@ internal fun NodeBatchDialog(
                 }
             }
         },
-        confirmButton = { TextButton(enabled = !busy && peopleLoaded && specs != null, onClick = {
+        confirmButton = { TextButton(enabled = !busy && peopleLoaded && specs != null && draft.dates.tagIds.size<=1, onClick = {
             if (specs != null) onCreate(specs, draft.responsibleIds.toSet())
         }) { Text(if (busy) "Creando…" else "Crear lote") } },
         dismissButton = { TextButton(enabled = !busy, onClick = onDismiss) { Text("Cancelar") } },

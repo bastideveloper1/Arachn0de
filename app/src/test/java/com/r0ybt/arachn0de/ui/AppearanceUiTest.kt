@@ -69,7 +69,7 @@ class AppearanceUiTest {
         assertEquals(1.6f, fontScale, .01f)
         assertEquals(18f, titleLayout().layoutInput.style.fontSize.value, .01f)
         compose.onNodeWithTag("appearance-size:Large").performScrollTo().assertIsDisplayed().assertIsSelected()
-        compose.onNodeWithTag("appearance-theme:Minimalist").performScrollTo().performClick()
+        compose.onNodeWithTag("appearance-theme:DayGrey").performScrollTo().performClick()
         compose.onNodeWithTag("appearance-preview").performScrollTo().assertIsDisplayed()
     }
     @Test fun drawerOpensAppearanceAndBackReturnsWithoutLosingSelection() {
@@ -79,13 +79,13 @@ class AppearanceUiTest {
         compose.waitUntil(10000) { compose.onAllNodesWithContentDescription("Abrir menú").fetchSemanticsNodes().isNotEmpty() }
         compose.onNodeWithContentDescription("Abrir menú").performClick()
         compose.onNodeWithText("Configuración").assertDoesNotExist()
-        compose.onNodeWithText("Ajustes").performScrollTo().performClick(); compose.onNodeWithText("Apariencia").performScrollTo().performClick()
+        compose.onNodeWithText("Ajustes").performScrollTo().performClick(); compose.onNodeWithText("Diseño").performScrollTo().performClick()
         compose.onNodeWithTag("appearance-theme:DeepMoss").performScrollTo().performClick()
         compose.onNodeWithTag("appearance-size:Medium").performScrollTo().performClick()
-        compose.onNodeWithText("Apariencia").performScrollTo()
+        compose.onNodeWithText("Diseño").performScrollTo()
         compose.onNodeWithContentDescription("Volver").performClick()
         compose.onNodeWithContentDescription("Abrir menú").performClick()
-        compose.onNodeWithText("Ajustes").performScrollTo().performClick(); compose.onNodeWithText("Apariencia").performScrollTo().performClick()
+        compose.onNodeWithText("Ajustes").performScrollTo().performClick(); compose.onNodeWithText("Diseño").performScrollTo().performClick()
         compose.onNodeWithTag("appearance-theme:DeepMoss").assertIsSelected()
         compose.onNodeWithTag("appearance-size:Medium").performScrollTo().assertIsSelected()
     }

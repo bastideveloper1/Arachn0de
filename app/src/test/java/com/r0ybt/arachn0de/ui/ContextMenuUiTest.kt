@@ -73,6 +73,7 @@ class ContextMenuUiTest {
                 action("Editar tecnologías").assertDoesNotExist()
                 compose.onNodeWithTag("card-technology:${node.id}").assertExists()
             }
+            action("Metro / modo Viaje").assertDoesNotExist();action("Convertir en viaje").assertDoesNotExist()
             action("Editar").assertExists();action("Responsables").assertExists()
             if(node.isStructural) {action("Subir").assertDoesNotExist();action("Bajar").assertDoesNotExist()}
             action("Copiar este elemento").performClick();assertEquals("copy:false",selected)

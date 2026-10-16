@@ -13,7 +13,11 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.RadioButtonUnchecked
 import androidx.compose.material3.*
-import androidx.compose.runtime.Composable
+import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.foundation.clickable
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
@@ -29,8 +33,9 @@ internal fun AppearanceScreen(onBack: () -> Unit, preferences: AppearancePrefere
     Surface(Modifier.fillMaxSize(), color = Arachn0deColors.Background) {
         Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
+                GlobalChromeActions(leading=true)
                 IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Volver") }
-                Text("Apariencia",modifier=Modifier.weight(1f), style = MaterialTheme.typography.titleLarge)
+                Text("Diseño",modifier=Modifier.weight(1f), style = MaterialTheme.typography.titleLarge)
                 GlobalChromeActions()
             }
             Text("Preview", style = MaterialTheme.typography.titleSmall)
@@ -57,6 +62,7 @@ internal fun AppearanceScreen(onBack: () -> Unit, preferences: AppearancePrefere
                         label = { Text(size.label) }, modifier = Modifier.testTag("appearance-size:${size.name}"))
                 }
             }
+            IndicatorColorSettings(preferences)
         }
     }
 }
@@ -75,10 +81,42 @@ internal fun AppearancePreview() {
                 Text("Revisar contrato de dominio", fontSize = ContentTypography.Description, lineHeight = ContentTypography.DescriptionLine,
                     color = Arachn0deColors.TextSecondary, modifier = Modifier.testTag("appearance-preview-description"))
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("Prioridad alta", fontSize = ContentTypography.Metadata, color = SemanticColors.HighPriority)
+                    Text("Prioritario", fontSize = ContentTypography.Metadata, color = com.r0ybt.arachn0de.ui.theme.semanticColor(SemanticColors.HighPriority))
                     Text("Hoy · Alex", fontSize = ContentTypography.Metadata, color = Arachn0deColors.TextSecondary)
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun IndicatorColorSettings(preferences:AppearancePreferences) {
+    var selected by rememberSaveable {mutableStateOf<String?>(null)}
+    Text("Indicadores",style=MaterialTheme.typography.titleSmall)
+    customizableCardIndicators.forEach {indicator->
+        val color=preferences.settings.indicatorColors[indicator.name]?.color ?: Arachn0deColors.TextPrimary
+        Row(Modifier.fillMaxWidth().testTag("indicator-setting:${indicator.name}")
+            .clickable {selected=indicator.name}.padding(horizontal=12.dp,vertical=8.dp),
+            verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(12.dp)) {
+            LucideIcon(indicator.icon,null,Modifier.size(20.dp),tint=color)
+            Text(indicator.label,Modifier.weight(1f),style=MaterialTheme.typography.bodyMedium)
+            Box(Modifier.size(20.dp).background(color,CircleShape).border(1.dp,Arachn0deColors.Outline,CircleShape)
+                .semantics {contentDescription=preferences.settings.indicatorColors[indicator.name]?.label ?: "Color original"})
+        }
+    }
+    TextButton(onClick=preferences::resetIndicatorColors,modifier=Modifier.testTag("indicator-reset")) {Text("Restablecer colores")}
+    selected?.let {name->
+        ModularPanelDialog(onDismissRequest={selected=null},
+            title={Text(customizableCardIndicators.first {it.name==name}.label)},
+            text={Column {
+                IndicatorColor.entries.forEach {color->
+                    Row(Modifier.fillMaxWidth().testTag("indicator-color:${color.name}")
+                        .selectable(preferences.settings.indicatorColors[name]==color,role=Role.RadioButton,onClick={preferences.setIndicatorColor(name,color);selected=null})
+                        .padding(vertical=8.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(12.dp)) {
+                        Box(Modifier.size(20.dp).background(color.color,CircleShape).border(1.dp,Arachn0deColors.Outline,CircleShape))
+                        Text(color.label)
+                    }
+                }
+            }},dismissButton={TextButton(onClick={selected=null}) {Text("Cancelar")}},confirmButton={})
     }
 }

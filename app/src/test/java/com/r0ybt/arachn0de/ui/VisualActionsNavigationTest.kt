@@ -61,12 +61,12 @@ class VisualActionsNavigationTest {
         mount {AppIdentityDrawer({dismissed++},onSearch={destination="Buscar"},onProjects={destination="Proyectos"},onMetro={destination="Metro"},
             onFavorites={destination="Favoritos"},onAttention={destination="Avisos"},onObligations={destination="Obligaciones"},onCalendar={destination="Calendario"},
             onPeople={destination="Personas"},onTechnologies={destination="Tecnologías"},onTags={destination="Etiquetas"},
-            onSecurity={destination="Seguridad"},onBackups={destination="Respaldo"},onAppearance={destination="Apariencia"},
+            onSecurity={destination="Seguridad"},onBackups={destination="Respaldo"},onAppearance={destination="Diseño"},
             onQuickCapture={destination="Captura rápida"},onAbout={destination="Acerca de"},onGame={destination="Juego"})}
         val primary=listOf("Buscar","Proyectos","Metro").map {compose.onNodeWithText(it).assertIsDisplayed().fetchSemanticsNode().boundsInRoot.top}
         assertEquals(primary.sorted(),primary)
         val groups=listOf("Seguimiento" to listOf("Favoritos","Avisos","Obligaciones","Calendario"),
-            "Recursos" to listOf("Personas","Tecnologías","Etiquetas"),"Ajustes" to listOf("Seguridad","Respaldo","Apariencia"))
+            "Recursos" to listOf("Personas","Tecnologías","Etiquetas"),"Ajustes" to listOf("Seguridad","Respaldo","Diseño"))
         for((section,children) in groups) {
             compose.onNodeWithTag("drawer-section:$section").assert(hasStateDescription("Contraída"))
             children.forEach {compose.onNodeWithText(it).assertDoesNotExist()}

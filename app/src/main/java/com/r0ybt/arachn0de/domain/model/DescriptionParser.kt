@@ -6,20 +6,30 @@ package com.r0ybt.arachn0de.domain.model
 object DescriptionParser {
     enum class Format(val marker: String) { Bold("**"), Italic("*"), Underline("__") }
     data class Part(val text: String = "", val imageId: String? = null, val label: String? = null,
-        val formats: Set<Format> = emptySet())
+        val formats: Set<Format> = emptySet(), val audio:Boolean=false)
     private data class Delimiter(val at: Int, val format: Format, val opening: Boolean, val mate: Int = -1)
     private const val escapable = "*_\\["
 
     data class FormatRange(val start: Int, val end: Int, val format: Format)
     fun formatRanges(text: String): List<FormatRange> = delimiters(text).values.filter { it.opening }.map { FormatRange(it.at, it.mate, it.format) }
 
+    // HTTP URLs are literal text: underscores in paths/query strings are not formatting.
+    private fun webTokens(text:String)=Regex("""(?i)https?://[^\s<>\[\]"*]+""").findAll(text).associate {match->
+        val underlined=match.range.first>=2 && text.substring(match.range.first-2,match.range.first)=="__"
+        val value=if(underlined && match.value.endsWith("__")) match.value.dropLast(2) else match.value
+        match.range.first to value
+    }
+
     private fun delimiters(text: String): Map<Int, Delimiter> {
         val images = AttachmentReferences.matches(text).associateBy { it.range.first }
+        val web=webTokens(text)
         val stack = mutableListOf<Delimiter>()
         val paired = mutableMapOf<Int, Delimiter>()
         var i = 0
         while (i < text.length) {
             val image = images[i]
+            val url=web[i]
+            if(url!=null) {i+=url.length;continue}
             if (image != null) { i = image.range.last + 1; continue }
             if (text[i] == '\\' && i + 1 < text.length && text[i + 1] in escapable) { i += 2; continue }
             val top = stack.lastOrNull()
@@ -46,6 +56,7 @@ object DescriptionParser {
 
     fun parse(text: String): List<Part> {
         val images = AttachmentReferences.matches(text).associateBy { it.range.first }
+        val web=webTokens(text)
         val paired = delimiters(text)
         val parts = mutableListOf<Part>()
         val active = mutableListOf<Format>()
@@ -56,10 +67,12 @@ object DescriptionParser {
         var i = 0
         while (i < text.length) {
             val image = images[i]
+            val url=web[i]
+            if(url!=null) {buffer.append(url);i+=url.length;continue}
             val delimiter = paired[i]
             when {
                 image != null -> {
-                    flush(); parts.add(Part(imageId = image.groupValues[1], label = AttachmentReferences.label(image), formats = active.toSet()))
+                    flush(); parts.add(Part(imageId = image.groupValues[1], label = AttachmentReferences.label(image), formats = active.toSet(),audio=AttachmentReferences.isAudio(image)))
                     i = image.range.last + 1
                 }
                 delimiter != null -> {

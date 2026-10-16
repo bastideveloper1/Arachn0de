@@ -23,6 +23,7 @@ data class RecurrenceRuleEntity(
     val dueMinute: Int,
     val startOffsetMillis: Long?,
     @ColumnInfo(defaultValue = "'NONE'") val priority: String = "NONE",
+    @ColumnInfo(defaultValue = "0") val isDeleted: Boolean = false,
 )
 
 /** Never cascades from Nodes. A deleted Node leaves this durable materialization receipt. */
@@ -40,7 +41,7 @@ data class RecurrencePersonEntity(val ruleId: String, val personId: String)
 @Dao
 interface RecurrenceDao {
     @Query("SELECT * FROM recurrence_rules ORDER BY id") suspend fun rules(): List<RecurrenceRuleEntity>
-    @Query("SELECT * FROM recurrence_rules ORDER BY id") fun observeRules(): Flow<List<RecurrenceRuleEntity>>
+    @Query("SELECT * FROM recurrence_rules WHERE isDeleted = 0 ORDER BY id") fun observeRules(): Flow<List<RecurrenceRuleEntity>>
     @Query("SELECT * FROM recurrence_rules WHERE id = :id") suspend fun get(id: String): RecurrenceRuleEntity?
     @Insert suspend fun insert(rule: RecurrenceRuleEntity)
     @Update suspend fun update(rule: RecurrenceRuleEntity)
@@ -55,4 +56,10 @@ interface RecurrenceDao {
     @Query("DELETE FROM recurrence_occurrences") suspend fun deleteOccurrences()
     @Query("DELETE FROM recurrence_person") suspend fun deleteAssignments()
     @Query("DELETE FROM recurrence_rules") suspend fun deleteRules()
+}
+
+internal object RecurrenceDeletionMigration43To44 : androidx.room.migration.Migration(43,44) {
+    override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE recurrence_rules ADD COLUMN isDeleted INTEGER NOT NULL DEFAULT 0")
+    }
 }

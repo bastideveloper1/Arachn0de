@@ -21,7 +21,7 @@ class MetroCompactButtonUiTest {
     @get:Rule val compose=createAndroidComposeRule<ComponentActivity>()
     private val app get()=compose.activity.application as Arachn0deApplication
     @After fun close() {MetroNavigation.requests.value=null;app.database.close()}
-    @Test fun locationButtonIsCompactAndStillConfirmsSelectedStation()=runBlocking<Unit> {
+    @Test fun stationSheetUsesSharedTwoColumnActionsAndPinsHereWithoutChangingTheConfirmation()=runBlocking<Unit> {
         val repo=app.metroRepository;val net=repo.snapshot().preferences.planningNetwork
         val id=repo.savePlan(MetroPlanner.plan(net,listOf("los-heroes","republica"),false,MetroRestrictions())!!)
         repo.begin(id,repo.snapshot().journeys.single().row.revision,metroTime(compose.activity))
@@ -35,9 +35,16 @@ class MetroCompactButtonUiTest {
         compose.onNodeWithText("Los Héroes").performClick()
         compose.onNodeWithText("Estoy aquí").assertExists()
         val button=compose.onNodeWithTag("metro-confirm-location").fetchSemanticsNode().boundsInRoot
-        val dialog=compose.onNode(isDialog()).fetchSemanticsNode().boundsInRoot
+        val correction=compose.onNodeWithText("Marcar favorito").fetchSemanticsNode().boundsInRoot
+        val destination=compose.onNodeWithText("Cambiar destino").fetchSemanticsNode().boundsInRoot
+        val dismiss=compose.onNodeWithTag("context-action:Cancelar").fetchSemanticsNode().boundsInRoot
         val density=compose.activity.resources.displayMetrics.density
-        assertTrue(button.height>=48*density-1);assertTrue(button.width<dialog.width-32*density)
+        assertTrue(button.height>=48*density-1)
+        compose.onNodeWithText("Corregir posición").assertDoesNotExist()
+        compose.onNodeWithText("Corrección avanzada").assertDoesNotExist()
+        assertTrue(button.width>correction.width);assertTrue(button.top>=correction.bottom)
+        assertTrue(dismiss.top>=button.bottom)
+        compose.onNodeWithTag("context-action:Llegué").assertDoesNotExist()
         compose.onNodeWithTag("metro-confirm-location").performClick()
         compose.waitUntil(15000) {runBlocking {repo.snapshot().journeys.single().data.active!!.events.any {it.kind=="CONFIRM"}}}
         val updated=repo.snapshot().journeys.single().data.active!!

@@ -25,7 +25,7 @@ internal val LocalMetroActivity=staticCompositionLocalOf<Map<String,List<MetroAc
 internal val LocalMetroPreview=staticCompositionLocalOf<Map<String,String>> {emptyMap()}
 internal object MetroActivity {
     fun status(j:MetroJourney,time:MetroTime):String {
-        val s=j.data.active ?: return if(j.data.sessions.lastOrNull()?.ended!=null) "Finalizado" else "Pendiente"
+        val s=j.data.active ?: return if(j.data.sessions.lastOrNull()?.cancelled==true) "Cancelado" else if(j.data.sessions.lastOrNull()?.ended!=null) "Finalizado" else "Pendiente"
         if(s.pausedAt!=null) return "Pausado"
         if(MetroStages.control(s).phase==MetroPhase.RIDING && MetroTracking.position(s,time).uncertain) return "Esperando confirmar posición"
         return when(MetroStages.control(s).phase) {MetroPhase.READY->if(MetroStages.control(s).transferStarted!=null) "Combinando" else "Esperando embarque";MetroPhase.ARRIVED->"Esperando continuación";MetroPhase.TRANSFERRING->"Combinando";MetroPhase.RIDING->if(MetroTracking.position(s,time).waiting!=null) "Esperando confirmar llegada" else "Activo"}

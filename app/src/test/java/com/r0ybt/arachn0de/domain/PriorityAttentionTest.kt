@@ -26,13 +26,12 @@ class PriorityAttentionTest {
         }
         assertEquals(listOf(AttentionReason.HIGH_PRIORITY),attention(node("future",Priority.HIGH,now+30*86400000L)).reasonsByNodeId.getValue("future"))
     }
-    @Test fun explicitMultipleReasonsAndConservativeMedium() {
+    @Test fun temporalReasonsRemainAndOnlyHighAddsAPriorityReason() {
         for ((due,reason) in listOf(now-1 to AttentionReason.OVERDUE,now+1000 to AttentionReason.DUE_TODAY,now+86400000 to AttentionReason.UPCOMING)) {
             for (priority in Priority.entries) {
                 val reasons=attention(node("n",priority,due)).reasonsByNodeId.getValue("n")
                 assertEquals(reason,reasons.first())
-                assertEquals(if (priority==Priority.HIGH || priority==Priority.MEDIUM) 2 else 1,reasons.size)
-                if (priority==Priority.MEDIUM) assertEquals(AttentionReason.MEDIUM_PRIORITY,reasons.last())
+                assertEquals(if (priority==Priority.HIGH) 2 else 1,reasons.size)
             }
         }
     }
@@ -69,7 +68,7 @@ class PriorityAttentionTest {
     }
     @Test fun allPriorityFiltersAndFiveWayAnd() {
         val nodes=Priority.entries.map { node(it.name,it,now) }
-        for (priority in Priority.entries) assertEquals(listOf(priority.name),NodeFilter(priority=priority).apply(nodes,emptyMap()).map { it.id })
+        for (priority in Priority.entries) assertEquals(nodes.filter {(it.priority==Priority.HIGH)==(priority==Priority.HIGH)}.map {it.id},NodeFilter(priority=priority).apply(nodes,emptyMap()).map { it.id })
         assertEquals(4,NodeFilter().apply(nodes,emptyMap()).size)
         val n=node("n",Priority.HIGH,now); val filter=NodeFilter(TemporalRange(now,now+1),"roy",CompletionFilter.PENDING,"bug",Priority.HIGH)
         assertTrue(filter.matches(n,setOf("roy"),tagIds=setOf("bug")))

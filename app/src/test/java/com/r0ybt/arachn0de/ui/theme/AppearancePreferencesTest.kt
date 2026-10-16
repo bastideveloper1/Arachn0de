@@ -14,9 +14,9 @@ import org.robolectric.annotation.Config
 @Config(sdk = [28], application = Application::class)
 class AppearancePreferencesTest {
     private val storage get() = RuntimeEnvironment.getApplication().getSharedPreferences(AppearancePreferences.FILE, 0)
-    @Test fun exactlyFiveThemesAndThreeSizesDefaultToCurrentAppearance() {
+    @Test fun exactlySixThemesAndThreeSizesDefaultToCurrentAppearance() {
         storage.edit().clear().commit()
-        assertEquals(listOf("Black & White 90", "King Crimson", "Deep Moss", "Heavy Gold", "Minimalist"), AppearanceTheme.entries.map { it.label })
+        assertEquals(listOf("Black & White 90", "King Crimson", "Deep Moss", "Heavy Gold", "Azul noche", "Gris día"), AppearanceTheme.entries.map { it.label })
         assertEquals(listOf("Pequeña", "Mediana", "Grande"), AppearanceTextSize.entries.map { it.label })
         assertEquals(AppearanceSettings(), AppearancePreferences(storage).settings)
     }
@@ -56,23 +56,20 @@ class AppearancePreferencesTest {
         AppearanceTheme.entries.forEach { theme ->
             val p = theme.palette
             listOf(p.text,p.muted,p.primary,p.secondary,SemanticColors.Error,SemanticColors.HighPriority,SemanticColors.ImageLink,SemanticColors.SprintText,SemanticColors.CompletedText).forEach {
-                assertTrue("${theme.label}: $it", contrast(it,p.surface) >= 4.5f)
+                assertTrue("${theme.label}: $it", contrast(p.semantic(it),p.surface) >= 4.5f)
             }
             assertTrue(contrast(p.onSolidPrimary,p.solidPrimary) >= 4.5f)
-            assertEquals(SemanticColors.Error, p.materialColors().error)
+            assertEquals(p.semantic(SemanticColors.Error), p.materialColors().error)
             assertNotEquals(p.primary, SemanticColors.Error); assertNotEquals(p.secondary, SemanticColors.Error)
             if (theme != AppearanceTheme.Arachn0de) assertNotEquals(p.secondary, SemanticColors.HighPriority)
             assertEquals(Color(0xFF83CFFF), SemanticColors.ImageLink)
             assertEquals(BlackWhite90.Text, SemanticColors.SprintDoing)
         }
     }
-    @Test fun minimalistHasNoDecorativeColorInPaletteOrMaterialSurfaces() {
-        val p = AppearanceTheme.Minimalist.palette
-        val colors = listOf(p.background,p.middle,p.end,p.scrim,p.surface,p.raised,p.text,p.muted,p.primary,p.secondary,p.solidPrimary,p.outline,p.controls,p.selection,p.accentSurface)
-        val scheme = p.materialColors()
-        (colors + listOf(scheme.primary,scheme.secondary,scheme.tertiary,scheme.surfaceContainer,scheme.surfaceContainerHigh,scheme.surfaceContainerLow,scheme.surfaceContainerHighest,scheme.surfaceTint,scheme.primaryFixed,scheme.secondaryFixed)).forEach {
-            assertEquals(it.red, it.green, .0001f); assertEquals(it.red, it.blue, .0001f)
-        }
+    @Test fun dayGreyHasNoPureWhiteSurfaceOrDefaultViolet() {
+        val p=AppearanceTheme.DayGrey.palette;val scheme=p.materialColors()
+        listOf(p.background,p.surface,p.raised,p.controls,p.selection,p.accentSurface,scheme.background,scheme.surface,scheme.surfaceContainer,scheme.surfaceContainerHigh,scheme.surfaceContainerLowest).forEach {assertNotEquals(Color.White,it)}
+        assertTrue(p.light);assertEquals(p.primary,scheme.primary);assertEquals(p.secondary,scheme.secondary)
     }
     @Test fun blackWhite90UsesSoftNeutralTokensAndKeepsExistingPreferenceKey() {
         val p=AppearanceTheme.Arachn0de.palette

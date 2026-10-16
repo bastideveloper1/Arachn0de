@@ -115,6 +115,10 @@ private fun NavigatorRoot(title: String, subtitle: String, isCurrent: Boolean, t
                     )
                     Spacer(Modifier.width(10.dp))
                 }
+                if (tag == "navigator-project") {
+                    OfficialIcon(R.drawable.bw90_project,"Núcleo",size=36.dp)
+                    Spacer(Modifier.width(10.dp))
+                }
                 Column(modifier = Modifier.weight(1f)) {
                     Text(title, color = Arachn0deColors.TextPrimary, maxLines = 2, overflow = TextOverflow.Ellipsis)
                     Text(subtitle, color = Arachn0deColors.TextSecondary, fontSize = 11.sp)

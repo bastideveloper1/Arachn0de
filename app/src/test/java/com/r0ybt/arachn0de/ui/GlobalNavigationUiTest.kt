@@ -44,11 +44,22 @@ class GlobalNavigationUiTest {
     private fun pump() {org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle();androidx.compose.runtime.snapshots.Snapshot.sendApplyNotifications();compose.mainClock.advanceTimeByFrame()}
     private fun await(text:String)=compose.waitUntil(15000) {pump();compose.onAllNodesWithText(text).fetchSemanticsNodes().isNotEmpty()}
     private fun click(text:String) {
-        val section=when(text) {"Favoritos","Avisos","Calendario","Obligaciones","Recurrencias"->"Seguimiento";"Personas","Tecnologías","Etiquetas"->"Recursos";"Seguridad","Respaldo","Apariencia"->"Ajustes";else->null}
+        val section=when(text) {"Favoritos","Avisos","Calendario","Obligaciones","Recurrencias"->"Seguimiento";"Personas","Tecnologías","Etiquetas"->"Recursos";"Seguridad","Respaldo","Diseño"->"Ajustes";else->null}
         if(section!=null && compose.onAllNodesWithText(text).fetchSemanticsNodes().isEmpty()) compose.onNodeWithText(section).performScrollTo().performClick()
         await(text);val node=compose.onNodeWithText(text);if(runCatching {node.assertIsDisplayed()}.isFailure) node.performScrollTo();node.performClick()}
     private fun menu() {compose.onNodeWithContentDescription("Abrir menú").performClick()}
     private fun mount() {compose.runOnUiThread {compose.activity.setContent {Arachn0deTheme {AppRoot(app.projectRepository,app.nodeRepository)}}}}
+    @Test fun metroStatisticsAreInSettingsAndReturnWithoutChangingTheStore() {
+        runBlocking {app.projectRepository.createProject("Inicio")}
+        val before=runBlocking {app.metroRepository.snapshot()}
+        mount();await("Inicio");menu()
+        compose.onNodeWithText("Estadísticas de Metro").assertDoesNotExist()
+        compose.onNodeWithText("Ajustes").performScrollTo().performClick()
+        compose.onNodeWithText("Estadísticas de Metro").performScrollTo().performClick()
+        await("Todavía no hay rutas ni mediciones guardadas.")
+        compose.onNodeWithContentDescription("Volver").performClick();await("Inicio")
+        assertEquals(before,runBlocking {app.metroRepository.snapshot()})
+    }
     @Test fun recurrencesAreOnlyInTrackingAndKeepTheirExistingDialog() {
         runBlocking {app.projectRepository.createProject("Raíz")}
         mount();await("Raíz")
@@ -111,7 +122,7 @@ class GlobalNavigationUiTest {
         }}}
         await("Raíz");menu()
         for(section in listOf("Seguimiento","Recursos","Ajustes")) compose.onNodeWithText(section).performScrollTo().performClick()
-        for(label in listOf("Buscar","Favoritos","Proyectos","Avisos","Calendario","Obligaciones","Personas","Tecnologías","Etiquetas","Metro","Seguridad","Respaldo","Captura rápida","Apariencia","Acerca de","Juego")) compose.onAllNodesWithText(label).assertCountEquals(1)
+        for(label in listOf("Buscar","Favoritos","Proyectos","Avisos","Calendario","Obligaciones","Personas","Tecnologías","Etiquetas","Metro","Seguridad","Respaldo","Captura rápida","Diseño","Acerca de","Juego")) compose.onAllNodesWithText(label).assertCountEquals(1)
         click("Seguridad");assertEquals(1,settings);compose.onNodeWithTag("navigation-drawer").assertDoesNotExist()
         menu();click("Respaldo");await("Backup y restauración")
         compose.onNodeWithText("Respaldos").assertExists()

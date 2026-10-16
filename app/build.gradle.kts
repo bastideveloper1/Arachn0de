@@ -14,13 +14,20 @@ plugins {
     alias(libs.plugins.androidx.room)
 }
 
-// Values come only from the environment or the user's external Gradle properties.
+// Values come from external settings or Android Studio's signed-APK wizard, never source files.
 val releaseCredentialNames = listOf(
     "ARACHNODE_KEYSTORE_PATH", "ARACHNODE_KEYSTORE_PASSWORD",
     "ARACHNODE_KEY_ALIAS", "ARACHNODE_KEY_PASSWORD",
 )
+val studioSigningProperties = mapOf(
+    "ARACHNODE_KEYSTORE_PATH" to "android.injected.signing.store.file",
+    "ARACHNODE_KEYSTORE_PASSWORD" to "android.injected.signing.store.password",
+    "ARACHNODE_KEY_ALIAS" to "android.injected.signing.key.alias",
+    "ARACHNODE_KEY_PASSWORD" to "android.injected.signing.key.password",
+)
 val releaseCredentials = releaseCredentialNames.associateWith { name ->
-    providers.environmentVariable(name).orElse(providers.gradleProperty(name)).orNull
+    providers.gradleProperty(studioSigningProperties.getValue(name))
+        .orElse(providers.environmentVariable(name)).orElse(providers.gradleProperty(name)).orNull
 }
 
 abstract class ValidateReleaseSigning : DefaultTask() {
@@ -65,8 +72,8 @@ android {
         applicationId = "com.r0ybt.arachn0de"
         minSdk = 24
         targetSdk = 36
-        versionCode = 14
-        versionName = "0.4.1"
+        versionCode = 17
+        versionName = "0.4.2"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }

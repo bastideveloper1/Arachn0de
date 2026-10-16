@@ -39,7 +39,7 @@ open class Arachn0deApplication:Application() {
                         catch(_:Exception) { android.util.Log.w("Storage","Limpieza pendiente; se reintentará.") }
                     }
                     active.scope.launch {
-                        active.database.invalidationTracker.createFlow("persons","person_photos","technologies","project_photos","attachment_files","node_attachments","project_attachments")
+                        active.database.invalidationTracker.createFlow("persons","person_photos","person_memories","person_memory_images","technologies","project_photos","attachment_files","node_attachments","project_attachments")
                             .debounce(500).catch { failure ->
                                 if(failure is CancellationException) throw failure
                                 android.util.Log.w("Storage","Observación interrumpida; recuperación pendiente.")

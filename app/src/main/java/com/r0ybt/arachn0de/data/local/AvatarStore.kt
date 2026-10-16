@@ -21,6 +21,7 @@ open class AvatarStore(context: Context, private val directoryName: String = "av
         require(name.matches(Regex("[a-f0-9-]{36}\\.png")))
         return File(directory, name)
     }
+    internal fun privateRoot():File=context.filesDir.canonicalFile
     fun exists(name: String) = file(name).isFile
     fun read(name: String): Bitmap? {
         val target=file(name)
@@ -31,6 +32,23 @@ open class AvatarStore(context: Context, private val directoryName: String = "av
         return SecureFiles.decoded(target,BitmapFactory.Options().apply {inSampleSize=sample})
     }
     fun readThumbnail(name: String, maxDimension:Int=96): Bitmap? = if(directoryName=="project-photos") ProjectThumbnailCache.read(context,file(name),maxDimension) else PrivateImageCache.read(file(name),maxDimension)
+    /** Decode for the actual square crop, including zoom and portrait/panorama aspect. */
+    fun readFramedThumbnail(name:String,side:Int,zoom:Float):Bitmap? {
+        val source=file(name)
+        val bounds=BitmapFactory.Options().apply {inJustDecodeBounds=true}
+        SecureFiles.decoded(source,bounds)
+        if(bounds.outWidth<=0 || bounds.outHeight<=0) return null
+        val ratio=maxOf(bounds.outWidth,bounds.outHeight).toDouble()/minOf(bounds.outWidth,bounds.outHeight)
+        // The shared power-of-two sampler rounds down; request headroom so it never
+        // chooses a decoded short side smaller than the crop when the source permits.
+        val dimension=kotlin.math.ceil(side.coerceAtLeast(1)*zoom.coerceIn(1f,5f)*ratio*2).toInt().coerceIn(96,4096)
+        return PrivateImageCache.read(source,dimension)
+    }
+    internal fun export(name:String,destination:Uri) {
+        SecureFiles.input(file(name)).use {input->
+            requireNotNull(context.contentResolver.openOutputStream(destination,"w")).use {output->input.copyTo(output)}
+        }
+    }
     open fun delete(name: String) = lifecycle.remove(name) {
         val target = file(name)
         check(!target.exists() || target.delete())
@@ -39,11 +57,12 @@ open class AvatarStore(context: Context, private val directoryName: String = "av
     }
     internal fun cleanup(references: Set<String>, protected: Set<String>) = lifecycle.cleanup(references, protected, ::delete)
 
-    fun import(uri: Uri, checkCancelled: () -> Unit = {}): String {
+    fun import(uri:Uri,checkCancelled:()->Unit):String=import(uri,sourceFile=null,checkCancelled=checkCancelled)
+    fun import(uri: Uri, sourceFile:File?=null, checkCancelled: () -> Unit = {}): String {
         val inputFile = File.createTempFile("import-", ".tmp", directory)
         var outputFile: File? = null
         try {
-            context.contentResolver.openInputStream(uri).use { input ->
+            (sourceFile?.let {SecureFiles.input(it)} ?: context.contentResolver.openInputStream(uri)).use { input ->
                 requireNotNull(input) { "Image unavailable" }
                 SecureFiles.output(inputFile).use { output ->
                     val buffer = ByteArray(8192)

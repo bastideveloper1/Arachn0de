@@ -8,6 +8,5 @@
         <item name="android:windowSplashScreenBackground">@color/arachn0de_background</item>
         <item name="android:windowSplashScreenIconBackgroundColor">@color/arachn0de_background</item>
         <item name="android:windowSplashScreenAnimatedIcon">@drawable/ic_launcher_foreground</item>
-        <item name="android:windowSplashScreenBrandingImage">@drawable/startup_wordmark</item>
     </style>
 </resources>

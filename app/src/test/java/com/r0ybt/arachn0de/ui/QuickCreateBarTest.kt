@@ -15,6 +15,7 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 
+@org.robolectric.annotation.GraphicsMode(org.robolectric.annotation.GraphicsMode.Mode.NATIVE)
 @RunWith(RobolectricTestRunner::class)
 @Config(application=android.app.Application::class,sdk=[28],qualifiers="w480dp-h800dp")
 class QuickCreateBarTest {
@@ -49,19 +50,47 @@ class QuickCreateBarTest {
         val draft=EditorDraft(null,null,"Título","",dueAt=123456789L).apply {defaultDueMinute=18*60+30}
         var transferred:EditorDraft?=null;var saves=0;var cancels=0
         mount(draft,save={saves++},cancel={cancels++},full={transferred=draft})
+        val cancelBounds=compose.onNodeWithContentDescription("Cancelar creación").assertIsDisplayed().fetchSemanticsNode().boundsInRoot
+        val saveBounds=compose.onNodeWithTag("quick-create-save").assertIsDisplayed().fetchSemanticsNode().boundsInRoot
+        assertTrue(cancelBounds.right<saveBounds.left)
+        assertEquals(cancelBounds.center.y,saveBounds.center.y,1f)
         compose.onNodeWithContentDescription("Formulario completo").performClick()
         assertSame(draft,transferred);assertEquals(123456789L,transferred!!.activeDue)
         assertEquals(18*60+30,transferred!!.defaultDueMinute)
         compose.onNodeWithContentDescription("Cancelar creación").performClick()
         assertEquals(1,cancels);assertEquals(0,saves)
     }
+    @Test fun lowerRecurrencePanelReturnsToTheSameQuickDraft() {
+        val draft=EditorDraft(null,"layer-id","Borrador conservado","")
+        mount(draft)
+        compose.onNodeWithContentDescription("Repetir").performClick();await("Listo")
+        compose.onNodeWithText("Recurrencia: Diaria").performClick()
+        compose.onNodeWithText("Ninguna").performClick()
+        compose.onNodeWithText("Listo").assertIsDisplayed().performClick()
+        compose.onNodeWithTag("quick-create-title").assert(hasText("Borrador conservado"))
+        assertEquals("layer-id",draft.parentId);assertEquals("NONE",draft.recurrenceFrequency)
+        compose.onNodeWithContentDescription("Cancelar creación").assertIsDisplayed()
+    }
     @Test fun dueCanBeRemovedUsingExistingSelector() {
         val draft=EditorDraft(null,null,"Con fecha","",dueAt=123456789L)
         mount(draft)
-        compose.onNodeWithText("Vence ✓").performClick();await("Listo")
+        compose.onNodeWithText("Vence ✓").performClick();await("Elegir hora")
+        compose.onNodeWithText("Cancelar").performClick();await("Listo")
         compose.onNodeWithText("Quitar Vencimiento").performClick()
         compose.onNodeWithText("Listo").performClick()
         compose.runOnIdle {assertNull(draft.activeDue)}
+    }
+    @Test fun dueOpensTheCalendarDirectlyAndAppliesDateAndTimeToTheSameDraft() {
+        val draft=EditorDraft(null,null,"Con vencimiento","").apply {defaultDueMinute=18*60+30}
+        mount(draft)
+        compose.onNodeWithContentDescription("Vence").performClick();await("Elegir hora")
+        compose.onNodeWithText("Fecha de Vencimiento").assertExists()
+        compose.onNodeWithText("Elegir hora").performClick();await("Aplicar")
+        compose.onNodeWithText("Aplicar").performClick();await("Listo")
+        assertNotNull(draft.activeDue)
+        val date=java.util.Calendar.getInstance().apply {timeInMillis=draft.activeDue!!}
+        assertEquals(18,date.get(java.util.Calendar.HOUR_OF_DAY));assertEquals(30,date.get(java.util.Calendar.MINUTE))
+        compose.onNodeWithText("Listo").performClick();compose.onNodeWithContentDescription("Vence activado").assertExists()
     }
     @Test fun recurrenceRequiresExplicitAnchorAndCanBeDisabled() {
         val draft=EditorDraft(null,null,"Recurrente","")

@@ -27,7 +27,8 @@ import java.util.TimeZone
 import java.util.concurrent.atomic.AtomicLong
 
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk = [28])
+@Config(application=com.r0ybt.arachn0de.security.LegacyUiTestApplication::class,sdk = [28])
+@org.robolectric.annotation.GraphicsMode(org.robolectric.annotation.GraphicsMode.Mode.NATIVE)
 class TaskDatesUiTest {
     @get:Rule val compose = createComposeRule()
     private val fixed = 1_800_000_000_000L

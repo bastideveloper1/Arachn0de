@@ -1,11 +1,17 @@
 package com.r0ybt.arachn0de.security
 
 import androidx.compose.foundation.layout.*
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.Screenshot
+import androidx.compose.material.icons.filled.Key
+import androidx.compose.material.icons.filled.ChevronRight
+import androidx.compose.material.icons.filled.Backup
+import com.r0ybt.arachn0de.ui.theme.Arachn0deColors
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.Alignment
-import com.r0ybt.arachn0de.ui.theme.BlackWhite90
 import com.r0ybt.arachn0de.ui.theme.materialColors
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -27,8 +33,8 @@ import kotlinx.coroutines.launch
     var busy by remember { mutableStateOf(false) };var error by remember { mutableStateOf<String?>(null) }
     val configured=runCatching { manager.configured }
     // Scope the locked palette to this screen; shared theme and security controls stay unchanged.
-    MaterialTheme(colorScheme=BlackWhite90.palette.materialColors()) {
-        Surface(Modifier.fillMaxSize(),color=BlackWhite90.Background,contentColor=BlackWhite90.Text) {
+    MaterialTheme(colorScheme=com.r0ybt.arachn0de.ui.theme.LocalAppearancePalette.current.materialColors()) {
+        Surface(Modifier.fillMaxSize(),color=Arachn0deColors.Background,contentColor=Arachn0deColors.TextPrimary) {
             BoxWithConstraints(Modifier.fillMaxSize()) {
                 // AppSafeArea already consumes system/IME insets. Center when there is room and scroll otherwise.
                 Box(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).heightIn(min=maxHeight).padding(20.dp),contentAlignment=Alignment.Center) {
@@ -42,7 +48,7 @@ import kotlinx.coroutines.launch
                             PasswordField("Contraseña",password) {password=it;error=null}
                             if(!configured.getOrThrow()) PasswordField("Confirmar contraseña",confirm) {confirm=it;error=null}
                             Button(modifier=Modifier.fillMaxWidth().heightIn(min=48.dp),shape=RoundedCornerShape(8.dp),elevation=null,
-                                colors=ButtonDefaults.buttonColors(containerColor=BlackWhite90.Raised,contentColor=BlackWhite90.Text),
+                                colors=ButtonDefaults.buttonColors(containerColor=Arachn0deColors.SurfaceRaised,contentColor=Arachn0deColors.TextPrimary),
                                 enabled=!busy && password.isNotEmpty(),onClick={
                                 if(!configured.getOrThrow() && (password.length<8 || password!=confirm)) error="Confirma la misma contraseña de al menos ocho caracteres."
                                 else {
@@ -50,7 +56,7 @@ import kotlinx.coroutines.launch
                                     scope.launch {
                                         try { if(configured.getOrThrow()) manager.unlock(secret) else manager.setup(secret) }
                                         catch(cancelled:kotlinx.coroutines.CancellationException) { throw cancelled }
-                                        catch(_:Exception) { error=if(manager.configured) "No se pudo abrir el almacén. Comprueba la contraseña o reintenta la recuperación pendiente." else "No se pudo completar la migración. Los originales se conservan; reintenta con la misma contraseña y espacio suficiente." }
+                                        catch(failure:Exception) { error=if(failure is VaultInitialDataException) "No se pudieron preparar los Núcleos. Reintenta el desbloqueo." else if(manager.configured) "No se pudo abrir el almacén. Comprueba la contraseña o reintenta la recuperación pendiente." else "No se pudo completar la migración. Los originales se conservan; reintenta con la misma contraseña y espacio suficiente." }
                                         finally { secret.fill('\u0000');busy=false }
                                     }.invokeOnCompletion { secret.fill('\u0000') }
                                 }
@@ -66,55 +72,127 @@ import kotlinx.coroutines.launch
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable internal fun SecurityControls(manager:VaultManager,session:VaultSession,showLock:Boolean=true,onLockReady:(com.r0ybt.arachn0de.ui.ProjectLockAction)->Unit={},showChrome:Boolean=true,onSettingsReady:(()->Unit)->Unit={},onPageReady:((@Composable (()->Unit)->Unit)->Unit)={}) {
     val captureAllowed by manager.captures.allowed.collectAsState()
     val scope=rememberCoroutineScope();var settings by remember {mutableStateOf(false)}
+    var configuration by remember {mutableStateOf<String?>(null)}
     var action by remember {mutableStateOf<String?>(null)}
     var old by remember {mutableStateOf("")};var next by remember {mutableStateOf("")};var confirm by remember {mutableStateOf("")}
     var busy by remember {mutableStateOf(false)};var notice by remember {mutableStateOf<String?>(null)}
     val preferences=remember(session) {session.context.getSharedPreferences("security_preferences",0)}
-    var timeout by remember(session) {mutableLongStateOf(preferences.getLong("background_timeout",30000L))}
+    var persistentCapture by remember {mutableStateOf(false)}
+    var persistentCaptureAllowed by remember(session) {mutableStateOf(preferences.getBoolean(ScreenCapturePreference.KEY,false))}
+    var timeout by remember(session) {mutableLongStateOf(AutoLockPreference.read(preferences))}
+    DisposableEffect(preferences,session) {
+        val listener=android.content.SharedPreferences.OnSharedPreferenceChangeListener {_,key->
+            if(key==AutoLockPreference.KEY) scope.launch {timeout=AutoLockPreference.read(preferences)}
+            if(key==ScreenCapturePreference.KEY && session.primary) {
+                persistentCaptureAllowed=preferences.getBoolean(ScreenCapturePreference.KEY,false)
+                if(persistentCaptureAllowed) scope.launch {manager.restoreCapturePreference(session)}
+                else scope.launch {
+                    if(manager.current.value===session) manager.captures.protectBeforeTransition()
+                }
+            }
+        }
+        preferences.registerOnSharedPreferenceChangeListener(listener)
+        if(session.primary) scope.launch {manager.restoreCapturePreference(session)}
+        onDispose {preferences.unregisterOnSharedPreferenceChangeListener(listener)}
+    }
     val lockAction=remember(busy,manager,scope) {com.r0ybt.arachn0de.ui.ProjectLockAction(!busy) {manager.captures.revoke();scope.launch {manager.lock()}}}
-    val openSettings=remember { {settings=true} }
+    val openSettings=remember { {configuration=null;settings=true} }
     SideEffect {onLockReady(lockAction);onSettingsReady(openSettings)}
     if(showChrome && !settings) Row(Modifier.fillMaxWidth().padding(horizontal=8.dp),horizontalArrangement=Arrangement.End) {
-        TextButton(onClick={settings=true}) {Text("Seguridad")}
+        TextButton(onClick={configuration=null;settings=true}) {Text("Seguridad y respaldos")}
         if(showLock) TextButton(enabled=!busy,onClick=lockAction.run) {com.r0ybt.arachn0de.ui.OfficialIcon(com.r0ybt.arachn0de.R.drawable.official_bloquear); Text("Bloquear")}
     }
-    if(showChrome && !settings && session.primary) Text(if(captureAllowed) "Capturas permitidas en esta sesión" else "Capturas bloqueadas",Modifier.padding(horizontal=12.dp),style=MaterialTheme.typography.labelSmall)
+    if(showChrome && !settings && session.primary) Text(if(captureAllowed) {if(persistentCaptureAllowed) "Capturas permitidas hasta volver a activar" else "Capturas permitidas en esta sesión"} else "Capturas bloqueadas",Modifier.padding(horizontal=12.dp),style=MaterialTheme.typography.labelSmall)
     val page: @Composable (()->Unit)->Unit = remember(manager,session) { {close->
-        androidx.activity.compose.BackHandler(enabled=!busy,onBack=close)
-        Surface(Modifier.fillMaxSize().testTag("security-screen")) {
+        val restored=com.r0ybt.arachn0de.ui.LocalBackupsRestored.current
+        fun closePage() {configuration=null;close()}
+        fun back() {if(configuration=="passwords" || configuration=="backups") configuration=null else closePage()}
+        androidx.activity.compose.BackHandler(enabled=!busy,onBack=::back)
+        Surface(Modifier.fillMaxSize().testTag("security-screen"),color=Arachn0deColors.Background) {
             Column(Modifier.fillMaxSize().padding(horizontal=12.dp,vertical=10.dp)) {
-                com.r0ybt.arachn0de.ui.HeaderBar({},title="Seguridad",onBack={if(!busy) close()},trailingAction={TextButton(enabled=!busy,onClick=close) {Text("Cerrar")}})
-                Column(Modifier.weight(1f).fillMaxWidth().verticalScroll(androidx.compose.foundation.rememberScrollState()),verticalArrangement=Arrangement.spacedBy(8.dp)) {
-        Text("Bloqueo al pasar a segundo plano")
-        for((value,label) in listOf(0L to "Inmediato",30000L to "30 segundos",60000L to "1 minuto",300000L to "5 minutos")) {
-            TextButton(onClick={preferences.edit().putLong("background_timeout",value).apply();timeout=value}) {Text((if(timeout==value) "✓ " else "")+label)}
-        }
-        if(session.primary) Text("Capturas de pantalla",style=MaterialTheme.typography.titleSmall)
-        if(session.primary) Text(if(captureAllowed) "Capturas permitidas en esta sesión" else "Capturas bloqueadas")
-        if(session.primary) TextButton(enabled=!busy,onClick={
-            val wasAllowed=captureAllowed
-            manager.captures.revoke()
-            if(!wasAllowed) {action="captures";notice=null}
-        }) {Text(if(captureAllowed) "Bloquear capturas de pantalla" else "Permitir capturas de pantalla")}
-        Text("Contraseñas",style=MaterialTheme.typography.titleSmall)
-        TextButton(onClick={action="change";notice=null}) {Text("Cambiar contraseña")}
-        if(session.primary && manager.canCreateSecondary) TextButton(onClick={action="secondary";notice=null}) {Text("Configurar contraseña señuelo")}
-        Text("No hay recuperación sin contraseña. Los backups necesitan su propia contraseña. El bloqueo cierra el acceso al seguimiento Metro; su estimación guardada se recupera al desbloquear.")
-        notice?.let {Text(it)}
-
+                if(configuration!="backups") com.r0ybt.arachn0de.ui.HeaderBar({},title=if(configuration=="passwords") "Contraseñas" else "Seguridad y respaldos",onBack={if(!busy) back()},trailingAction={TextButton(enabled=!busy,onClick=::closePage) {Text("Cerrar")}})
+                if(configuration=="backups") Box(Modifier.weight(1f)) {com.r0ybt.arachn0de.ui.BackupsScreen(onBack={configuration=null},onRestored={configuration=null;close();restored()})}
+                else if(configuration=="passwords") Column(Modifier.fillMaxWidth().weight(1f).verticalScroll(rememberScrollState()),verticalArrangement=Arrangement.spacedBy(8.dp)) {
+                    TextButton(enabled=!busy,onClick={action="change";notice=null}) {Text("Cambiar contraseña")}
+                    if(session.primary && manager.canCreateSecondary) TextButton(enabled=!busy,onClick={action="secondary";notice=null}) {Text("Configurar contraseña señuelo")}
+                    Text("No hay recuperación sin contraseña. Los backups necesitan su propia contraseña.")
+                    notice?.let {Text(it)}
+                } else {
+                    Text("El bloqueo cierra el acceso al seguimiento Metro; su estimación guardada se recupera al desbloquear.",style=MaterialTheme.typography.bodySmall,color=Arachn0deColors.TextSecondary)
+                    BoxWithConstraints(Modifier.weight(1f).fillMaxWidth()) {
+                        Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).heightIn(min=maxHeight).padding(bottom=8.dp),verticalArrangement=Arrangement.spacedBy(8.dp,Alignment.Bottom)) {
+                            com.r0ybt.arachn0de.ui.CleanupSettings(session.cleanup)
+                            Text("Seguridad",style=MaterialTheme.typography.labelLarge,color=Arachn0deColors.TextSecondary)
+                            Card(onClick={configuration="timeout"},enabled=!busy,modifier=Modifier.fillMaxWidth().testTag("security-timeout"),colors=CardDefaults.cardColors(containerColor=Arachn0deColors.Surface)) {
+                                Row(Modifier.fillMaxWidth().heightIn(min=64.dp).padding(12.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(12.dp)) {
+                                    Icon(Icons.Default.Lock,null,Modifier.size(20.dp));Column(Modifier.weight(1f)) {Text("Bloqueo automático");Text(AutoLockPreference.options.firstOrNull {it.first==timeout}?.second ?: "Inmediato",style=MaterialTheme.typography.bodySmall,color=Arachn0deColors.TextSecondary)};Icon(Icons.Default.ChevronRight,null,Modifier.size(20.dp))
+                                }
+                            }
+                            Card(onClick={configuration="captures"},enabled=!busy && session.primary,modifier=Modifier.fillMaxWidth().testTag("security-captures"),colors=CardDefaults.cardColors(containerColor=Arachn0deColors.Surface)) {
+                                Row(Modifier.fillMaxWidth().heightIn(min=64.dp).padding(12.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(12.dp)) {
+                                    Icon(Icons.Default.Screenshot,null,Modifier.size(20.dp));Column(Modifier.weight(1f)) {Text("Capturas de pantalla");Text(if(captureAllowed) {if(persistentCaptureAllowed) "Permitidas hasta volver a activar" else "Permitidas en esta sesión"} else "Bloqueadas",style=MaterialTheme.typography.bodySmall,color=Arachn0deColors.TextSecondary)};Icon(Icons.Default.ChevronRight,null,Modifier.size(20.dp))
+                                }
+                            }
+                            Card(onClick={configuration="passwords"},enabled=!busy,modifier=Modifier.fillMaxWidth().testTag("security-passwords"),colors=CardDefaults.cardColors(containerColor=Arachn0deColors.Surface)) {
+                                Row(Modifier.fillMaxWidth().heightIn(min=64.dp).padding(12.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(12.dp)) {
+                                    Icon(Icons.Default.Key,null,Modifier.size(20.dp));Text("Contraseñas",Modifier.weight(1f));Icon(Icons.Default.ChevronRight,null,Modifier.size(20.dp))
+                                }
+                            }
+                            Text("Respaldos",style=MaterialTheme.typography.labelLarge,color=Arachn0deColors.TextSecondary)
+                            Card(onClick={configuration="backups"},enabled=!busy,modifier=Modifier.fillMaxWidth().testTag("security-backups"),colors=CardDefaults.cardColors(containerColor=Arachn0deColors.Surface)) {
+                                Row(Modifier.fillMaxWidth().heightIn(min=64.dp).padding(12.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(12.dp)) {
+                                    Icon(Icons.Default.Backup,null,Modifier.size(20.dp));Text("Gestionar respaldos",Modifier.weight(1f));Icon(Icons.Default.ChevronRight,null,Modifier.size(20.dp))
+                                }
+                            }
+                            notice?.let {Text(it,style=MaterialTheme.typography.bodySmall)}
+                        }
+                    }
                 }
             }
         }
     }}
+    if(configuration=="timeout" || configuration=="captures") ModalBottomSheet(onDismissRequest={if(!busy) configuration=null},containerColor=Arachn0deColors.Surface) {
+        Column(Modifier.fillMaxWidth().padding(horizontal=16.dp).padding(bottom=16.dp).verticalScroll(rememberScrollState()),verticalArrangement=Arrangement.spacedBy(8.dp)) {
+            if(configuration=="timeout") {
+                Text("Bloqueo automático",style=MaterialTheme.typography.titleMedium)
+                for((value,label) in AutoLockPreference.options) {
+                    TextButton(enabled=!busy,onClick={preferences.edit().putLong(AutoLockPreference.KEY,value).apply();timeout=value;configuration=null},modifier=Modifier.fillMaxWidth().heightIn(min=48.dp)) {Text((if(timeout==value) "✓ " else "")+label)}
+                }
+            } else if(session.primary) {
+                Text("Capturas de pantalla",style=MaterialTheme.typography.titleMedium)
+                Text(if(captureAllowed) {if(persistentCaptureAllowed) "Capturas permitidas hasta volver a activar" else "Capturas permitidas en esta sesión"} else "Capturas bloqueadas")
+                TextButton(enabled=!busy,onClick={
+                    val wasAllowed=captureAllowed
+                    manager.captures.revoke()
+                    configuration=null
+                    if(!wasAllowed) {persistentCapture=false;action="captures";notice=null}
+                    else {
+                        busy=true;notice=null
+                        scope.launch {
+                            try {manager.blockCaptures(session)}
+                            catch(cancelled:kotlinx.coroutines.CancellationException) {throw cancelled}
+                            catch(_:Exception) {notice="No se pudo guardar el bloqueo de capturas. Reintenta."}
+                            finally {busy=false}
+                        }
+                    }
+                },modifier=Modifier.fillMaxWidth().heightIn(min=48.dp)) {Text(if(captureAllowed) "Bloquear capturas de pantalla" else "Permitir capturas de pantalla")}
+            }
+        }
+    }
     SideEffect {onPageReady(page)}
     if(settings) page {if(!busy) settings=false}
     action?.let { command ->
         fun clear() {old="";next="";confirm="";action=null}
         AlertDialog(onDismissRequest={if(!busy) clear()},properties=androidx.compose.ui.window.DialogProperties(securePolicy=androidx.compose.ui.window.SecureFlagPolicy.SecureOn),title={Text(if(command=="captures") "Permitir capturas de pantalla" else if(command=="change") "Cambiar contraseña" else "Contraseña señuelo")},text={Column(verticalArrangement=Arrangement.spacedBy(8.dp)) {
             PasswordField(if(command=="captures") "Contraseña principal" else "Contraseña actual",old) {old=it}
+            if(command=="captures") {
+                TextButton(enabled=!busy,onClick={persistentCapture=false}) {Text((if(!persistentCapture) "✓ " else "")+"Esta sesión")}
+                TextButton(enabled=!busy,onClick={persistentCapture=true}) {Text("Hasta volver a activar")}
+            }
             if(command!="captures") {
                 PasswordField("Nueva contraseña",next) {next=it}
                 PasswordField("Confirmar nueva contraseña",confirm) {confirm=it}
@@ -126,8 +204,8 @@ import kotlinx.coroutines.launch
                 val previous=old.toCharArray();val replacement=next.toCharArray();clear();busy=true;notice=null
                 scope.launch {
                     try {
-                        if(command=="captures") manager.authorizeCaptures(session,previous) else if(command=="change") manager.changePassword(previous,replacement) else manager.createSecondary(previous,replacement)
-                        notice=if(command=="captures") "Capturas permitidas en esta sesión." else "Configuración guardada."
+                        if(command=="captures") manager.authorizeCaptures(session,previous,persistentCapture) else if(command=="change") manager.changePassword(previous,replacement) else manager.createSecondary(previous,replacement)
+                        notice=if(command=="captures") {if(persistentCapture) "Capturas permitidas hasta volver a activar." else "Capturas permitidas en esta sesión."} else "Configuración guardada."
                     } catch(cancelled:kotlinx.coroutines.CancellationException) {throw cancelled}
                     catch(_:Exception) {notice=if(command=="captures") "No se autorizaron las capturas. Comprueba la contraseña y reintenta." else "No se pudo guardar. Verifica la contraseña actual y usa una contraseña distinta para cada almacén."}
                     finally {previous.fill('\u0000');replacement.fill('\u0000');busy=false}

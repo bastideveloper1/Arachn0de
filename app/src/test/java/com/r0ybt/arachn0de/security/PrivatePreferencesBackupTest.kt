@@ -16,6 +16,27 @@ import org.robolectric.annotation.Config
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk=[28],application=android.app.Application::class)
 class PrivatePreferencesBackupTest {
+    @Test fun persistentCapturePreferenceRoundTripsAndInvalidOrHistoricalSettingsAreSafe()=runBlocking<Unit> {
+        val context=ApplicationProvider.getApplicationContext<Context>()
+        val db=Room.inMemoryDatabaseBuilder(context,Arachn0deDatabase::class.java).build()
+        try {
+            val settings=PrivatePreferenceEntity(ScreenCapturePreference.NAME,EncryptedPreferences.encode(mapOf(ScreenCapturePreference.KEY to true)))
+            db.privatePreferenceDao().save(settings)
+            val repo=BackupRepository(db,context,BackupAvatarFiles(context,BackupFixture::syncDirectory))
+            val candidate=repo.inspect(repo.create().readBytes().inputStream())
+            db.privatePreferenceDao().clear();repo.restore(candidate);repo.discard(candidate)
+            assertEquals(settings,db.privatePreferenceDao().get(settings.name))
+            val bad=BackupFixture.empty().copy(privatePreferences=listOf(settings.copy(payload=EncryptedPreferences.encode(mapOf(ScreenCapturePreference.KEY to "true")))))
+            assertTrue(runCatching {repo.restore(bad)}.isFailure)
+            assertEquals(settings,db.privatePreferenceDao().get(settings.name))
+            db.openHelper.writableDatabase.execSQL("CREATE TRIGGER fail_capture_prefs BEFORE INSERT ON private_preferences BEGIN SELECT RAISE(ABORT,'injected'); END")
+            assertTrue(runCatching {repo.restore(BackupFixture.empty().copy(privatePreferences=listOf(settings.copy(payload=EncryptedPreferences.encode(mapOf(ScreenCapturePreference.KEY to false))))))}.isFailure)
+            assertEquals(settings,db.privatePreferenceDao().get(settings.name))
+            db.openHelper.writableDatabase.execSQL("DROP TRIGGER fail_capture_prefs")
+            repo.restore(BackupJson.decode(BackupJson.encode(BackupFixture.empty())))
+            assertNull(db.privatePreferenceDao().get(settings.name))
+        } finally {db.close()}
+    }
     @Test fun v18RestoresSettingsInSameTransactionAndV17ImportsDefaults()=runBlocking {
         val context=ApplicationProvider.getApplicationContext<Context>();val db=Room.inMemoryDatabaseBuilder(context,Arachn0deDatabase::class.java).build()
         try {

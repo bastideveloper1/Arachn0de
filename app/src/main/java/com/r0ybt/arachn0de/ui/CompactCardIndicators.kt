@@ -36,20 +36,23 @@ internal data class CompactCardFacts(val people:Set<String> = emptySet(),val tec
 internal val LocalCompactCardFacts=staticCompositionLocalOf<Map<String,CompactCardFacts>> {emptyMap()}
 internal fun compactNodeFacts(node:Node,now:Long,zone:TimeZone=TimeZone.getDefault(),pendingDescendants:Boolean=false):CompactCardFacts {
     val pending=(node.isCompletable && !node.isCompleted) || (node.isStructural && pendingDescendants)
-    return CompactCardFacts(due=node.dueAt!=null,today=pending && node.dueAt?.let {CalendarDates.localDay(it,zone)==CalendarDates.localDay(now,zone)}==true,
+    // Notes retain date metadata; attention on tasks/containers requires pending work.
+    val hasDue=node.dueAt!=null && (pending || node.purpose==NodePurpose.NOTE)
+    return CompactCardFacts(due=hasDue,today=pending && node.dueAt?.let {CalendarDates.localDay(it,zone)==CalendarDates.localDay(now,zone)}==true,
         high=pending && node.effectivePriority==Priority.HIGH,
-        notes=if(node.purpose==NodePurpose.NOTE) setOf(node.id) else emptySet(),
+        notes=if(node.description.isNotBlank()) setOf(node.id) else emptySet(),
         files=if(AttachmentReferences.ids(node.description).isNotEmpty()) setOf(node.id) else emptySet(),
         deadlines=if(pending && node.dueAt?.let {it<=now+24*60*60*1000L}==true) setOf(node.id) else emptySet(),
         priorities=if(pending && node.effectivePriority==Priority.HIGH) setOf(node.id) else emptySet(),
-        dueNodes=if(node.dueAt!=null) setOf(node.id) else emptySet(),
+        dueNodes=if(hasDue) setOf(node.id) else emptySet(),
         todayNodes=if(pending && node.dueAt?.let {CalendarDates.localDay(it,zone)==CalendarDates.localDay(now,zone)}==true) setOf(node.id) else emptySet())
 }
 internal fun compactCardFacts(nodes:List<Node>,people:Map<String,List<Person>>,technologies:TechnologyState,
     metro:MetroSnapshot?,now:Long,zone:TimeZone=TimeZone.getDefault(),participation:com.r0ybt.arachn0de.data.repository.ParticipationState?=null):Map<String,CompactCardFacts> {
     val result=mutableMapOf<String,CompactCardFacts>();val byId=nodes.associateBy {it.id}
+    val pendingTaskIds=nodes.filter {it.isCompletable && !it.isCompleted}.mapTo(hashSetOf()) {it.id}
     val pendingAncestors=hashSetOf<String>()
-    nodes.filter {it.isCompletable && !it.isCompleted}.forEach {task->
+    nodes.filter {it.id in pendingTaskIds}.forEach {task->
         var parent=task.parentId?.let(byId::get)
         while(parent!=null && parent.projectId==task.projectId && pendingAncestors.add(parent.id)) parent=parent.parentId?.let(byId::get)
     }
@@ -57,7 +60,7 @@ internal fun compactCardFacts(nodes:List<Node>,people:Map<String,List<Person>>,t
     fun add(key:String,facts:CompactCardFacts) {result[key]=(result[key] ?: CompactCardFacts())+facts}
     val participantNodes=mutableMapOf<String,Set<String>>()
     participation?.records?.nodes.orEmpty().forEach {row->participantNodes[row.nodeId]=participantNodes[row.nodeId].orEmpty()+row.personId}
-    val relatedTasks=participation?.work?.records?.storyTasks.orEmpty().groupBy {it.storyId}.mapValues {(_,rows)->rows.mapTo(hashSetOf()) {it.taskId}}
+    val relatedTasks=participation?.work?.records?.storyTasks.orEmpty().groupBy {it.storyId}.mapValues {(_,rows)->rows.mapNotNullTo(hashSetOf()) {it.taskId.takeIf(pendingTaskIds::contains)}}
     val members=participation?.records?.participants.orEmpty().groupBy {it.contextId}
     participation?.work?.roots.orEmpty().forEach {root->
         val ids=members[root.id].orEmpty().mapTo(hashSetOf()) {it.personId}
@@ -70,10 +73,10 @@ internal fun compactCardFacts(nodes:List<Node>,people:Map<String,List<Person>>,t
             technologies=technologies.nodeIds[node.id].orEmpty(),tasks=relatedTasks[node.id].orEmpty(),journeys=journeys[node.id].orEmpty().mapTo(hashSetOf()) {it.row.id})
         var current:Node?=node;val visited=hashSetOf<String>()
         while(current!=null && visited.add(current.id)) {
-            add("node:${current.id}",facts.copy(tasks=facts.tasks+if(current.id!=node.id && node.purpose==NodePurpose.ACTION) setOf(node.id) else emptySet()))
+            add("node:${current.id}",facts.copy(tasks=facts.tasks+if(current.id!=node.id && node.id in pendingTaskIds) setOf(node.id) else emptySet()))
             current=current.parentId?.let(byId::get)?.takeIf {it.projectId==node.projectId}
         }
-        add("project:${node.projectId}",facts.copy(tasks=facts.tasks+if(node.purpose==NodePurpose.ACTION) setOf(node.id) else emptySet()))
+        add("project:${node.projectId}",facts.copy(tasks=facts.tasks+if(node.id in pendingTaskIds) setOf(node.id) else emptySet()))
     }
     return result
 }
@@ -88,7 +91,7 @@ internal fun cardIndicators(f:CompactCardFacts):List<CardIndicator> = buildList 
     if(f.files.isNotEmpty()) add(CardIndicator("files",Icons.Default.AttachFile,"Archivos en el contenido",IndicatorTone.CONTENT,f.files))
     if(f.due) add(CardIndicator("due",Icons.Default.DateRange,if(f.deadlines.isEmpty()) "Vencimiento" else "Vencimiento próximo o vencido",if(f.deadlines.isEmpty()) IndicatorTone.CONTENT else IndicatorTone.ALERT,if(f.deadlines.isEmpty()) f.dueNodes else f.deadlines))
     if(f.today) add(CardIndicator("today",Icons.Default.HourglassBottom,"Pendientes para hoy",IndicatorTone.ALERT,f.todayNodes))
-    if(f.high) add(CardIndicator("high",Icons.Default.LocalFireDepartment,"Prioridad alta",IndicatorTone.ALERT,f.priorities))
+    if(f.high) add(CardIndicator("high",Icons.Default.LocalFireDepartment,"Prioritario",IndicatorTone.ALERT,f.priorities))
 }
 internal val optionalAssociationIndicator=CardIndicator("associations",Icons.Default.Link,"Asociaciones opcionales",IndicatorTone.CONTENT)
 
@@ -109,22 +112,27 @@ internal fun indicatorOrigin(key:String,node:Node,nodes:Map<String,Node>):String
 internal val LocalIndicatorDirectory=staticCompositionLocalOf {IndicatorDirectory()}
 
 /** Preview is one informational row. Only the full detail owns touch targets. */
-@Composable internal fun CompactCardIndicators(key:String,fallback:CompactCardFacts=CompactCardFacts(),modifier:Modifier=Modifier,showTechnologies:Boolean=true) {
-    val facts=LocalCompactCardFacts.current[key] ?: fallback
+@Composable internal fun CompactCardIndicators(key:String,fallback:CompactCardFacts=CompactCardFacts(),modifier:Modifier=Modifier,showTechnologies:Boolean=true,hasOwnNotes:Boolean=false) {
+    val original=LocalCompactCardFacts.current[key] ?: fallback
+    val facts=original.copy(notes=original.notes+if(hasOwnNotes) setOf(key) else emptySet())
     val active=cardIndicators(facts)
     val baseline=listOf(CardIndicator("people",Icons.Default.Groups,"Personas",IndicatorTone.PEOPLE),CardIndicator("technologies",Icons.Default.Code,"Tecnologías",IndicatorTone.CONTENT),CardIndicator("notes",Icons.Default.Description,"Notas",IndicatorTone.CONTENT),CardIndicator("due",Icons.Default.Event,"Vencimiento",IndicatorTone.CONTENT))
     val signals=(baseline.map {inactive->active.firstOrNull {it.name==inactive.name} ?: inactive}+active.filter {row->baseline.none {it.name==row.name}}).filter {showTechnologies || it.name!="technologies"}
-    val metro=facts.journeys.isNotEmpty() || LocalMetroActivity.current[key].orEmpty().isNotEmpty()
-    if(signals.isEmpty() && !metro) return
+    if(signals.isEmpty()) return
     BoxWithConstraints(modifier.testTag("card-indicators:$key")) {
-        val total=signals.size+if(metro) 1 else 0
+        val total=signals.size
         val rowWidth=maxWidth
         val slots=(rowWidth.value/22f).toInt().coerceAtLeast(1)
         val overflowWidth=(12f*androidx.compose.ui.platform.LocalDensity.current.fontScale*("+$total".length)*.7f).coerceAtLeast(22f)
         val visible=if(total>slots) ((maxWidth.value-overflowWidth-6f)/22f).toInt().coerceIn(0,(slots-1).coerceAtLeast(0)) else total
         Row(horizontalArrangement=Arrangement.spacedBy(6.dp),verticalAlignment=Alignment.CenterVertically) {
-            signals.take(visible).forEach {signal->LucideIcon(signal.icon,signal.label,Modifier.size(16.dp).testTag("card-signal:$key:${signal.name}"),tint=if(active.any {it.name==signal.name}) Arachn0deColors.TextPrimary else BlackWhite90.Inactive)}
-            if(metro && visible>signals.size) Box(Modifier.size(16.dp)) {MetroActivityIndicator(key,configured=facts.journeys.isNotEmpty(),informative=true,iconSize=16.dp,iconTint=indicatorColor(IndicatorTone.CONTENT))}
+            signals.take(visible).forEach {signal->
+                val present=active.any {it.name==signal.name}
+                val iconModifier=Modifier.size(16.dp).testTag("card-signal:$key:${signal.name}")
+                val tint=cardIndicatorColor(signal.name,present)
+                if(signal.name=="notes") NoteContentIcon(present,signal.label,iconModifier,tint)
+                else LucideIcon(signal.icon,signal.label,iconModifier,tint=tint)
+            }
             if(total>visible) Text("+${total-visible}",style=MaterialTheme.typography.labelSmall,maxLines=1,overflow=TextOverflow.Clip,modifier=Modifier.widthIn(max=rowWidth).testTag("card-overflow:$key"))
         }
     }
@@ -145,14 +153,10 @@ internal val LocalIndicatorDirectory=staticCompositionLocalOf {IndicatorDirector
     var technology by remember(key) {mutableStateOf<com.r0ybt.arachn0de.data.local.TechnologyEntity?>(null)}
     var person by remember(key) {mutableStateOf<String?>(null)}
     var responsibilityPerson by remember(key) {mutableStateOf<String?>(null)}
-    val metro=facts.journeys.isNotEmpty() || LocalMetroActivity.current[key].orEmpty().isNotEmpty()
-    if(signals.isEmpty() && !metro) return
+    if(signals.isEmpty()) return
     FlowRow(modifier.then(if(fillWidth) Modifier.fillMaxWidth() else Modifier).testTag("detail-indicators:$key"),horizontalArrangement=Arrangement.spacedBy(4.dp),verticalArrangement=Arrangement.spacedBy(0.dp),itemVerticalAlignment=Alignment.CenterVertically) {
         signals.forEach {signal->CompactCardIconButton(signal.icon,signal.label,{selected=signal},Modifier.testTag("detail-signal:$key:${signal.name}"),enabled=signal in activeSignals,tint=if(signal in activeSignals) indicatorColor(signal.tone) else BlackWhite90.Inactive)}
-        if(metro) {
-            if(LocalMetroActivity.current[key].orEmpty().isNotEmpty()) MetroActivityIndicator(key,iconSize=16.dp,iconTint=indicatorColor(IndicatorTone.CONTENT))
-            else IconButton(onClick={selected=CardIndicator("metro",Icons.Default.DirectionsSubway,"Viajes Metro asociados",IndicatorTone.CONTENT,facts.journeys)},modifier=Modifier.size(48.dp)) {Icon(Icons.Default.DirectionsSubway,"Viajes Metro asociados",Modifier.size(16.dp),tint=indicatorColor(IndicatorTone.CONTENT))}
-        }
+
     }
     selected?.let {signal->
         if(signal.name=="people") androidx.compose.ui.window.Dialog(onDismissRequest={selected=null},properties=androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth=false)) {
@@ -178,7 +182,7 @@ internal val LocalIndicatorDirectory=staticCompositionLocalOf {IndicatorDirector
             if(signal.name=="technologies" && onOpenTechnologies!=null) TextButton(onClick={selected=null;onOpenTechnologies()}) {Text("Abrir Tecnologías")}
             LazyColumn(Modifier.heightIn(max=320.dp)) {
                 items(signal.ids.sorted(),key={it}) {id->
-                    val node=directory.nodes[if(signal.name=="metro") directory.journeyNodes[id] else id]
+                    val node=directory.nodes[id]
                     val label=when(signal.name) {"people"->directory.people[id]?.name;"technologies"->directory.technologies[id]?.name;else->node?.title} ?: id
                     if(node!=null) TextButton(onClick={selected=null;onOpenNode(node.id)}) {Column(Modifier.fillMaxWidth()) {Text(label);Text(indicatorOrigin(key,node,directory.nodes),style=MaterialTheme.typography.labelSmall)}}
                     else if(signal.name=="people" && id in directory.people) TextButton(onClick={selected=null;person=id}) {Text(label)}
@@ -192,3 +196,19 @@ internal val LocalIndicatorDirectory=staticCompositionLocalOf {IndicatorDirector
     person?.let {PersonDetailDialog(it) {person=null}}
     technology?.let {row->AlertDialog(onDismissRequest={technology=null},title={Text(row.name)},text={Column {Text("Tecnología del catálogo asociada a este contenido.");TechnologyIcon(row)}},confirmButton={TextButton(onClick={technology=null}) {Text("Cerrar")}})}
 }
+
+/** Only the lower card preview uses these overrides; activation and detail controls stay unchanged. */
+@Composable internal fun cardIndicatorColor(name:String,active:Boolean):Color =
+    if(!active) BlackWhite90.Inactive else com.r0ybt.arachn0de.ui.theme.LocalAppearancePreferences.current
+        ?.settings?.indicatorColors?.get(name)?.color ?: Arachn0deColors.TextPrimary
+
+internal val customizableCardIndicators=listOf(
+    CardIndicator("people",Icons.Default.Groups,"Personas",IndicatorTone.PEOPLE),
+    CardIndicator("technologies",Icons.Default.Build,"Tecnologías",IndicatorTone.CONTENT),
+    CardIndicator("notes",Icons.Default.Description,"Notas",IndicatorTone.CONTENT),
+    CardIndicator("tasks",Icons.Default.Checklist,"Tareas",IndicatorTone.CONTENT),
+    CardIndicator("files",Icons.Default.AttachFile,"Archivos en el contenido",IndicatorTone.CONTENT),
+    CardIndicator("due",Icons.Default.DateRange,"Vencimiento",IndicatorTone.CONTENT),
+    CardIndicator("today",Icons.Default.HourglassBottom,"Pendientes para hoy",IndicatorTone.ALERT),
+    CardIndicator("high",Icons.Default.LocalFireDepartment,"Prioritario",IndicatorTone.ALERT),
+)

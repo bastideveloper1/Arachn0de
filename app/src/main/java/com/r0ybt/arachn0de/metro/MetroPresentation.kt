@@ -36,8 +36,8 @@ internal object MetroPresentation {
         return when(s.kind) {
             MetroStepKind.RIDE -> "${s.line} · Dirección ${direction(net,s.line,s.from,s.to)} · ${train(s.service)}" +
                 if(net.stops(s.to,s.line,s.service)) "" else " · ${net.stations.getValue(s.to).name}: sin detención"
-            MetroStepKind.TRANSFER -> "Baja en $here. Combina con ${s.nextLine}" + (following?.let { " · Dirección ${direction(net,it.line,it.from,it.to)} · ${train(it.service)}" } ?: "") + " · ≈ 4 min"
-            MetroStepKind.CHANGE -> "Cambia de tren en $here" + (following?.let { " · ${it.line} · Dirección ${direction(net,it.line,it.from,it.to)} · ${train(it.service)}" } ?: "") + " · ≈ 4 min"
+            MetroStepKind.TRANSFER -> "Baja en $here. Combina con ${s.nextLine}" + (following?.let { " · Dirección ${direction(net,it.line,it.from,it.to)} · ${train(it.service)}" } ?: "") + " · ≈ ${(route.duration(index)+59_999)/60_000} min"
+            MetroStepKind.CHANGE -> "Cambia de tren en $here" + (following?.let { " · ${it.line} · Dirección ${direction(net,it.line,it.from,it.to)} · ${train(it.service)}" } ?: "") + " · ≈ ${(route.duration(index)+59_999)/60_000} min"
             MetroStepKind.WAYPOINT -> "Parada intermedia: $here. Permanencia no incluida; pausa si te detienes."
         }
     }

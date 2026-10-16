@@ -35,7 +35,7 @@ internal val PersonAvatarShape = androidx.compose.foundation.shape.CircleShape
 
 @Composable
 internal fun PersonAvatar(person: Person, size: androidx.compose.ui.unit.Dp = 28.dp, rounded: Boolean = false) {
-    if(rounded) {PersonPhoto(person,Modifier.width(size));return}
+    if(rounded) {PersonPhoto(person,Modifier.width(size),framed=true);return}
     val context = LocalContext.current
     val storageContext=privateStorageContext(context)
     val density=androidx.compose.ui.platform.LocalDensity.current.density
@@ -95,33 +95,34 @@ internal fun ResponsibleDialog(nodeId: String, people: List<Person>, assigned: L
     var selected by rememberSaveable(nodeId, stateSaver = listSaver<List<String>, String>(save = { it }, restore = { it.toList() })) {
         mutableStateOf(assigned.map { it.id })
     }
-    var query by rememberSaveable(nodeId) { mutableStateOf("") }
-    val filtered = remember(people, query) { people.filter { it.name.contains(query.trim(), ignoreCase = true) } }
-    androidx.compose.ui.window.Dialog(onDismissRequest={if(!busy) onDismiss()},properties=androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth=false)) {
-        Surface(Modifier.fillMaxSize().safeDrawingPadding()) {
-            Column(Modifier.padding(16.dp),verticalArrangement=Arrangement.spacedBy(12.dp)) {
-                Text("Responsables",style=MaterialTheme.typography.titleLarge)
-                OutlinedTextField(query,{query=it},enabled=!busy,label={Text("Buscar personas")},singleLine=true,modifier=Modifier.fillMaxWidth())
-                if(people.isEmpty()) Text("No hay Personas. Puedes crearlas desde Personas en el menú.")
-                else if(filtered.isEmpty()) Text("No hay Personas que coincidan")
-                LazyVerticalGrid(columns=GridCells.Fixed(3),modifier=Modifier.weight(1f).fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(6.dp),verticalArrangement=Arrangement.spacedBy(8.dp)) {
-                    items(filtered.sortedWith(compareBy<Person> {it.id !in selected}.thenBy {it.name.lowercase()}.thenBy {it.id}),key={it.id}) {person->
-                        ParticipantCard(person,if(person.id in selected) "Seleccionada" else "Disponible",person.id in selected,!busy,modifier=Modifier.testTag("person-choice:${person.id}")) {
-                            selected=if(person.id in selected) selected-person.id else selected+person.id
-                        }
-                    }
-                }
-                Row(horizontalArrangement=Arrangement.spacedBy(8.dp)) {
-                    OutlinedButton(enabled=!busy,onClick=onDismiss,modifier=Modifier.weight(1f)) {Text("Cancelar")}
-                    Button(enabled=!busy,onClick={onSave(selected.filter {id->people.any {it.id==id}}.toSet())},modifier=Modifier.weight(1f)) {Text("Guardar")}
-                }
-            }
-        }
-    }
+    ModularPanelDialog(onDismissRequest={if(!busy) onDismiss()},title={Text("Responsables")},fieldOwnsScroll=true,
+        text={ResponsiblePickerBody(nodeId,people,selected,busy) {selected=it}},
+        dismissButton={OutlinedButton(enabled=!busy,onClick=onDismiss) {Text("Cancelar")}},
+        confirmButton={Button(enabled=!busy,onClick={onSave(selected.filter {id->people.any {it.id==id}}.toSet())}) {Text("Guardar")}})
+
+
+
 }
 
 /** Quantized zoom-aware list decoding, at most 1 MiB of RGBA pixels per thumbnail. */
 internal fun personThumbnailSize(density:Float,zoom:Float):Int {
     val needed=28f*density*zoom
     return listOf(96,192,384,512).firstOrNull {it>=needed} ?: 512
+}
+
+@Composable internal fun ResponsiblePickerBody(nodeId:String,people:List<Person>,selected:List<String>,busy:Boolean,onChange:(List<String>)->Unit) {
+    var query by rememberSaveable(nodeId) { mutableStateOf("") }
+    val filtered = remember(people, query) { people.filter { it.name.contains(query.trim(), ignoreCase = true) } }
+    Column(verticalArrangement=Arrangement.spacedBy(12.dp)) {
+                OutlinedTextField(query,{query=it},enabled=!busy,label={Text("Buscar personas")},singleLine=true,modifier=modularPanelFieldModifier())
+                if(people.isEmpty()) Text("No hay Personas. Puedes crearlas desde Personas en el menú.")
+                else if(filtered.isEmpty()) Text("No hay Personas que coincidan")
+                LazyVerticalGrid(columns=GridCells.Fixed(3),modifier=Modifier.weight(1f,fill=false).fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(6.dp),verticalArrangement=Arrangement.spacedBy(8.dp)) {
+                    items(filtered.sortedWith(compareBy<Person> {it.id !in selected}.thenBy {it.name.lowercase()}.thenBy {it.id}),key={it.id}) {person->
+                        ParticipantCard(person,if(person.id in selected) "Seleccionada" else "Disponible",person.id in selected,!busy,modifier=Modifier.testTag("person-choice:${person.id}")) {
+                            onChange(if(person.id in selected) selected-person.id else selected+person.id)
+                        }
+                    }
+                }
+        }
 }

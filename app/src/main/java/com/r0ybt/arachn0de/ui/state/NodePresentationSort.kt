@@ -32,7 +32,8 @@ internal object NodePresentationSort {
                 compareValues(completedAt[b.id], completedAt[a.id]) else 0
         }
         val traditional=compareBy<Node> { it.isCompleted }.then(completion).then(criterion)
-        return if(!layersFirst) traditional else compareBy<Node> {!it.isStructural}.then(Comparator {a,b->
+        val pinned=compareBy<Node> {!(it.isStructural && it.isPinned)}
+        return if(!layersFirst) pinned.then(traditional) else compareBy<Node> {!it.isStructural}.then(pinned).then(Comparator {a,b->
             if(a.isStructural && b.isStructural) manual.compare(a,b) else traditional.compare(a,b)
         })
     }
@@ -40,7 +41,7 @@ internal object NodePresentationSort {
 
     /** Retain minimal context, depth and matching flags; only siblings change order. */
     fun filtered(rows: List<FilteredNodeRow>, mode: NodeSortMode, completedAt: Map<String, Long> = emptyMap(),layersFirst:Boolean=false,sortForParent:((String?)->Pair<NodeSortMode,Boolean>)?=null): List<FilteredNodeRow> {
-        if (mode == NodeSortMode.MANUAL && completedAt.isEmpty() && !layersFirst && sortForParent==null) return rows
+        if (mode == NodeSortMode.MANUAL && completedAt.isEmpty() && !layersFirst && sortForParent==null && rows.none {it.node.isPinned}) return rows
         val ids = rows.mapTo(hashSetOf()) { it.node.id }
         val nodeComparator = comparator(mode, completedAt,layersFirst)
         val rowComparator = Comparator<FilteredNodeRow> { a, b -> nodeComparator.compare(a.node, b.node) }

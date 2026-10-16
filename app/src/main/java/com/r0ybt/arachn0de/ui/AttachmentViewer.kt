@@ -55,6 +55,9 @@ internal fun decodeAttachment(file: java.io.File): Bitmap? {
 @Composable
 internal fun AttachmentViewer(id: String, repository: AttachmentRepository, onEditName: (() -> Unit)? = null, onRemove: (() -> Unit)? = null, onClose: () -> Unit) {
     var image by remember(id) { mutableStateOf<Bitmap?>(null) }
+    val files by repository.observeFiles().collectAsState(emptyList())
+    val row=files.firstOrNull {it.id==id}
+    if(row?.mimeType=="audio/aac") {AudioViewer(id,repository,onRemove=onRemove,onClose=onClose);return}
     var loaded by remember(id) { mutableStateOf(false) }
     LaunchedEffect(id) {
         image = withContext(Dispatchers.IO) {
@@ -67,6 +70,7 @@ internal fun AttachmentViewer(id: String, repository: AttachmentRepository, onEd
     Dialog(onDismissRequest = onClose, properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)) {
         Column(Modifier.fillMaxSize().background(Arachn0deColors.Background).safeDrawingPadding().testTag("attachment-viewer")) {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End, verticalAlignment = Alignment.CenterVertically) {
+                AttachmentExportActions(row,repository,compact=true)
                 onEditName?.let { TextButton(onClick = it) { Text("Editar nombre") } }
                 onRemove?.let { TextButton(onClick = it) { Text("Quitar") } }
                 TextButton(onClick = onClose) { Text("Cerrar", color = Arachn0deColors.Accent) }
@@ -78,7 +82,7 @@ internal fun AttachmentViewer(id: String, repository: AttachmentRepository, onEd
 
 
 /** Shared image stage: Fit at rest, bounded zoom/pan, no file writes. */
-@Composable internal fun ZoomableImage(image: Bitmap?, loaded: Boolean, description: String, modifier: Modifier = Modifier, controls: Boolean = false) {
+@Composable internal fun ZoomableImage(image: Bitmap?, loaded: Boolean, description: String, modifier: Modifier = Modifier, controls: Boolean = false, carousel:Boolean=false) {
     var zoom by remember(image) { mutableFloatStateOf(1f) }
     var offset by remember(image) { mutableStateOf(Offset.Zero) }
     var viewport by remember { mutableStateOf(IntSize.Zero) }
@@ -93,7 +97,7 @@ internal fun AttachmentViewer(id: String, repository: AttachmentRepository, onEd
     }
     val state=rememberTransformableState {scale,pan,_->transform(scale,pan)}
     Column(modifier) {
-        Box(Modifier.fillMaxWidth().weight(1f).clipToBounds().onSizeChanged {viewport=it}.transformable(state)
+        Box(Modifier.fillMaxWidth().weight(1f).clipToBounds().onSizeChanged {viewport=it}.transformable(state,canPan={ !carousel || zoom>1f })
             .testTag("zoomable-image").semantics {stateDescription="Zoom ${(zoom*100).toInt()} %"},contentAlignment=Alignment.Center) {
             val bitmap=image
             if(bitmap!=null) Image(bitmap.asImageBitmap(),description,contentScale=ContentScale.Fit,

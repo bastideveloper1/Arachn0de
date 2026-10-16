@@ -1,4 +1,5 @@
 package com.r0ybt.arachn0de.ui
+import androidx.compose.ui.layout.onSizeChanged
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -35,6 +36,7 @@ import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.*
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.foundation.rememberScrollState
@@ -144,19 +146,7 @@ internal fun EmptyProjectsState(onCreateProject: () -> Unit) {
                 modifier = Modifier.fillMaxWidth(),
                 textAlign = androidx.compose.ui.text.style.TextAlign.Center,
             )
-            Spacer(modifier = Modifier.height(20.dp))
-            Button(
-                onClick = onCreateProject,
-                colors = ButtonDefaults.buttonColors(containerColor = Arachn0deColors.Primary, contentColor = Arachn0deColors.OnSolidPrimary),
-                shape = RoundedCornerShape(14.dp),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .heightIn(min = 48.dp),
-            ) {
-                LucideIcon(imageVector = Icons.Default.Add, contentDescription = null)
-                Spacer(modifier = Modifier.width(8.dp))
-                Text("Nuevo proyecto")
-            }
+
         }
     }
 }
@@ -178,23 +168,28 @@ internal fun ProjectList(
     canCopy: Boolean = true,
     canCopyDescendants: Boolean = true,
     onPhoto: (Project) -> Unit = {},
+    bottomContentPadding: androidx.compose.ui.unit.Dp = 0.dp,
+    projectTagsById:Map<String,List<com.r0ybt.arachn0de.domain.model.Tag>> = emptyMap(),
 ) {
-    val order = projects.map { it.id }
-    val drag = rememberDragReorderState(listState, "project:", mapOf(false to order), reorderBusy, reorderError) { source, target, _ ->
+    val pinnedOrder=projects.filter {it.isPinned}.map {it.id}
+    val order = projects.filterNot {it.isPinned}.map { it.id }
+    val drag = rememberDragReorderState(listState, "project:", mapOf(true to pinnedOrder,false to order), reorderBusy, reorderError) { source, target, _ ->
         onReorderTo(source, target)
     }
     val projectById = projects.associateBy { it.id }
-    val renderedProjects = drag.orderFor(false, order).mapNotNull { projectById[it] }
+    val renderedProjects = (drag.orderFor(true,pinnedOrder)+drag.orderFor(false, order)).mapNotNull { projectById[it] }
 
     LazyColumn(
         state = listState,
         modifier = Modifier.fillMaxWidth().testTag("projects-list").then(drag.gestureModifier),
+        contentPadding = androidx.compose.foundation.layout.PaddingValues(bottom=bottomContentPadding),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         items(renderedProjects, key = { "project:${it.id}" }, contentType = { "project" }) { project ->
             val dragging = drag.isDragging(project.id)
             ProjectCard(
                 project = project,
+                tags = projectTagsById[project.id].orEmpty(),
                 onMoveInside = { onMoveInside(project) },
                 onPhoto = { onPhoto(project) },
                 onCopy = { descendants -> onCopy(project,descendants) },
@@ -212,20 +207,7 @@ internal fun ProjectList(
             )
         }
 
-        item(key = "create-project", contentType = "action") {
-            Button(
-                onClick = onCreateProject,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .heightIn(min = 52.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = Arachn0deColors.Primary, contentColor = Arachn0deColors.OnSolidPrimary),
-                shape = RoundedCornerShape(14.dp),
-            ) {
-                LucideIcon(imageVector = Icons.Default.Add, contentDescription = null)
-                Spacer(modifier = Modifier.width(8.dp))
-                Text("Nuevo proyecto")
-            }
-        }
+
     }
 }
 
@@ -243,9 +225,17 @@ internal fun ProjectCard(
     canCopy: Boolean = true,
     canCopyDescendants: Boolean = true,
     onPhoto: () -> Unit = {},
+    tags:List<com.r0ybt.arachn0de.domain.model.Tag> = emptyList(),
 ) {
+    val cleanCompleted=completedCleanupLauncher(project.id)
+    val pinScope=rememberCoroutineScope()
+    val pinOperation=remember(project.id) {com.r0ybt.arachn0de.ui.state.OperationState(pinScope)}
+    val pinApp=androidx.compose.ui.platform.LocalContext.current.applicationContext as? com.r0ybt.arachn0de.Arachn0deApplication
+    OperationErrorDialog(pinOperation)
     var showActions by remember { mutableStateOf(false) }
     var planning by remember {mutableStateOf(false)}
+    var tagHeight by remember {mutableStateOf(24.dp)}
+    val tagDensity = androidx.compose.ui.platform.LocalDensity.current
     if(planning) ProjectPlanningDialog(project.id) {planning=false}
     Card(
         shape = RoundedCornerShape(8.dp),
@@ -257,6 +247,7 @@ internal fun ProjectCard(
             .testTag("project-card:${project.id}")
             .clickable(onClickLabel = "Abrir proyecto", onClick = onOpen),
     ) {
+        Box(Modifier.fillMaxWidth()) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -264,7 +255,10 @@ internal fun ProjectCard(
                 .padding(horizontal = 12.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            ProjectIdentityIcon(project)
+            Box(Modifier.size(48.dp)) {
+                ProjectIdentityIcon(project)
+                if(project.isPinned) Icon(Icons.Default.PushPin,"Núcleo fijado",Modifier.size(14.dp).align(Alignment.BottomEnd).testTag("project-pin:${project.id}"),tint=Arachn0deColors.TextSecondary)
+            }
             Spacer(modifier = Modifier.width(12.dp))
             Column(
                 modifier = Modifier
@@ -279,18 +273,29 @@ internal fun ProjectCard(
                     softWrap = true,
                     modifier = Modifier.testTag("project-title:${project.id}"),
                 )
-                CompactCardIndicators("project:${project.id}",modifier=Modifier.padding(top=4.dp,bottom=4.dp))
+                CompactCardIndicators("project:${project.id}",modifier=Modifier.padding(top=4.dp,bottom=4.dp),hasOwnNotes=project.description.isNotBlank())
 
             }
 
+            Column(modifier=if(tags.size==1) Modifier.padding(top=(tagHeight-8.dp).coerceAtLeast(0.dp)) else Modifier,horizontalAlignment=Alignment.End) {
+                if(tags.size>1) CardTagBadge(tags)
+                Row(verticalAlignment=Alignment.CenterVertically) {
             FavoriteToggle("project:${project.id}")
             IconButton(onClick = { showActions = true }, modifier = Modifier.size(48.dp)) {
                 LucideIcon(Icons.Default.MoreVert, contentDescription = "Opciones del proyecto", tint = Arachn0deColors.TextSecondary)
             }
+                }
+            }
+        }
+        if(tags.size==1) CardTagBadge(tags,Modifier.align(Alignment.TopEnd).onSizeChanged {tagHeight=with(tagDensity) {it.height.toDp()}})
         }
     }
     if (showActions) {
         ContextActionMenu(project.name,{ showActions = false }) {
+            action("Limpiar completadas",androidx.compose.material.icons.Icons.Default.Delete,{showActions=false;cleanCompleted()})
+            action(if(project.isPinned) "Desfijar" else "Fijar",Icons.Default.PushPin,{
+                pinOperation.submit("No se pudo cambiar la fijación.",{pinApp?.projectRepository?.setPinned(project.id,!project.isPinned) ?: false}) {showActions=false}
+            },enabled=pinApp!=null && !pinOperation.busy)
             action("Planificación",Icons.Default.Settings,{showActions=false;planning=true})
             action("Fotografía", Icons.Default.Image, { showActions = false; onPhoto() })
             action("Editar",Icons.Default.Edit,{ showActions = false; onEdit() },

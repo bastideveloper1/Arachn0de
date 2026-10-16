@@ -13,8 +13,6 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.window.Dialog
-import androidx.compose.ui.window.DialogProperties
 import com.r0ybt.arachn0de.Arachn0deApplication
 import com.r0ybt.arachn0de.data.local.*
 import com.r0ybt.arachn0de.data.repository.PersonRepository
@@ -28,7 +26,7 @@ internal val personKinds=linkedMapOf("ALL" to "Todos los tipos","ACTION" to "Tar
 internal fun personRole(role:String)=when(role) {"TRADITIONAL"->"Responsable tradicional";"MEMBER"->"Participante";else->ResponsibilityRole.entries.firstOrNull {it.name==role}?.label ?: role}
 internal fun filterPersonWork(rows:List<PersonWorkRow>,kind:String,state:String)=rows.filter {it.kind!="PROJECT" && (kind=="ALL" || it.kind==kind) && when(state) {"PENDING"->it.completed==false;"COMPLETED"->it.completed==true;else->true}}
 
-@Composable internal fun PersonTechnologiesSection(person:String,repository:PersonRepository) {
+@Composable internal fun PersonTechnologiesSection(person:String,repository:PersonRepository,openOnEntry:Boolean=false,openRequest:Int=0) {
     val catalog by remember(repository) {repository.observeTechnologyCatalog()}.collectAsState(initial=null)
     val all by remember(repository) {repository.observePersonTechnologies()}.collectAsState(initial=null)
     var choosing by remember {mutableStateOf(false)};var selected by remember {mutableStateOf<String?>(null)}
@@ -36,34 +34,54 @@ internal fun filterPersonWork(rows:List<PersonWorkRow>,kind:String,state:String)
     var busy by remember {mutableStateOf(false)};var error by remember {mutableStateOf<String?>(null)}
     val scope=rememberCoroutineScope()
     fun perform(action:suspend ()->Unit) {if(busy) return;busy=true;scope.launch {try {action();selected=null} catch(c:CancellationException) {throw c} catch(e:Exception) {error=e.message ?: "No se pudo guardar."} finally {busy=false}}}
+    LaunchedEffect(person,openRequest,catalog!=null && all!=null) {if(openOnEntry && catalog!=null && all!=null) choosing=true}
     val assigned=all.orEmpty().filter {it.personId==person}.associateBy {it.technologyId}
     Column(Modifier.fillMaxSize()) {
-        TextButton(enabled=!busy && catalog!=null && all!=null,onClick={choosing=true}) {Text("Asociar Tecnología")}
+        if(!openOnEntry) TextButton(enabled=!busy && catalog!=null && all!=null,onClick={choosing=true}) {Text("Asociar Tecnología")}
         if(catalog==null || all==null) Text("Cargando Tecnologías…")
         else if(assigned.isEmpty()) Text("Sin Tecnologías asociadas.")
-        LazyVerticalGrid(GridCells.Adaptive(96.dp),Modifier.weight(1f).testTag("person-technology-grid"),horizontalArrangement=Arrangement.spacedBy(8.dp),verticalArrangement=Arrangement.spacedBy(8.dp)) {
-            items(catalog.orEmpty().filter {it.id in assigned},key={it.id}) {tech->OutlinedButton(enabled=!busy,onClick={selected=tech.id},modifier=Modifier.heightIn(min=88.dp),contentPadding=PaddingValues(8.dp)) {Column {TechnologyIcon(tech,36.dp);Text(tech.name);Text("Dominio: ${PersonProficiency.valueOf(assigned.getValue(tech.id).proficiency).label}",style=MaterialTheme.typography.labelSmall)}}}
-        }
-    }
-    if(choosing) Dialog(onDismissRequest={choosing=false},properties=DialogProperties(usePlatformDefaultWidth=false)) {
-        Surface(Modifier.fillMaxWidth().fillMaxHeight(.8f).padding(12.dp),shape=MaterialTheme.shapes.large) {
-            Column(Modifier.padding(12.dp)) {
-                Text("Tecnologías existentes",style=MaterialTheme.typography.titleLarge)
-                OutlinedTextField(query,{query=it},label={Text("Buscar Tecnologías")},modifier=Modifier.fillMaxWidth())
-                LazyColumn(Modifier.weight(1f).fillMaxWidth()) {
-                    val available=catalog.orEmpty().filter {it.id !in assigned && it.name.contains(query,true)}
-                    if(available.isEmpty()) item {Text("Sin coincidencias disponibles.")}
-                    items(available,key={it.id}) {t->TextButton(onClick={selected=t.id;choosing=false},modifier=Modifier.fillMaxWidth().heightIn(min=48.dp)) {TechnologyIcon(t);Spacer(Modifier.width(8.dp));Text(t.name)}}
+        BoxWithConstraints(Modifier.weight(1f).fillMaxWidth()) {
+            val scale=androidx.compose.ui.platform.LocalDensity.current.fontScale.coerceAtLeast(1f)
+            val columns=((maxWidth.value+8)/(96*scale+8)).toInt().coerceIn(1,3)
+            LazyVerticalGrid(GridCells.Fixed(columns),Modifier.fillMaxSize().testTag("person-technology-grid"),horizontalArrangement=Arrangement.spacedBy(8.dp),verticalArrangement=Arrangement.spacedBy(8.dp)) {
+                items(catalog.orEmpty().filter {it.id in assigned},key={it.id}) {tech->
+                    Card(enabled=!busy,onClick={selected=tech.id},modifier=Modifier.fillMaxWidth().heightIn(min=48.dp).testTag("person-technology:${tech.id}"),
+                        shape=MaterialTheme.shapes.medium,colors=CardDefaults.cardColors(containerColor=com.r0ybt.arachn0de.ui.theme.Arachn0deColors.Surface)) {
+                        Column(Modifier.fillMaxWidth().padding(8.dp),horizontalAlignment=androidx.compose.ui.Alignment.CenterHorizontally,verticalArrangement=Arrangement.spacedBy(4.dp)) {
+                            TechnologyIcon(tech,36.dp)
+                            Text(tech.name,maxLines=3,overflow=androidx.compose.ui.text.style.TextOverflow.Ellipsis,textAlign=androidx.compose.ui.text.style.TextAlign.Center,style=MaterialTheme.typography.bodySmall)
+                            Text(PersonProficiency.valueOf(assigned.getValue(tech.id).proficiency).label,style=MaterialTheme.typography.labelSmall,
+                                textAlign=androidx.compose.ui.text.style.TextAlign.Center)
+                        }
+                    }
                 }
-                TextButton(onClick={choosing=false}) {Text("Cancelar")}
             }
         }
     }
+
+    if(choosing) ModularPanelDialog(onDismissRequest={choosing=false},
+        title={Text("Tecnologías existentes")},compact=true,plainBody=true,fieldOwnsScroll=true,
+        foldLabel="Tecnologías",
+        text={
+            Column(Modifier.fillMaxWidth()) {
+                OutlinedTextField(query,{query=it},label={Text("Buscar Tecnologías")},singleLine=true,modifier=Modifier.fillMaxWidth())
+                LazyColumn(Modifier.weight(1f,fill=false).fillMaxWidth().testTag("person-technology-selector")) {
+                    val available=catalog.orEmpty().filter {it.id !in assigned && it.name.contains(query,true)}
+                    if(available.isEmpty()) item {Text(when {
+                        query.isNotBlank()->"Sin coincidencias disponibles."
+                        catalog.orEmpty().isEmpty()->"No hay Tecnologías en el catálogo."
+                        else->"Todas las Tecnologías ya están asociadas."
+                    })}
+                    items(available,key={it.id}) {t->TextButton(onClick={selected=t.id;choosing=false},modifier=Modifier.fillMaxWidth().heightIn(min=48.dp)) {TechnologyIcon(t);Spacer(Modifier.width(8.dp));Text(t.name,Modifier.weight(1f),textAlign=androidx.compose.ui.text.style.TextAlign.Start)}}
+                }
+            }
+        },dismissButton={PrimaryControlButton(onClick={choosing=false},modifier=Modifier.fillMaxWidth().heightIn(min=48.dp)) {Text("Cancelar")}},
+        confirmButton={})
     selected?.let {id->val tech=catalog.orEmpty().firstOrNull {it.id==id};if(tech!=null) {
         var level by rememberSaveable(id) {mutableStateOf(assigned[id]?.proficiency ?: "UNEVALUATED")}
-        AlertDialog(onDismissRequest={if(!busy) selected=null},title={Text(tech.name)},text={Column(Modifier.heightIn(max=400.dp).verticalScroll(rememberScrollState())) {TechnologyIcon(tech,40.dp);Text("Dominio declarado por la Persona");PersonProficiency.entries.forEach {p->TextButton(enabled=!busy,onClick={level=p.name},modifier=Modifier.fillMaxWidth().heightIn(min=48.dp)) {Text("${if(level==p.name) "✓ " else ""}${p.label}")}}
+        ModularPanelDialog(onDismissRequest={if(!busy) selected=null},compact=true,plainBody=true,foldLabel="Tecnologías",foldEnabled=!busy,title={Text(tech.name)},text={Column(Modifier.heightIn(max=400.dp).verticalScroll(rememberScrollState())) {TechnologyIcon(tech,40.dp);Text("Dominio declarado por la Persona");PersonProficiency.entries.forEach {p->TextButton(enabled=!busy,onClick={level=p.name},modifier=Modifier.fillMaxWidth().heightIn(min=48.dp)) {Text("${if(level==p.name) "✓ " else ""}${p.label}")}}
             if(id in assigned) TextButton(enabled=!busy,onClick={perform {repository.removeTechnology(person,id)}}) {Text("Retirar asociación")}
-        }},confirmButton={TextButton(enabled=!busy,onClick={perform {repository.saveTechnology(person,id,PersonProficiency.valueOf(level))}}) {Text("Guardar dominio")}},dismissButton={TextButton(enabled=!busy,onClick={selected=null}) {Text("Cancelar")}})
+        }},confirmButton={PrimaryControlButton(modifier=Modifier.fillMaxWidth().heightIn(min=48.dp),enabled=!busy,onClick={perform {repository.saveTechnology(person,id,PersonProficiency.valueOf(level))}}) {Text("Guardar dominio")}},dismissButton={PrimaryControlButton(modifier=Modifier.fillMaxWidth().heightIn(min=48.dp),enabled=!busy,onClick={selected=null}) {Text("Cancelar")}})
     } else AlertDialog(onDismissRequest={selected=null},text={Text("La Tecnología ya no está en el catálogo.")},confirmButton={TextButton(onClick={selected=null}) {Text("Cerrar")}})}
     error?.let {AlertDialog(onDismissRequest={error=null},text={Text(it)},confirmButton={TextButton(onClick={error=null}) {Text("Cerrar")}})}
 }

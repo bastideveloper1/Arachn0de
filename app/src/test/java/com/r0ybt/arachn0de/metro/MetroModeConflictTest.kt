@@ -59,4 +59,28 @@ class MetroModeConflictTest {
         assertTrue(repo.begin(second,journey(second).row.revision,now))
         assertEquals(1,repo.snapshot().journeys.count {it.data.active!=null})
     }
+    @Test fun doorConfirmationsMoveBackOrForwardAndKeepAPauseExcluded()=runBlocking<Unit> {
+        val net=repo.snapshot().preferences.planningNetwork
+        val route=MetroPlanner.plan(net,listOf("los-heroes","union-latinoamericana"),false,MetroRestrictions())!!
+        val middle=route.steps.first().to
+        val id=repo.savePlan(route);repo.begin(id,journey(id).row.revision,now)
+        val late=now.copy(wall=now.wall+180_000,elapsed=now.elapsed+180_000)
+        val before=MetroTracking.position(journey(id).data.active!!,late).offset
+        repo.confirmDoors(id,journey(id).row.revision,middle,late)
+        val backward=journey(id).data.active!!
+        assertTrue(backward.offset<before);assertEquals(middle,backward.confirmed)
+        val early=late.copy(wall=late.wall+10_000,elapsed=late.elapsed+10_000)
+        val estimated=MetroTracking.position(backward,early).offset
+        repo.confirmDoors(id,journey(id).row.revision,route.stops.last(),early)
+        assertTrue(journey(id).data.active!!.offset>estimated)
+        val paused=early.copy(wall=early.wall+10_000,elapsed=early.elapsed+10_000)
+        repo.tracking(id,journey(id).row.revision) {MetroTracking.pause(it,paused)}
+        val pauseAnchor=journey(id).data.active!!.pausedAt
+        repo.confirmDoors(id,journey(id).row.revision,middle,paused.copy(wall=paused.wall+10_000,elapsed=paused.elapsed+10_000))
+        val state=repo.snapshot();val session=state.journeys.single().data.active!!
+        assertEquals(pauseAnchor,session.pausedAt);assertEquals(middle,session.confirmed)
+        val capture=state.lastCaptures.getValue(session.id).capture
+        assertEquals(MetroCaptureKind.PAUSED_LOCATION,capture.kind)
+        assertFalse(capture.valid);assertEquals("PAUSED",capture.exclusion)
+    }
 }

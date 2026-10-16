@@ -21,9 +21,10 @@ class ObligationReportData private constructor(
 ) {
     companion object {
         fun from(snapshot: FinancialSnapshot, projects: List<Project>, personName: String?,
-            generatedAt: Long, locale: Locale): ObligationReportData {
-            require(snapshot.tasks.isNotEmpty()) { "No hay obligaciones para generar este informe." }
-            if (snapshot.tasks.size > 1000) throw ReportTooLargeException()
+            generatedAt: Long, locale: Locale, completed: Boolean? = null): ObligationReportData {
+            val tasks=snapshot.tasks.filter {completed==null || it.isCompleted==completed}
+            require(tasks.isNotEmpty()) { "No hay obligaciones para generar este informe." }
+            if (tasks.size > 1000) throw ReportTooLargeException()
             val zone = TimeZone.getTimeZone(snapshot.zoneId)
             val dueFormat = SimpleDateFormat("d MMM yyyy", locale).apply { timeZone = zone }
             val generatedFormat = SimpleDateFormat("d MMM yyyy · HH:mm", locale).apply { timeZone = zone }
@@ -32,13 +33,17 @@ class ObligationReportData private constructor(
                     .format(Date(CalendarDates.labelInstant(it.selecting(1))))
             } ?: "Todo el período"
             val projectNames = projects.associate { it.id to it.name }
-            val summary = snapshot.summary
+            val summary = if(completed==null) snapshot.summary else FinancialSummary(snapshot.summary.byCurrency.mapValues {(_,totals)->
+                if(completed) totals.copy(totalMinor=totals.completedMinor,pendingMinor=java.math.BigInteger.ZERO,pendingCount=0,
+                    thisMonthPendingMinor=java.math.BigInteger.ZERO,nextMonthPendingMinor=java.math.BigInteger.ZERO)
+                else totals.copy(totalMinor=totals.pendingMinor,completedMinor=java.math.BigInteger.ZERO,completedCount=0)
+            }.filterValues {it.count>0})
             val currencies = summary.byCurrency.map { (code, totals) ->
                 ReportCurrency(code, Money.format(totals.totalMinor, code, locale),
                     Money.format(totals.pendingMinor, code, locale), Money.format(totals.completedMinor, code, locale))
             }
-            // Preserve the projection's selection and order without filtering or summing again.
-            val obligations = snapshot.tasks.map { node ->
+            // Keep the month/person projection; narrow both rows and aggregates to the requested state.
+            val obligations = tasks.map { node ->
                 ReportObligation(node.title, Money.format(checkNotNull(node.obligation), locale),
                     node.dueAt?.let { "Vence ${dueFormat.format(Date(it))}" } ?: "Sin vencimiento",
                     projectNames[node.projectId] ?: "Proyecto eliminado",

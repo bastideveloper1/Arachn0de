@@ -97,14 +97,14 @@ class MvpReadinessTest {
             compose.onNodeWithText("Activos").assertDoesNotExist()
             compose.onNodeWithText("Hoy").assertDoesNotExist()
             compose.onNodeWithContentDescription("Buscar").assertDoesNotExist()
-            compose.onNodeWithText("Nuevo proyecto").performScrollTo().assertIsDisplayed().performClick()
+            compose.onNodeWithText("Nuevo Núcleo").performScrollTo().assertIsDisplayed().performClick()
             compose.onNodeWithText("Nombre").assertExists()
             compose.onNodeWithText("Cerrar").performClick()
             compose.onNodeWithContentDescription("Abrir menú").performClick()
             compose.onNodeWithText("Recursos").performScrollTo().performClick(); compose.onNodeWithText("Personas").performScrollTo().assertIsEnabled().performClick()
             compose.runOnIdle { assertTrue(openedPeople) }
             compose.onNodeWithContentDescription("Abrir menú").performClick()
-            compose.onNodeWithText("Ajustes").performScrollTo().performClick(); compose.onNodeWithText("Apariencia").performScrollTo().assertIsEnabled().performClick()
+            compose.onNodeWithText("Ajustes").performScrollTo().performClick(); compose.onNodeWithText("Diseño").performScrollTo().assertIsEnabled().performClick()
             compose.runOnIdle { assertTrue(openedSettings) }
             compose.onNodeWithContentDescription("Abrir menú").performClick()
             compose.onNodeWithContentDescription("Cerrar menú").assertIsDisplayed().performClick()

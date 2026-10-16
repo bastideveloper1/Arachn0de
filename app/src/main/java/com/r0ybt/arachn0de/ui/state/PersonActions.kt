@@ -6,8 +6,8 @@ import kotlinx.coroutines.CoroutineScope
 
 internal class PersonActions(private val repository: PersonRepository, scope: CoroutineScope) {
     val operation = OperationState(scope)
-    fun save(id: String, name: String, avatar: String?, isNew: Boolean, framing: com.r0ybt.arachn0de.domain.model.AvatarFraming = com.r0ybt.arachn0de.domain.model.AvatarFraming(), birthday: String? = null, onSuccess: () -> Unit) =
-        operation.submit("No se pudo guardar la Persona. Puedes reintentar.", { repository.save(id, name, avatar, isNew, draftId = id, zoom = framing.zoom, x = framing.x, y = framing.y, birthday = birthday) }, onSuccess)
+    fun save(id: String, name: String, avatar: String?, isNew: Boolean, framing: com.r0ybt.arachn0de.domain.model.AvatarFraming = com.r0ybt.arachn0de.domain.model.AvatarFraming(), birthday: String? = null, identity:Boolean?=null, profile:com.r0ybt.arachn0de.data.local.PersonProfileEntity?=null, onSuccess: () -> Unit) =
+        operation.submit("No se pudo guardar la Persona. Puedes reintentar.", { repository.save(id, name, avatar, isNew, draftId = id, zoom = framing.zoom, x = framing.x, y = framing.y, birthday = birthday, profile = profile, identity = identity) }, onSuccess)
     fun delete(id: String, onSuccess: () -> Unit) =
         operation.submit("No se pudo eliminar la Persona. Puedes reintentar.", { repository.delete(id) }, onSuccess)
     fun assign(nodeId: String, ids: Set<String>, onSuccess: () -> Unit) =

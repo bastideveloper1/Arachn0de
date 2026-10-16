@@ -37,7 +37,7 @@ class AppearanceRestartUiTest {
         compose.waitUntil(10000) { compose.onAllNodesWithContentDescription("Abrir menú").fetchSemanticsNodes().isNotEmpty() }
         assertEquals(AppearanceTheme.HeavyGold.palette.muted, layout("app-bar-title").layoutInput.style.color)
         compose.onNodeWithContentDescription("Abrir menú").performClick()
-        compose.onNodeWithText("Ajustes").performScrollTo().performClick(); compose.onNodeWithText("Apariencia").performScrollTo().performClick()
+        compose.onNodeWithText("Ajustes").performScrollTo().performClick(); compose.onNodeWithText("Diseño").performScrollTo().performClick()
         compose.onNodeWithTag("appearance-preview").performScrollTo()
         assertEquals(16f, layout("appearance-preview-title").layoutInput.style.fontSize.value, .01f)
         compose.onNodeWithTag("appearance-theme:KingCrimson").performScrollTo().performClick()

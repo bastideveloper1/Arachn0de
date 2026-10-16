@@ -1,4 +1,5 @@
 package com.r0ybt.arachn0de.ui
+import androidx.compose.ui.layout.onSizeChanged
 
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -174,11 +175,14 @@ internal fun NodeCard(
     navigationTool: ManagementToolVisual? = null,
     footer: (@Composable ()->Unit)? = null,
 ) {
+    val cleanCompleted=if(node.isStructural) completedCleanupLauncher(node.projectId,node.id) else null
     val shareContext=LocalContext.current
     val shareStorage=privateStorageContext(shareContext)
     val shareApp=shareContext.applicationContext as? com.r0ybt.arachn0de.Arachn0deApplication
     val shareColors=com.r0ybt.arachn0de.report.CardShareColors(Arachn0deColors.Background.toArgb(),Arachn0deColors.TextPrimary.toArgb(),Arachn0deColors.PathHighlight.toArgb())
     val shareScope=rememberCoroutineScope()
+    val pinOperation=remember(node.id) {com.r0ybt.arachn0de.ui.state.OperationState(shareScope)}
+    OperationErrorDialog(pinOperation)
     var sharing by remember(node.id) {mutableStateOf(false)}
     var shareFailure by remember(node.id) {mutableStateOf<String?>(null)}
     fun shareCard() {
@@ -247,15 +251,17 @@ internal fun NodeCard(
         else -> 0.dp
     }
     val borderColor = when (sprintPhase) {
-        WorkState.UNPLANNED -> SemanticColors.SprintUnplanned
-        WorkState.PLANNED -> SemanticColors.SprintPlanned
-        WorkState.DOING -> SemanticColors.SprintDoing
-        WorkState.DONE -> SemanticColors.SprintDone
-        WorkState.VALIDATED -> SemanticColors.SprintValidated
+        WorkState.UNPLANNED -> com.r0ybt.arachn0de.ui.theme.semanticColor(SemanticColors.SprintUnplanned)
+        WorkState.PLANNED -> com.r0ybt.arachn0de.ui.theme.semanticColor(SemanticColors.SprintPlanned)
+        WorkState.DOING -> com.r0ybt.arachn0de.ui.theme.semanticColor(SemanticColors.SprintDoing)
+        WorkState.DONE -> com.r0ybt.arachn0de.ui.theme.semanticColor(SemanticColors.SprintDone)
+        WorkState.VALIDATED -> com.r0ybt.arachn0de.ui.theme.semanticColor(SemanticColors.SprintValidated)
         null -> Arachn0deColors.Outline.copy(alpha = if (noPending) 0.45f else 0.9f)
     }
     val borderWidth = if (sprintPhase == WorkState.DOING) 2.dp else 1.dp
     val rowAlpha = if (node.isCompleted || noPending) 0.92f else 1f
+    var tagHeight by remember {mutableStateOf(24.dp)}
+    val tagDensity = androidx.compose.ui.platform.LocalDensity.current
 
     Card(
         modifier = modifier
@@ -266,7 +272,7 @@ internal fun NodeCard(
             .semantics { onSelect?.let { select -> onLongClick("Seleccionar") { select(); true } }; this.selected = selected; if(selecting) stateDescription = if(selected) "Seleccionado" else "No seleccionado" }
             .clickable(onClick = if(selecting) ({ onSelect?.invoke(); Unit }) else onOpen),
         shape = RoundedCornerShape(8.dp),
-        colors = CardDefaults.cardColors(containerColor = Arachn0deColors.Surface),
+        colors = CardDefaults.cardColors(containerColor = if(node.isStructural && !hasChildren) androidx.compose.ui.graphics.lerp(Arachn0deColors.Surface,Arachn0deColors.Background,.35f) else Arachn0deColors.Surface),
     ) {
         Box(Modifier.fillMaxWidth()) {
             Column(Modifier.fillMaxWidth()) {
@@ -277,13 +283,16 @@ internal fun NodeCard(
                         .padding(horizontal = 12.dp, vertical = 8.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    if (selecting || canToggleComplete) Spacer(Modifier.size(48.dp))
+                    if (selecting || canToggleComplete) Box(Modifier.size(48.dp)) {if(node.isStructural && node.isPinned) Icon(Icons.Default.PushPin,"Capa fijada",Modifier.size(14.dp).align(Alignment.BottomEnd),tint=Arachn0deColors.TextSecondary)}
                     else if(node.isStructural) {
-                        OfficialIcon(R.drawable.bw90_layer,"Capa",size=48.dp)
+                        Box(Modifier.size(48.dp)) {
+                            OfficialIcon(R.drawable.bw90_layer,"Capa",size=48.dp)
+                            if(node.isPinned) Icon(Icons.Default.PushPin,"Capa fijada",Modifier.size(14.dp).align(Alignment.BottomEnd).testTag("node-pin:${node.id}"),tint=Arachn0deColors.TextSecondary)
+                        }
                     } else if (navigationTool != null) {
                         LucideIcon(navigationTool.icon, contentDescription=null, tint=MaterialTheme.colorScheme.primary, modifier=Modifier.size(36.dp))
                     } else if (node.purpose == NodePurpose.NOTE) {
-                        LucideIcon(Icons.Default.Description, contentDescription = "Nota", tint = Arachn0deColors.TextSecondary, modifier = Modifier.size(36.dp))
+                        NoteContentIcon(node.description.isNotBlank(),"Nota",Modifier.size(36.dp),if(node.description.isNotBlank()) Arachn0deColors.TextPrimary else Arachn0deColors.TextSecondary)
                     } else if (node.isStructural) {
                         Image(
                             painter = painterResource(id = R.drawable.bw90_layer),
@@ -314,7 +323,7 @@ internal fun NodeCard(
                         navigationTool?.let {Text(it.description,style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)}
 
 
-                        CompactCardIndicators("node:${node.id}",compactNodeFacts(node,now).copy(people=responsiblePeople.mapTo(hashSetOf()) {it.id},journeys=if(metroRouteLabel!=null) setOf(node.id) else emptySet()),Modifier.padding(top=4.dp,bottom=4.dp).layout {measurable,constraints->
+                        CompactCardIndicators("node:${node.id}",compactNodeFacts(node,now).copy(people=responsiblePeople.mapTo(hashSetOf()) {it.id},journeys=emptySet()),Modifier.padding(top=4.dp,bottom=4.dp).layout {measurable,constraints->
                             val placeable=measurable.measure(constraints)
                             layout(placeable.width,placeable.height,mapOf(CardMetadataAxis to placeable.height/2)) {placeable.placeRelative(0,0)}
                         },showTechnologies=node.isStructural)
@@ -355,29 +364,30 @@ internal fun NodeCard(
                         }
                     }
 
-                    Row(Modifier.alignBy {it.measuredHeight/2},verticalAlignment = Alignment.CenterVertically) {
-                        if(!node.isStructural) TechnologyCardButton(node.id)
-                        FavoriteToggle("node:${node.id}",compactSquare=true)
+                    Column(Modifier.alignBy {it.measuredHeight/2}.then(if(tags.size==1) Modifier.padding(top=(tagHeight-8.dp).coerceAtLeast(0.dp)) else Modifier),horizontalAlignment=Alignment.End) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            if(!node.isStructural) TechnologyCardButton(node.id)
+                            FavoriteToggle("node:${node.id}",compactSquare=true)
 
-                        if (showOptions) Box(
-                            modifier = Modifier.size(48.dp).testTag("node-options:${node.id}").combinedClickable(
-                                onClick = { if(selecting) onSelect?.invoke() else showContextMenu = true },
-                                role = androidx.compose.ui.semantics.Role.Button,
-                                onLongClickLabel = "Seleccionar",
-                                onLongClick = { onSelect?.invoke() },
-                            ), contentAlignment = Alignment.Center,
-                        ) {
-                            androidx.compose.material3.Surface(Modifier.size(28.dp),shape=RoundedCornerShape(6.dp),color=Arachn0deColors.ControlSurface) {
-                                Box(contentAlignment=Alignment.Center) {LucideIcon(Icons.Default.MoreVert,"Más opciones",Modifier.size(18.dp),tint=Arachn0deColors.TextSecondary)}
+                            if (showOptions) Box(
+                                modifier = Modifier.size(48.dp).testTag("node-options:${node.id}").combinedClickable(
+                                    onClick = { if(selecting) onSelect?.invoke() else showContextMenu = true },
+                                    role = androidx.compose.ui.semantics.Role.Button,
+                                    onLongClickLabel = "Seleccionar",
+                                    onLongClick = { onSelect?.invoke() },
+                                ), contentAlignment = Alignment.Center,
+                            ) {
+                                androidx.compose.material3.Surface(Modifier.size(28.dp),shape=RoundedCornerShape(6.dp),color=Arachn0deColors.ControlSurface) {
+                                    Box(contentAlignment=Alignment.Center) {LucideIcon(Icons.Default.MoreVert,"Más opciones",Modifier.size(18.dp),tint=Arachn0deColors.TextSecondary)}
+                                }
                             }
                         }
                     }
                 }
-                if (sprintPhase != null || tags.isNotEmpty() ||
-                    (node.effectivePriority != com.r0ybt.arachn0de.domain.model.Priority.NONE && node.effectivePriority != com.r0ybt.arachn0de.domain.model.Priority.HIGH)) Column(
+                if (sprintPhase != null || tags.size>1 || (tags.size==1 && footer!=null)) Column(
                     modifier = Modifier.fillMaxWidth().padding(start = 24.dp + leadingColumnWidth, end = 12.dp, top = 2.dp, bottom = 6.dp),
                 ) {
-                    if (sprintPhase != null || (node.effectivePriority != com.r0ybt.arachn0de.domain.model.Priority.NONE && node.effectivePriority != com.r0ybt.arachn0de.domain.model.Priority.HIGH) ||
+                    if (sprintPhase != null ||
                         (!node.isStructural && (node.startAt != null || node.dueAt != null))) FlowRow(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -400,8 +410,8 @@ internal fun NodeCard(
                             ) {
                                 Text(phase.label, modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
                                     color = when (phase) {
-                                        WorkState.UNPLANNED, WorkState.PLANNED -> SemanticColors.SprintPlanned
-                                        WorkState.DOING, WorkState.VALIDATED -> SemanticColors.SprintValidated
+                                        WorkState.UNPLANNED, WorkState.PLANNED -> com.r0ybt.arachn0de.ui.theme.semanticColor(SemanticColors.SprintPlanned)
+                                        WorkState.DOING, WorkState.VALIDATED -> com.r0ybt.arachn0de.ui.theme.semanticColor(SemanticColors.SprintValidated)
                                         WorkState.DONE -> Arachn0deColors.TextCompleted
                                     },
                                     fontSize = ContentTypography.Metadata, fontWeight = FontWeight.SemiBold)
@@ -410,7 +420,7 @@ internal fun NodeCard(
                         if(node.effectivePriority != com.r0ybt.arachn0de.domain.model.Priority.HIGH) PriorityIndicator(node)
                     }
                     footer?.invoke()
-                    if (tags.isNotEmpty()) FlowRow(
+                    if (tags.size>1) FlowRow(
                         modifier = Modifier.fillMaxWidth().padding(top = 2.dp),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalArrangement = Arrangement.spacedBy(2.dp),
@@ -420,6 +430,7 @@ internal fun NodeCard(
                     }
                 }
             }
+            if(tags.size==1) CardTagBadge(tags,Modifier.align(Alignment.TopEnd).onSizeChanged {tagHeight=with(tagDensity) {it.height.toDp()}})
             if (selecting || canToggleComplete) Box(
                 modifier = Modifier.align(Alignment.CenterStart).padding(start = 12.dp).size(48.dp),
                 contentAlignment = Alignment.Center,
@@ -465,10 +476,13 @@ internal fun NodeCard(
             as? android.view.accessibility.AccessibilityManager)?.isTouchExplorationEnabled==true
         val dragIsEquivalent=canDragReorder && !touchExploration &&
             androidx.compose.ui.platform.LocalInputModeManager.current.inputMode != androidx.compose.ui.input.InputMode.Keyboard
-        ContextActionMenu(node.title, { showContextMenu = false }) {
+        ContextActionMenu(node.title, { showContextMenu = false }, bottomAligned = node.purpose == NodePurpose.ACTION && !node.isStructural) {
+            cleanCompleted?.let {clean->action("Limpiar completadas",Icons.Default.Delete,{showContextMenu=false;clean()})}
+            if(node.isStructural) action(if(node.isPinned) "Desfijar" else "Fijar",Icons.Default.PushPin,{
+                pinOperation.submit("No se pudo cambiar la fijación.",{shareApp?.nodeRepository?.setPinned(node.id,!node.isPinned) ?: false}) {showContextMenu=false}
+            },enabled=shareApp!=null && !stateBusy && !pinOperation.busy)
             onSelect?.let { select -> action("Seleccionar", Icons.Default.CheckBox, { showContextMenu = false; select() }) }
             onChangeWorkState?.let { change -> action("Cambiar estado",Icons.Default.SwapHoriz,{ showContextMenu = false; change() }, enabled = !stateBusy) }
-            if (metroRouteLabel==null && !hasChildren && node.purpose == NodePurpose.ACTION) action("Metro / modo Viaje", Icons.Default.Directions, { showContextMenu=false;com.r0ybt.arachn0de.metro.MetroNavigation.open(node.id) })
             action("Compartir como imagen",Icons.Default.Share,{showContextMenu=false;shareCard()},enabled=!sharing && !stateBusy && shareApp!=null)
             action("Guardar imagen",Icons.Default.Image,{
                 showContextMenu=false

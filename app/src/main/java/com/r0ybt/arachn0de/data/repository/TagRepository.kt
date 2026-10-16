@@ -10,15 +10,16 @@ import kotlinx.coroutines.flow.flowOn
 
 class TagRepository(private val database: Arachn0deDatabase) {
     private val dao = database.tagDao()
-    fun observe() = dao.observe().map { rows ->
-        val nodes = mutableMapOf<String, MutableSet<String>>()
-        val rules = mutableMapOf<String, MutableSet<String>>()
-        rows.forEach { row ->
-            row.nodes.forEach { nodes.getOrPut(it.nodeId) { linkedSetOf() }.add(it.tagId) }
-            row.rules.forEach { rules.getOrPut(it.ruleId) { linkedSetOf() }.add(it.tagId) }
+    fun observe() = database.invalidationTracker.createFlow("tags","node_tag","recurrence_tag","conversion_roots","conversion_tags").map {
+        database.withTransaction {
+            val catalog=dao.tags().sortedBy {it.normalizedName}.map {Tag(it.id,it.name,it.normalizedName)}
+            val nodes=dao.nodeTags().groupBy {it.nodeId}.mapValues {(_,rows)->rows.mapTo(linkedSetOf()) {it.tagId}}
+            val rules=dao.ruleTags().groupBy {it.ruleId}.mapValues {(_,rows)->rows.mapTo(linkedSetOf()) {it.tagId}}
+            val projects=database.conversionDao().roots().mapNotNull {root->root.projectId?.let {root.id to it}}.toMap()
+            val projectTags=database.conversionDao().tags().filter {it.rootId in projects}.groupBy {projects.getValue(it.rootId)}.mapValues {(_,rows)->rows.mapTo(linkedSetOf()) {it.tagId}}
+            TagState(catalog,nodes,rules,projectTags)
         }
-        TagState(rows.map { Tag(it.tag.id, it.tag.name, it.tag.normalizedName) }, nodes, rules)
-    }.flowOn(Dispatchers.Default)
+    }.flowOn(Dispatchers.IO)
     suspend fun create(name: String): Tag = database.withTransaction {
         val display = TagNames.display(name)
         val key = TagNames.normalize(display)

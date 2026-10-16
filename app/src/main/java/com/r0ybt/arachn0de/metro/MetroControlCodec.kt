@@ -33,7 +33,7 @@ internal object MetroControlCodec {
         val boundary=s.route.steps.indices.firstOrNull {it>=c.firstStep && s.route.steps[it].kind!=MetroStepKind.RIDE} ?: s.route.steps.size
         val lower=MetroStages.offset(s.route,c.firstStep);val upper=MetroStages.offset(s.route,boundary)
         require(s.offset in lower..upper)
-        if(c.phase==MetroPhase.READY) require(c.firstStep==0 && s.offset==0L && s.confirmed==s.route.stops.first() && s.ended==null)
+        if(c.phase==MetroPhase.READY) require(c.firstStep==0 && s.offset==0L && s.confirmed==s.route.stops.first() && (s.ended==null || s.cancelled))
         else if(c.phase!=MetroPhase.RIDING) {
             require(c.records.isNotEmpty() && s.offset==upper && c.records.last().boundary==boundary)
             require(s.confirmed==(s.route.steps.getOrNull(boundary)?.from ?: s.route.stops.last()))

@@ -18,6 +18,7 @@ internal object MetroTripPreview {
     fun status(journey:MetroJourney)=when {
         journey.data.active?.pausedAt!=null->"Pausado"
         journey.data.active!=null->"Activo"
+        journey.data.sessions.lastOrNull()?.cancelled==true->"Cancelado"
         journey.data.sessions.lastOrNull()?.ended!=null->"Finalizado"
         else->"Guardado"
     }

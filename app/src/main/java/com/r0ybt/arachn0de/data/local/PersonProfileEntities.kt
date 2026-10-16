@@ -6,8 +6,11 @@ import androidx.sqlite.db.SupportSQLiteDatabase
 import kotlinx.coroutines.flow.Flow
 
 @Entity(tableName="person_profiles",foreignKeys=[ForeignKey(entity=PersonEntity::class,parentColumns=["id"],childColumns=["personId"],onDelete=ForeignKey.CASCADE)])
-data class PersonProfileEntity(@PrimaryKey val personId:String,val alias:String="",val description:String="",val notes:String="",val phones:String="",val emails:String="",val addresses:String="",val links:String="",val qualities:String="",val skills:String="",val interests:String="",val availability:String="") {
-    fun values()=listOf(alias,description,notes,phones,emails,addresses,links,qualities,skills,interests,availability)
+data class PersonProfileEntity(@PrimaryKey val personId:String,val alias:String="",val description:String="",val notes:String="",val phones:String="",val emails:String="",val addresses:String="",val links:String="",val qualities:String="",val skills:String="",val interests:String="",val availability:String="",
+    @ColumnInfo(defaultValue="''") val givenName:String="",
+    @ColumnInfo(defaultValue="''") val familyName:String="",
+    @ColumnInfo(defaultValue="''") val documentId:String="") {
+    fun values()=listOf(alias,description,notes,phones,emails,addresses,links,qualities,skills,interests,availability,givenName,familyName,documentId)
 }
 @Entity(tableName="person_relations",foreignKeys=[
     ForeignKey(entity=PersonEntity::class,parentColumns=["id"],childColumns=["sourceId"],onDelete=ForeignKey.CASCADE),

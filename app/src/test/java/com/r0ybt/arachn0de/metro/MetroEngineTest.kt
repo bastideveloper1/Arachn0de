@@ -71,7 +71,9 @@ class MetroEngineTest {
         val p=MetroPreferences(raw,id("Los Héroes"),setOf(id("Tobalaba")),MetroRestrictions(closed=setOf(id("Baquedano"))))
         assertEquals(p,MetroCodec.preferences(MetroCodec.preferences(p)))
         assertThrows(IllegalArgumentException::class.java) {MetroCodec.preferences(MetroCodec.preferences(p.copy(home="no")))}
-        assertThrows(IllegalArgumentException::class.java) {MetroCodec.preferences(MetroCodec.preferences(p).replace("\"version\":1","\"version\":1,\"version\":1"))}
+        val encoded=MetroCodec.preferences(p)
+        val version=org.json.JSONObject(encoded).getInt("version")
+        assertThrows(IllegalArgumentException::class.java) {MetroCodec.preferences(encoded.replace("\"version\":$version","\"version\":$version,\"version\":$version"))}
         assertThrows(IllegalArgumentException::class.java) {MetroCodec.preferences("x".repeat(MetroCodec.MAX_BYTES+1))}
     }
 }

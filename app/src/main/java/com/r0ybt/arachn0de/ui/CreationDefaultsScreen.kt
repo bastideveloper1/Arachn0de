@@ -95,7 +95,7 @@ private fun DefaultsEditor(repository:CreationDefaultsRepository, scope:Defaults
             AdaptiveFormRow(listOf({
             DefaultsChoice("Moneda",own.currency,inherited.currency,listOf("CLP","USD","EUR"),{ it },!operation.busy) { own=own.copy(currency=it) }
             }, {
-            DefaultsChoice("Prioridad",own.priority,inherited.priority,Priority.entries,{ when(it) { Priority.NONE->"Ninguna";Priority.LOW->"Baja";Priority.MEDIUM->"Media";Priority.HIGH->"Alta" } },!operation.busy) { own=own.copy(priority=it) }
+            DefaultsChoice("Prioridad",own.priority,inherited.priority,listOf(Priority.NONE,Priority.HIGH),::priorityLabel,!operation.busy) { own=own.copy(priority=it) }
             }), minFieldWidth=130.dp)
             Text("Las opciones de pago, prioridad y fechas se aplican a tareas. Si cambias una nota a tarea durante la creación, estarán disponibles.")
             AdaptiveFormRow(listOf({

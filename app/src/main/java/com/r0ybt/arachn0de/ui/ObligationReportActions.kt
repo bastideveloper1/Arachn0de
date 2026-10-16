@@ -19,7 +19,7 @@ import java.util.Locale
 
 /** Ephemeral export operation; saved state contains cache filenames, never financial data. */
 @Composable
-internal fun ObligationReportActions(snapshot: FinancialSnapshot?, projects: List<Project>, personName: String?, locale: Locale) {
+internal fun ObligationReportActions(snapshot: FinancialSnapshot?, projects: List<Project>, personName: String?, locale: Locale, completed:Boolean?=null) {
     val context = LocalContext.current
     val files = remember(context) { ObligationReportFiles((context.applicationContext as? com.r0ybt.arachn0de.Arachn0deApplication)?.privateContext ?: context.applicationContext) }
     val scope = rememberCoroutineScope()
@@ -55,19 +55,20 @@ internal fun ObligationReportActions(snapshot: FinancialSnapshot?, projects: Lis
     }
 
     val working = busy || pendingSaveName != null
-    TextButton(enabled = !working && readyName == null && snapshot?.tasks?.isNotEmpty() == true,
+    TextButton(enabled = !working && readyName == null && snapshot?.tasks?.any {completed==null || it.isCompleted==completed} == true,
         modifier = Modifier.testTag("generate-obligation-report"),
         onClick = {
             val captured = snapshot ?: return@TextButton
             val capturedProjects = projects
             val capturedPerson = personName
             val capturedLocale = locale
+            val capturedState = completed
             val generatedAt = System.currentTimeMillis()
             busy = true; error = null; notice = null
             scope.launch {
                 try {
                     val data = withContext(Dispatchers.Default) {
-                        ObligationReportData.from(captured, capturedProjects, capturedPerson, generatedAt, capturedLocale)
+                        ObligationReportData.from(captured, capturedProjects, capturedPerson, generatedAt, capturedLocale, completed=capturedState)
                     }
                     readyName = files.generate(data).name
                 } catch (cancelled: CancellationException) {

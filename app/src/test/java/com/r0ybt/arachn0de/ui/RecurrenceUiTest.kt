@@ -30,6 +30,25 @@ class RecurrenceUiTest {
         override fun after() { app.database.close() }
     }).around(compose)
     private fun click(text: String) = compose.onNodeWithText(text).performScrollTo().performClick()
+    @Test fun finishedRuleDeletionRequiresConfirmationAndReturnsToManagement() {
+        val repo=app.nodeRepository.recurrence
+        val day=RecurrenceSchedule.parse("2090-01-01")
+        runBlocking {
+            app.database.recurrenceDao().insert(com.r0ybt.arachn0de.data.local.RecurrenceRuleEntity("finished",project,null,"Finalizada de prueba","",null,null,day,"MONTHLY",1,null,0,"FINISHED","UTC",0,null))
+        }
+        compose.setContent { Arachn0deTheme { RecurrenceManager(repo,"",emptyList(),emptyList(),true,externalRule="finished",showLauncher=false) } }
+        compose.waitUntil(15000) {compose.onAllNodesWithText("Eliminar").fetchSemanticsNodes().isNotEmpty()}
+        compose.onNodeWithText("Eliminar").performScrollTo().performClick()
+        compose.onNodeWithText("¿Eliminar recurrencia finalizada?").assertExists()
+        compose.onNodeWithText("Cancelar").performClick()
+        assertFalse(runBlocking {repo.get("finished")!!.isDeleted})
+        compose.onNodeWithText("Eliminar").performScrollTo().performClick()
+        compose.onAllNodesWithText("Eliminar").onLast().performClick()
+        compose.waitUntil(15000) {runBlocking {repo.get("finished")!!.isDeleted}}
+        compose.waitUntil(15000) {compose.onAllNodesWithText("No hay recurrencias.").fetchSemanticsNodes().isNotEmpty()}
+        assertEquals("FINISHED",runBlocking {repo.get("finished")!!.status})
+        assertTrue(runBlocking {app.database.recurrenceDao().occurrences().isEmpty()})
+    }
     @Test fun newActionCreatesPersistentFutureRuleWithoutFutureNodeAndRestoresDraft() {
         val restoration = StateRestorationTester(compose)
         lateinit var editor: EditorDraft

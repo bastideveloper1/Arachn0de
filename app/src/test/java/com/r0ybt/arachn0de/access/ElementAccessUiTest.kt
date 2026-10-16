@@ -45,6 +45,28 @@ class ElementAccessUiTest {
         db.close()
     }
     private fun await(text:String) {compose.waitUntil(15000) {org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle();androidx.compose.runtime.snapshots.Snapshot.sendApplyNotifications();compose.mainClock.advanceTimeByFrame();compose.onAllNodesWithText(text).fetchSemanticsNodes().isNotEmpty()}}
+    @Test fun restoringAnOpenProjectAndTaskDoesNotCountAgainButDeliberateReopeningDoes() {
+        val project=runBlocking {app.projectRepository.createProject("Visitas")}
+        val task=runBlocking {app.nodeRepository.createNode(project.id,null,"Destino visitado")}
+        val repo=AccessRepository(app.database)
+        val restoration=androidx.compose.ui.test.junit4.StateRestorationTester(compose)
+        restoration.setContent {Arachn0deTheme {AppRoot(app.projectRepository,app.nodeRepository)}}
+        await("Visitas")
+        compose.onNodeWithTag("project-card:${project.id}").performClick()
+        await("Destino visitado")
+        compose.onNodeWithText("Destino visitado").performClick()
+        compose.waitUntil(15000) {runBlocking {repo.snapshot().counts["node:${task.id}"]==1}}
+        assertEquals(1,runBlocking {repo.snapshot().counts["project:${project.id}"]})
+        restoration.emulateSavedInstanceStateRestore()
+        await("Destino visitado")
+        compose.waitForIdle()
+        assertEquals(1,runBlocking {repo.snapshot().counts["node:${task.id}"]})
+        assertEquals(1,runBlocking {repo.snapshot().counts["project:${project.id}"]})
+        compose.onNodeWithContentDescription("Volver a la capa anterior").performClick()
+        await("Destino visitado")
+        compose.onNodeWithText("Destino visitado").performClick()
+        compose.waitUntil(15000) {runBlocking {repo.snapshot().counts["node:${task.id}"]==2}}
+    }
     @Test fun globalSearchOpensOriginalNestedTaskAndFavoriteRemainsAfterOpening() {
         val p=runBlocking {app.projectRepository.createProject("Proyecto raíz")}
         val layer=runBlocking {app.nodeRepository.createNode(p.id,null,"Área",purpose=NodePurpose.LAYER)}

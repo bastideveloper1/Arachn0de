@@ -138,7 +138,7 @@ class AttachmentEditingStateTest {
         val links = body.getLinkAnnotations(0, body.length).map { it.item as androidx.compose.ui.text.LinkAnnotation.Clickable }
         assertEquals(listOf(first, second, first), links.map { it.tag })
         links[1].linkInteractionListener!!.onClick(links[1]); assertEquals(second, clicked)
-        assertTrue(links.all { it.styles?.style?.color == com.r0ybt.arachn0de.ui.theme.Arachn0deColors.ImageLink })
+        assertTrue(links.all { it.styles?.style?.color == com.r0ybt.arachn0de.ui.theme.SemanticColors.ImageLink })
     }
     @Test fun shortAndLongLabelsKeepOffsetMappingsBoundedAndReferenceAtomic() {
         listOf("G", "Gráfico | ] y \\ 🕷 " + "largo ".repeat(50)).forEach { label ->

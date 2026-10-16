@@ -70,9 +70,11 @@ class MetroRedesignUiTest {
         compose.onNodeWithText("Destino: Elegir estación").performClick();capture("04-selector")
         compose.onNodeWithText("Buscar estación").performTextInput(" NUNOA ")
         compose.onNodeWithText("Ñuñoa").assertExists();compose.onNodeWithText("Ñuñoa").performClick()
-        compose.onNodeWithText("Buscar ruta").performScrollTo().performClick();capture("05-planificar")
-        compose.onNodeWithTag("metro-planning").performScrollToNode(hasText("Iniciar viaje"))
-        compose.onNodeWithText("Iniciar viaje").assertIsDisplayed()
+        compose.onNodeWithText("Buscar viaje").performScrollTo().performClick()
+        await {compose.onAllNodesWithTag("metro-search-result").fetchSemanticsNodes().isNotEmpty()};capture("05-recorrido")
+        compose.onNodeWithText("Iniciar viaje").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithContentDescription("Volver").performClick()
+        await {compose.onAllNodesWithTag("metro-planning").fetchSemanticsNodes().isNotEmpty()}
         compose.onNodeWithText("Líneas").performClick();compose.onNodeWithText("L2").performClick()
         compose.onNodeWithText("Vespucio Norte").assertExists();compose.onAllNodesWithText("Roja").onFirst().assertExists();compose.onAllNodesWithText("Verde").onFirst().assertExists()
         capture("06-roja-verde")
@@ -151,13 +153,9 @@ class MetroRedesignUiTest {
         await {runBlocking {app.metroRepository.snapshot().journeys.single().data.active!!.events.any {it.kind=="CONFIRM"}}}
         assertNotNull(app.metroRepository.snapshot().journeys.single().data.active!!.pausedAt)
         compose.onNode(hasText("Los Héroes") and hasClickAction()).performClick()
-        compose.onNodeWithText("Corrección avanzada").performClick()
-        compose.onNodeWithText("Estoy entre estaciones (desde aquí, aproximado)").performScrollTo().performClick()
-        await {runBlocking {app.metroRepository.snapshot().journeys.single().data.active!!.events.last().kind=="BETWEEN"}}
-        val row=compose.onNodeWithTag("metro-row-0").fetchSemanticsNode().boundsInRoot
-        val marker=compose.onNodeWithTag("metro-avatar").fetchSemanticsNode().boundsInRoot.center
-        assertEquals(row.top+30f+row.height*.5f,marker.y,1f)
-        capture("13c-avatar-entre-estaciones")
+        compose.onNodeWithText("Corrección avanzada").assertDoesNotExist()
+        compose.onNodeWithText("Corregir posición").assertDoesNotExist()
+        compose.onNodeWithTag("context-action:Cancelar").performClick()
         assertNotNull(app.metroRepository.snapshot().journeys.single().data.active!!.pausedAt)
     }
 }

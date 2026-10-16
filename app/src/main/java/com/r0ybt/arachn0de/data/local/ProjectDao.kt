@@ -9,7 +9,7 @@ import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface ProjectDao {
-    @Query("SELECT projects.*, p.id AS photo_id, p.projectId AS photo_projectId, p.nodeId AS photo_nodeId, p.file AS photo_file, p.photoZoom AS photo_photoZoom, p.photoX AS photo_photoX, p.photoY AS photo_photoY FROM projects LEFT JOIN project_photos p ON p.projectId = projects.id ORDER BY projects.position, projects.createdAt, projects.id")
+    @Query("SELECT projects.*, p.id AS photo_id, p.projectId AS photo_projectId, p.nodeId AS photo_nodeId, p.file AS photo_file, p.photoZoom AS photo_photoZoom, p.photoX AS photo_photoX, p.photoY AS photo_photoY FROM projects LEFT JOIN project_photos p ON p.projectId = projects.id ORDER BY projects.isPinned DESC, projects.position, projects.createdAt, projects.id")
     fun observeWithPhotos(): Flow<List<ProjectWithPhoto>>
 
     @Query("SELECT projects.*, p.id AS photo_id, p.projectId AS photo_projectId, p.nodeId AS photo_nodeId, p.file AS photo_file, p.photoZoom AS photo_photoZoom, p.photoX AS photo_photoX, p.photoY AS photo_photoY FROM projects LEFT JOIN project_photos p ON p.projectId = projects.id WHERE projects.id = :id")
@@ -43,6 +43,9 @@ interface ProjectDao {
     }
 
     // Only editable fields change; callers cannot overwrite identity or creation time.
+    @Query("UPDATE projects SET isPinned=:pinned WHERE id=:id")
+    suspend fun setPinned(id:String,pinned:Boolean):Int
+
     @Query("UPDATE projects SET name = :name, description = :description, updatedAt = :updatedAt WHERE id = :id")
     suspend fun update(id: String, name: String, description: String, updatedAt: Long): Int
 

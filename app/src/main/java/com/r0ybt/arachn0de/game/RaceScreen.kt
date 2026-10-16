@@ -72,6 +72,7 @@ internal val RaceColors=listOf(Color(0xFFEF5350),Color(0xFF42A5F5),Color(0xFFFFC
     }
     Column(Modifier.fillMaxSize().padding(12.dp),verticalArrangement=Arrangement.spacedBy(8.dp)) {
         Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically) {
+            com.r0ybt.arachn0de.ui.GlobalChromeActions(leading=true)
             TextButton(onClick={ if(page=="home")onBack() else { page="home"; draft=null } }) { Text("Atrás") }
             Text("Carrera táctica",Modifier.weight(1f),style=MaterialTheme.typography.titleLarge)
             TextButton(onClick={help=true}) { Text("Reglas") }

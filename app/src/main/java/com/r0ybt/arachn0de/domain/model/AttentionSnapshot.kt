@@ -17,7 +17,6 @@ object AttentionPolicy {
         return buildList {
             reason?.let { add(it) }
             if (node.effectivePriority == Priority.HIGH) add(AttentionReason.HIGH_PRIORITY)
-            else if (node.effectivePriority == Priority.MEDIUM && reason != null) add(AttentionReason.MEDIUM_PRIORITY)
         }
     }
 }
@@ -96,7 +95,7 @@ class AttentionSnapshot(val tree: NodeTreeSnapshot, val now: Long, val zone: jav
         reasonsByNodeId = reasons.toMap()
         tasks = sources.sortedWith(
             compareBy<Node> { reasons.getValue(it.id).first().ordinal }
-                .thenBy { it.dueAt == null }.thenBy { it.dueAt }.thenByDescending { it.effectivePriority.ordinal }.thenBy { it.createdAt }.thenBy { it.id },
+                .thenBy { it.dueAt == null }.thenBy { it.dueAt }.thenByDescending { it.effectivePriority==Priority.HIGH }.thenBy { it.createdAt }.thenBy { it.id },
         )
     }
 

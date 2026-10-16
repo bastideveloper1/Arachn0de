@@ -29,17 +29,24 @@ import com.r0ybt.arachn0de.ui.state.rememberTaskScreenNow
 
 @Composable
 internal fun AppRoot(projectRepository: ProjectRepository, nodeRepository: NodeRepository, clock: () -> Long = System::currentTimeMillis) {
+    AppRoot(projectRepository,nodeRepository,initialProjects=null,clock=clock)
+}
+
+@Composable
+internal fun AppRoot(projectRepository: ProjectRepository, nodeRepository: NodeRepository, initialProjects:List<Project>?, clock: () -> Long = System::currentTimeMillis) {
+    var initialSnapshot by remember(projectRepository) {mutableStateOf(initialProjects)}
     var generation by rememberSaveable { mutableStateOf(0) }
     androidx.compose.runtime.key(generation) {
-        AppRootContent(projectRepository, nodeRepository, clock) { generation++ }
+        AppRootContent(projectRepository, nodeRepository, clock,initialSnapshot) { initialSnapshot=null;generation++ }
     }
 }
 
 @Composable
-private fun AppRootContent(projectRepository: ProjectRepository, nodeRepository: NodeRepository, clock: () -> Long, onRestored: () -> Unit) {
+private fun AppRootContent(projectRepository: ProjectRepository, nodeRepository: NodeRepository, clock: () -> Long, initialProjects:List<Project>?, onRestored: () -> Unit) {
     val tagState by remember(nodeRepository) { nodeRepository.tags.observe() }.collectAsState(initial = com.r0ybt.arachn0de.domain.model.TagState())
     val personRepository = (androidx.compose.ui.platform.LocalContext.current.applicationContext as com.r0ybt.arachn0de.Arachn0deApplication).personRepository
     val screenStates = androidx.compose.runtime.saveable.rememberSaveableStateHolder()
+    var showMetroStatistics by rememberSaveable { mutableStateOf(false) }
     var showAppearance by rememberSaveable { mutableStateOf(false) }
     var showMetro by rememberSaveable { mutableStateOf(false) }
     var metroRequestToken by rememberSaveable { mutableStateOf(0L) }
@@ -78,7 +85,7 @@ private fun AppRootContent(projectRepository: ProjectRepository, nodeRepository:
     val conversionScope = androidx.compose.runtime.rememberCoroutineScope()
     val projectsListState = rememberLazyListState()
     var selectedProjectId by rememberSaveable { mutableStateOf<String?>(null) }
-    var projects by remember(projectRepository) { mutableStateOf<List<Project>?>(null) }
+    var projects by remember(projectRepository) { mutableStateOf<List<Project>?>(initialProjects) }
     var allState by remember(nodeRepository) { mutableStateOf(NodeTreeSnapshot(emptyList())) }
     val metroRepository=(androidx.compose.ui.platform.LocalContext.current.applicationContext as com.r0ybt.arachn0de.Arachn0deApplication).metroRepository
     val metroSnapshot by remember(metroRepository) {metroRepository.observe()}.collectAsState(initial=null)
@@ -128,7 +135,8 @@ private fun AppRootContent(projectRepository: ProjectRepository, nodeRepository:
             financialPeopleLoad.collect(personRepository.observePeople()) { people = it; financialPeopleLoaded = true }
         }
     }
-    val globalView = !showMetro && !showGame && !showAppearance && !showAbout && !showPeople && !showTechnologies && (showObligations || showCalendar || showAttention || selectedProjectId == null)
+    val globalView = !showMetro && !showMetroStatistics && !showGame && !showAppearance && !showAbout && !showPeople && !showTechnologies &&
+        (showObligations || showCalendar || showAttention || selectedProjectId == null)
     val projectsView = globalView && !showCalendar && !showObligations && !showAttention
     val now = if (globalView) rememberTaskScreenNow(allState.nodes, clock, onRefresh = { zoneId = java.util.TimeZone.getDefault().id }, dayOnly = projectsView) else 0L
     val calendar = if (showCalendar) {
@@ -151,12 +159,23 @@ private fun AppRootContent(projectRepository: ProjectRepository, nodeRepository:
     val accessIndex by androidx.compose.runtime.produceState<List<com.r0ybt.arachn0de.access.ElementResult>?>(null,projects,allState,nodesLoaded) {
         if(projects!=null && nodesLoaded) value=kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {com.r0ybt.arachn0de.access.ElementSearch.index(projects.orEmpty(),allState.nodes)}
     }
-    LaunchedEffect(selectedProjectId,accessRepo) {selectedProjectId?.let {accessRepo.opened("project:$it")}}
+    var projectVisitToken by rememberSaveable {androidx.compose.runtime.mutableLongStateOf(0)}
+    var recordedProject by rememberSaveable {mutableStateOf<String?>(null)}
+    LaunchedEffect(selectedProjectId,projectVisitToken,accessRepo) {
+        val visit=selectedProjectId?.let {"$projectVisitToken:$it"}
+        if(recordedProject!=visit) {
+            recordedProject=visit
+            selectedProjectId?.let {accessRepo.opened("project:$it")}
+        }
+    }
     var drawerOpen by rememberSaveable {mutableStateOf(false)}
     var searchOpen by rememberSaveable {mutableStateOf(false)}
     var searchMode by rememberSaveable {mutableStateOf("Buscar")}
     var searchQuery by rememberSaveable {mutableStateOf("")}
     val searchListState=rememberLazyListState()
+    var favoritesView by rememberSaveable {mutableStateOf(false)}
+    var favoritesQuery by rememberSaveable {mutableStateOf("")}
+    val favoritesListState=rememberLazyListState()
     var searchProjectId by rememberSaveable {mutableStateOf<String?>(null)}
     var searchNodeId by rememberSaveable {mutableStateOf<String?>(null)}
     var searchPendingNode by rememberSaveable {mutableStateOf<String?>(null)}
@@ -167,25 +186,34 @@ private fun AppRootContent(projectRepository: ProjectRepository, nodeRepository:
     var securityOpen by rememberSaveable {mutableStateOf(false)}
     val securityPage=LocalSecurityPage.current
     val openSecurity=LocalOpenSecurity.current
-    val rootProjectActions=projects.orEmpty().any {it.id==selectedProjectId} && !showMetro && !showGame && !showAppearance && !showAbout && !showPeople && !showTechnologies && !showAttention && !showCalendar && !showObligations
+    val rootProjectActions=projects.orEmpty().any {it.id==selectedProjectId} && !showMetro && !showMetroStatistics && !showGame && !showAppearance && !showAbout && !showPeople && !showTechnologies && !showAttention && !showCalendar && !showObligations
     val visibleProjectActions=if(searchOpen) projects.orEmpty().any {it.id==searchProjectId} else rootProjectActions && !backupsOpen && !securityOpen
     val navigation=GlobalNavigation(menu={drawerOpen=true},showLock=!visibleProjectActions)
     fun openSearch(mode:String?=null) {
         securityOpen=false;searchOpen=true;searchProjectId=null;searchNodeId=null;searchPendingNode=null
-        if(mode!=null) searchMode=mode
+        favoritesView=mode=="Favoritos"
+        if(!favoritesView) {searchMode="Buscar";searchQuery=""}
     }
     fun navigate(destination:String) {
         searchOpen=false;searchProjectId=null;searchNodeId=null;backupsOpen=false;securityOpen=false
         showPeople=destination=="people";showTechnologies=destination=="technologies"
         showAppearance=destination=="appearance";showAbout=destination=="about"
+        showMetroStatistics=destination=="metro-statistics"
         showMetro=destination=="metro";showGame=destination=="game"
         showAttention=destination=="attention";showCalendar=destination=="calendar";showObligations=destination=="obligations"
         if(destination=="projects") {selectedProjectId=null;openNodeId=null;returnToPerson=false;returnToCalendar=false;returnToObligations=false;returnToAttention=false}
-        if(destination=="people") {personReturnId=null;returnToPerson=false}
+        if(destination=="people") {personReturnId=null;personReturnToList=false;returnToPerson=false;screenStates.removeState("people:list")}
         if(destination=="metro") {metroNodeId=null;metroJourneyId=null;metroRequestToken=0L}
         if(destination=="tags") showTags=true
     }
-    LaunchedEffect(searchProjectId,searchDestinationToken,accessRepo) {searchProjectId?.let {accessRepo.opened("project:$it")}}
+    var recordedSearchVisit by rememberSaveable {mutableStateOf<String?>(null)}
+    LaunchedEffect(searchProjectId,searchDestinationToken,accessRepo) {
+        val visit=searchProjectId?.let {"$searchDestinationToken:$it"}
+        if(recordedSearchVisit!=visit) {
+            recordedSearchVisit=visit
+            searchProjectId?.let {accessRepo.opened("project:$it")}
+        }
+    }
     val indicatorParticipation by remember(nodeRepository) {nodeRepository.management.participation.observe("")}.collectAsState(initial=com.r0ybt.arachn0de.data.repository.ParticipationState())
     val indicatorMinute=metroTime.wall / 60_000L
     val indicatorFacts by androidx.compose.runtime.produceState<Map<String,CompactCardFacts>>(emptyMap(),allState,responsibleByNode,indicatorTechnologies,metroSnapshot,indicatorMinute,indicatorParticipation) {
@@ -196,22 +224,27 @@ private fun AppRootContent(projectRepository: ProjectRepository, nodeRepository:
     }
     val reportActions=LocalProjectActionsVisibility.current
     androidx.compose.runtime.SideEffect {reportActions(visibleProjectActions)}
-    androidx.compose.runtime.CompositionLocalProvider(LocalGlobalNavigation provides navigation,LocalStoryLabels provides com.r0ybt.arachn0de.data.repository.storyLabels(indicatorParticipation.work.nodes,indicatorParticipation.work.records.roles),LocalQuickCaptureIndex provides accessIndex.orEmpty(),LocalElementAccess provides accessRepo,LocalElementAccessState provides accessState,LocalPersonNavigation provides {destination:PersonDestination->
+    androidx.compose.runtime.CompositionLocalProvider(LocalCaptureGate provides remember(accessDb) {CaptureGate()},LocalGlobalNavigation provides navigation,LocalStoryLabels provides com.r0ybt.arachn0de.data.repository.storyLabels(indicatorParticipation.work.nodes,indicatorParticipation.work.records.roles),LocalQuickCaptureIndex provides accessIndex.orEmpty(),LocalElementAccess provides accessRepo,LocalElementAccessState provides accessState,LocalPersonNavigation provides {destination:PersonDestination->
         if(projects.orEmpty().any {it.id==destination.projectId} && (destination.nodeId==null || allState.nodesById[destination.nodeId]?.projectId==destination.projectId)) {
             searchOpen=false;searchProjectId=null;backupsOpen=false
             personReturnToList=showPeople && (personReturnId==null || personReturnToList)
             personNavigationToken++;personReturnId=destination.personId;returnToPerson=true;showPeople=false;showAttention=false;showCalendar=false;showObligations=false
             returnToAttention=false;returnToCalendar=false;returnToObligations=false
-            screenStates.removeState("project:${destination.projectId}");selectedProjectId=destination.projectId;openNodeId=destination.nodeId
+            screenStates.removeState("project:${destination.projectId}");selectedProjectId=destination.projectId; projectVisitToken++;openNodeId=destination.nodeId
         }
     }) {
-    Box(Modifier.fillMaxSize()) {
+    Column(Modifier.fillMaxSize()) {
+    Box(Modifier.fillMaxWidth().weight(1f)) {
         NavigationContent(active=!searchOpen && !backupsOpen && !drawerOpen && !securityOpen) {
         Box(Modifier.fillMaxSize().then(if(searchOpen || backupsOpen || drawerOpen || securityOpen) Modifier.clearAndSetSemantics {} else Modifier)) {
     val selectedProject = projects?.firstOrNull { it.id == selectedProjectId }
     androidx.compose.runtime.CompositionLocalProvider(com.r0ybt.arachn0de.metro.LocalMetroActivity provides metroActivity,com.r0ybt.arachn0de.metro.LocalMetroPreview provides metroPreviews,LocalCompactCardFacts provides indicatorFacts,LocalIndicatorDirectory provides indicatorDirectory) {
     if (showMetro) {
         screenStates.SaveableStateProvider("metro:${metroJourneyId ?: metroNodeId ?: "main"}") { com.r0ybt.arachn0de.metro.MetroScreen(allState.nodes,projects.orEmpty(),metroNodeId,requestToken=metroRequestToken,journeyId=metroJourneyId,onBack={showMetro=false;metroNodeId=null;metroJourneyId=null}) }
+    } else if (showMetroStatistics) {
+        screenStates.SaveableStateProvider("metro-statistics") {
+            com.r0ybt.arachn0de.metro.MetroStatisticsScreen(onBack={showMetroStatistics=false})
+        }
     } else if (showGame) {
         screenStates.SaveableStateProvider("game") {
             com.r0ybt.arachn0de.game.GameScreen(onBack = { showGame = false })
@@ -228,7 +261,7 @@ private fun AppRootContent(projectRepository: ProjectRepository, nodeRepository:
             TechnologiesScreen(repository) { showTechnologies = false }
         }
     } else if (showPeople) {
-        screenStates.SaveableStateProvider("people:${if(personReturnToList) "list" else personReturnId ?: "list"}") { PeopleScreen(personRepository,initialPersonId=if(personReturnToList) null else personReturnId,initialSection=if(personReturnId!=null && !personReturnToList) "Proyectos y trabajo" else "General") { showPeople = false;personReturnId=null;personReturnToList=false } }
+        screenStates.SaveableStateProvider("people:${if(personReturnToList) "list" else personReturnId ?: "list"}") { PeopleScreen(personRepository,initialPersonId=if(personReturnToList) null else personReturnId,initialSection=if(personReturnId!=null && !personReturnToList) "Proyectos y trabajo" else "Inicio") { showPeople = false;personReturnId=null;personReturnToList=false } }
     } else if (showObligations) {
         screenStates.SaveableStateProvider("obligations") {
             ObligationsScreen(allState, projects.orEmpty(), people, responsibleByNode,
@@ -236,7 +269,7 @@ private fun AppRootContent(projectRepository: ProjectRepository, nodeRepository:
                 onOpen = { node ->
                     val real = allState.nodesById[node.id]
                     if (real != null && real.isCompletable && real.obligation != null && projects.orEmpty().any { it.id == real.projectId }) {
-                        selectedProjectId = real.projectId; openNodeId = real.id
+                        selectedProjectId = real.projectId; projectVisitToken++; openNodeId = real.id
                         returnToObligations = true; returnToCalendar = false; returnToAttention = false
                         showObligations = false
                     }
@@ -249,7 +282,7 @@ private fun AppRootContent(projectRepository: ProjectRepository, nodeRepository:
                 onOpen = { node ->
                     val real = allState.nodesById[node.id]
                     if (real != null && real.isCompletable && real.dueAt != null && projects.orEmpty().any { it.id == real.projectId }) {
-                        selectedProjectId = real.projectId
+                        selectedProjectId = real.projectId; projectVisitToken++
                         openNodeId = real.id
                         returnToCalendar = true
                         returnToObligations = false
@@ -258,6 +291,7 @@ private fun AppRootContent(projectRepository: ProjectRepository, nodeRepository:
                     }
                 },
                 people = people, peopleLoaded = financialPeopleLoaded, tagState = tagState,
+                eventRepository = indicatorApp.security.current.value?.calendarEvents,
                 onBack = { showCalendar = false },
             )
         }
@@ -267,7 +301,7 @@ private fun AppRootContent(projectRepository: ProjectRepository, nodeRepository:
                 onOpen = { node ->
                     val real = allState.nodesById[node.id]
                     if (real != null && projects.orEmpty().any { it.id == real.projectId }) {
-                        selectedProjectId = real.projectId
+                        selectedProjectId = real.projectId; projectVisitToken++
                         openNodeId = real.id
                         returnToAttention = true
                         returnToObligations = false
@@ -279,7 +313,7 @@ private fun AppRootContent(projectRepository: ProjectRepository, nodeRepository:
             )
         }
     } else if (selectedProjectId == null) {
-        ProjectDashboardScreen(
+        if(projects==null) androidx.compose.material3.Text("Cargando Núcleos…") else ProjectDashboardScreen(
             exportTree = allState,
             copyDescendantsReady = nodesLoaded,
 
@@ -288,9 +322,9 @@ private fun AppRootContent(projectRepository: ProjectRepository, nodeRepository:
             projects = projects.orEmpty(),
             projectAlertsById = projectAlerts,
             conversionScope = conversionScope,
-            onConverted = { id, node -> screenStates.removeState("project:$id"); selectedProjectId = id; openNodeId = node; returnToAttention = false; returnToCalendar = false; returnToObligations = false },
-            onOpenProject = { screenStates.removeState("project:${it.id}"); openNodeId = null; selectedProjectId = it.id; returnToAttention = false; returnToCalendar = false; returnToObligations = false },
-            onOpenPeople = { personReturnId=null;returnToPerson=false;showPeople = true },
+            onConverted = { id, node -> screenStates.removeState("project:$id"); selectedProjectId = id; projectVisitToken++; openNodeId = node; returnToAttention = false; returnToCalendar = false; returnToObligations = false },
+            onOpenProject = { screenStates.removeState("project:${it.id}"); openNodeId = null; selectedProjectId = it.id; projectVisitToken++; returnToAttention = false; returnToCalendar = false; returnToObligations = false },
+            onOpenPeople = { navigate("people") },
             onOpenTechnologies = { showTechnologies = true },
             onOpenTags={showTags=true},
             onOpenAttention = { showAttention = true },
@@ -308,7 +342,7 @@ private fun AppRootContent(projectRepository: ProjectRepository, nodeRepository:
             ProjectNodeScreen(
                 project = selectedProject,
                 conversionScope = conversionScope,
-                onConverted = { id, node -> screenStates.removeState("project:$id"); selectedProjectId = id; openNodeId = node; returnToAttention = false; returnToCalendar = false; returnToObligations = false },
+                onConverted = { id, node -> screenStates.removeState("project:$id"); selectedProjectId = id; projectVisitToken++; openNodeId = node; returnToAttention = false; returnToCalendar = false; returnToObligations = false },
                 sortPreferences = sortPreferences,
                 onOpenProjects = { screenStates.removeState("project:${selectedProject.id}"); selectedProjectId = null; openNodeId = null; returnToCalendar = false; returnToAttention = false; returnToObligations = false;returnToPerson=false;personReturnId=null },
                 nodeRepository = nodeRepository,
@@ -317,7 +351,7 @@ private fun AppRootContent(projectRepository: ProjectRepository, nodeRepository:
                 clock = clock,
                 openNodeId = openNodeId,
                 onOpenNodeHandled = { openNodeId = null },
-                onOpenPeople = { personReturnId=null;returnToPerson=false;showPeople = true },
+                onOpenPeople = { navigate("people") },
                 onOpenTechnologies = { showTechnologies = true },
             onOpenTags={showTags=true},
                 onOpenAttention = { showAttention = true },
@@ -364,7 +398,7 @@ private fun AppRootContent(projectRepository: ProjectRepository, nodeRepository:
         RecurrenceManager(nodeRepository.recurrence,"",emptyList(),people,financialPeopleLoaded,externalRule=recurrenceRequest,showLauncher=false,onConsumed={recurrenceRequest=null})
         if(securityOpen && securityPage!=null) NavigationContent(active=!drawerOpen) {
             Box(Modifier.fillMaxSize().then(if(drawerOpen) Modifier.clearAndSetSemantics {} else Modifier)) {
-                securityPage {securityOpen=false}
+                androidx.compose.runtime.CompositionLocalProvider(LocalBackupsRestored provides onRestored) {securityPage {securityOpen=false}}
             }
         }
         if(backupsOpen) NavigationContent(active=!drawerOpen && !searchOpen) {
@@ -376,8 +410,10 @@ private fun AppRootContent(projectRepository: ProjectRepository, nodeRepository:
             val destination=projects.orEmpty().firstOrNull {it.id==searchProjectId}
             Box(Modifier.fillMaxSize().then(if(drawerOpen) Modifier.clearAndSetSemantics {} else Modifier)) {
                 if(searchProjectId==null || destination==null) {
-                    ElementSearchScreen(accessIndex.orEmpty(),searchMode,searchQuery,{searchQuery=it},{searchMode=it},
-                        onBack={searchOpen=false},listState=searchListState,ready=accessIndex!=null,onOpen={result->
+                    ElementSearchScreen(accessIndex.orEmpty(),if(favoritesView) "Favoritos" else searchMode,
+                        if(favoritesView) favoritesQuery else searchQuery,
+                        {if(favoritesView) favoritesQuery=it else searchQuery=it},{if(!favoritesView) searchMode=it},
+                        onBack={searchOpen=false},listState=if(favoritesView) favoritesListState else searchListState,ready=accessIndex!=null,onOpen={result->
                             if(projects.orEmpty().any {it.id==result.projectId} && (result.nodeId==null || allState.nodesById[result.nodeId]?.projectId==result.projectId)) {
                                 searchProjectId=result.projectId;searchNodeId=result.nodeId;searchPendingNode=result.nodeId;searchDestinationToken++
                             }
@@ -396,17 +432,20 @@ private fun AppRootContent(projectRepository: ProjectRepository, nodeRepository:
                 }
             }
         }
+        if(com.r0ybt.arachn0de.sharing.SHARE_ENABLED) SharedCaptureHost(accessIndex.orEmpty(),accessRepo,quickOpen)
         if(quickOpen) QuickCaptureDialog(accessIndex.orEmpty(),accessRepo) {quickOpen=false}
         if(drawerOpen) {
             Box(Modifier.fillMaxSize().background(Arachn0deColors.Background.copy(alpha=0.65f)).clickable {drawerOpen=false})
             AppIdentityDrawer(onDismiss={drawerOpen=false},onSearch={openSearch()},onFavorites={openSearch("Favoritos")},
                 onSecurity=if(securityPage!=null) ({searchOpen=false;backupsOpen=false;securityOpen=true}) else openSecurity,onBackups={securityOpen=false;searchOpen=false;backupsOpen=true},
                 onQuickCapture=if(visibleProjectActions) null else ({quickOpen=true}),
-                onProjects={navigate("projects")},projectsSelected=projectsView && !searchOpen && !backupsOpen,
-                onPeople={navigate("people")},onTechnologies={navigate("technologies")},onTags={navigate("tags")},
+                onProjects={navigate("projects")},projectsSelected=projectsView && !searchOpen && !backupsOpen && !securityOpen,
+                onPeople={navigate("people")},peopleSelected=showPeople && !searchOpen && !securityOpen && !backupsOpen,onTechnologies={navigate("technologies")},onTags={navigate("tags")},
                 onAttention={navigate("attention")},onCalendar={navigate("calendar")},onObligations={navigate("obligations")},onRecurrences={recurrenceRequest=""},
-                onAppearance={navigate("appearance")},onAbout={navigate("about")},onMetro={navigate("metro")},onGame={navigate("game")})
+                onAppearance={navigate("appearance")}, onMetroStatistics={navigate("metro-statistics")},onAbout={navigate("about")},onMetro={navigate("metro")},onGame={navigate("game")})
         }
+    }
+    if(!visibleProjectActions || drawerOpen) AudioBar()
     }
     }
 }

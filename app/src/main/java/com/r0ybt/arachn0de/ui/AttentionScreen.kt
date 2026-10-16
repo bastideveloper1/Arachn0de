@@ -28,7 +28,7 @@ internal fun AttentionIndicator(summary: AttentionSummary?) {
         if (summary.priorityOnly > 0) add("${summary.priorityOnly} ${if (summary.priorityOnly == 1) "de prioridad alta" else "de prioridad alta"}")
         if (summary.upcoming > 0) add("${summary.upcoming} ${if (summary.upcoming == 1) "próxima" else "próximas"}")
     }.joinToString(" · ")
-    Text("Contiene $counts", color = if (summary.level == AttentionLevel.OVERDUE) Arachn0deColors.Destructive else SemanticColors.Attention,
+    Text("Contiene $counts", color = if (summary.level == AttentionLevel.OVERDUE) Arachn0deColors.Destructive else com.r0ybt.arachn0de.ui.theme.semanticColor(SemanticColors.Attention),
         fontSize = 12.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
 }
 
@@ -63,9 +63,10 @@ internal fun AttentionScreen(
     Surface(Modifier.fillMaxSize(), color = Arachn0deColors.Background) {
         Column(Modifier.fillMaxSize().padding(14.dp)) {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                GlobalChromeActions(leading=true)
+                TextButton(onClick = onBack) { Text("Volver") }
                 Text("Atención",modifier=Modifier.weight(1f),maxLines=1,overflow=androidx.compose.ui.text.style.TextOverflow.Ellipsis, style = MaterialTheme.typography.titleLarge)
                 TextButton(onClick = { filters.open = true }) { Text(if (filters.active) "Filtros activos" else "Filtros") }
-                TextButton(onClick = onBack) { Text("Volver") }
                 GlobalChromeActions()
             }
             if (!ready) Text("Cargando Atención…")
@@ -74,8 +75,8 @@ internal fun AttentionScreen(
                 groups.forEach { (reason, nodes) ->
                 item(key = "reason:${reason.name}") { Text(when (reason) {
                     AttentionReason.OVERDUE -> "Atrasadas"; AttentionReason.DUE_TODAY -> "Vencen hoy"; AttentionReason.UPCOMING -> "Próximas"
-                    AttentionReason.HIGH_PRIORITY -> "Prioridad alta"; AttentionReason.MEDIUM_PRIORITY -> "Prioridad media"
-                }, color = SemanticColors.Attention) }
+                    AttentionReason.HIGH_PRIORITY -> "Prioritario"; AttentionReason.MEDIUM_PRIORITY -> "No prioritario"
+                }, color = com.r0ybt.arachn0de.ui.theme.semanticColor(SemanticColors.Attention)) }
                 items(nodes, key = { it.id }) { node ->
                     val project = projectById.getValue(node.projectId)
                     val path = remember(attention!!.tree, node.id, project.name) {
@@ -87,7 +88,7 @@ internal fun AttentionScreen(
                             Text(node.title, maxLines = 2, overflow = TextOverflow.Ellipsis)
                             Text(path, color = Arachn0deColors.TextSecondary, fontSize = 12.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
                             Text(attention.reasonsByNodeId.getValue(node.id).joinToString(" · ", transform = ::attentionReasonLabel),
-                                color = SemanticColors.Attention, modifier = Modifier.testTag("attention-reasons:${node.id}"))
+                                color = com.r0ybt.arachn0de.ui.theme.semanticColor(SemanticColors.Attention), modifier = Modifier.testTag("attention-reasons:${node.id}"))
                             if (node.effectivePriority == Priority.LOW) PriorityIndicator(node)
                             TagChips(tagState.forNode(node.id))
                             ObligationIndicator(node)

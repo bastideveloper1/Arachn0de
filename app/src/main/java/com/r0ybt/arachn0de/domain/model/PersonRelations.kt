@@ -27,7 +27,8 @@ internal fun relationKey(source:String,target:String,category:String,label:Strin
 }
 internal fun validatePersonDetails(people:Set<String>,profiles:List<PersonProfileEntity>,relations:List<PersonRelationEntity>) {
     require(profiles.map {it.personId}.distinct().size==profiles.size) {"Ficha duplicada."}
-    profiles.forEach {require(it.personId in people);require(it.values().all {s->s.length<=16000}) {"Una sección supera el límite de texto."}}
+    // Historical persons.name had no field length limit; preserve it in givenName without truncation.
+    profiles.forEach {require(it.personId in people);require(it.copy(givenName="").values().all {s->s.length<=16000}) {"Una sección supera el límite de texto."}}
     require(relations.map {it.id}.distinct().size==relations.size && relations.map {it.relationKey}.distinct().size==relations.size) {"La relación ya existe, incluida su inversa."}
     relations.forEach {r->
         require(r.id.isNotBlank() && r.id.length<=200 && r.sourceId in people && r.targetId in people && r.sourceId!=r.targetId) {"Selecciona dos Personas diferentes y existentes."}

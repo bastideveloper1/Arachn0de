@@ -60,7 +60,7 @@ internal fun SavedTemplatesLibrary(draft:EditorDraft,onDismiss:()->Unit) {
         OutlinedTextField(query,{query=it},label={Text("Buscar por nombre")},singleLine=true,modifier=Modifier.fillMaxWidth())
         Text("Rellena el formulario; tú decides cuándo guardar el elemento.",style=MaterialTheme.typography.bodySmall)
         LazyColumn(Modifier.heightIn(max=420.dp)) {
-            items(rows.filter {it.name.contains(query,ignoreCase=true)},key={it.id}) {row->
+            items(rows.filter {it.name.contains(query,ignoreCase=true) && SavedTemplateCodec.decode(it.payload).metroPlan==null},key={it.id}) {row->
                 Column {
                     TextButton(enabled=!op.busy,onClick={var prepared:TemplateApplication?=null;op.submit("No se pudo leer la plantilla.",{prepared=repo.prepare(row);true},{val a=requireNotNull(prepared);if(draft.hasWork || a.warnings.isNotEmpty()) selected=a else apply(a)})}) {Column {Text(row.name);Text(SavedTemplateCodec.decode(row.payload).let { if(it.metroPlan!=null) "Viaje Metro" else if(it.amount!=null) "Pago" else if(it.purpose==NodePurpose.NOTE) "Nota" else "Tarea" },style=MaterialTheme.typography.labelSmall)}}
                     FlowRow {TextButton(enabled=!op.busy,onClick={inspecting=row}) {Text("Consultar")};TextButton(enabled=!op.busy,onClick={editing=row}) {Text("Editar / renombrar")};TextButton(enabled=!op.busy,onClick={deleting=row}) {Text("Eliminar")}}

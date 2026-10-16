@@ -55,8 +55,9 @@ internal fun TechnologiesScreen(repository: TechnologyRepository, onBack: () -> 
     Surface(Modifier.fillMaxSize(), color = Arachn0deColors.Background) {
         Column(Modifier.fillMaxSize().padding(14.dp)) {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                Text("Tecnologías",modifier=Modifier.weight(1f),maxLines=1,overflow=androidx.compose.ui.text.style.TextOverflow.Ellipsis, style = MaterialTheme.typography.titleLarge)
+                GlobalChromeActions(enabled=!busy, leading=true)
                 TextButton(enabled = !busy, onClick = onBack) { Text("Volver") }
+                Text("Tecnologías",modifier=Modifier.weight(1f),maxLines=1,overflow=androidx.compose.ui.text.style.TextOverflow.Ellipsis, style = MaterialTheme.typography.titleLarge)
                 GlobalChromeActions(enabled=!busy)
             }
             Button(enabled = !busy && catalogReady, onClick = { editorId = UUID.randomUUID().toString(); isNew = true; name = ""; icon = null }) { Text("Nueva tecnología") }

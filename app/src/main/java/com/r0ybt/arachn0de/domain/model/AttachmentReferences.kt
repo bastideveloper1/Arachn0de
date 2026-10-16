@@ -2,7 +2,7 @@ package com.r0ybt.arachn0de.domain.model
 
 /** Only canonical UUID markers are references. Unknown text and escaped markers stay literal. */
 object AttachmentReferences {
-    private val marker = Regex("""\[\[arachnode:image:([a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12})(?:\|((?:\\[\\\]|nr]|[^\]\\\r\n])*))?]]""")
+    private val marker = Regex("""\[\[arachnode:(?:image|audio):([a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12})(?:\|((?:\\[\\\]|nr]|[^\]\\\r\n])*))?]]""")
     fun matches(text: String) = marker.findAll(text).filter { match ->
         var start = match.range.first - 1
         var escapes = 0
@@ -19,6 +19,8 @@ object AttachmentReferences {
         }
         return "[[arachnode:image:$id|$escaped]]"
     }
+    fun audioToken(id:String) = "[[arachnode:audio:$id]]"
+    fun isAudio(match:MatchResult) = match.value.startsWith("[[arachnode:audio:")
     fun label(match: MatchResult): String? {
         val encoded = match.groups[2]?.value ?: return null
         return buildString {

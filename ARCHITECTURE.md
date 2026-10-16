@@ -3756,3 +3756,1537 @@ Las anotaciones conservan íntegramente su formato UUID/contexto/texto/epochDay/
 `GanttRenderer` dibuja el mismo gráfico horizontal en Android y PNG. Exporta bloques de hasta 40 columnas y 36 filas lógicas, a escala 2, comprobando el límite original de 4 millones de píxeles por imagen y 512 imágenes por exportación. Repite encabezados y conserva coordenadas/etiquetas al paginar. Solo las anotaciones visibles añaden imágenes «ARACHN0DE — ANOTACIONES»; se divide el texto mediante límites de línea de Android, conservándolo completo, incluidos Unicode y saltos de línea. Sin notas no hay páginas adicionales. Los PNG siguen siendo derivados externos SAF, sin caché privada ni estado confirmado nuevo; se eliminan los destinos nuevos que fallen durante exportación por lote y se informa cuántos PNG quedaron escritos. No se alteran los anteriores.
 
 Navegación: la granularidad Días/Semanas/Meses conserva los ticks existentes. Anterior/Siguiente desplaza un día, semana o mes según la escala, mediante ventanas de consulta deslizantes; Hoy recupera el período actual. No cambia fechas almacenadas. La consulta Android rechaza tamaños superiores a 100.000 píxeles por eje y propone un Sprint/período menor; la protección de exportación permanece independiente. No se introduce fecha real de finalización ni indicadores de puntualidad no demostrables.
+
+## Metro adaptativo — bloque 1: historial original y motor de aprendizaje
+
+Room 39 incorpora `metro_learning_events` y `metro_learning_clock` mediante
+migración explícita 38→39, sin reescribir preferencias, planes ni sesiones.
+El repositorio ofrece `confirmDoors` y `correctPosition`: captura y cambio de
+sesión se confirman en la misma transacción/revisión. `begin` no crea una
+confirmación de puertas. La conexión de estos métodos a la UI, las estimaciones
+adaptadas del seguimiento, «Ver cálculo», separación de búsqueda/mapa y menú
+inferior son bloques posteriores; no se declaran implementados en este bloque.
+
+Cada captura conserva estación, índice del recorrido, línea, dirección, servicio,
+tipo (DOORS/CORRECTION/ARRIVAL), tiempo monotónico y civil, arranque, dominio local
+del reloj, pausa acumulada/estado, validez/motivo, posición estimada y ETA del motor
+al confirmar. Incluye una instantánea del plan, nunca otra sesión. El evento es
+original: deshacer llegada solo marca `invalidReason=UNDONE`, conservando el
+payload. Las revisiones obsoletas no escriben; una repetición con el mismo reloj,
+estación y tipo es un no-op. Los datos pertenecen exclusivamente a la base abierta.
+
+`MetroLearning` deriva una sola observación por pareja consecutiva original de una
+sesión. A→B→C→F→Z genera A→B, B→C, C→F, F→Z, sin repartir acumulados en tramos
+ficticios. Las correcciones, deshacer, pausas entre capturas, reinicios, restauración,
+retrocesos y cambios de recorrido/línea/dirección/servicio excluyen intervalos
+incompatibles. El segundo plano por sí mismo no excluye datos. La primera apertura
+solo establece un ancla medible. Los recorridos agregados se conservan para un
+futuro modelo regularizado; este bloque no implementa inferencias ni mínimos
+cuadrados. Los tiempos estándar siguen siendo 2 min ferroviarios y 4 de cambio;
+no se aprenden combinaciones a partir de intervalos que mezclan tren y transbordo.
+
+La estrategia inicial trabaja con hasta 100 observaciones recientes por contexto
+(catálogo y secuencia dirigida de pasos con servicio), parámetro explícito
+ajustable sin migrar el historial. La ventana usa el orden de registro, conservado
+al reabrir/restaurar, no la hora civil que puede cambiar. No elimina los eventos antiguos. Rechaza tiempos
+fuera de 0,2–5 veces la base y filtra por mediana/MAD con tolerancia mínima de 25%
+de la base. Con menos de cinco aceptadas utiliza el estándar; después el peso
+observado es min(n/30, 1). La media filtrada ajusta exclusivamente el mismo
+recorrido medido; ningún tramo individual recibe un valor inferido. Conserva
+aceptadas, descartadas y motivos para el futuro diagnóstico. No se altera la
+predicción original ni la geometría de rutas históricas.
+
+Ciclo de vida: los eventos independientes sobreviven a eliminar el viaje para
+conservar aprendizaje; restaurar reemplaza el historial completo dentro de la
+transacción normal. No se crean archivos privados ni cachés nuevas. El dominio
+del reloj persiste durante reinicios del proceso y bloqueo; es metadata local,
+excluida del backup y renovada al restaurar para evitar unir relojes de dispositivos.
+Los dominios originales dentro de eventos sí se exportan íntegramente. Véase
+BACKUP_FORMAT.md para JSON 31 y sus lectores históricos.
+
+Validación del bloque 1: **70 pruebas dirigidas aprobadas** (25 nuevas entre motor,
+persistencia y migración 38→39 en Robolectric API 24/28; 45 regresiones de migración
+Metro, etapas, formato y repositorio de backup). Incluye confirmaciones dispersas,
+ventana de 100, outliers, inercia, correcciones, reloj civil no monotónico, reinicio,
+reapertura, aislamiento, deshacer, captura cancelada y fallo de inserción durante
+restore con rollback. `assembleDebug` y `git diff --check` pasan. No se ejecutaron
+pruebas físicas, suite global ni lint de cierre (corresponden al bloque 5). No hay
+APK definitiva, cambios de versión, firma release, commits ni publicaciones.
+
+## Metro adaptativo — bloque 2: predicciones integradas y diagnóstico
+
+`MetroEstimates` centraliza duraciones en milisegundos, offsets por estación,
+interpolación del mapa y tiempo restante. `MetroTracking`, `MetroStages`, resumen,
+mapa y notificación usan esas mismas duraciones; el redondeo a minutos ocurre
+solo al presentar. Se conservan la selección de rutas, el catálogo, restricciones,
+servicios y evaluación histórica de horarios del planificador. Los tiempos
+adaptados no eligen otro tren ni cambian automáticamente normal/rojo/verde.
+
+Al iniciar una sesión, el repositorio fija un modelo usando las observaciones
+actuales. Las sesiones activas e históricas no se recalculan por nuevos eventos,
+cambios de preferencias o invalidaciones posteriores. Una apertura real fija
+inmediatamente el offset de estación y una nueva ancla; el restante se calcula
+desde allí usando el mismo modelo. `originalRoute` conserva la predicción del
+inicio, incluso tras cambiar destino; los archivos de recorridos y undo conservan
+sus propios modelos. Un destino cambiado explícitamente recibe un nuevo modelo
+para su recorrido vigente dentro de la transacción existente, sin reiniciar el
+ID ni el inicio original. Una nueva sesión reutilizable puede aprender de datos
+posteriores aunque el plan guardado contenga una predicción anterior.
+
+`MetroPrediction` v1 contiene particiones consecutivas, completas y sin solapamiento,
+duración estimada y evidencia estadística resumida al fijar el modelo. Prefiere
+el recorrido acumulado más largo con suficiente evidencia, luego los tramos
+individuales; no utiliza simultáneamente muestras de un acumulado y sus partes.
+La duración de un acumulado se reparte proporcionalmente al estándar para estimar
+posiciones intermedias: son inferencias de tiempos, no mediciones de estaciones
+no confirmadas. Los eventos y observaciones originales siguen intactos. Una
+combinación/cambio puede aprender de aperturas fiables en ambos trenes, separando
+línea, sentido y servicio de salida; incluye espera/embarque. Confirmar «Iniciar
+etapa» no registra puertas ni mide por sí mismo. Intervalos que mezclan tren,
+paradas y cambios sin delimitar quedan excluidos. Las estaciones sin detención
+no alimentan el aprendizaje del servicio expreso seleccionado.
+
+`Estoy aquí` y `Llegué` reutilizan `MetroRepository.confirmDoors` sin nuevos pasos.
+Inicio del seguimiento, inicio de etapa, avance estimado, aviso previo y finalización
+alternativa sin confirmar puertas no generan aperturas. `Corregir posición`
+reutiliza StationPicker y el diálogo actual de estación como acción secundaria;
+la corrección aproximada entre estaciones también se audita como no temporal.
+Los recorridos sin tramo ferroviario siguen finalizándose, con captura excluida
+NO_RAIL. Se conserva pausa, deshacer, regreso, asociaciones y un viaje activo por
+almacén. La captura puede conservar posición/ETA que mostraba la UI en el instante
+del gesto, separados del reloj real de apertura. Las lecturas observadas de
+sesiones y aprendizaje comparten un snapshot transaccional fuera del hilo UI.
+
+`Ver cálculo` aparece como acceso secundario en resultados/opciones del viaje y
+menú de seguimiento. `MetroCalculation` prepara base, adaptación, referencia
+original, ajuste, promedio, peso, aceptadas/descartadas por contexto, motivos,
+método, duración/desfase observado y último evento/observación. Diferencia
+mediciones directas de inferencias de acumulados; no inventa porcentajes de
+confianza estadística. «Cómo ayudar al aprendizaje» se amplía dentro del mismo
+diálogo y explica puertas, correcciones tardías, ancla inicial y confirmaciones
+intermedias opcionales. No modifica datos al consultar ni crea preferencias.
+El bottom sheet de estaciones y la separación búsqueda/mapa siguen pendientes de
+sus bloques 4 y 3 respectivamente. Véase BACKUP_FORMAT.md para payload Metro v6;
+Room 39, JSON exterior 31 y el ciclo de archivos no cambian en este bloque.
+
+Validación del bloque 2: **150 pruebas dirigidas aprobadas**, incluidas 19 nuevas
+(estimación y codec, persistencia/backup, Compose nativo y notificación Robolectric).
+Las regresiones cubren motor expreso, escenarios horarios, precisión monotónica,
+pausas, control por etapas y deshacer, cambio de destino, regreso, conflicto de
+modo, servicio y formato/restauración de backup. Se verifican modelo fijo tras
+nuevas observaciones, inferencia explícita de acumulados, combinación medida,
+exclusión de estaciones sin detención, posición/ETA presentado, referencias
+originales, reapertura y rechazo de predicciones corruptas sin sustituir datos.
+`assembleDebug` y `git diff --check` pasan. La prueba física de notificaciones,
+pantalla bloqueada y políticas de batería queda pendiente; no se ejecutaron
+suite global ni lint de cierre. Bloque 3 no iniciado; no hay firma release,
+versionado, commits, push ni publicación.
+
+
+### Metro — bloque 3: búsqueda y recorrido separados
+
+`Planificar` conserva exclusivamente origen, destino, paradas, persona y opciones.
+`Buscar viaje` abre la vista `Recorrido` con un indicador temporal de resultado;
+no guarda planes, crea tareas, inicia sesiones ni registra aperturas de puertas.
+Reutiliza `RouteSummary`, `RouteTimeline`, `MapToolbar`, el editor de tareas y las
+acciones existentes de guardar/iniciar. Resumen y acciones tienen alturas máximas
+y desplazamiento propio para dejar el mapa inmediatamente visible, también con
+texto grande y múltiples paradas. Las instrucciones de combinación/cambio usan
+la duración adaptada del tramo, en lugar de una etiqueta fija de cuatro minutos.
+
+Android Back y la flecha de cabecera comparten la navegación: primero contraen
+el mapa ampliado y después vuelven al formulario conservando sus datos y scroll.
+`rememberSaveable` conserva la página, el resultado temporal y las opciones;
+la apertura inicial por tarea/viaje se resuelve una sola vez para respetar una
+restauración posterior. Una petición nueva de notificación conserva prioridad.
+El resultado temporal muestra acciones de planificación de estaciones, incluso
+si otro viaje está pausado, sin permitir corregir ese seguimiento por accidente.
+Las sesiones mantienen el modelo fijo, etapas, pausas, regreso y deshacer del
+bloque 2. No se añade destino de navegación, pantalla duplicada ni repositorio.
+
+Este bloque no cambia Room 39, JSON exterior 31 ni payload Metro v6. Formulario,
+página, mapa ampliado y resultado sin guardar son estado temporal de interfaz,
+no datos confirmados del almacén ni parte del backup. Los planes, tareas y
+sesiones guardados explícitamente mantienen el contrato existente. El menú de
+estaciones del bloque 4 y la prueba física siguen pendientes; no se prepara APK
+release ni se cambia el versionado.
+
+Validación del bloque 3: **110 pruebas dirigidas aprobadas**, sin fallos ni
+omisiones; ocho nuevas en `MetroSearchFlowUiTest`. Cubren búsqueda sin escrituras,
+ambas acciones de volver, restauración con entrada por tarea y mapa ampliado,
+guardado/creación/inicio explícitos, predicción adaptada sin captura de puertas,
+convivencia con viaje pausado, ruta imposible y mapa visible con texto grande.
+Las regresiones incluyen etapas, regreso, pausa/deshacer, estimaciones,
+notificaciones, horarios y backup histórico. Se adaptan las pruebas de interfaz
+al nuevo flujo y una expectativa obsoleta de versión incompatible al payload v7.
+`assembleDebug` y `git diff --check` pasan. No se ejecutaron suite global, lint
+ni pruebas físicas; se conserva pendiente la validación de cierre.
+
+
+### Metro — cancelación explícita y marcador de tren
+
+El cierre manual se ofrece como `Cancelar seguimiento`, con confirmación. La
+única confirmación de llegada sigue siendo `Llegué` (destino o límite de la etapa
+vigente, conservando combinaciones y paradas). Cancelar termina la sesión en la
+posición actual, sin añadir ARRIVED, captura de puertas, etapa final ficticia ni
+undo de llegada. Conserva el plan y el historial con estado `Cancelado`; el tiempo
+se muestra como seguimiento interrumpido y se omite la comparación de duración
+estimada/real de un recorrido completo. Las aperturas válidas previas y sus
+intervalos se conservan para aprender. Se libera el seguimiento activo y el
+servicio retira su notificación con el mecanismo existente.
+
+Se eliminan de Metro los selectores de Persona, el cambio de Persona y su
+presentación. Los vínculos históricos se conservan en persistencia y backup;
+los planes nuevos no seleccionan Persona. El marcador es siempre el tren. Solo
+su tinta alterna suavemente entre tonos monocromos, sin animar el fondo, tamaño
+ni posición del marcador. La posición continúa gobernada por el seguimiento.
+
+El evento terminal CANCELLED requiere payload de viaje Metro v7; sin cancelaciones
+se conservan los formatos anteriores. Room 39 y JSON exterior 31 no cambian.
+Véase BACKUP_FORMAT.md para validación y compatibilidad. No se almacenan imágenes,
+archivos ni preferencias nuevas. Este ajuste no implementa el bottom sheet del
+bloque 4 ni prepara un release.
+
+Validación del ajuste: **149 pruebas dirigidas aprobadas**, sin fallos ni omisiones.
+Incluyen cancelación durante pausa, llegada intermedia, combinación y cambio de
+destino; reapertura y backup completo, rechazo de corrupción con rollback,
+conservación del aprendizaje, inicio posterior y retirada de notificación.
+Compose verifica las dos acciones de cierre, ausencia de selección de Persona,
+historial sin comparación de recorrido completo y cambio de píxeles limitado al
+icono con fondo y geometría fijos. Pasan regresiones de búsqueda, etapas, regreso,
+expreso, relojes, aprendizaje y backups históricos. `assembleDebug` y
+`git diff --check` pasan. No se ejecutan suite global, lint ni prueba física;
+no se genera APK definitiva, commit, push ni publicación.
+
+
+### Metro — pausas: eventos originales y aprendizaje conservador (fase 1)
+
+`Pausar` y `Reanudar` mantienen su ubicación en los controles inferiores junto a
+`Llegué` durante el recorrido ferroviario. `Estoy aquí` sigue en el menú de la
+estación; los controles por etapas se conservan. No hay selector de Persona.
+Cancelar y eliminar son acciones distintas: cancelar apaga sin llegada, eliminar
+borra explícitamente el plan/historial con confirmación, conservando aprendizaje.
+
+Además del historial de sesión, pausa y reanudación se registran atómicamente en
+`metro_learning_events` con reloj civil/monotónico, boot, dominio, recorrido fijo,
+posición/ETA mostrados y estación estimada. Sobreviven a eliminar el viaje. No son
+aperturas de puertas ni referencias para medir. El motor detecta su presencia
+entre confirmaciones, incluso con duración cero, y conserva el intervalo completo
+con motivo PAUSE, sin restar la demora ni repartir tiempos entre estaciones.
+Las observaciones previas y posteriores que no atraviesan interrupciones siguen
+siendo utilizables. Para capturas antiguas permanece el control del acumulado de
+pausa; no se inventan eventos originales ausentes.
+
+`Estoy aquí` mientras está pausado se registra como PAUSED_LOCATION: confirma
+la estación y corrige inmediatamente la posición, pero mantiene la pausa y no
+afirma una apertura de puertas. La siguiente confirmación normal puede establecer
+una nueva referencia limpia; no se recupera artificialmente el intervalo anterior.
+`Llegué` mantiene llegada/etapas/deshacer y no rescata tiempos con pausa.
+El progreso y tiempo restante permanecen congelados hasta reanudar, salvo una
+corrección explícita de posición. Bloquear o salir al fondo no genera pausas.
+
+`Ver cálculo` distingue el tiempo conservado con pausa del valor atípico, y la
+guía explica estos controles en palabras simples. La fase 1 aprende únicamente de
+mediciones limpias. No calcula ni aplica cotas ni tiempos salida→llegada; los
+originales permiten evaluar eso después sin fabricar tiempos individuales.
+Se usa payload de aprendizaje v2 para los tres eventos nuevos; los originales v1
+se conservan. Room 39, JSON exterior 31 y payload de viaje v1–v7 no cambian. No se
+añaden archivos ni preferencias. El menú bottom sheet del bloque 4 sigue pendiente.
+
+Validación: **153 pruebas dirigidas aprobadas**, sin fallos ni omisiones, más
+18 verificaciones finales repetidas tras precisar la etiqueta de cálculo.
+Cuatro casos nuevos verifican pausa de duración cero, intervalos dispersos sin
+inventar tiempos, posición confirmada durante pausa, Llegué/deshacer, conservación
+tras borrar/reabrir/exportar/restaurar y rollback de un evento corrupto. Compose
+cubre controles inferiores, ausencia de Persona y cancelar/eliminar explícitos.
+Se mantienen regresiones de búsqueda, etapas, regreso, expreso, aprendizaje,
+notificaciones y backups históricos. `assembleDebug` y `git diff --check` pasan.
+Pendiente prueba física; no se preparan release, APK definitiva ni commits.
+
+
+### Metro — retirar la lista visible de viajes pasados
+
+Se retira el destino `Viajes recientes`, las tarjetas recientes de Inicio y los
+accesos/diálogo `Historial`. Inicio ofrece un acceso a los planes guardados para
+reutilizarlos; su lista muestra planes, no sesiones históricas. Una página
+`Recientes` restaurada por Android se redirige a `Viajes`. Se conservan búsqueda,
+seguimiento, cancelación, eliminación explícita y `Ver cálculo` en los mismos
+lugares. Los originales y sesiones internos necesarios para diagnóstico,
+aprendizaje, deshacer, regreso y backup no se borran ni cambian de formato.
+No cambia persistencia ni se añaden preferencias, archivos o migraciones.
+
+Validación de retirada del historial visible: 19 pruebas dirigidas aprobadas de
+interfaz Metro, cálculo/aprendizaje y búsqueda. La prueba del menú verifica que
+`Viajes recientes` ya no existe y que preferencias/planes siguen accesibles.
+`assembleDebug` y `git diff --check` pasan. No se borran datos persistentes,
+no se genera APK definitiva ni se implementa el bottom sheet pendiente.
+
+
+### Metro — bloque 4: menú contextual compartido de estaciones
+
+Se sustituye exclusivamente el AlertDialog de acciones de estación por
+`ContextActionMenu` de `ui/ActionComponents.kt`, el mismo ModalBottomSheet que
+usan Núcleos, Capas y Tareas. Conserva sus colores B&W90, iconos compartidos,
+espaciado, botones de al menos 48 dp, cierre `Cancelar` y disposición de dos
+columnas. Mantiene la adaptación existente a una columna en ancho reducido o
+texto grande para evitar recortes. No se crea otro componente de menú.
+
+El componente recibe opcionalmente contenido informativo desplazable y prioridad
+explícita por acción; los valores por defecto conservan menús previos. Metro
+muestra líneas, clasificación expresa y explicación de pausa en ese contenido.
+`Estoy aquí` es la acción destacada fija cerca del borde inferior durante el
+seguimiento. `Llegué` sigue en los controles inferiores de la pantalla, fuera del
+menú. Se mantienen callbacks y condiciones de corrección, destino, corrección
+avanzada, origen/destino/parada, favorito, Casa y gestión de restricciones, sin
+nuevos pasos ni confirmaciones; las confirmaciones de restricciones existentes
+se conservan. Las búsquedas independientes siguen mostrando acciones de
+planificación aunque otro viaje esté pausado.
+
+No cambian repositorios, persistencia, mediciones, pausa/reanudación, cancelación,
+predicciones, servicio ni historiales. Se conservan la eliminación de Persona y
+del historial visible de las intervenciones anteriores. No cambia el backup ni
+se añaden archivos/preferencias. Room 39, JSON exterior 31, captura v1/v2 y payload
+de viaje v1–v7 permanecen iguales.
+
+Validación del bloque 4: **160 pruebas dirigidas aprobadas**, sin fallos ni
+omisiones. `MetroStationMenuUiTest` añade tres casos de planificación/preferencias,
+gestión de restricciones y corrección avanzada en 320 dp con texto 1,6×;
+`MetroCompactButtonUiTest` verifica dos columnas, objetivo mínimo de 48 dp y
+prioridad inferior de Estoy aquí. Se adaptan cierres a `Cancelar` en las pruebas
+existentes. Pasan las regresiones de ContextMenuUiTest para tarjetas de tarea,
+capa y núcleo, acciones prioritarias y texto grande, además de las regresiones
+Metro de seguimiento, pausas, cálculo, búsqueda, regreso y backup.
+`assembleDebug` y `git diff --check` pasan. Pendiente revisión física de gestos
+Atrás/deslizar/tocar fuera, accesibilidad TalkBack y comodidad con una mano.
+No se genera APK definitiva, firma release, commit ni publicación.
+
+
+### Jerarquía — lote 1: accesos, prioridades, notas y vencimiento
+
+Inspección: persistencia de vencimiento y selector compartido fecha/hora ya
+existían, igual que la estrella binaria de Favoritos (distinta de prioridad).
+Seguían presentes accesos a Metro en tarjetas/detalle/editor, selector de cuatro
+prioridades, indicador de nota basado en tipo y textos `Nuevo proyecto`.
+
+Se retiran las acciones y vistas de asociación Metro de tarjetas y detalle de
+Núcleos/Capas/Tareas, incluso editores recurrentes y plantillas aplicables desde
+jerarquía que contenían un plan de viaje. Se conservan los viajes, asociaciones
+históricas y plantillas originales en el almacén/backup; no se borra ni desvincula
+ningún dato. El módulo Metro y sus propias funciones, seguimiento y aprendizaje
+no cambian. El acceso global al módulo independiente permanece disponible.
+
+Decisión del usuario: solo HIGH/Alta se presenta como `Prioritario`; NONE/LOW/
+MEDIUM se presentan como `No prioritario`. Selectores normales, recurrentes,
+lotes, filtros y valores por defecto ofrecen NONE/HIGH. Los valores históricos
+LOW/MEDIUM permanecen íntegros hasta una elección explícita; editar otro campo
+no los convierte. Los filtros agrupan estados no prioritarios, y Atención añade
+motivo de importancia solo a HIGH, conservando las razones temporales y recordatorios.
+No se migran enum ni tablas, ni se sustituye Favoritos por otra prioridad.
+
+El indicador de notas mantiene tamaño/posición: contorno vacío si no hay
+contenido y el mismo contorno con una marca interna cuando lo hay. Se deriva de
+la descripción, también en tareas/capas y descripción propia del Núcleo, con
+contenido heredado conservado. No añade texto visual. La variante vectorial es
+un recurso empaquetado de la aplicación, no un archivo privado del usuario.
+Se cambian únicamente los textos de creación `Nuevo proyecto` a `Nuevo Núcleo`;
+la posición de esos botones no se rediseña.
+
+`Vence` en creación rápida abre directamente el selector compartido de fecha,
+seguido de hora; conserva valores existentes, horas por defecto y el borrador
+restaurable. La reapertura permite editar y persistir el vencimiento con las
+mismas columnas/repositorios. No se cambian calendario, reglas de recurrencia,
+notificaciones ni formatos. Room 39, JSON exterior 31 y backups históricos se
+mantienen; no se añaden datos persistentes, archivos privados ni preferencias.
+
+Al retomar el lote se reutilizaron los informes existentes: 150 casos dirigidos
+sin fallos, incluidos guardado/reapertura de vencimiento y conservación de
+prioridades históricas. El APK Debug existente es posterior a los cambios del
+lote; no se repitió esa compilación. `git diff --check` pasó.
+Las dos pruebas antiguas de QuickCreateBarTest sobre desactivar repetición y
+configuración mensual no estaban incluidas en esos 150 casos. Su ejecución
+aislada reproduce AppNotIdleException al abrir Repetir en Robolectric. Cambiar
+solo el entorno a API 33 o gráficos LEGACY tampoco resolvió la espera; se
+retiraron esos cambios de prueba y no se alteró la función de recurrencia.
+Estos dos casos siguen sin validar y requieren revisión aparte; no se declara
+aprobada la suite completa. Pendiente la revisión física de interfaz.
+
+### Metro — ajustes tras retomar el lote de jerarquía
+
+Se elimina Crear tarea del resultado Metro y su diálogo privado, conservando
+los repositorios y vínculos históricos. No se cambian los creadores de tareas
+de otros módulos. Iniciar viaje permanece visible y usa el flujo anterior.
+Guardar viaje se renombra Guardar ruta y se traslada al DropdownMenu existente
+de Opciones de Metro, cuyo disparador ahora usa el icono compartido de tres
+puntos y objetivo de 48 dp. La opción aparece cuando hay un resultado de
+búsqueda disponible. Guardar conserva el mismo repositorio, referencias y
+predicción; no inicia una sesión ni crea una tarea. Las rutas siguen recuperándose
+desde la lista de planes guardados existente, sin cambiar sus nombres por iniciativa.
+
+Ver cálculo se retira del resultado, detalle y menú de seguimiento Metro.
+La sección Ajustes del cajón compartido añade Estadísticas de Metro, con la
+misma cabecera, Atrás, colores y navegación de la aplicación. La pantalla lee
+planes, sesiones y capturas originales del almacén abierto. Presenta el
+aprendizaje actual mediante el estimador existente y las predicciones históricas
+fijas por separado, incluso rutas conservadas en capturas de viajes eliminados.
+Reutiliza MetroCalculation y su diálogo/ayuda: estándar, adaptación, desfase,
+observaciones aceptadas/descartadas, motivos y explicaciones. Una base vacía
+informa ausencia de rutas y mediciones; no genera muestras. No hay filtros,
+gráficos, métricas nuevas ni cambios al algoritmo o ventana de 100 observaciones.
+
+El menú de estaciones ya cumple el ajuste: ContextActionMenu, Bottom Sheet,
+dos columnas adaptativas y Estoy aquí destacado al pie. Se conserva intacto.
+No cambian persistencia, formatos de backup, cancelación, seguimiento, pausas,
+historial ni aprendizaje; no se añaden preferencias, archivos ni cachés durables.
+La nueva pantalla y sus modelos son proyecciones temporales de lectura.
+
+Archivos de implementación de este ajuste: metro/MetroScreen.kt,
+metro/MetroStatisticsScreen.kt (nuevo), ui/AppRoot.kt y ui/NavigationChrome.kt.
+Pruebas ajustadas: MetroSearchFlowUiTest, MetroAdaptiveUiTest, MetroUiTest,
+MetroStationMenuUiTest y MetroSprint4CUiTest. Pruebas nuevas: MetroStatisticsUiTest
+y un caso de GlobalNavigationUiTest. La documentación de cierre está en este
+apartado; los cambios de bloques anteriores se conservan.
+
+Validación nueva: 11 casos dirigidos únicos aprobados. La primera selección
+aprobó nueve; se corrigieron dos comprobaciones de prueba (texto duplicado fuera
+del diálogo y acceso a Activity desde el hilo transaccional). La selección final
+aprobó esos dos casos más la navegación Ajustes/Atrás, tras cerrar también la
+exclusión de estadísticas de la vista de proyectos. No se repitieron los demás
+casos exitosos. La compilación Debug final pasó. No se ejecutó la suite global
+ni lint completo. Persisten los dos casos de Repetir indicados en el cierre
+del lote original; no forman parte de estos 11 casos.
+
+Duplicaciones detectadas y conservadas para revisión:
+- Planificar viaje en Inicio/lista vacía y Viajar en el menú abren Planificar.
+- Ver planes guardados en Inicio y Viajes guardados en el menú abren la misma lista.
+- Corregir posición está en el menú de seguimiento y en el menú de estación;
+  uno abre el selector y el otro aplica la estación seleccionada.
+- Tiempos del seguimiento y Opciones del viaje muestran información temporal
+  operativa parcialmente coincidente; el diagnóstico adaptativo Ver cálculo
+  queda exclusivamente en Ajustes.
+
+Eliminar o reorganizar esos accesos adicionales requiere autorización del usuario.
+Pendiente revisión física de accesibilidad y gestos. No se generó release oficial,
+ni se hicieron commit, push, tags o publicaciones.
+
+### Metro — modo viaje permanente, sin activación previa
+
+Metro funciona siempre como herramienta de viaje. Se retiran de la pantalla
+los textos de modo, la activación/desactivación y las condiciones de inicio
+basadas en `metro_journeys.enabled`, tanto en UI como en `MetroRepository.begin`.
+Una ruta antigua con `enabled=false` puede iniciar seguimiento directamente,
+sin normalizar ese valor. Se mantienen revisión concurrente, exclusión de un
+segundo seguimiento y comprobación de horarios de referencia.
+
+`enabled` permanece como metadata histórica en Room y backup, con sus valores
+originales y lectores existentes. El escritor interno de compatibilidad y los
+componentes antiguos sin llamadas no son opciones de la pantalla Metro.
+No cambia Room 39, JSON exterior 31, payloads de sesiones, relaciones históricas,
+observaciones ni estimadores. No hay migración, archivos o preferencias nuevas.
+Guardar o abrir una ruta no inicia automáticamente una sesión. El carrito
+mantiene la posición estimada por tiempo durante el seguimiento, respetando
+pausa, reanudación, cancelación y llegada; no cambia su animación ni sus cálculos.
+Inicio, Atrás y los menús de estaciones conservan su funcionamiento.
+
+Validación: tres casos dirigidos aprobados: inicio desde UI con flag histórico
+false y avance de posición/carrito, backup real/restauración/reapertura del flag
+false con inicio permitido, y rechazo de segundo seguimiento hasta finalizar
+el primero. `assembleDebug` y `git diff --check` pasan. No se repiten las pruebas
+anteriores ni las de Repetir; no se ejecuta lint completo ni se prepara release.
+
+### Metro — confirmación única Estoy aquí
+
+Regla de uso: al detectar desfase se espera a la apertura de puertas de la
+siguiente estación y se pulsa Estoy aquí. El menú contextual retira Corregir
+posición y Corrección avanzada/entre estaciones. El menú del seguimiento usa
+Estoy aquí para seleccionar la estación y registrar la misma confirmación de
+puertas. Un estado Android antiguo de corregir-posicion se redirige al mismo
+flujo. Se mantiene Estoy aquí destacado en el Bottom Sheet existente.
+
+La confirmación existente ancla la posición en la estación elegida, hacia atrás
+o hacia delante, y ajusta el tiempo restante. Durante una pausa conserva la
+pausa y registra PAUSED_LOCATION, excluido del aprendizaje habitual. No se
+modifican estimadores, reglas de validez ni modelos históricos. Las capturas
+CORRECTION/BETWEEN anteriores y sus lectores se conservan: no se convierten en
+aperturas ni se borran. No hay migración ni modificación del formato de backup.
+La ayuda de estadísticas explica esperar la siguiente apertura de puertas en
+vez de recomendar una opción de corrección que ya no está disponible.
+
+Validación: cuatro pruebas dirigidas aprobadas de selector con captura DOORS,
+menú compacto, texto grande sin correcciones separadas y anclaje hacia atrás/
+delante con pausa conservada y captura excluida. Compilación Debug y
+`git diff --check` aprobados. No se repite la suite global ni las pruebas de Repetir.
+
+### Capturas de pantalla — Hasta volver a activar
+
+El diálogo de autorización principal conserva Esta sesión y añade Hasta volver
+a activar. La segunda opción guarda `captures_until_reenabled` booleano en
+`security_preferences`, mediante las preferencias cifradas/Room existentes.
+No contiene fechas ni plazos: la elección se recupera al abrir el almacén y al
+volver al primer plano. Bloquear capturas manualmente guarda false. La sesión
+temporal conserva su comportamiento y no se convierte en permiso persistente.
+
+Se conserva la verificación de contraseña principal y época de autorización.
+El permiso persistente se confirma durablemente antes de permitir capturas.
+Bloquear/cerrar la sesión sigue protegiendo las ventanas y el almacén señuelo;
+no borra la elección del principal, que vuelve a aplicarse al desbloquearlo.
+No cambia el bloqueo de la aplicación, las contraseñas ni su timeout. Los
+diálogos de contraseña mantienen SecureOn.
+
+La preferencia participa del snapshot y restauración transaccional existentes.
+El backup valida que el nuevo valor sea booleano antes de reemplazar datos.
+Ausencia histórica equivale a false. La recarga de preferencias después del
+commit actualiza el control en el hilo UI y solo en la sesión vigente; un fallo
+de restauración conserva el valor previo. No cambian Room 39, contenedor ni
+JSON exterior; la preferencia usa JSON 18 o superior según los datos existentes.
+No se añaden archivos ni rutas privadas.
+
+Validación dirigida: cuatro casos únicos aprobados de reapertura con nuevas
+instancias de VaultManager, reversión manual durable, autorización desde UI y
+compatibilidad de la sesión temporal/aislamiento de almacenes. El caso de backup
+incluye contenedor real, restauración, tipos corruptos, rollback inyectado y
+ausencia histórica. Se ajustaron solo esperas de hilo UI/bloqueo asíncrono en las
+dos comprobaciones que inicialmente fallaron; los casos aprobados no se
+repitieron. La UI se verificó de nuevo tras asegurar la recarga en el hilo de
+ventanas. Compilación Kotlin y `git diff --check` pasan. SQLCipher se sustituye
+por Room SQLite en la prueba de managers; el reinicio físico del teléfono y
+FLAG_SECURE real en Android requieren la comprobación manual solicitada.
+
+### Formularios compactos y etiqueta única opcional
+
+Los formularios reúnen Responsables, Tecnologías, Etiquetas y el interruptor
+directo de prioridad. Responsables conserva su selector de pantalla completa;
+Tecnologías adopta ese patrón únicamente para seleccionar. La consulta de
+tecnologías asignadas conserva su ventana anterior. El selector de etiquetas
+conserva el bottom sheet y la administración del catálogo.
+
+Las asignaciones manuales nuevas admiten una etiqueta o ninguna. Seleccionar
+otra reemplaza la anterior. Por decisión expresa del usuario, las asociaciones
+múltiples históricas se muestran y conservan hasta una elección explícita de
+una etiqueta o ninguna; guardar otros cambios no las reduce. Los filtros y los
+datos históricos de plantillas/recurrencias mantienen su representación. Una
+creación manual que herede varias etiquetas requiere resolver la selección.
+LOW y MEDIUM se muestran desactivadas y se conservan hasta tocar el interruptor.
+
+Los Núcleos reutilizan conversion_roots, conversion_tags y conversion_people
+para sus propiedades ya representables. No se añade esquema ni preferencia.
+La lectura del editor precede al guardado de esas propiedades; un borrador que
+no las haya cargado no las sobrescribe. Escritura, validación de referencias y
+asociaciones se confirman en la transacción existente. Mover un Núcleo a Capa y
+promoverlo conserva las propiedades mediante la conversión existente.
+La etiqueta única aparece arriba a la derecha de la tarjeta; los elementos sin
+etiqueta no reservan espacio y los antiguos múltiples conservan sus chips.
+
+Archivos de este ajuste: EditDialogs.kt, TechnologyComponents.kt, TagUi.kt,
+NodeComponents.kt, ProjectComponents.kt, ProjectsScreen.kt, NodeBatchDialog.kt,
+EditorDraft.kt, NodeActions.kt, ProjectActions.kt, Tag.kt, TagRepository.kt y
+ProjectRepository.kt; documentación en este archivo y BACKUP_FORMAT.md.
+Pruebas dirigidas: ProjectTagsTest.kt, FormControlsUiTest.kt, TagsUiTest.kt y la
+comprobación de prioridad histórica de HierarchyBatchUiTest.kt.
+
+Validación: siete casos dirigidos distintos aprobados, incluyendo backup real,
+reapertura de Room, rollback ante referencias inválidas, conversión de dueño,
+etiquetas históricas, interruptor, selección y cancelación de Tecnologías y
+posición de etiqueta en tarjeta. Compilación Kotlin aprobada. La comprobación
+adicional de guardar/cerrar/reabrir ProjectDialog agota la espera de layout de
+Robolectric antes de interactuar; no se considera aprobada y requiere revisión
+manual en Android. No se ejecutó la suite general ni se modificaron archivos
+privados, Metro, Kanban o Gantt en este ajuste.
+
+### Personas — perfil privado y galería de recuerdos
+
+La ficha individual usa el encabezado existente, identidad con fotografía
+cuadrada completa y seis pestañas de iconos desplazables debajo del perfil.
+General contiene la galería; las otras cinco secciones conservan sus acciones
+y datos. No se modifica el listado principal. La biografía reutiliza
+person_profiles.description y el enlace web reutiliza links; cumpleaños y edad
+siguen el nacimiento existente y el reloj local, sin almacenar edad.
+
+PersonMemoryRepository coordina las nuevas tablas person_memories y
+person_memory_images (Room 40) con AttachmentRepository, PersonRepository y su
+bloqueo común de archivos. El manifiesto de originales usa attachment_files;
+no hay almacenamiento paralelo de imágenes. PersonMemories.kt contiene la
+migración 39→40 y validación de integridad. Cada foto antigua conserva su ID,
+archivo y encuadre mediante legacyPhotoId y una entrada sin fecha/descripcion
+inventadas. El avatar no cambia al abrir, reordenar o eliminar recuerdos.
+Establecerlo explícitamente produce/reutiliza el avatar por el mecanismo previo
+sin sobrescribir un original nuevo.
+
+PersonMemoryGallery usa una lista perezosa de filas de tres miniaturas, carga
+acotada y caché LRU compartida de 4 MiB. Los carruseles usan HorizontalPager;
+el visor ajusta proporcionalmente y permite zoom sin consumir el gesto lateral
+cuando la imagen está a escala normal. Editar agrupa fecha/descripción de entrada,
+metadatos individuales opcionales y orden de imágenes; cancelar no escribe esas
+relaciones. Descargar usa SAF y copia bytes originales. La fecha individual null
+hereda solo visualmente la fecha del grupo. Se mantiene el encuadre histórico
+editable, sin filtros ni edición de píxeles nueva.
+
+Los borradores reservan fuentes con propietarios durables. Guardar reemplaza
+relaciones dentro de la transacción; borrar la última imagen elimina la entrada.
+Se liberan archivos después del commit, verificando todas las referencias y
+reservas; archivos compartidos y avatar sobreviven. Los fallos dejan limpieza
+pendiente recuperable. Restaurar protege también nombres antiguos reservados
+por editores. Reservas no caducan y no se exportan como datos confirmados.
+La importación deduplica solo dentro del mismo vault, contra referencias seguras
+confirmadas o del propio borrador. Miniaturas no se persisten ni se respaldan.
+
+JSON 32 y el contenedor binario existente transportan entradas, fotografías,
+metadatos y originales completos. Los lectores 1–31 se adaptan sin inventar
+fechas históricas; IDs y propietarios se validan antes de restaurar. Ver el
+apartado «Personas — entradas fotográficas privadas» de BACKUP_FORMAT.md para
+límites, compatibilidad, fuentes compartidas y liberación. No se cambian el
+cifrado, seguridad, funcionamiento offline ni otras secciones.
+
+Validación de esta intervención: diez casos dirigidos distintos aprobados en
+PersonMemoryTest (seis), PersonMemoryMigrationTest (uno), PersonMemoryVaultTest
+(uno) y PersonMemoryUiTest (dos). Cubren migración real 39→40, adaptación de backup
+histórico, contenedor real, rechazo de referencias inválidas conservando datos,
+cancelación, reemplazo inválido, borrado fallido y reintento, originales
+compartidos, reservas con reapertura/restauración, descarga byte a byte,
+reordenación y metadatos, navegación y aislamiento de vaults con backup cifrado.
+Kotlin se compiló dentro de esas comprobaciones; no se ejecutó suite general.
+La prueba JVM de vaults sustituye únicamente el backend nativo SQLCipher por
+Room SQLite. Gestos, SAF, selección múltiple y presentación final requieren
+comprobación manual en Android. git diff --check pasa.
+
+### Personas — limpieza de navegación y edición contextual
+
+La organización vigente separa Inicio de General: Inicio presenta identidad,
+biografía, cumpleaños/edad, Tecnologías, enlace y la galería existente. Las siete
+pestañas muestran solo iconos accesibles, en orden Inicio, General, Contacto,
+Perfil, Relaciones, Tecnologías y Proyectos y trabajo; su línea inferior señala
+el destino activo. No hay navegación inferior duplicada. Los retornos desde
+proyectos conservan Proyectos y trabajo como destino explícito.
+
+El lápiz contextual de la cabecera abre el editor compacto de identidad
+(nombre, avatar e Identificar como yo). La selección Yo se aplica al guardar
+mediante el mecanismo de identidad existente y se descarta al cancelar.
+El editor no envía ni transforma fechas de nacimiento. Perfil muestra una
+tarjeta de nacimiento editable con el selector Año/Mes/Día previo.
+General, Contacto y Perfil abren sus formularios de sección desde las tarjetas;
+los demás destinos mantienen sus acciones específicas. Inicio abre los mismos
+editores de biografía y enlace sin cambiar el destino seleccionado.
+Se elimina PersonPhotoComparison y sus controles de bordes gris/naranja,
+sin transformar fotografías ni modificar la selección del avatar.
+
+No cambian Room 40, migración 39→40, JSON 32, repositorios de fotografías,
+política de archivos, datos ni respaldos. Se conserva el listado principal.
+La galería se traslada únicamente de General a Inicio, sin cambios de visor,
+metadatos, almacenamiento o limpieza. Validación: dos pruebas nuevas dirigidas
+PersonInterfaceCleanupTest aprobadas para navegación/accesibilidad, editores,
+selección Yo, cancelación y conservación de nacimiento/fotos. Kotlin compiló
+en esas comprobaciones y git diff --check pasa. No se repitieron los diez casos
+anteriores ni se ejecutó la suite general. Presentación y teclado pendientes
+de comprobación visual en un dispositivo Android.
+
+### Antisocial — encabezado y editor de perfil unificado
+
+El perfil muestra el nombre solo en el encabezado superior. La tarjeta de identidad
+conserva el avatar cuadrado pulsable, apodo y nacimiento/edad; debajo muestra hasta
+150 caracteres de `person_profiles.description` y el primer enlace web de `links`.
+Las Tecnologías permanecen en su sección. Los enlaces sin esquema se abren con
+HTTPS, sin cambiar su valor almacenado. No se usa contenido de notas o recuerdos
+como biografía. El formato persistente de nacimiento sigue siendo ISO completo.
+
+La acción superior ⋮ → Editar perfil y los accesos existentes de identidad/contacto
+abren el mismo editor completo desplazable. Los cambios se conservan como borrador
+ante recreación y Cancelar/Atrás requieren confirmación si hay cambios. Identidad,
+contacto, nacimiento e identificación Yo se confirman en la misma transacción,
+reutilizando validaciones y ciclo de archivos. Se conservan notas y demás secciones;
+las biografías históricas extensas no se truncan al guardar otros campos.
+No cambian el esquema Room, el formato de respaldo, Fotografías, Tecnologías ni Audio.
+
+### Seguridad — tarjetas y preparación inicial de desbloqueo
+
+Seguridad organiza únicamente Bloqueo al pasar a segundo plano, Capturas de
+pantalla y Contraseñas en tres tarjetas compactas alineadas al extremo inferior
+del área útil. El contenido puede desplazarse si altura o tipografía lo exigen.
+Bloqueo y Capturas reutilizan hojas inferiores para sus controles existentes;
+Contraseñas conserva los formularios protegidos y las operaciones principal y
+señuelo en una sección propia. No cambian duraciones, preferencias de capturas,
+validaciones de contraseñas, derivación ni cifrado. En el señuelo se mantienen
+bloqueadas las capturas, con su tarjeta sin autorización disponible.
+
+VaultManager prepara la primera emisión de observeProjects de la sesión recién
+abierta antes de publicarla en current; también en la configuración inicial.
+UnlockScreen mantiene su indicador existente durante autenticación y consulta.
+VaultSession transporta el resultado resuelto a AppRoot, incluido el vacío real,
+sin consultar imágenes ni esperar cachés. La observación posterior continúa
+actualizando la lista. Cada snapshot pertenece únicamente a esa sesión, se consume una sola vez al
+abrir su composición y se vacía al cerrarla. Una recreación posterior usa los
+observadores actuales, sin reaplicar el resultado antiguo del desbloqueo. Restaurar datos invalida el snapshot inicial de la composición
+antes de reiniciar sus observadores, evitando reutilizar el estado previo.
+
+Un fallo o cancelación de preparación cierra la sesión provisional antes de
+publicarla. El error de consulta usa un mensaje genérico sin detalles privados;
+se reintenta con el botón y contraseña de desbloqueo existentes. Contraseña
+incorrecta mantiene el mecanismo previo. Una lista pendiente sigue siendo null,
+no una lista vacía: el dashboard no presenta ausencia de Núcleos antes de resolver
+la consulta. No hay esperas fijas adicionales ni porcentajes ficticios.
+
+Son estados transitorios en memoria: no se incorporan datos persistentes ni
+archivos nuevos, y no cambian Room 40, migraciones o JSON 32. No se modifican
+Personas, galería, repositorios de Núcleos ni políticas de seguridad.
+
+Validación dirigida: InitialUnlockDataTest aprueba publicación posterior a la
+consulta para principal con Núcleos y señuelo vacío, rechazo de contraseña
+incorrecta, fallo/cancelación de consulta y recuperación posterior.
+SecurityCardsUiTest aprueba las tres tarjetas inferiores, acceso a sus controles
+y conservación de los valores de bloqueo. La interacción adicional que abría
+un formulario protegido después de cerrar la hoja de capturas agotó la espera
+de inactividad de Robolectric; se acotó la prueba a los accesos nuevos, sin
+repetir operaciones de contraseñas/capturas ya existentes. No constituye una
+validación visual del teléfono. En JVM se sustituye únicamente el backend nativo
+SQLCipher por Room SQLite. No se ejecutaron suites generales, pruebas de Personas,
+galería o backups. Presentación, teclado, insets físicos y transición en el
+dispositivo quedan pendientes de revisión manual.
+
+### Ajustes finales — pantalla unificada, temas y acceso Antisocial
+
+La entrada visible de Ajustes pasa a Seguridad y respaldos, con cuatro tarjetas
+inferiores agrupadas en Seguridad y Respaldos. Gestionar respaldos abre el mismo
+BackupsScreen; sus operaciones y repositorios se conservan. El regreso vuelve a
+la pantalla unificada. LocalBackupsRestored transmite la confirmación al reinicio
+de observadores existente de AppRoot, sin modificar el proceso de restauración.
+Las rutas internas antiguas se mantienen para compatibilidad, sin entradas
+visibles duplicadas.
+
+El modo manual utiliza background_timeout=-1 en la preferencia
+privada existente. Solo evita el temporizador y la comprobación de plazo en
+segundo plano para una sesión viva; Bloquear sigue cerrándola. El proceso nuevo
+no contiene sesión ni claves y exige autenticación normal. Principal y señuelo
+leen únicamente sus propias preferencias. No cambia la preparación inicial de
+Núcleos antes de publicar la sesión. El usuario confirmó expresamente la
+autorización de este modo para principal y señuelo, conservando autenticación
+tras perder el proceso, reiniciar o pulsar Bloquear. Sus pruebas dirigidas pasan.
+
+AppearancePalette incorpora Azul noche y Gris día, con todas las superficies
+Material derivadas centralmente y sin blanco puro en las superficies de Gris
+día. Minimalist desaparece del enum/selector; AppearancePreferences transforma
+su valor histórico a Black & White 90 conservando campos ajenos. Los demás temas
+permanecen. semanticColor resuelve únicamente el contraste de estados en el tema
+claro; los temas oscuros conservan sus colores funcionales. Enlaces del editor,
+indicadores y pestañas de etiqueta reciben colores del contexto, sin cambiar
+acciones, formato de texto ni disposición de tarjetas. Las barras del sistema
+usan indicadores claros/oscuros según la paleta. La caché pública regenerable
+del tema principal para el desbloqueo se describe en BACKUP_FORMAT.md; la
+preferencia completa permanece cifrada y respaldada.
+
+OfficialIcon aplica una matriz de color al logotipo/mark originales únicamente
+en Azul noche y Gris día, sin redibujar ni cambiar archivos, geometría o alpha.
+El botón inferior Capas usa lucide_layers con la misma caja de 40 dp, icono de
+28 dp y trazo de 2 dp que Crear/Bloquear; conserva su acción y recursos originales
+en otros lugares. Antisocial usa lucide_user debajo de Metro, conserva la ruta
+people y su selección activa y desaparece de Recursos. Personas y la galería
+no cambian. No se modifican Room, migraciones, SQLCipher ni contraseñas.
+
+Archivos de esta intervención: SecurityUi.kt, VaultManager.kt,
+ScreenCapturePreference.kt, GlobalNavigation.kt, AppRoot.kt, NavigationChrome.kt,
+ProjectScreen.kt, OfficialIcons.kt, Appearance.kt, Theme.kt, Color.kt, TagUi.kt,
+AttachmentText.kt, AttachmentDescriptionEditor.kt, ManagedKanbanUi.kt,
+SprintComponents.kt, AppearanceScreen.kt, AttentionScreen.kt, NodeComponents.kt,
+PriorityUi.kt, TaskDates.kt, BackupData.kt y res/drawable/lucide_layers.xml.
+Documentación: este archivo y BACKUP_FORMAT.md. Pruebas dirigidas nuevas:
+AppearanceFinalTest.kt, SettingsNavigationFinalTest.kt y SecurityCardsUiTest.kt
+actualizada para las cuatro tarjetas. Se adaptaron referencias de pruebas al
+tema retirado en AppearancePreferencesTest.kt, AppearanceUiTest.kt,
+AttachmentEditingStateTest.kt y MetroSprint4BUiTest.kt; no se ejecutaron sus
+suites ni se modificó Metro en producción.
+
+Validación: seis casos dirigidos nuevos aprobados (tres de apariencia, dos de
+navegación y uno de tarjetas). Incluyen respaldo cifrado real y restauración de
+apariencia, rechazo de tipos inválidos conservando el estado anterior,
+compatibilidad con Minimalist, contraste/superficies Material de ambas paletas,
+ubicación y acción de Antisocial, acción de Capas y regreso de Respaldos a la
+pantalla unificada. Kotlin compiló y git diff --check pasa. Las tres
+comprobaciones adicionales del modo manual también pasan. No se repiten las
+pruebas de Personas, galería, carga inicial o módulos ajenos. Presentación,
+colores del logotipo e insets físicos requieren revisión en el teléfono.
+
+
+Cierre del modo manual: ManualLockModeTest añade dos casos aprobados sobre
+sesiones reales de VaultManager con archivos y respaldos cifrados. Principal y
+señuelo sobreviven a dos ciclos de segundo plano con doce horas de reloj
+simulado cada uno; Bloquear cierra DB, revoca referencias y borra estado UI.
+Una nueva instancia permanece bloqueada y solo recupera la preferencia después
+de autenticar y preparar sus Núcleos. Se verifica el retorno al modo automático
+con plazo vencido y bloqueo inmediato. El segundo caso recupera la preferencia
+-1 y campos ajenos desde un respaldo cifrado real, rechaza tipos/valores corruptos
+conservando datos y confirma el valor histórico predeterminado cuando falta la
+preferencia. SecurityCardsUiTest añade un caso aprobado de seleccionar el modo
+manual en el control existente y volver a 1 minuto.
+
+Son nueve casos nuevos distintos aprobados en total para este lote: seis de la
+intervención anterior y tres pendientes cerrados tras la autorización directa.
+La ejecución anterior impedida por el límite de uso de la revisión automática
+no llegó a ejecutar pruebas. No se repiten los seis casos ya aprobados. La
+compilación de pruebas Kotlin y git diff --check pasan. En JVM el backend nativo
+SQLCipher se sustituye por Room SQLite; apagar pantalla, cierre forzado y
+reinicio físico deben comprobarse en el teléfono. No se añaden servicios ni
+persistencia de claves/sesiones, y no se hacen commits ni push.
+
+## Fijar Núcleos y Capas (2026-10-14)
+
+`Project.isPinned` y `Node.isPinned` son marcas persistentes (Room 41, migración
+40 → 41); solo las Capas pueden fijarse entre los nodos. Fijar/Desfijar aparece
+únicamente en los menús contextuales existentes. La chincheta monocromática se
+superpone dentro del espacio del indicador principal, sin añadir filas ni
+reducir las áreas táctiles de los controles.
+
+La presentación agrupa fijados antes de normales por contenedor, incluidos los
+árboles filtrados y el navegador de Capas, conservando el criterio previo dentro
+de cada grupo. No cambia la pertenencia a filtros ni el árbol canónico de exportación.
+Fijar/Desfijar solo escribe la marca, sin cambiar posición, fechas ni prioridades.
+El arrastre y las acciones de ordenar operan dentro del grupo correspondiente,
+reutilizando sus posiciones; no cruzan fijados y normales. Desfijar recupera el
+orden persistente del grupo normal. Las Tareas conservan su orden relativo.
+
+Mover y editar conservan la marca. Núcleo ↔ Capa la conserva, sin fijar los
+descendientes. Capa → Tarea/Nota la retira. Copiar mantiene la acción existente de
+copiar contenido al portapapeles; no crea nuevas entidades ni reglas de duplicación.
+Favoritos sigue usando su almacenamiento independiente. JSON 33 exporta y restaura
+la marca, mientras los formatos anteriores la inicializan a false; se valida su
+tipo y que solo las Capas estén fijadas antes de restaurar (BACKUP_FORMAT.md).
+No se cambia la versión 0.4.1 ni se generan o alteran artefactos Release.
+
+Validación dirigida: ocho casos distintos aprobados entre HierarchyPinTest
+(cinco), HierarchyPinMigrationTest (uno) y HierarchyPinUiTest (dos). Cubren
+fijar/desfijar, reapertura de Room, posiciones y atributos intactos, arrastre por
+grupos, filtros, árbol del navegador, conversiones, migración desde el esquema
+40, respaldo cifrado real nuevo/antiguo y rechazo de marcas inválidas sin
+reemplazar datos, además de menús e indicadores. Se volvió a ejecutar únicamente
+un caso ampliado con reapertura y el caso de interfaz cuya búsqueda del icono se
+corrigió para usar el árbol semántico no fusionado. La compilación necesaria para
+estas pruebas y `git diff --check` pasan. La ergonomía, el contraste y el tamaño
+de la chincheta requieren revisión física; no se declara aprobación visual.
+
+## Audio offline y exportación de adjuntos (2026-10-14)
+
+La creación rápida conserva el campo y su confirmación; la segunda fila contiene
+Nota, Vence, Repetir, Micrófono, Ajustes y Cerrar con objetivos de 48 dp. Nota,
+Vence y Repetir conservan sus etiquetas de accesibilidad, sin texto visible.
+Micrófono pide RECORD_AUDIO y, en Android 13+, ofrece el permiso de notificaciones.
+Solo crea una Tarea después de conceder micrófono, usando el mismo borrador,
+contexto y ruta de guardado. Conserva el título escrito o propone «Audio — fecha,
+hora». No se admite el micrófono con Repetir/lote activos (decisión autorizada).
+No se ofrece Deshacer de la creación mientras se inicia este material protegido;
+el Deshacer ordinario conserva su comportamiento y finaliza el audio antes de
+comprobar si su snapshot sigue siendo válido.
+
+Room 42 (migración 41 → 42) agrega durationMs y playbackMs (0) y bookmarkMs (null)
+a attachment_files; las imágenes históricas conservan todos sus metadatos. La
+tabla audio_recording_operations es un diario operativo: id, estado, nodeId y
+título provisional opcional. La reserva WAITING se confirma junto con la Tarea,
+antes de abrir el servicio: un cierre en ese intervalo no duplica tareas ni deja
+un título provisional vacío. La recuperación solo retira ese título si no hay
+texto, fechas, prioridad, pago, responsables, tecnologías, etiquetas ni hijos;
+los datos escritos/configurados se conservan. No se añaden preferencias.
+
+AudioCapture usa AudioRecord y MediaCodec AAC-LC mono, 16 kHz/32 kbit/s, con ADTS.
+El tiempo se deriva de muestras capturadas, sin leer ni añadir muestras durante
+la pausa. El mismo codificador continúa al reanudar. El servicio no se reinicia
+automáticamente tras perder el proceso ni al arrancar el teléfono. Respeta
+RECORD_AUDIO, los tipos microphone/mediaPlayback y las restricciones de inicio
+visible. Solicita audio focus y pausa ante pérdida de foco o silencio impuesto
+por Android. Un wake lock acompaña al audio en marcha, no al estado pausado.
+La salida conserva el límite existente de 20 MiB por adjunto; al alcanzarlo se
+finaliza y conserva el archivo, con aviso. No hay red, transcripción ni permisos
+de superposición.
+
+Cada fragmento publicado está cifrado con SecureFiles y sincronizado en
+files/audio-drafts/<UUID> (owner.json, N.part/N.aac). No hay archivos de audio en
+claro. El diario RECORDING y las reservas no caducan. Se recuperan fragmentos
+.part autenticados que no llegaron al rename. Un fragmento incompleto conserva
+el material y requiere una decisión explícita: finalizar conserva los fragmentos
+completos con aviso, o descartar. El bloqueo/recuperación automáticos no descartan
+ese fragmento. La captura en curso en RAM o la última escritura que el sistema
+interrumpió no puede garantizarse ante pérdida abrupta de proceso/energía.
+
+Finalizar concatena los paquetes originales bajo el bloqueo común de archivos,
+valida ADTS, tamaño y SHA-256, publica con reserva, y confirma fila, asociación,
+descripción y estado COMMITTED en una transacción. Solo después libera fragmentos.
+DISCARDED se registra antes de borrar. Los fallos conservan el diario; la siguiente
+autenticación reintenta. COMMITTED evita resucitar un audio que el usuario eliminó
+tras un fallo de limpieza. No se barren directorios ajenos ni nombres desconocidos.
+Cerrar sesión espera las operaciones protegidas, detiene los motores y revoca
+sus fuentes/notificaciones antes de cerrar Room y las claves.
+
+La descripción usa [[arachnode:audio:UUID]] junto a las referencias de imágenes
+existentes. Su parser conserva formato y atomicidad; el visor existente elige
+controles de audio por MIME. El guardado de un editor combina audios confirmados
+por el servicio sin sobreescribir texto ni imágenes y respeta eliminaciones
+explícitas. Las referencias compartidas siguen usando node_attachments y
+project_attachments; las copias de bytes fuera de la aplicación no eliminan la
+fuente. Eliminar una referencia requiere confirmación y cierra su reproducción;
+la limpieza física solo ocurre sin referencias/reservas. Eliminar/Deshacer un
+propietario cierra el audio antes de la operación. La exportación visual de una
+tarjeta conserva las imágenes e identifica los audios como texto, sin intentar
+decodificarlos como fotografías; el portapapeles distingue Audio e Imagen.
+
+AudioController pertenece a VaultSession. MediaPlayer recibe MediaDataSource
+privada y acotada a 20 MiB; no usa caché de audio en claro. La posición se confirma
+periódicamente y al pausar/cerrar; cada archivo tiene un marcador opcional.
+El visor permite buscar, saltar ±10 segundos, alternar marcador y volver a él.
+La minbarra de una línea conserva duración/posición visible aunque el título
+se trunque. Se aloja encima de Bloquear/Crear/Capas y reserva su altura mediante
+el contenedor existente; en otras pantallas usa el contenedor global. El editor
+completo aloja una única barra sobre sus herramientas y respeta el teclado.
+Imagen usa un icono; al incorporar micrófono a Tareas guardadas, la fila mantiene
+48 dp y solo se desplaza si no cabe (decisión autorizada). No hay módulo lateral,
+pantalla de grabadora ni reproductor flotante.
+
+Se autorizó suspender el temporizador de autobloqueo durante una sesión de
+grabación (también pausada) o reproducción/carga en marcha. Pausar o terminar la
+reproducción reactiva la protección automática, sin exigir cerrar la barra.
+Finalizar/cerrar audio reactiva el plazo normal. Bloquear manual siempre detiene
+y conserva lo recuperable, revoca las URI y retira notificaciones. Las claves
+siguen siendo solo de proceso; un reinicio exige autenticar y no reanuda el
+micrófono. Principal y señuelo tienen controladores, bases y archivos separados.
+Las notificaciones usan nombres genéricos, sin títulos privados, y los comandos
+se vinculan al ID de almacén autenticado.
+
+AttachmentExportProvider ofrece URI de solo lectura vinculadas al almacén activo,
+con permisos temporales. Autentica y verifica los bytes originales antes del
+pipe; la copia en RAM es acotada y se limpia/revoca al bloquear. SAF guarda una
+copia en el destino elegido, sin mantener el mutex de archivos durante la
+escritura externa. PNG/JPEG se exportan íntegros, sin recomprimir ni añadir marca.
+
+Inventario de esta intervención (rutas desde app/src/main/java/com/r0ybt/arachn0de):
+- Nuevos: audio/{AacFrames,AudioCapture,AudioController,AudioDraftStore,AudioService,
+  AttachmentExportProvider,AttachmentOriginalBytes}.kt; ui/AudioUi.kt;
+  data/local/AudioMigration.kt; esquema Room 42.
+- Persistencia: data/local/{AttachmentEntities,AttachmentDao,AttachmentStore,
+  Arachn0deDatabase}.kt; data/repository/{AttachmentRepository,NodeRepository,
+  ProjectRepository}.kt; backup/{BackupData,BackupJson,BackupRepository,
+  BackupAttachmentFiles}.kt; domain/model/{AttachmentReferences,DescriptionParser}.kt.
+- Integración: security/{VaultSession,VaultManager}.kt; ui/{QuickCreateBar,
+  AttachmentDescriptionEditor,AttachmentText,AttachmentViewer,ProjectScreen,
+  AppRoot,EditDialogs,GlobalNavigation}.kt; ui/state/{EditorDraft,NodeActions,
+  DescriptionClipboardText}.kt; report/CardShareSource.kt; AndroidManifest.xml.
+- Pruebas nuevas en app/src/test/java/.../audio: AudioPersistenceTest,
+  AudioMigrationTest, AudioVaultTest, AudioUiTest, AudioProviderTest; tono sintético
+  en app/src/test/resources/audio/tone.aac. Documentación: esta sección y
+  BACKUP_FORMAT.md. No cambia versión/firma ni artefactos Release de 0.4.1.
+
+Validación de Audio: 28 casos dirigidos distintos aprobados: AudioPersistenceTest
+(16), AudioUiTest (6), AudioProviderTest (3), AudioVaultTest (2) y
+AudioMigrationTest (1). Incluyen reserva anterior al micrófono, títulos/contexto,
+rechazo de duplicados, fragmentos/cancelación, reapertura, pausa sin muestras de
+intervalo, eliminación/referencias compartidas, fallos COMMITTED/DISCARDED,
+texto/imágenes concurrentes, Deshacer/conversión/promoción, originales exportados,
+JSON anterior y nuevo, migración 41 → 42, archivo cifrado real, marcador/posición,
+bloqueo/señuelo, reactivación del autobloqueo al pausar, selección B/I/U, iconos
+48 dp, fuente ampliada, navegación y barra única dentro/fuera del editor.
+Los casos fallidos se corrigieron y repitieron de forma individual; los últimos
+cambios relevantes de sincronización se comprobaron con seis casos afectados,
+sin ejecutar suites generales. El backend de Room en JVM sustituye SQLCipher
+nativo por SQLite; el cifrado de archivos y del respaldo sí es el real.
+
+Se ejecutó assembleDebug una sola vez, con resultado correcto, y git diff --check
+pasa. APK técnica: app/build/outputs/apk/debug/app-debug.apk. No se instala en el
+teléfono, no se generan artefactos Release y no hay commit/push. Versión/firma
+existentes sin cambios en esta intervención. La captura física, decodificación
+y audio focus reales, llamadas, notificaciones/controles del sistema, ahorro de
+batería, apagado de pantalla y reinicio requieren revisión en Android. Los tests
+de UI usan estado simulado de captura para comprobar distribución; no equivalen
+a haber grabado/reproducido con hardware ni aprueban la apariencia visual.
+
+## Antisocial — editor fotográfico, fijado, arrastre y Tecnologías (2026-10-15)
+
+La galería mantiene entradas completas en tres columnas. `person_memories.isPinned`
+(Room 43, migración aditiva 42→43) separa fijadas/no fijadas; cada grupo usa su propio
+`position`. Crear coloca delante de no fijadas; cambiar de grupo añade al final sin
+alterar el orden relativo de los demás. Guardar un editor existente conserva el
+fijado/posición confirmados más recientes, aunque el borrador sea anterior. Fechas
+no afectan al orden. Eliminación, fijado y arrastre normalizan posiciones en Room.
+El gesto prolongado adapta la detección a ambas coordenadas sobre las filas actuales,
+reutiliza el cálculo común de autoscroll y confirma solo al soltar en el mismo grupo.
+Cancelar, soltar fuera o cruzar fijado no cambia nada. No se trasladan fotografías.
+
+El editor reutiliza tarjetas, miniaturas, fechas, selector de originales, controles
+internos de orden, avatar y pie con IME. Hay una descripción compartida; los campos
+individuales históricos nunca se vacían ni fusionan. El ⋮ autorizado ofrece Fijar/
+Desfijar y, solo si corresponde, Textos históricos en lectura/selección. Pin y carrusel
+usan indicadores discretos sobre las miniaturas. No cambia el perfil principal.
+
+Tecnologías usa TechnologyIcon y tarjetas grises compactas, hasta tres columnas según
+ancho/fuente, con nombre y etiqueta exacta de los cinco estados existentes. No se
+introduce puntuación numérica ni orden manual de asociaciones. El catálogo y los
+editores de dominio/asociación permanecen iguales.
+
+El backup JSON 35 incorpora el flag; lectores históricos asignan falso. Posiciones,
+textos, fechas, bytes originales y referencias usan la captura/restauración actuales.
+No se modifica limpieza, caché ni seguridad: continúan reservas, diario y bloqueo
+común para archivos y aislamiento de sesiones. Ver BACKUP_FORMAT.md.
+
+Validación de este lote: once casos dirigidos aprobados en ejecuciones selectivas
+(migración, orden/fijado, rollback, reapertura, backup histórico/cifrado, aislamiento,
+textos históricos, editor con IME/fuente ampliada, cuadrícula de Tecnologías y gesto
+bidimensional con bloqueo entre grupos y desplazamiento normal). Una compilación
+final `:app:assembleDebug --offline` aprobada. Interfaz, temas y arrastre prolongado
+con desplazamiento de colecciones grandes pendientes de revisión física en Android.
+
+### Eliminación lógica de recurrencias finalizadas
+
+Room 43→44 añade `recurrence_rules.isDeleted`, NOT NULL con default falso.
+Eliminar solo admite reglas FINISHED: marca la fila en una transacción y la
+excluye de observeRules/gestión. No liquida deuda ni llama al generador, no toca
+Tareas, ocurrencias, responsables o etiquetas. Conserva el cursor y la FK RESTRICT.
+La acción existente de gestión exige confirmación. Pausar/reanudar/finalizar
+mantienen su comportamiento; las reglas eliminadas no pueden reactivarse.
+
+El snapshot incluye también las reglas ocultas. JSON 36 conserva la marca y sus
+relaciones; formatos anteriores asignan falso. La validación exige que toda
+regla eliminada esté finalizada y que cada ocurrencia conserve su regla antes
+del reemplazo transaccional. No hay archivos nuevos ni limpieza física asociada.
+
+Validación dirigida: cuatro casos aprobados (eliminación y reapertura sin generar
+deuda, respaldo nuevo/antiguo y rechazo de corrupción, migración 43→44 con
+historial y Tarea completada intactos, confirmación/cancelación en la gestión).
+La revisión física en Android sigue pendiente; no se generó Release.
+
+### Compartir con Arachn0de — recepción autenticada
+
+La primera versión acepta ACTION_SEND text/plain y una imagen PNG/JPEG solo
+si ya hay una sesión desbloqueada. Bloqueada: rechaza el envío con mensaje
+neutro y exige desbloquear y volver a compartir; no existe cifrado ni recepción
+anterior a la autenticación. MainActivity conserva Metro y usa singleTop.
+Un token local y la marca no sensible de recreación evitan repetir la entrega;
+los envíos nuevos idénticos reciben identidades de creación diferentes.
+
+`share_pending:<UUID>` es un diario operativo en private_preferences, dentro de
+la base SQLCipher del espacio autenticado. Contiene título, descripción, destino,
+orden y referencias retiradas, nunca URI externas ni rutas absolutas. No añade
+tablas ni columnas. PREPARING precede a importar; READY permite editar; CANCELLED
+se confirma antes de liberar reservas y solo se elimina después de la limpieza.
+La recuperación se ejecuta al abrir la sesión. Una importación interrumpida que
+no llegó a confirmar sus bytes no se considera aceptada y se descarta de forma
+segura. Un archivo importado confirmado se recupera con su reserva durable.
+
+La cola interna se procesa en orden mediante QuickCaptureDialog y EditorDraft;
+no hay bandeja ni guardado automático. Tarea, enlaces de imagen y retiro del
+diario se confirman en la misma transacción mediante saveNodeDraft/capture.
+Las imágenes conservan sus bytes y se liberan con AttachmentRepository; las
+reservas no caducan por edad. PREPARING se serializa con el bloqueo común de
+archivos para no entrar durante un reemplazo de backup. Una cancelación fallida
+conserva su marca para reintentar al abrir. Las ediciones y el destino se
+actualizan en el diario y las referencias retiradas no se reinsertan al recuperar.
+
+El diario es temporal, no un dato confirmado de usuario. Crear o restaurar un
+respaldo exige resolver las capturas compartidas pendientes: nunca se exporta
+un respaldo que omita silenciosamente una captura aceptada. Una vez guardada,
+la Tarea, sus referencias y bytes se incluyen en el formato de respaldo actual.
+No cambia Room 44, JSON 36 ni el contenedor. Cada espacio tiene su propia cola;
+al bloquear se cierran sus repositorios y el otro espacio no puede consultarla.
+
+Límites de recepción: asunto+texto 64 KiB UTF-8, título 100 puntos Unicode,
+imagen 20 MiB PNG/JPEG de 1–32000 píxeles por eje, validada por contenido.
+Las URL HTTP/HTTPS se reconocen offline en lectura de Tareas/Notas y solo se
+abren por acción explícita mediante ACTION_VIEW/BROWSABLE. Edición conserva
+texto; las referencias y formato existentes usan el renderizador compartido.
+Una retención temporal de ScreenCaptureController protege la vista compartida
+y la miniatura de recientes sin alterar la preferencia guardada; al cerrarla
+solo se restituye el permiso que siga autorizado en ese momento.
+
+### Eventos propios del Calendario — Room 45
+
+`CalendarEventRepository` pertenece a `VaultSession`; `calendar_events` y
+`calendar_event_people` residen en la misma base SQLCipher del almacén autenticado.
+Son independientes de Núcleos/nodos. La migración aditiva 44→45 conserva las tablas
+existentes. Eliminar un Evento retira sus responsables por cascada; eliminar una
+Persona retira solo su vínculo, no el Evento. No hay archivos nuevos que liberar.
+
+Fecha civil canónica YYYY-MM-DD y minuto local opcional (0–1439); null significa
+día completo. Cambiar zona no convierte ni desplaza estos valores. Guardar valida
+la hora en la zona vigente y rechaza huecos de DST. Una hora repetida se acepta;
+no se convierte a un instante ni programa alarmas. La validación portable del
+backup comprueba fecha y minuto, sin invalidar datos por la zona del receptor.
+
+`CalendarScreen` observa Eventos y responsables con snapshot transaccional. Período
+y Persona afectan a ambos tipos; prioridad, completitud y etiquetas solo a Tareas.
+La lista conserva apertura de Tareas y abre los Eventos en su editor. Los controles
+existentes comparten una fila adaptable con Nuevo evento, sin menú ni pantalla
+adicional. Se reutilizan DatePicker/TimeInput, ResponsibleDialog y confirmación de
+eliminación. El borrador usa el registro privado de estado de MainActivity y no se
+exporta. Mes y Semana comparten punto circular de Tarea y raya de Evento.
+
+Sin recordatorios, recurrencias, widget ni sincronización externa. No se añaden
+alarmas, permisos ni almacenamiento fuera de la bóveda. Ver BACKUP_FORMAT.md para
+JSON 37 y compatibilidad histórica.
+
+Validación de Eventos (2026-10-15): 13 casos dirigidos distintos aprobados, sin
+omisiones finales: CalendarEventsTest (5), CalendarEventIsolationTest (1),
+CalendarEventsUiTest (4) y CalendarWeekStripTest (3, afectados por los indicadores
+compartidos). Incluyen esquema genuino 44→45 con tarjetas/Personas conservadas,
+CRUD y cascadas, rechazo de huecos DST, fechas civiles entre zonas, JSON 37,
+lectura histórica, referencias inválidas y rollback con trigger de fallo durante
+la restauración. La interfaz cubre borrador restaurado/cancelado, responsables,
+guardado/edición/eliminación confirmada, uso de DatePicker y TimeInput (incluido
+2200), coexistencia de punto/raya, filtros, Mes/Semana/Hoy y controles sin
+solapamiento a 280 dp con fuente al 200 %. Pasó git diff --check.
+
+Las ejecuciones fueron selectivas: solo se repitieron casos fallidos tras
+correcciones o casos afectados por el cambio. El lector requería ampliar de 72
+a 74 el límite de campos raíz para JSON 37; conserva validación estricta de
+campos, profundidad y límites. Las demás correcciones de los primeros intentos
+fueron de fixtures/selección de botones en las pruebas. No se ejecutó batería
+global, SQLCipher nativo ni prueba en teléfono. El aislamiento usa VaultManager,
+archivos cifrados y la fixture Room JVM existente; no acredita cifrado SQLite
+nativo. Pendientes revisión visual/teclado y rotación reales, migración cifrada
+nativa y restauración en dispositivo. No se generó APK Release ni commit/push.
+
+### Colores de miniindicadores de tarjetas
+
+Ajustes conserva su organización; la entrada Apariencia y su encabezado pasan a
+Diseño. AppearanceScreen añade Indicadores, con ocho filas y paleta fija: Blanco
+suave (#D6D6D6, texto original Black & White 90), Gris, Rojo, Naranja, Amarillo,
+Verde, Azul y Violeta. Cada fila tiene icono, nombre y muestra. Restablecer colores
+retira solo las ocho elecciones; conserva tema y tamaño de texto.
+
+El alcance es CompactCardIndicators (vista previa inferior de Núcleos, nodos y
+Kanban). Personas indica asociaciones/participantes, Tecnologías sus vínculos,
+Notas descripciones, Tareas descendientes/relacionadas, Archivos referencias a
+adjuntos, Vencimiento fechas existentes, Pendientes para hoy vencimientos de
+pendientes en el día y Prioritario prioridad alta de pendientes. Se conservan las
+agregaciones, los iconos, la ubicación y la activación existentes. Las primeras
+cuatro señales base (Personas, Tecnologías, Notas, Vencimiento) permanecen grises
+si no hay contenido; las adicionales siguen ocultándose cuando no están activas.
+No se añaden indicadores de viajes/asociaciones ni colores a controles de detalle,
+menús, navegación, Calendario o Eventos.
+
+AppearancePreferences guarda por identidad de indicador, nunca por tono/grupo.
+El estado observable actualiza la fila inferior inmediatamente. Sin elección
+explícita se mantiene TextPrimary del tema actual, exactamente #D6D6D6 en Black &
+White 90; Inactive conserva su gris original. Las elecciones permiten repeticiones.
+En producción usan EncryptedPreferences del VaultContext autenticado, dentro de
+private_preferences/SQLCipher; no se copian a UnlockAppearanceCache ni fuera de la
+bóveda. Backup/restauración y validación se describen en BACKUP_FORMAT.md.
+
+Validación de colores (2026-10-15): cinco casos nuevos dirigidos aprobados, sin
+fallos ni omisiones, en IndicatorColorsTest (4) e IndicatorColorsIsolationTest (1).
+Cubren ocho elecciones independientes, colores repetidos, persistencia/reapertura,
+reset sin alterar tamaño, color original exacto, actualización observable inmediata,
+gris inactivo, señales ocultas, selector y entrada única Diseño. El aislamiento usa
+VaultManager, archivos cifrados y la fixture Room JVM existente; no sustituye pruebas
+SQLCipher nativas. Se verificaron backup/restauración, rechazo de color inválido sin
+reemplazar datos y defaults históricos sin mezclar principal y señuelo. Se ajustaron
+solo los textos Apariencia→Diseño de cinco archivos de pruebas existentes afectados
+por el renombre, sin ejecutar esas suites. Pasó git diff --check. Pendiente revisión
+visual en teléfono. Sin APK Release, commit ni push.
+
+### Editor inferior de Eventos y colores individuales
+
+CalendarEventEditor usa ModalBottomSheet del mismo patrón Material existente,
+con expansión parcial/completa y Calendario atenuado detrás. EventSheetLayout
+mide encabezado, contenido y acciones; conserva la altura natural cuando cabe y
+limita el cuerpo al espacio visible de la hoja. El cuerpo desplaza internamente.
+Cancelar/Guardar se sitúan al pie visible incluso en expansión parcial; cuando
+no cabe al menos un campo junto a cabecera/acciones, las acciones pasan al mismo
+contenido desplazable. No se usan máximos rígidos de altura para el editor.
+
+imePadding respeta el área del teclado; el foco en Título/Descripción expande la
+hoja y pide BringIntoView, también cuando cambian los insets IME. Fecha y Todo el
+día usan FlowRow; checkbox y etiqueta comparten una fila centrada con zona táctil
+de al menos 48 dp. Hora solo aparece si no es día completo. Se conservan los
+selectores de fecha/hora, ResponsibleDialog, guardado/cancelación y confirmación
+de eliminación. Editar muestra «Editar evento». No hay otra pantalla ni acceso.
+
+El borrador privado conserva el color al restaurar estado y admite su estado
+anterior sin color. Un segundo bottom sheet compacto contiene la paleta fija de
+siete colores. Elegir modifica únicamente el borrador hasta Guardar. Las tarjetas
+de Eventos permanecen carbón, con línea lateral e icono del color individual.
+Mes y Semana dibujan hasta tres rayas correspondientes a Eventos reales de cada
+día, en el orden existente, y +N neutro para los restantes. Los puntos de Tareas,
+sus filtros y los colores de miniindicadores no cambian. Room 46 / JSON 38 según
+BACKUP_FORMAT.md, sin cambios al cifrado ni al aislamiento de VaultSession.
+
+Validación de este lote (2026-10-15): diez casos distintos dirigidos aprobados:
+CalendarEventColorTest (2), CalendarEventIsolationTest (1, ampliado a colores) y
+CalendarEventsUiTest (7, afectados por el nuevo editor e indicadores). Incluyen
+migración desde esquema genuino 45 preservando Evento, Persona y Tarea; respaldo
+38 y lectura 37 con gris predeterminado; rechazo de color inválido sin reemplazo;
+principal/señuelo y reapertura; CRUD, cancelación, confirmación, fecha/hora,
+restauración del borrador con color, tres rayas +2 en Mes y Semana, regreso a Hoy,
+fuente al 200 % y viewport 320×360 dp al 160 % con campos/acciones alcanzables.
+Los primeros intentos corrigieron un token de superficie y las fixtures de
+scroll/coordenadas/qualifiers de las pruebas; no se repitieron casos aprobados.
+Pasó git diff --check. La prueba histórica de migración desde 44 solo actualiza
+su versión esperada a 46; no se volvió a ejecutar.
+
+Pendientes reales: teclado Android abierto/cerrado, animación de insets, barras y
+gestos, arrastre/expansión y rotación físicos, además de revisión visual de colores.
+Robolectric verifica foco, desplazamiento y restauración de estado, no acredita
+el IME real ni SQLCipher nativo. No se generó APK Release ni commit/push.
+
+### Piloto modular del editor de Eventos (2026-10-15)
+
+CalendarEventEditor inicia ahora en COMPACT: accesos inferiores a Título, Fecha,
+Hora, Descripción, Responsables y Color, más Eliminar para un Evento existente.
+Solo Fecha se migra a propiedad inline dentro de la misma hoja. Título, Hora y
+Descripción acceden temporalmente al formulario existente; Responsables y Color
+conservan sus selectores. No se implementa todavía el estado de texto completo.
+
+Se distinguen el Evento persistido, CalendarEventDraft y DatePickerState provisional.
+Confirmar Fecha copia únicamente al borrador; Cancelar Fecha descarta únicamente
+su selección provisional. Reducir y Atrás regresan al compacto conservando esa
+selección para retomarla, incluso tras restaurar la interfaz durante la sesión.
+Guardar usa el repositorio existente y requiere resolver primero una Fecha
+provisional modificada. Cancelar general pide confirmación si hay cambios; los
+gestos nativos no pueden ocultar y destruir el borrador. La expansión parcial
+queda disponible solo en compacto: tras recrear el formulario, permitir expansión
+parcial podía dejar el pie de acciones fuera del área visible.
+
+El estado se delimita por id del Evento dentro del árbol privado existente de
+VaultSession. Se reutiliza el registro en memoria de MainActivity; VaultManager.lock
+lo borra. No se añaden datos a Bundle persistente, preferencias, Room ni backup.
+No hay recuperación tras muerte del proceso. Una futura recuperación durable
+requeriría un diario versionado cifrado por bóveda, política explícita de backup,
+validación y limpieza transaccional; no se implementa en este piloto. Para texto
+largo, un futuro modo completo deberá conservar su buffer y selección fuera de
+la rama visual, igual que Fecha conserva DatePickerState al reducirse.
+
+Validación dirigida: CalendarEventPilotTest cubre confirmación sin persistencia
+prematura, guardado completo, cancelación de propiedad, reducción, cambio al
+formulario, restauración de estado, descarte explícito, Atrás de la ventana modal
+y toque exterior. Los días se seleccionan por acción semántica accesible; esto no
+acredita la ergonomía física del selector. CalendarEventsUiTest adapta los cinco
+casos afectados de CRUD, fecha/hora futura, color/restauración y tamaños/fuentes.
+No se repiten los dos casos de indicadores/filtros que no cambian. La revisión de
+MainActivity/VaultManager comprueba la frontera privada sin modificar seguridad;
+no equivale a una nueva prueba de SQLCipher nativo o cambio real de bóveda.
+
+Pendiente manual: Fecha con desplazamiento y pulsación real, teclado/IME, fuentes
+y navegación por gestos del dispositivo, arrastre, rotación física y bloqueo con
+reapertura principal/señuelo. No hay APK Release, commit ni push.
+
+Resultado final del piloto: ocho casos distintos aprobados (3 nuevos y 5
+adaptados), compilación Debug de fuentes incluida en Gradle y git diff --check
+sin errores. Los intentos iniciales detectaron localizadores y pulsaciones de
+prueba inadecuados, y el pie oculto tras recreación corregido mediante expansión.
+Tras ese arreglo se repitieron únicamente los casos afectados por la hoja.
+
+### Corrección modular de Eventos tras revisión en teléfono (2026-10-15)
+
+Esta revisión sustituye el estado FORM del piloto: las seis opciones abren
+exclusivamente su propiedad en una única ModalBottomSheet. Fecha usa DatePicker,
+Hora usa TimeInput y Todo el día, Responsables reutiliza ParticipantCard con la
+misma búsqueda y selección del catálogo, y Color reutiliza la paleta existente.
+No se abren hojas, diálogos de selección ni formularios adicionales. Solo quedan
+los diálogos explícitos de confirmación de descarte/eliminación y de errores.
+
+Cada propiedad conserva un buffer independiente fuera de su rama de composición:
+CalendarEventDraft provisional, TextFieldValue de Título/Descripción y estados de
+DatePicker/TimePicker. Confirmar copia únicamente esa propiedad al borrador
+general; Cancelar la propiedad descarta únicamente su buffer. Reducir o Atrás
+regresan al compacto sin descartar; reabrir recupera el trabajo provisional.
+Guardar sigue usando CalendarEventRepository y se habilita cuando los cambios
+provisionales se han confirmado o cancelado. El compacto refleja los valores
+confirmados. No existe guardado automático ni recuperación tras muerte del proceso.
+
+Descripción ocupa inicialmente toda la altura disponible de la misma hoja, sin
+editor multimedia nuevo. TextFieldValue conserva texto y selección al reducir,
+reabrir y restaurar la interfaz. Se captura antes de quitar foco para evitar el
+colapso de selección que provoca TextField. El desplazamiento visual del campo
+puede reajustarse al foco o teclado: no se garantiza su posición exacta en píxeles.
+
+Cada propiedad reinicia únicamente las medidas de su envoltura; su buffer no se
+reinicia al cambiar de vista. La hoja toma la altura natural de Título, Hora,
+Responsables, Color y compacto, limitada por pantalla/IME; Fecha desplaza cuando
+no cabe. Se elimina la expansión parcial, cuyo offset obsoleto dejaba el pie
+fuera de vista al volver al compacto con 320×360 dp y fuente al 160 %. Acciones al
+pie, o dentro del desplazamiento si el espacio es insuficiente. Sin nuevos menús.
+
+Se conserva la frontera privada existente: clave por Evento y registro en memoria
+por bóveda de MainActivity, eliminado por VaultManager.lock. No se modifican
+modelos, Room, SQLCipher, backup, Calendario ni componentes de otros módulos.
+La revisión de estas conexiones no sustituye pruebas físicas de bloqueo/señuelo.
+
+Pruebas dirigidas: CalendarEventPilotTest comprueba exclusividad de las seis
+propiedades y una sola hoja, alturas Título/Descripción, buffers independientes,
+selección de texto, recreación, responsables, confirmación/cancelación, descarte,
+Atrás/toque exterior y guardado de valores confirmados. CalendarEventsUiTest adapta
+solo los cinco casos de editor afectados: CRUD, fecha/hora futura, color y las
+dos variantes de tamaño/fuente. No se repiten indicadores, filtros ni migraciones.
+Días y algunas acciones se operan mediante semántica accesible; quedan pendientes
+pulsaciones, arrastre, IME, rotación, gestos y bloqueo/reapertura en teléfono real.
+
+Resultado de esta corrección: once casos distintos aprobados (seis del piloto y
+cinco del editor integrado), compilación de fuentes Debug correcta y
+`git diff --check` sin errores. Se corrigieron el pie inaccesible en viewport
+reducido y el colapso de selección al reducir. La prueba de buffers tras
+recreación usa acciones semánticas para evitar el tooltip nativo del asa y sus
+coordenadas fuera de la ventana simulada de Robolectric; no acredita pulsaciones
+ni geometría real tras rotación. No hay APK Release, commit ni push.
+
+### Panel integrado de Eventos (2026-10-15)
+
+Se sustituye exclusivamente el contenedor modal del editor por una región inferior
+en la Column de CalendarScreen. El Calendario ocupa el espacio restante; el panel
+se mide por contenido con cuerpo desplazable de weight(fill=false). Descripción
+usa la altura disponible. No hay ventana de ModalBottomSheet, scrim, asa, anclas,
+animación de show/hide ni medición diferida mediante onSizeChanged. El tag histórico
+`event-sheet` se mantiene solo para compatibilidad de pruebas: ahora es Surface.
+
+Cancelar/Confirmar/Reducir propiedad cambian el contenido al compacto manteniendo
+el mismo panel. Cerrar/guardar/descartar eliminan eventDraft y el panel completo
+de composición; no queda una ventana invisible interceptando el Calendario.
+Se conservan los seis editores, buffers por propiedad, selección de texto,
+validaciones, confirmaciones y persistencia anteriores. Atrás se consume durante
+operaciones ocupadas; en propiedad reduce y en compacto solicita cierre protegido.
+Un toque fuera no descarta. No se ofrece arrastre de hoja porque no existe hoja.
+
+Mientras haya borrador, Volver, menú de navegación, Nuevo evento y apertura de
+otras tarjetas quedan deshabilitados para impedir sustitución o abandono accidental.
+El bloqueo existente permanece accesible. Al cerrar, esos accesos se reactivan en
+la misma composición. Sin editor abierto, el Calendario conserva su disposición.
+El host respeta IME y los insets ya consumidos por AppSafeArea; el foco solo pide
+BringIntoView, nunca expansión del contenedor. No cambia la frontera privada por
+bóveda ni se añade persistencia durable. Sin cambios en Room/SQLCipher/backup.
+
+Validación dirigida: once casos afectados del editor aprobados y una regresión
+nueva de integración con pulsaciones por coordenadas en Compose/Robolectric:
+Título ocupa menos del 60 % del alto disponible, Cancelar Título deja el compacto
+visible, cerrar elimina el panel y Actual/Nuevo evento vuelven a responder.
+Atrás usa el dispatcher de la Activity, sin Dialog. Se comprueba además que el
+menú no puede abandonar el borrador y vuelve a responder tras cerrar. Estas pruebas
+no acreditan IME real, rotación física, TalkBack, fuentes del dispositivo ni bloqueo
+principal/señuelo; requieren revisión en teléfono. No se repiten filtros,
+indicadores, migraciones ni backups no afectados. Sin APK Release, commit ni push.
+
+### Descripción de Eventos con crecimiento progresivo (2026-10-15)
+
+Solo Descripción cambia su presentación. Abre adaptable con minLines=3, sin altura
+mínima en dp ni pantalla completa obligatoria. El campo crece con sus líneas hasta
+el límite del panel: 75 % de la altura disponible, ya descontados los insets/IME
+por el host existente. Encabezado y acciones quedan fuera del contenido desplazable;
+solo el TextField desplaza texto al alcanzar el límite, sin scroll exterior anidado.
+No se calcula altura a partir del número de caracteres ni se mide el texto en otro
+campo; Compose resuelve el ajuste de líneas, tipografía y restricciones disponibles.
+
+Ampliar usa el espacio completo de la misma región y el campo ocupa ese espacio.
+Reducir/Atrás desde completo vuelve a Descripción adaptable; desde adaptable vuelve
+al compacto. Ambos conservan el TextFieldValue provisional y su selección. Confirmar
+y Cancelar conservan sus efectos anteriores sobre borrador general/provisional.
+El estado visual de ampliación usa el registro privado en memoria existente y se
+restaura durante la sesión; no hay autosalvado ni persistencia durable nueva.
+
+La ruta de layout de Título/Fecha/Hora/Responsables/Color permanece intacta, así
+como el guardado final, CalendarScreen, Room, SQLCipher y backup. Pruebas dirigidas
+solo de crecimiento/límite, texto extenso inicial, ampliar/reducir/restaurar,
+selección y buffers, más el caso afectado de viewport pequeño con fuente ampliada.
+El teclado físico, transiciones de IME y suavidad al escribir requieren revisión
+en teléfono. No se genera APK Release ni se realizan commit/push.
+
+Resultado: cuatro casos distintos dirigidos aprobados, compilación Debug de
+fuentes y git diff --check correctos. Las pruebas nuevas usan un viewport fijo
+para comparar alturas con el espacio disponible, no con el panel que encoge.
+Se simula un gesto sobre texto extenso y se comprueban altura acotada y contenido
+íntegro; el TextField usado no expone VerticalScrollAxisRange. El desplazamiento
+visual real y su interacción con el teclado quedan pendientes en teléfono.
+
+### Antisocial: entrada por identidad, Red y fotografías (2026-10-15)
+
+PeopleScreen sin destino explícito entra en el perfil de la identidad existente
+`local_identity` (Identificar como yo), esperando a que identidad y Personas estén
+cargadas para evitar mostrar primero el listado. Los accesos contextuales con
+initialPersonId conservan su destino. Si no hay identidad, se conserva la lista
+existente; nunca se inventa un perfil principal ni se crea otra Persona.
+
+PersonPhotoHeader reutiliza nombre, biografía, primer enlace web y cumpleaños;
+añade el recuento de entradas reales de person_memories y el acceso aprobado Red.
+La Red propia lista las demás Personas; la ajena solo vecinos reales de
+person_relations, incluyendo ambas presentaciones de relaciones dirigidas, con
+una tarjeta por Persona aunque existan varios vínculos. Se reutilizan búsqueda,
+filtros de categorías, edición, eliminación confirmada y Nueva Persona del listado
+anterior. Editar/eliminar el perfil actual siguen en sus opciones existentes.
+Atrás sale de Red a su perfil y después deshace la ruta de perfiles. Las tarjetas
+usan avatares cuadrados con esquinas redondeadas; no hay seguidores ni seguidos.
+
+Tocar el avatar ahora abre PersonPhotoViewer; ya no llama primero a edit(person)
+y al selector, que era la causa de dejar abierto el formulario al cancelar.
+Cambiar fotografía y Ajustar encuadre se mantienen exclusivamente en la edición
+explícita de perfil. El visor recuperado lee la fotografía almacenada completa,
+con ContentScale.Fit mediante ZoomableImage, y ofrece Guardar copia con
+ACTION_CREATE_DOCUMENT. El visor del avatar conserva primero la foto principal,
+seguida de las fotografías históricas en su orden existente; las publicaciones
+conservan su visor y orden de fotografías por entrada. Ambos usan VerticalPager.
+ZoomableImage con carousel=true deja el gesto de página al pager a zoom 1; ampliado,
+el gesto mueve la imagen. No existe gesto vertical de cierre ni selección implícita
+de avatar al recorrer páginas. Se conservan las acciones explícitas del visor.
+
+PersonPhoto/framed solicita readFramedThumbnail: considera lado visible, zoom y
+relación de aspecto del original. La caché compartida sigue acotada y utiliza su
+muestreo por potencias de dos; se solicita margen para no ampliar una miniatura
+inferior a la resolución necesaria cuando el original almacenado la permite.
+No se recomprimen ni sustituyen archivos, no cambia la importación ni el encuadre.
+Una fuente ya almacenada a baja resolución no puede recuperar píxeles inexistentes.
+
+Guardar copia usa SecureFiles.input del archivo controlado y la salida SAF, sin
+recodificar. PersonRepository mantiene el bloqueo común de archivos durante la
+copia; el visor reserva la fuente con un owner de exportación antes de abrir SAF
+y libera la reserva al guardar, cancelar o fallar, mediante el ciclo existente.
+No hay staging privado nuevo. Las reservas operativas mantienen el contrato
+existente de no caducar. El destino lo elige el usuario y no se añade al backup.
+No cambian Room, JSON, SQLCipher, identidades ni aislamiento principal/señuelo.
+No se serializan rutas ni se añade sincronización o acceso de red dentro de la app.
+
+Validación dirigida: AntisocialHierarchyTest cubre entrada propia, recuento real,
+Red de todos los contactos frente a vecinos reales, Atrás, visor sin formulario,
+gestos verticales en ambos visores, cancelación de SAF, copia exacta de bytes sin
+cambio de avatar y acceso a editar/eliminar con confirmación. AntisocialAvatarQualityTest
+comprueba resolución con zoom y proporción de fuentes verticales/horizontales/
+cuadradas sin reescritura. AvatarPhoneFixTest comprueba el encuadre y la reapertura
+sin duplicaciones del selector explícito. No se repiten suites generales, migraciones
+ni backups ajenos al cambio. Revisar en teléfono calidad aparente, zoom/gestos,
+proveedores SAF, fuentes ampliadas, bloqueo/reapertura y navegación real de Red.
+
+Resultado del lote: siete casos distintos dirigidos aprobados (cuatro de
+AntisocialHierarchyTest, uno de AntisocialAvatarQualityTest y dos afectados de
+AvatarPhoneFixTest), compilación de fuentes Debug y git diff --check correctos.
+El primer intento corrigió una llamada Kotlin y la firma JUnit de la fixture;
+solo se repitieron casos afectados por cambios posteriores de navegación.
+No se ejecutaron pruebas SQLCipher nativas ni instalación en teléfono. Se
+conservan los cambios anteriores del repositorio. Sin APK Release, commit o push.
+
+### Antisocial: principal restaurado, recuentos y favoritos de Red (2026-10-15)
+
+El principal sigue siendo exclusivamente local_identity/SELF (Identificar como yo).
+No existe un segundo selector de Persona principal; «avatar principal» selecciona
+una fotografía, no la identidad. El fallo de entrada combinaba entryResolved
+restaurado con una lista anterior y la falta de reconciliación al cambiar SELF.
+PeopleScreen espera a cargar Personas, valida la identidad y reevalúa el destino
+cuando cambia. AppRoot descarta únicamente el estado people:list al entrar de
+nuevo explícitamente a Antisocial; los retornos contextuales conservan su ruta.
+Un cambio de principal reinicia la vista del perfil, sin heredar la sección del
+anterior. Si no hay principal válido, se conserva la lista como alternativa.
+
+PersonPhotoHeader sitúa Publicaciones y Red en paralelo sobre ControlSurface gris,
+debajo de avatar/nombre. Biografía secundaria y enlace conservados debajo, con
+altura natural. El conteo de publicaciones proviene de person_memories. Red se
+calcula una sola vez a partir de Personas y relaciones: todas las demás Personas
+para SELF y vecinos reales para los otros perfiles, sin duplicación por vínculos
+múltiples. Ese mismo conjunto alimenta recuento y listado; búsqueda/filtros y
+favoritos no alteran el total. Fotos, visor, SAF y geometría de avatar no cambian.
+
+Favoritos usa la infraestructura existente private_preferences dentro de la bóveda
+SQLCipher, con una fila antisocial_favorites y EncryptedPreferences.encode/decode.
+El mecanismo element_access existente solo admite Núcleos y Tareas: se conserva
+intacto para evitar introducir Personas en sus búsquedas/destinos. El payload
+es version=1 y people=Set<String>. Son preferencias globales de Antisocial por
+bóveda, sin tablas, columnas, migraciones ni relaciones nuevas. La estrella usa
+20 dp con área táctil de 48 dp y tonos BW90. Después de determinar pertenencia y
+filtros, una ordenación estable coloca favoritos delante y conserva dentro de
+cada grupo el orden DAO por nombre COLLATE NOCASE e id. Quitar la estrella
+restablece ese orden. Un favorito sin vínculo no aparece en una Red ajena.
+
+PersonRepository observa cambios y guarda cada toggle en una transacción; comprueba
+que la Persona existe. Eliminar una Persona elimina su marca en la misma transacción.
+La restauración genérica incluye la fila; BackupData añade validación del payload,
+versión y pertenencia de todos los ids al conjunto de Personas del backup antes
+de reemplazar datos. Ausencia de la fila en backups históricos significa conjunto
+vacío. No hay estado paralelo en XML, cachés públicas, rutas ni ficheros nuevos.
+La integración de persistencia y validación fue aprobada expresamente por el usuario.
+
+Validación: cinco casos distintos nuevos aprobados: dos PersonFavoritesTest
+(reapertura, identidad, restauración histórica, preferencias ajenas, eliminación,
+archivo de backup manipulado rechazado sin modificar datos), dos casos de
+AntisocialHierarchyTest (selección desde la lista, recreación/reentrada, distribución
+horizontal y debajo del avatar, recuentos reactivos sin duplicados, orden estable,
+restauración de la estrella y pérdida de pertenencia a Red), y PersonFavoritesVaultTest
+(respaldo cifrado, restauración, reapertura y principal/señuelo con los mismos ids).
+El test de bóvedas usa sesiones reales con SQLCipher nativo sustituido por SQLite
+en JVM; no equivale a una prueba nativa. Pasaron compileDebugKotlin, assembleDebug
+y git diff --check. No se repiten las pruebas previas de fotos/gestos/SAF sin cambios.
+Pendiente en Android físico: calidad visual real, gestos verticales, zoom táctil,
+selector de documentos, teclado y bloqueo/reapertura. Sin Release, commit ni push.
+
+### Apodo público y Datos personales — Room 47 / JSON 39
+
+`persons.name` representa el Apodo público utilizado por tarjetas, cabeceras,
+responsables y publicaciones. El editor unificado exige únicamente ese Apodo;
+Nombre, Apellidos y DNI / RUT son opcionales en Datos personales. Los campos
+`person_profiles.givenName`, `familyName` y `documentId` solo se presentan dentro
+del editor de Datos personales. La cabecera ya no mezcla Nombre y alias.
+
+La migración 46→47 conserva el Nombre completo anterior en `givenName` sin
+intentar separarlo. Si existe alias, pasa a ser el Apodo público; si no existe,
+se conserva el nombre visible anterior como Apodo, según la decisión del usuario.
+No cambia IDs, referencias, imágenes, relaciones ni identidad principal. Se
+mantiene `alias` por compatibilidad histórica; el editor lo sincroniza con el
+Apodo al confirmar. Cancelar conserva los datos confirmados.
+
+El lector de respaldos históricos aplica la misma transformación. JSON 39
+transporta íntegramente los campos y los valida antes de restaurar, utilizando
+la transacción, staging y aislamiento de bóvedas existentes. No añade archivos,
+reservas, servicios ni datos fuera de la bóveda. Los perfiles del señuelo siguen
+perteneciendo exclusivamente a su propia base y respaldo.
+
+`PrimaryControlButton` en `ActionComponents.kt` unifica únicamente Nuevo Núcleo,
+Bloquear, Crear y Capas: superficie, contorno, esquinas y estados Material. Cada
+llamador conserva sus dimensiones, ubicación, nombre y acción. Esta intervención
+no modifica los indicadores de tarjetas.
+
+Validación dirigida de esta intervención: ocho pruebas aprobadas, sin suites
+generales. Incluyen geometría/estados/callbacks de los controles, navegación
+existente de Capas, migración desde un esquema genuino Room 46, creación solo
+con Apodo, edición/reapertura privada de DNI / RUT, round-trip de JSON 39,
+lectura histórica 1 y 38, rechazo de perfiles inválidos/duplicados, conservación
+de nombres largos, rollback y aislamiento principal/señuelo con respaldo cifrado.
+La prueba de bóvedas usa sesiones y cifrado reales con SQLite en JVM en lugar
+de SQLCipher nativo. Pendientes físicos: migración del almacén cifrado en Android,
+contraste y pulsación, fuentes ampliadas y teclado. Compilación Kotlin Debug y
+revisión de diff correctas; no se generó Release ni se hizo commit o push.
+
+Archivos de esta intervención:
+
+- UI (`app/src/main/java/com/r0ybt/arachn0de/ui/`): `ActionComponents.kt`,
+  `OfficialIcons.kt`, `ProjectsScreen.kt`, `ProjectScreen.kt`, `PeopleScreen.kt`,
+  `PersonPhotoHeader.kt`, `PersonDetailUi.kt`.
+- Persistencia: `data/local/PersonProfileEntities.kt`,
+  `data/local/PersonPersonalDataMigration.kt`, `data/local/Arachn0deDatabase.kt`,
+  `domain/model/PersonRelations.kt` y `backup/BackupJson.kt` bajo el mismo paquete.
+- Esquema: `app/schemas/com.r0ybt.arachn0de.data.local.Arachn0deDatabase/47.json`.
+- Pruebas nuevas: `ui/PrimaryControlButtonTest.kt`, `data/PersonPersonalDataTest.kt`,
+  `data/PersonPersonalDataVaultTest.kt` bajo `app/src/test/java/com/r0ybt/arachn0de/`.
+- Pruebas adaptadas: `ui/PersonInterfaceCleanupTest.kt` para Apodo/Datos personales;
+  `data/CalendarEventColorTest.kt` y `data/CalendarEventsTest.kt` solo actualizan
+  la expectativa de esquema a 47. No se repiten sus suites de Calendario.
+- Documentación: `ARCHITECTURE.md` y `BACKUP_FORMAT.md`.
+
+### Limpieza de tareas completadas
+
+`CompletedCleanup` comparte selección/revalidación entre la confirmación manual
+por Núcleo/Capa y la ejecución automática. Solo considera ACTION completadas sin
+hijos. Respeta las restricciones de Backlog/iteraciones/participación y reutiliza
+la eliminación por selección de NodeRepository, incluidos los vínculos Sprint.
+La confirmación conserva un snapshot transitorio de los candidatos; revalida
+ámbito, filas, completitud, hijos, evento y restricciones en la misma transacción
+que borra. No agrega candidatos nuevos ni conserva copias de tareas eliminadas.
+El hook de audio se ejecuta antes de la transacción. Tras commit se utiliza la
+limpieza existente de adjuntos; los fallos físicos quedan para reintento normal.
+
+La limpieza automática usa la última finalización efectiva del historial
+COMPLETED/REOPENED. Fechas ausentes, futuras, anteriores a la creación o historias
+con retrocesos temporales no se usan para borrar. Reabrir excluye y recompletar
+reinicia el plazo. Las opciones son 1/7/30/90/180/365 días y Nunca, por defecto.
+Activar o reducir un plazo requiere confirmación en Ajustes → Seguridad y
+respaldos → Limpieza. La preferencia cifrada y su compatibilidad están descritas
+en BACKUP_FORMAT.md. No se altera la lógica de completitud.
+
+Android JobScheduler solicita ejecuciones periódicas cada seis horas, sin hora
+exacta ni requisitos de red. El JobService está protegido por BIND_JOB_SERVICE;
+no es un servicio permanente. Solo usa la sesión autenticada actual, omite el
+trabajo si está bloqueada o hay audio abierto y se cancela junto con la sesión.
+La opción «Nunca» cancela el job; elegir un plazo habilitado lo programa. No se persisten
+claves ni tareas en JobInfo. Tras reinicio se reprograma al desbloquear; nunca
+abre el almacén por sí mismo. Los errores registran solo mensajes técnicos sin
+identidades ni contenido. El horario físico y las restricciones del fabricante
+requieren comprobación en Android real.
+
+Validación dirigida: `CompletedCleanupTest` (9 casos) y
+`CompletedCleanupUiTest` (2 casos), 11 aprobados. Incluyen alcance por rama,
+exclusiones, llegadas posteriores, reapertura, cambio de restricciones, rollback,
+plazos, backup y ausencia histórica, programación/cancelación, Sprint,
+recurrencias, Personas, adjuntos compartidos y confirmaciones de interfaz.
+No se repitieron las pruebas anteriores de protección de archivos ni suites
+generales. Pendiente revisar menús/paneles en teléfono y ejecución real de
+JobScheduler con bloqueo, reinicio y ahorro de batería.

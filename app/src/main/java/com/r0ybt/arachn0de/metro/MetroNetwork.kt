@@ -46,8 +46,12 @@ internal data class MetroRestrictions(val closed: Set<String> = emptySet(), val 
 internal data class MetroStep(val from: String, val to: String, val line: String, val direction: Int, val service: MetroService, val kind: MetroStepKind, val nextLine: String = line) {
     val minutes: Int get() = when (kind) { MetroStepKind.RIDE -> 2; MetroStepKind.WAYPOINT -> 0; else -> 4 }
 }
-internal data class MetroRoute(val networkVersion: String, val stops: List<String>, val express: Boolean, val steps: List<MetroStep>,val departure:Long?=null) {
-    val minutes get() = steps.sumOf { it.minutes }
+internal data class MetroRoute(val networkVersion: String, val stops: List<String>, val express: Boolean, val steps: List<MetroStep>,val departure:Long?=null, val prediction:MetroPrediction?=null) {
+    val durations:List<Long> by lazy {MetroEstimates.durations(this)}
+    val totalMillis:Long get() = durations.sum()
+    val baseMillis:Long get() = steps.sumOf {it.minutes*60_000L}
+    val minutes:Int get() = ((totalMillis+59_999)/60_000).toInt()
+    fun duration(index:Int):Long = durations[index]
     val physicalSegments get() = steps.count { it.kind == MetroStepKind.RIDE }
     val transfers get() = steps.count { it.kind == MetroStepKind.TRANSFER }
     val serviceChanges get() = steps.count { it.kind == MetroStepKind.CHANGE }

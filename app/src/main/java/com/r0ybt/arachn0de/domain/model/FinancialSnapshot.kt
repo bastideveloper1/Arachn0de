@@ -14,7 +14,7 @@ enum class FinancialPeriod {
         NEXT_MONTH -> current.shifted(1)
     }
 }
-data class FinancialSelection(val period: FinancialPeriod = FinancialPeriod.THIS_MONTH, val personId: String? = null)
+data class FinancialSelection(val period: FinancialPeriod = FinancialPeriod.THIS_MONTH, val personId: String? = null, val selectedMonth: CalendarMonth? = null)
 
 /** Exact aggregates may exceed Long even though each persisted amount fits Long. */
 data class CurrencyTotals(
@@ -58,7 +58,7 @@ class FinancialSnapshot(
     zone: TimeZone,
 ) {
     val zoneId: String = zone.id
-    val periodMonth: CalendarMonth? = selection.period.month(currentMonth)
+    val periodMonth: CalendarMonth? = selection.selectedMonth ?: selection.period.month(currentMonth)
     val responsibleByNode = responsibleByNode.mapValues { (_, people) -> people.toList() }.toMap()
     val tasks: List<Node>
     val summary: FinancialSummary

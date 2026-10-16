@@ -48,7 +48,7 @@ internal class MetroTrackingService : Service() {
                 if(active==null) { stopForeground(STOP_FOREGROUND_REMOVE); stopSelf(); return@collectLatest }
                 while(isActive) {
                     owner.access.checkOpen()
-                    val session=active.data.active!!; val position=MetroTracking.position(session,metroTime(this@MetroTrackingService))
+                    val session=active.data.active!!; val timeNow=metroTime(this@MetroTrackingService); val position=MetroTracking.position(session,timeNow)
                     if(snapshot.preferences.vibration && MetroArrivalAlert.pending(session,metroTime(this@MetroTrackingService))!=null) {
                         // Record first, so reopening does not repeat the reminder. Recheck store access before hardware use.
                         withContext(NonCancellable) {
@@ -73,7 +73,7 @@ internal class MetroTrackingService : Service() {
                     val pending=PendingIntent.getService(this@MetroTrackingService,command.hashCode(),Intent(this@MetroTrackingService,MetroTrackingService::class.java).setAction(command)
                         .putExtra("store",owner.access.id.toString()).putExtra("journey",active.row.id).putExtra("session",session.id).putExtra("revision",active.row.revision),PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
                     val notification=NotificationCompat.Builder(this@MetroTrackingService,CHANNEL).setSmallIcon(android.R.drawable.ic_menu_directions)
-                        .setContentTitle("Metro · $status").setContentText(station).setContentIntent(open()).setOngoing(true).setOnlyAlertOnce(true)
+                        .setContentTitle("Metro · $status").setContentText(station+" · "+MetroEstimates.remainingText(session,timeNow,snapshot.preferences.network)).setContentIntent(open()).setOngoing(true).setOnlyAlertOnce(true)
                         .apply {if(MetroStages.control(session).phase==MetroPhase.RIDING) addAction(android.R.drawable.ic_media_pause,if(command==PAUSE) "Pausar" else "Reanudar",pending)}
                         .addAction(android.R.drawable.ic_menu_view,"Abrir seguimiento",open()).build()
                     getSystemService(NotificationManager::class.java).notify(NOTIFICATION,notification)

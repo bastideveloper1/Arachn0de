@@ -25,6 +25,23 @@ class MetroNativePersistenceTest {
     @After fun close() {db.close()}
     private suspend fun route(destination:String="republica")=MetroPlanner.plan(repo.snapshot().preferences.planningNetwork,listOf("los-heroes",destination),false,MetroRestrictions())!!
     private fun plan(route:MetroRoute)=MetroCodec.journey(MetroJourneyData(route))
+    @Test fun restoredLegacyDisabledPlanStartsWithoutRewritingItsFlagOrLosingHistory()=runBlocking<Unit> {
+        val id=repo.savePlan(route());repo.enabled(id,false)
+        val original=repo.snapshot().journeys.single()
+        val candidate=backup.inspect(backup.create().readBytes().inputStream())
+        backup.restore(candidate);backup.discard(candidate)
+        val restored=repo.snapshot().journeys.single()
+        assertFalse(restored.row.enabled);assertEquals(original.data,restored.data)
+        assertEquals(id,restored.row.id)
+        val time=MetroTime(1_000_000,100_000,1)
+        assertTrue(repo.begin(id,restored.row.revision,time))
+        val started=repo.snapshot().journeys.single()
+        assertFalse(started.row.enabled);assertTrue(repo.learningEvents().isEmpty())
+        assertEquals(original.data.sessions,started.data.sessions.dropLast(1))
+        db.close();db=Arachn0deDatabase.create(context);repo=MetroRepository(db,context)
+        assertFalse(repo.snapshot().journeys.single().row.enabled)
+        assertNotNull(repo.snapshot().journeys.single().data.active)
+    }
     @Test fun attachesIndependentActiveJourneyInsideSubLayerWithoutDuplicatingAndRoundTripsBackup()=runBlocking<Unit> {
         val p=ProjectRepository(db.projectDao()).createProject("P")
         val layer=nodes.createNode(p.id,null,"Capa",purpose=NodePurpose.LAYER)

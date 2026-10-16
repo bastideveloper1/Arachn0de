@@ -49,6 +49,7 @@ internal data class BackupData(
     val privatePreferences: List<PrivatePreferenceEntity> = emptyList(),
     val savedTemplates: List<SavedTemplateEntity> = emptyList(),
     val metroPreferences: String? = null,
+    val metroLearningEvents: List<MetroLearningEventEntity> = emptyList(),
     val metroJourneys: List<MetroJourneyEntity> = emptyList(),
     val managementRoles:List<ManagementRoleEntity> = emptyList(),
     val objectiveEpics:List<ObjectiveEpicEntity> = emptyList(),
@@ -74,6 +75,10 @@ internal data class BackupData(
     val managementContexts: List<ManagementContextEntity> = emptyList(),
     val sprintLinks: List<SprintLinkEntity> = emptyList(),
     val personTechnologies:List<PersonTechnologyEntity> = emptyList(),
+    val calendarEvents:List<CalendarEventEntity> = emptyList(),
+    val calendarEventPeople:List<CalendarEventPersonEntity> = emptyList(),
+    val personMemories:List<PersonMemoryEntity> = emptyList(),
+    val personMemoryImages:List<PersonMemoryImageEntity> = emptyList(),
     val personPhotos:List<PersonPhotoEntity> = emptyList(),
     val personBirthdays:List<PersonBirthdayEntity> = emptyList(),
     val personProfiles:List<PersonProfileEntity> = emptyList(),
@@ -89,7 +94,7 @@ internal object BackupLimits {
     const val TOTAL_AVATAR_BYTES = 8 * 1024 * 1024
     const val ATTACHMENT_BYTES = 20L * 1024 * 1024
     const val TOTAL_ATTACHMENT_BYTES = 2L * 1024 * 1024 * 1024
-    val attachmentName = Regex("[a-f0-9-]{36}\\.(png|jpg)")
+    val attachmentName = Regex("[a-f0-9-]{36}\\.(png|jpg|aac)")
     const val RECORDS = 100_000
     val avatarName = Regex("[a-f0-9-]{36}\\.png")
 }
@@ -98,6 +103,11 @@ internal object BackupLimits {
 internal fun BackupData.validate(): List<NodeEntity> {
     validatePersonTechnologies(persons.mapTo(hashSetOf()) {it.id},technologies.mapTo(hashSetOf()) {it.id},personTechnologies)
     validatePersonGallery(persons.mapTo(hashSetOf()) {it.id},personPhotos,personBirthdays)
+    require(nodes.none {it.isPinned && it.purpose!="LAYER"}) {"Solo las Capas pueden fijarse."}
+    val attachmentTypes=attachmentFiles.associate {it.id to it.mimeType}
+    require(personMemoryImages.mapNotNull {it.attachmentId}.all {attachmentTypes[it] in setOf("image/png","image/jpeg")}) {"Una fotografía no puede referenciar un audio."}
+    validateCalendarEvents(calendarEvents,calendarEventPeople,persons.mapTo(hashSetOf()) {it.id})
+    validatePersonMemories(persons.mapTo(hashSetOf()) {it.id},personMemories,personMemoryImages,attachmentFiles,personPhotos)
     com.r0ybt.arachn0de.domain.model.validatePersonDetails(persons.mapTo(hashSetOf()) {it.id},personProfiles,personRelations)
     require(storeKind in setOf("primary","secondary"))
     storeId?.let { require(java.util.UUID.fromString(it).toString()==it) }
@@ -105,18 +115,26 @@ internal fun BackupData.validate(): List<NodeEntity> {
     privatePreferences.forEach { row ->
         require(row.name.matches(Regex("[a-zA-Z0-9_-]+")) && row.name != "vault_meta")
         com.r0ybt.arachn0de.security.EncryptedPreferences.decode(row.payload)
+        if(row.name==com.r0ybt.arachn0de.cleanup.CleanupPreference.NAME) com.r0ybt.arachn0de.cleanup.CleanupPreference.decode(row.payload)
+        if(row.name==com.r0ybt.arachn0de.ui.theme.AppearancePreferences.FILE) com.r0ybt.arachn0de.ui.theme.AppearancePreferences.validate(row.payload)
+        if(row.name==com.r0ybt.arachn0de.security.ScreenCapturePreference.NAME) com.r0ybt.arachn0de.security.ScreenCapturePreference.validate(row.payload)
         if(row.name==com.r0ybt.arachn0de.metro.MetroHoursConfig.NAME) com.r0ybt.arachn0de.metro.MetroHoursConfig.validatePayload(row.payload)
+        if(row.name==com.r0ybt.arachn0de.data.repository.PersonFavorites.NAME) {
+            val favorites=com.r0ybt.arachn0de.data.repository.PersonFavorites.decode(row.payload)
+            require(persons.mapTo(hashSetOf()) {it.id}.containsAll(favorites)) {"Favorito de Persona inexistente."}
+        }
         if(row.name==com.r0ybt.arachn0de.access.AccessCodec.NAME) com.r0ybt.arachn0de.access.AccessCodec.decode(row.payload)
     }
     gameSession?.let { require(com.r0ybt.arachn0de.game.RaceCodec.validPayload(it)) { "Partida guardada inválida." } }
     require(appVersion.isNotBlank() && appVersion.length <= 128 && createdAt >= 0) { "Metadatos de backup inválidos." }
-    require(ganttAnnotations.size.toLong() + sprintStories.size.toLong() + objectiveWork.size + localIdentities.size + managementLayers.size.toLong() + iterationPlans.size.toLong() + iterationCycles.size.toLong() + iterationCommitments.size.toLong() + iterationClosures.size.toLong() + managementParticipants.size.toLong() + participantRoles.size.toLong() + objectiveResponsibilities.size.toLong() + nodeResponsibilities.size.toLong() + managementRoles.size.toLong() + objectiveEpics.size + epicStories.size + storyTasks.size + backlogEntries.size + projectCharters.size + managementObjectives.size + acceptanceCriteria.size + managementContexts.size + sprintLinks.size + privatePreferences.size + savedTemplates.size + projects.size.toLong() + nodes.size + personPhotos.size + personBirthdays.size + personTechnologies.size + personProfiles.size + personRelations.size + persons.size + assignments.size + recurrenceRules.size + recurrenceOccurrences.size + recurrenceAssignments.size + tags.size + nodeTags.size + recurrenceTags.size + nodeEvents.size + creationDefaults.size + defaultsTags.size + defaultsPeople.size + attachmentFiles.size + nodeAttachments.size + projectAttachments.size + technologies.size + nodeTechnologies.size + projectTechnologies.size + projectPhotos.size + conversionRoots.size + conversionPeople.size + conversionTags.size + conversionEvents.size + conversionWorkStates.size + nodeSortPreferences.size + imageFiles.size + metroJourneys.size + (if (metroPreferences == null) 0 else 1) + (if (gameSession == null) 0 else 1) <= BackupLimits.RECORDS) { "Demasiados registros en el backup." }
+    require(calendarEvents.size.toLong()+calendarEventPeople.size+personMemories.size.toLong()+personMemoryImages.size+metroLearningEvents.size.toLong() + ganttAnnotations.size.toLong() + sprintStories.size.toLong() + objectiveWork.size + localIdentities.size + managementLayers.size.toLong() + iterationPlans.size.toLong() + iterationCycles.size.toLong() + iterationCommitments.size.toLong() + iterationClosures.size.toLong() + managementParticipants.size.toLong() + participantRoles.size.toLong() + objectiveResponsibilities.size.toLong() + nodeResponsibilities.size.toLong() + managementRoles.size.toLong() + objectiveEpics.size + epicStories.size + storyTasks.size + backlogEntries.size + projectCharters.size + managementObjectives.size + acceptanceCriteria.size + managementContexts.size + sprintLinks.size + privatePreferences.size + savedTemplates.size + projects.size.toLong() + nodes.size + personPhotos.size + personBirthdays.size + personTechnologies.size + personProfiles.size + personRelations.size + persons.size + assignments.size + recurrenceRules.size + recurrenceOccurrences.size + recurrenceAssignments.size + tags.size + nodeTags.size + recurrenceTags.size + nodeEvents.size + creationDefaults.size + defaultsTags.size + defaultsPeople.size + attachmentFiles.size + nodeAttachments.size + projectAttachments.size + technologies.size + nodeTechnologies.size + projectTechnologies.size + projectPhotos.size + conversionRoots.size + conversionPeople.size + conversionTags.size + conversionEvents.size + conversionWorkStates.size + nodeSortPreferences.size + imageFiles.size + metroJourneys.size + (if (metroPreferences == null) 0 else 1) + (if (gameSession == null) 0 else 1) <= BackupLimits.RECORDS) { "Demasiados registros en el backup." }
     fun unique(ids: List<String>): Set<String> {
         require(ids.all { it.isNotBlank() && it.length <= 256 }) { "Identidad inválida." }
         return ids.toSet().also { require(it.size == ids.size) { "Identidades duplicadas." } }
     }
     unique(savedTemplates.map { it.id }); savedTemplates.forEach { com.r0ybt.arachn0de.templates.SavedTemplateCodec.validate(it) }
     val metroNet = metroPreferences?.let { com.r0ybt.arachn0de.metro.MetroCodec.preferences(it).network }
+    com.r0ybt.arachn0de.metro.MetroLearningCodec.validate(metroLearningEvents,metroNet)
     require(metroJourneys.isEmpty() || metroNet != null) { "Falta el catálogo Metro del backup." }
     unique(metroJourneys.map { it.id })
     require(metroJourneys.mapNotNull { it.nodeId }.distinct().size == metroJourneys.count { it.nodeId != null })
@@ -239,14 +257,17 @@ internal fun BackupData.validate(): List<NodeEntity> {
     attachmentFiles.forEach {
         require(BackupLimits.attachmentName.matches(it.storageName) && java.util.UUID.fromString(it.storageName.substringBefore('.')).toString() == it.storageName.substringBefore('.')) { "Nombre de adjunto inválido." }
         require(java.util.UUID.fromString(it.id).toString() == it.id && it.originalName.isNotBlank() && it.originalName.length <= 4096) { "Metadatos de adjunto inválidos." }
-        require(it.lifecycleState == "READY" && it.byteSize in 1..BackupLimits.ATTACHMENT_BYTES && it.createdAt >= 0 && it.width in 1..32000 && it.height in 1..32000) { "Metadatos de adjunto inválidos." }
-        require(it.mimeType == if (it.storageName.endsWith(".png")) "image/png" else "image/jpeg") { "Tipo de adjunto inválido." }
+        require(it.lifecycleState == "READY" && it.byteSize in 1..BackupLimits.ATTACHMENT_BYTES && it.createdAt >= 0 && (if(it.mimeType=="audio/aac") it.width==0 && it.height==0 else it.width in 1..32000 && it.height in 1..32000)) { "Metadatos de adjunto inválidos." }
+        require(it.mimeType == when(it.storageName.substringAfterLast('.')) {"aac"->"audio/aac";"png"->"image/png";else->"image/jpeg"}) { "Tipo de adjunto inválido." }
+        require(if(it.mimeType=="audio/aac") it.durationMs>0 && it.playbackMs in 0..it.durationMs && (it.bookmarkMs==null || it.bookmarkMs in 0..it.durationMs) else it.durationMs==0L && it.playbackMs==0L && it.bookmarkMs==null) {"Estado de audio inválido."}
         require(it.sha256.matches(Regex("[a-f0-9]{64}"))) { "Hash de adjunto inválido." }
     }
-    require(attachmentFiles.sumOf { it.byteSize } <= BackupLimits.TOTAL_ATTACHMENT_BYTES) { "Adjuntos demasiado grandes." }
+    val ordinaryAttachmentIds=(nodeAttachments.map {it.attachmentId}+projectAttachments.map {it.attachmentId}).toSet()
+    val galleryOnly=personMemoryImages.mapNotNull {it.attachmentId}.toSet()-ordinaryAttachmentIds
+    require(attachmentFiles.filter {it.id !in galleryOnly}.sumOf { it.byteSize } <= BackupLimits.TOTAL_ATTACHMENT_BYTES) { "Adjuntos demasiado grandes." }
     require(nodeAttachments.toSet().size == nodeAttachments.size && nodeAttachments.all { it.nodeId in nodeIds && it.attachmentId in attachmentIds }) { "Asociación de adjunto inválida." }
     require(projectAttachments.toSet().size == projectAttachments.size && projectAttachments.all { it.projectId in projectIds && it.attachmentId in attachmentIds }) { "Asociación de adjunto inválida." }
-    require((nodeAttachments.map { it.attachmentId } + projectAttachments.map { it.attachmentId }).toSet() == attachmentIds) { "Adjunto sin propietario." }
+    require((nodeAttachments.map { it.attachmentId } + projectAttachments.map { it.attachmentId } + personMemoryImages.mapNotNull {it.attachmentId}).toSet() == attachmentIds) { "Adjunto sin propietario." }
     val nodeLinks = nodeAttachments.groupBy { it.nodeId }.mapValues { (_, rows) -> rows.mapTo(hashSetOf()) { it.attachmentId } }
     val projectLinks = projectAttachments.groupBy { it.projectId }.mapValues { (_, rows) -> rows.mapTo(hashSetOf()) { it.attachmentId } }
     nodes.forEach { node -> require(com.r0ybt.arachn0de.domain.model.AttachmentReferences.ids(node.description).all { id -> id in nodeLinks[node.id].orEmpty() }) { "Referencia de adjunto rota en tarea: ${node.title}" } }

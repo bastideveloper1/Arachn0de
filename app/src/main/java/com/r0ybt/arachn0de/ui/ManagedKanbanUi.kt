@@ -88,7 +88,7 @@ import kotlinx.coroutines.launch
                     else item {
                         state.progress(requireNotNull(sprint))?.let {progress->
                             Text("Progreso Sprint · ${progress.roundToInt()} %",style=MaterialTheme.typography.labelSmall)
-                            LinearProgressIndicator(progress={(progress/100.0).toFloat()},modifier=Modifier.fillMaxWidth().height(4.dp),color=SemanticColors.SprintDoing,trackColor=Arachn0deColors.ControlSurface)
+                            LinearProgressIndicator(progress={(progress/100.0).toFloat()},modifier=Modifier.fillMaxWidth().height(4.dp),color=com.r0ybt.arachn0de.ui.theme.semanticColor(SemanticColors.SprintDoing),trackColor=Arachn0deColors.ControlSurface)
                         }
                         if(state.current(requireNotNull(sprint)).any {state.work.owners[it.id]!=context}) Text("El progreso incluye todo el Sprint. Las tareas de otros contextos se consultan desde su Capa original.",style=MaterialTheme.typography.bodySmall)
                         if(plan?.state=="CLOSED") Text("Trabajo actual. El resultado del cierre se conserva en la planificación.",style=MaterialTheme.typography.bodySmall)

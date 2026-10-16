@@ -33,23 +33,22 @@ class MetroUiTest {
     private fun exists(text: String)=compose.onAllNodesWithText(text).fetchSemanticsNodes().isNotEmpty()
     @Test fun contextualGroupsPreservePreferencesAndExposeEveryDestination() {
         compose.setContent {Arachn0deTheme {MetroScreen(emptyList(),emptyList(),onBack={})}}
-        await {exists("Opciones de Metro") && exists("Tu próximo recorrido")}
-        compose.onNodeWithText("Opciones de Metro").performClick();compose.onNodeWithText("Viajar").assertDoesNotExist()
+        await {compose.onAllNodesWithContentDescription("Opciones de Metro").fetchSemanticsNodes().isNotEmpty() && exists("Tu próximo recorrido")}
+        compose.onNodeWithContentDescription("Opciones de Metro").performClick();compose.onNodeWithText("Viajar").assertDoesNotExist()
         compose.onNodeWithText("Viajes").performClick();compose.onNodeWithText("Viajar").performClick()
-        await {exists("Buscar ruta")}
-        compose.onNodeWithText("Opciones de Metro").performClick();compose.onNodeWithText("Viajes guardados").performClick()
+        await {exists("Buscar viaje")}
+        compose.onNodeWithContentDescription("Opciones de Metro").performClick();compose.onNodeWithText("Viajes guardados").performClick()
         await {exists("Tus viajes")}
-        compose.onNodeWithText("Opciones de Metro").performClick();compose.onNodeWithText("Viajes recientes").performClick()
-        await {exists("No hay viajes recientes.")}
-        compose.onNodeWithText("Opciones de Metro").performClick();compose.onNodeWithText("Preferencias").performClick()
+        compose.onNodeWithContentDescription("Opciones de Metro").performClick();compose.onNodeWithText("Viajes recientes").assertDoesNotExist()
+        compose.onNodeWithText("Preferencias").performClick()
         compose.onNodeWithText("Configurar vibración").performClick();await {exists("Vibración previa")}
         val before=runBlocking {app.metroRepository.snapshot().preferences}
-        compose.onNodeWithText("Opciones de Metro").performClick();compose.onNodeWithText("Estaciones favoritas").performClick()
+        compose.onNodeWithContentDescription("Opciones de Metro").performClick();compose.onNodeWithText("Estaciones favoritas").performClick()
         await {exists("No hay estaciones favoritas.")}
         assertEquals(before,runBlocking {app.metroRepository.snapshot().preferences})
-        compose.onNodeWithText("Opciones de Metro").performClick();compose.onNodeWithText("Configuración").performClick()
+        compose.onNodeWithContentDescription("Opciones de Metro").performClick();compose.onNodeWithText("Configuración").performClick()
         compose.onNodeWithText("Configuración general de Metro").performClick();await {exists("Horarios")}
-        compose.onNodeWithText("Opciones de Metro").performClick();compose.onNodeWithText("Restricciones de viaje").performClick()
+        compose.onNodeWithContentDescription("Opciones de Metro").performClick();compose.onNodeWithText("Restricciones de viaje").performClick()
         await {compose.onAllNodesWithText("Locales y manuales.",substring=true).fetchSemanticsNodes().isNotEmpty()}
     }
     @Test fun metroHamburgerUsesSameHeaderGeometryAndCallback() {

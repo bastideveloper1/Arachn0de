@@ -4,6 +4,17 @@ import androidx.room.*
 
 @Dao
 interface AttachmentDao {
+    @Insert(onConflict=OnConflictStrategy.IGNORE) suspend fun beginRecording(row:AudioRecordingOperationEntity)
+    @Query("SELECT * FROM audio_recording_operations WHERE id=:id") suspend fun recording(id:String):AudioRecordingOperationEntity?
+    @Query("SELECT * FROM audio_recording_operations") suspend fun recordings():List<AudioRecordingOperationEntity>
+    @Query("UPDATE audio_recording_operations SET state=:state WHERE id=:id") suspend fun recordingState(id:String,state:String)
+    @Query("DELETE FROM audio_recording_operations WHERE id=:id") suspend fun releaseRecording(id:String)
+
+    @Query("UPDATE attachment_files SET playbackMs=:position WHERE id=:id AND mimeType='audio/aac'")
+    suspend fun playback(id:String,position:Long)
+    @Query("UPDATE attachment_files SET bookmarkMs=:position WHERE id=:id AND mimeType='audio/aac'")
+    suspend fun bookmark(id:String,position:Long?)
+
     @Insert suspend fun insert(file: AttachmentFileEntity)
     @Insert(onConflict = OnConflictStrategy.IGNORE) suspend fun attachNode(rows: List<NodeAttachmentEntity>)
     @Insert(onConflict = OnConflictStrategy.IGNORE) suspend fun attachProject(rows: List<ProjectAttachmentEntity>)
@@ -12,7 +23,7 @@ interface AttachmentDao {
     @Query("SELECT * FROM attachment_files") suspend fun files(): List<AttachmentFileEntity>
     @Query("SELECT * FROM node_attachments WHERE nodeId = :id") suspend fun forNode(id: String): List<NodeAttachmentEntity>
     @Query("SELECT * FROM project_attachments WHERE projectId = :id") suspend fun forProject(id: String): List<ProjectAttachmentEntity>
-    @Query("SELECT (SELECT COUNT(*) FROM node_attachments WHERE attachmentId = :id) + (SELECT COUNT(*) FROM project_attachments WHERE attachmentId = :id)") suspend fun references(id: String): Int
+    @Query("SELECT (SELECT COUNT(*) FROM node_attachments WHERE attachmentId = :id) + (SELECT COUNT(*) FROM project_attachments WHERE attachmentId = :id) + (SELECT COUNT(*) FROM person_memory_images WHERE attachmentId = :id)") suspend fun references(id: String): Int
     @Query("DELETE FROM node_attachments WHERE nodeId = :owner AND attachmentId = :id") suspend fun detachNode(owner: String, id: String)
     @Query("DELETE FROM project_attachments WHERE projectId = :owner AND attachmentId = :id") suspend fun detachProject(owner: String, id: String)
     @Query("UPDATE attachment_files SET lifecycleState = 'DELETE_PENDING' WHERE id = :id AND lifecycleState = 'READY'") suspend fun pending(id: String)

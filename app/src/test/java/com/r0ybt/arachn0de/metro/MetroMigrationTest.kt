@@ -32,7 +32,7 @@ class MetroMigrationTest {
         sql.execSQL("INSERT INTO game_state VALUES (1,'original-game-payload',12)")
         fun snapshot(db:SupportSQLiteDatabase)=tables.associateWith {table->db.query("SELECT * FROM `$table` ORDER BY rowid").use {c->buildList {while(c.moveToNext()) add((0 until c.columnCount).map {if(c.isNull(it)) null else c.getString(it)})}}}
         val before=snapshot(sql);helper.close();val db=Arachn0deDatabase.create(context)
-        try {assertEquals(37,db.openHelper.writableDatabase.version);assertEquals(before,snapshot(db.openHelper.writableDatabase));assertTrue(db.metroDao().journeys().isEmpty());assertNull(db.metroDao().preferences())} finally {db.close()}
+        try {assertEquals(39,db.openHelper.writableDatabase.version);assertEquals(before,snapshot(db.openHelper.writableDatabase));assertTrue(db.metroDao().journeys().isEmpty());assertNull(db.metroDao().preferences())} finally {db.close()}
     }
     @Test fun genuineV24KeepsLinkedIndependentAndActivePayloadsAcrossMigrationAndRepeatedOpen()=runBlocking<Unit> {
         val context=ApplicationProvider.getApplicationContext<Application>();context.deleteDatabase("arachn0de.db")
@@ -55,7 +55,7 @@ class MetroMigrationTest {
         repeat(2) {
             val db=Arachn0deDatabase.create(context)
             try {
-                assertEquals(37,db.openHelper.writableDatabase.version)
+                assertEquals(39,db.openHelper.writableDatabase.version)
                 val rows=db.metroDao().journeys();assertEquals(2,rows.size)
                 val linked=rows.single {it.id=="linked"};assertEquals("n",linked.nodeId);assertEquals(payload,linked.payload);assertEquals(7L,linked.revision)
                 assertNull(rows.single {it.id=="independent"}.nodeId)

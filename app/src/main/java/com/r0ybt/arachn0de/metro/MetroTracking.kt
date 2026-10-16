@@ -6,7 +6,9 @@ internal data class MetroSession(val id: String, val route: MetroRoute, val star
     val offset: Long = 0, val pausedAt: Long? = null, val pausedMillis: Long = 0, val ended: Long? = null,
     val confirmed: String? = null, val events: List<MetroEvent> = emptyList(), val uncertain: Boolean = false, val originalRoute: MetroRoute = route, val personId: String? = null,
     val startElapsed: Long = anchorElapsed, val startBoot: Int = boot, val pausedElapsed: Long? = null, val pausedBoot: Int? = null,
-    val realMillis: Long? = null, val routeHistory: List<MetroRoute> = emptyList(), val historyElapsedTrusted: Boolean = true, val automatic: Boolean = false, val control:MetroControl?=null,val routeArchives:List<MetroSession> = emptyList())
+    val realMillis: Long? = null, val routeHistory: List<MetroRoute> = emptyList(), val historyElapsedTrusted: Boolean = true, val automatic: Boolean = false, val control:MetroControl?=null,val routeArchives:List<MetroSession> = emptyList()) {
+    val cancelled get() = events.lastOrNull()?.kind=="CANCELLED"
+}
 internal data class MetroPosition(val offset: Long, val step: Int, val fraction: Float, val station: String, val waiting: MetroStepKind? = null, val uncertain: Boolean = false)
 internal object MetroTracking {
     fun start(route: MetroRoute, time: MetroTime) = MetroSession(java.util.UUID.randomUUID().toString(), route, time.wall, time.wall, time.elapsed, time.boot,
@@ -21,7 +23,7 @@ internal object MetroTracking {
         }
         var consumed = 0L
         s.route.steps.forEachIndexed { i, step ->
-            val duration = step.minutes * 60_000L
+            val duration = s.route.duration(i)
             if (s.ended==null && step.kind != MetroStepKind.RIDE && i==boundary && offset>=consumed) {
                 offset = minOf(offset, consumed)
                 if (offset >= consumed) return MetroPosition(consumed, i, 0f, step.from, step.kind, uncertain)
@@ -51,9 +53,9 @@ internal object MetroTracking {
         val lower=MetroStages.offset(s.route,control.firstStep)
         val upper=MetroStages.offset(s.route,MetroStages.boundary(s))
         if (!between && s.route.stops.first() == station) candidates.add(0)
-        s.route.steps.forEach { step ->
-            if (step.from == station && between && step.kind == MetroStepKind.RIDE) candidates.add(offset + 60_000)
-            offset += step.minutes * 60_000L
+        s.route.steps.forEachIndexed { i, step ->
+            if (step.from == station && between && step.kind == MetroStepKind.RIDE) candidates.add(offset + s.route.duration(i)/2)
+            offset += s.route.duration(i)
             if (step.to == station && !between) candidates.add(offset)
         }
         require(candidates.isNotEmpty()) { "Estación fuera de la ruta." }
@@ -76,6 +78,16 @@ internal object MetroTracking {
         require(position(s,now).waiting!=null)
         return MetroStages.nextLine(MetroStages.arrive(s,now),now)
     }
+    /** Close a session at its current position without an arrival or learning capture. */
+    fun cancel(s:MetroSession,now:MetroTime):MetroSession {
+        if(s.ended!=null) return s
+        val position=position(s,now)
+        return s.copy(offset=position.offset,anchorWall=now.wall,anchorElapsed=now.elapsed,boot=now.boot,
+            ended=now.wall,realMillis=totalMillis(s,now),pausedMillis=s.pausedMillis+currentPauseMillis(s,now),
+            pausedAt=null,pausedElapsed=null,pausedBoot=null,uncertain=position.uncertain,
+            control=MetroStages.control(s).copy(undo=null),
+            events=s.events+MetroEvent("CANCELLED",now.wall,position.offset))
+    }
     fun finish(s:MetroSession,now:MetroTime):MetroSession {
         if(s.ended!=null) return s
         val c=MetroStages.control(s)
@@ -89,11 +101,11 @@ internal object MetroTracking {
         if(c.phase!=MetroPhase.RIDING) records.add(MetroStageRecord(s.route.steps.size,s.route.steps.size,0))
         val previous=s.copy(offset=position(s,now).offset,anchorWall=now.wall,anchorElapsed=now.elapsed,boot=now.boot,control=c.copy(undo=null))
         // Explicit finalization uses the existing ARRIVED contract, including its reversible history.
-        return s.copy(offset=s.route.minutes*60_000L,anchorWall=now.wall,anchorElapsed=now.elapsed,boot=now.boot,
+        return s.copy(offset=s.route.totalMillis,anchorWall=now.wall,anchorElapsed=now.elapsed,boot=now.boot,
             ended=now.wall,realMillis=totalMillis(s,now),pausedMillis=s.pausedMillis+currentPauseMillis(s,now),
             pausedAt=null,pausedElapsed=null,pausedBoot=null,
             confirmed=s.route.stops.last(),control=c.copy(firstStep=s.route.steps.size,phase=MetroPhase.ARRIVED,transferStarted=null,records=records,undo=MetroArrivalUndo(previous,now)),
-            events=s.events+MetroEvent("ARRIVED",now.wall,s.route.minutes*60_000L,s.route.stops.last()))
+            events=s.events+MetroEvent("ARRIVED",now.wall,s.route.totalMillis,s.route.stops.last()))
     }
     fun remainingStops(s: MetroSession, now: MetroTime): List<String> {
         val p = position(s,now)

@@ -10,8 +10,9 @@ object TagNames {
     fun normalize(value: String): String = display(value).lowercase(Locale.ROOT)
 }
 data class TagState(val tags: List<Tag> = emptyList(), val nodeIds: Map<String, Set<String>> = emptyMap(),
-    val ruleIds: Map<String, Set<String>> = emptyMap()) {
+    val ruleIds: Map<String, Set<String>> = emptyMap(), val projectIds:Map<String,Set<String>> = emptyMap()) {
     private val byId = tags.associateBy { it.id }
     fun forNode(id: String): List<Tag> = nodeIds[id].orEmpty().mapNotNull(byId::get).sortedBy { it.normalizedName }
-    fun usage(id: String): Int = nodeIds.values.count { id in it } + ruleIds.values.count { id in it }
+    fun forProject(id:String):List<Tag> = projectIds[id].orEmpty().mapNotNull(byId::get).sortedBy {it.normalizedName}
+    fun usage(id: String): Int = nodeIds.values.count { id in it } + ruleIds.values.count { id in it } + projectIds.values.count {id in it}
 }

@@ -9,6 +9,7 @@ data class Project(
     val createdAt: Long,
     val updatedAt: Long,
     val photo: ProjectPhoto? = null,
+    val isPinned:Boolean=false,
 ) {
     constructor(id: String, name: String, description: String, createdAt: Long, updatedAt: Long) :
         this(id, name, description, 0, createdAt, updatedAt)

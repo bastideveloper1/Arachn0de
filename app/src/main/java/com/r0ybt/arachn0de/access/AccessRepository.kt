@@ -50,13 +50,13 @@ internal class AccessRepository(private val db:Arachn0deDatabase) {
         val counts=(s.counts+(key to ((s.counts[key] ?: 0)+1).coerceAtMost(1000000))).entries.sortedByDescending {it.value}.take(200).associate {it.toPair()}
         write(s.copy(recent=recent,counts=counts))
     }}
-    suspend fun capture(key:String,title:String,description:String,creationId:String)=withContext(Dispatchers.IO) {db.withTransaction {
+    suspend fun capture(key:String,title:String,description:String,creationId:String,purpose:com.r0ybt.arachn0de.domain.model.NodePurpose=com.r0ybt.arachn0de.domain.model.NodePurpose.ACTION)=withContext(Dispatchers.IO) {db.withTransaction {
         require(key in valid()) {"El destino ya no existe."}
         val (project,parent)=if(key.startsWith("project:")) key.substringAfter(':') to null else {
             val n=requireNotNull(db.nodeDao().getById(key.substringAfter(':')))
             n.projectId to n.id
         }
-        val node=NodeRepository(db).createNode(project,parent,title,description,creationId=creationId)
+        val node=NodeRepository(db).createNode(project,parent,title,description,creationId=creationId,purpose=purpose)
         write(read().copy(destination=key));node
     }}
 }

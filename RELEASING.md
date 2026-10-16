@@ -1,4 +1,82 @@
+## Empaquetado local preparado — 0.4.2 / 16
+
+Se recupera el helper histórico, sin cambiar keystore, alias, certificado,
+applicationId ni configuración Gradle. Ejecutar desde la terminal integrada de
+VS Code, sin contraseñas en el comando:
+
+```bash
+cd /home/r0ybt/AndroidStudioProjects/Arachn0de
+bash release-assets/preparar-apk-0.3.0.sh
+```
+
+Lee las dos contraseñas originales desde /dev/tty sin eco. Enter en la segunda
+reutiliza la primera. La compilación conserva --offline y --no-configuration-cache;
+se añade --no-daemon para no reutilizar un daemon de Gradle con las credenciales.
+La terminal de herramientas de Codex no ofrece entrada directa del usuario: usar
+la terminal integrada propia, no escribir contraseñas en el chat.
+
+El empaquetado actual no invoca verificar-seguridad-release.py: ese verificador
+se conserva intacto para código 14 / Room 38 y no es un requisito de compilación
+de cada ajuste visual. Su huella abarca todo app/src/main, por lo que usarlo como
+bloqueo universal exigía renovar pruebas incluso tras cambios de interfaz.
+No se modifican evidencias, huellas ni resultados para aparentar nuevas pruebas.
+La aprobación histórica no acredita SQLCipher nativo ni migraciones del checkout
+actual. Esta preparación verifica el artefacto y su compatibilidad de identidad y
+firma, sin certificar conservación de datos en una instalación real.
+Se mantienen la comprobación del certificado de la clave original, compatibilidad
+con releases anteriores y todas las verificaciones finales del APK.
+
+`--check` aprobado para 0.4.2 / 16: nueve referencias oficiales verificadas,
+sin solicitar contraseñas ni compilar. No hay APK nueva todavía.
+
+Tras introducir las contraseñas, el mismo comando compila Release, verifica
+firma oficial, paquete, versión, no-debuggable, ZIP, recursos y bibliotecas, y crea
+release-assets/Arachn0de-v0.4.2-code16.apk y su .apk.sha256. Imprime ruta absoluta,
+tamaño y SHA-256. No hay todavía una APK nueva generada ni se acredita actualización
+en teléfono. Las secciones siguientes conservan los antecedentes históricos.
+
 # Publicar Arachn0de manualmente
+
+## Preparación actual — 0.4.1 / 15, firma original mediante Android Studio
+
+Se prepara código 15 porque ya existe una APK oficial local de código 14. Se
+conservan versionName 0.4.1, applicationId com.r0ybt.arachn0de y el keystore
+original. No se ha comprobado la versión exacta instalada en el teléfono.
+No se modifican funciones, Room 40 ni JSON 32. Las pruebas aprobadas no se repiten.
+
+Las credenciales no están disponibles en el entorno ni en las propiedades
+externas de Gradle durante esta preparación. No hay una APK nueva firmada.
+El build reconoce las propiedades de firma inyectadas por el asistente de
+Android Studio además del mecanismo externo previo; no se incorporan secretos
+al repositorio. La copia oficial de código 14 se conserva sin reemplazarla.
+
+Completar en Android Studio:
+
+1. Build → Generate Signed Bundle / APK → APK.
+2. Módulo app. En Key store path seleccionar el archivo existente
+   /home/r0ybt/.local/share/arachn0de/signing/arachn0de-release.jks.
+3. En Key store password introducir la contraseña únicamente en el asistente.
+   Key alias: arachn0de-release. Key password: contraseña original de la clave.
+   No crear un keystore nuevo ni guardar contraseñas en archivos del proyecto.
+   Dejar desmarcada la opción de recordar contraseñas si aparece.
+4. Elegir Release. Usar como carpeta de destino
+   /home/r0ybt/AndroidStudioProjects/Arachn0de/release-assets/code15.
+   Al terminar, usar Locate para obtener la ruta exacta que indique Android Studio.
+5. Verificar que la APK nueva declara 0.4.1 / 15, com.r0ybt.arachn0de y el
+   certificado SHA-256 oficial
+   d0e8d7aa348a3b50ac380dd0586b608cc7425693be0433a8dad8df4125791437.
+   Instalar como actualización sobre la aplicación existente, sin desinstalarla.
+
+La salida habitual de Gradle es app/build/outputs/apk/release/app-release.apk;
+el asistente puede copiarla a su carpeta de destino. Un archivo anterior en esa
+ruta no acredita la nueva compilación: comprobar metadatos y firma antes de
+entregarlo. En esta preparación no se generan checksums de una APK inexistente,
+no se instala en ningún dispositivo y no se hacen commit ni push.
+
+El helper histórico preparar-apk-0.3.0.sh está fijado a código 14 y a su preflight
+anterior; no utilizarlo para esta preparación. Se conserva como antecedente,
+sin ejecutar pruebas ni modificar la evidencia anterior. Las secciones siguientes
+son históricas y no sustituyen el estado actual de código 15.
 
 ## Cierre actual — 0.4.1 / 14, preflight aprobado; firma manual pendiente
 

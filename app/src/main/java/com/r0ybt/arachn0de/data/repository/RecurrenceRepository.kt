@@ -114,6 +114,13 @@ class RecurrenceRepository(
         materializeDue(at)
     }
 
+    /** Hide only finished rules. Keep receipts and generated Tasks; never settle/generate here. */
+    suspend fun deleteFinished(id: String) = database.withTransaction {
+        val rule = requireNotNull(dao.get(id))
+        require(rule.status == RecurrenceStatus.FINISHED.name) { "Solo se pueden eliminar recurrencias finalizadas." }
+        dao.update(rule.copy(isDeleted = true))
+    }
+
     /** Template only. Schedule identity is immutable so edits cannot accidentally replay old periods. */
     suspend fun editTemplate(id: String, projectId: String, parentId: String?, title: String, description: String,
         obligation: Obligation?, people: Set<String>, tagIds: Set<String>? = null, priority: Priority? = null) {
@@ -146,6 +153,7 @@ class RecurrenceRepository(
             require(rule.title.isNotBlank() && TitleLimits.count(rule.title) <= TitleLimits.NODE)
             Priority.valueOf(rule.priority)
             RecurrenceStatus.valueOf(rule.status)
+            require(!rule.isDeleted || rule.status == RecurrenceStatus.FINISHED.name) { "Una regla eliminada debe estar finalizada." }
             val frequency = RecurrenceFrequency.valueOf(rule.frequency)
             RecurrenceSchedule.format(rule.startDay)
             require(rule.interval in 1..10000 && rule.nextIndex >= 0)

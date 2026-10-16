@@ -69,6 +69,6 @@ class MetroPresentationTest {
         assertThrows(Exception::class.java) {MetroCodec.journey(missing.toString(),net)}
         val invalid=JSONObject(raw).apply {getJSONArray("sessions").getJSONObject(0).put("automatic","true")}
         assertThrows(Exception::class.java) {MetroCodec.journey(invalid.toString(),net)}
-        assertThrows(IllegalArgumentException::class.java) {MetroCodec.journey(JSONObject(raw).put("version",6).toString(),net)}
+        assertThrows(IllegalArgumentException::class.java) {MetroCodec.journey(JSONObject(raw).put("version",8).toString(),net)}
     }
 }

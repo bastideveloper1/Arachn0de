@@ -93,10 +93,10 @@ internal fun TechnologyLabels(assigned:List<TechnologyEntity>,compact:Boolean=fa
 }
 
 @Composable
-private fun TechnologyWideDialog(title:String,onDismiss:()->Unit,content:@Composable ColumnScope.()->Unit) {
+private fun TechnologyWideDialog(title:String,onDismiss:()->Unit,fullscreen:Boolean=false,content:@Composable ColumnScope.()->Unit) {
     Dialog(onDismissRequest=onDismiss,properties=DialogProperties(usePlatformDefaultWidth=false)) {
-        Surface(Modifier.fillMaxWidth().fillMaxHeight(.9f).safeDrawingPadding().padding(12.dp),shape=RoundedCornerShape(16.dp),color=Arachn0deColors.Surface) {
-            Column(Modifier.padding(12.dp),verticalArrangement=Arrangement.spacedBy(8.dp)) {
+        Surface(if(fullscreen) Modifier.fillMaxSize().safeDrawingPadding() else Modifier.fillMaxWidth().fillMaxHeight(.9f).safeDrawingPadding().padding(12.dp),shape=if(fullscreen) androidx.compose.ui.graphics.RectangleShape else RoundedCornerShape(16.dp),color=Arachn0deColors.Surface) {
+            Column(Modifier.padding(if(fullscreen) 16.dp else 12.dp),verticalArrangement=Arrangement.spacedBy(if(fullscreen) 12.dp else 8.dp)) {
                 Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically) {
                     Text(title,Modifier.weight(1f),style=MaterialTheme.typography.titleLarge)
                     IconButton(onClick=onDismiss) {LucideIcon(Icons.Default.Close,"Cerrar selector")}
@@ -135,21 +135,31 @@ internal fun TechnologyAssignmentDialog(ownerId:String,project:Boolean,catalog:L
 
 /** The form renders only an access button. Cancel never writes to the editor draft. */
 @Composable
-internal fun TechnologySelection(catalog:List<TechnologyEntity>,selected:List<String>,enabled:Boolean,onChange:(List<String>)->Unit) {
+internal fun TechnologySelection(catalog:List<TechnologyEntity>,selected:List<String>,enabled:Boolean,iconOnly:Boolean=false,onChange:(List<String>)->Unit) {
     var open by rememberSaveable {mutableStateOf(false)}
     var pending by rememberSaveable(stateSaver=listSaver<List<String>,String>(save={it},restore={it})) {mutableStateOf(selected)}
-    OutlinedButton(enabled=enabled,onClick={pending=selected;open=true}) {Text("Tecnologías (${selected.size})")}
+    if(iconOnly) IconButton(enabled=enabled,onClick={pending=selected;open=true},modifier=Modifier.size(48.dp)) {LucideIcon(Icons.Default.Code,"Tecnologías (${selected.size})",tint=if(selected.isEmpty()) Arachn0deColors.TextSecondary else Arachn0deColors.TextPrimary)}
+    else OutlinedButton(enabled=enabled,onClick={pending=selected;open=true}) {Text("Tecnologías (${selected.size})")}
     if(open) TechnologyPicker(catalog,pending,enabled,{open=false},{pending=it}) {onChange(pending);open=false}
 }
 
 @Composable
 private fun TechnologyPicker(catalog:List<TechnologyEntity>,selected:List<String>,enabled:Boolean,onDismiss:()->Unit,onChange:(List<String>)->Unit,onConfirm:()->Unit) {
+    TechnologyWideDialog("Tecnologías",{if(enabled) onDismiss()},fullscreen=true) {
+        TechnologyPickerBody(catalog,selected,enabled,onChange)
+        Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.End) {
+            TextButton(enabled=enabled,onClick=onDismiss) {Text("Cancelar")}
+            TextButton(enabled=enabled,onClick=onConfirm) {Text("Confirmar")}
+        }
+    }
+}
+
+@Composable internal fun ColumnScope.TechnologyPickerBody(catalog:List<TechnologyEntity>,selected:List<String>,enabled:Boolean,onChange:(List<String>)->Unit) {
     var ordering by rememberSaveable {mutableStateOf(false)}
     var info by remember {mutableStateOf<TechnologyEntity?>(null)}
     val centers=remember {mutableStateMapOf<String,Float>()}
     val latestSelected by rememberUpdatedState(selected)
     val latestChange by rememberUpdatedState(onChange)
-    TechnologyWideDialog("Tecnologías",{if(enabled) onDismiss()}) {
         Text("${selected.size} seleccionadas · las tres primeras se muestran en las tarjetas",style=MaterialTheme.typography.bodySmall)
         TextButton(enabled=enabled,onClick={ordering=!ordering}) {Text(if(ordering) "Elegir tecnologías" else "Ordenar seleccionadas")}
         if(ordering) LazyColumn(Modifier.weight(1f).fillMaxWidth()) {
@@ -171,11 +181,6 @@ private fun TechnologyPicker(catalog:List<TechnologyEntity>,selected:List<String
                 }
             }
         } else TechnologyGrid(catalog,selected,enabled,true) {t->onChange(if(t.id in selected) selected-t.id else selected+t.id)}
-        Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.End) {
-            TextButton(enabled=enabled,onClick=onDismiss) {Text("Cancelar")}
-            TextButton(enabled=enabled,onClick=onConfirm) {Text("Confirmar")}
-        }
-    }
     info?.let {t->AlertDialog(onDismissRequest={info=null},title={InformationalTitle(t.name) {info=null}},text={TechnologyIcon(t)},confirmButton={})}
 }
 
@@ -189,11 +194,11 @@ internal fun EditOwnerTechnologies(ownerId:String,project:Boolean,onDismiss:()->
 }
 
 @Composable
-internal fun DraftTechnologies(draft:com.r0ybt.arachn0de.ui.state.EditorDraft,enabled:Boolean,project:Boolean=false,cardPreview:Boolean=false) {
+internal fun DraftTechnologies(draft:com.r0ybt.arachn0de.ui.state.EditorDraft,enabled:Boolean,project:Boolean=false,cardPreview:Boolean=false,iconOnly:Boolean=false) {
     val app=LocalContext.current.applicationContext as? Arachn0deApplication ?: return
     val state by app.technologyRepository.state.collectAsState()
     LaunchedEffect(state.loaded,draft.creationId) {if(state.loaded && !draft.technologiesLoaded) {draft.technologyIds=draft.id?.let {state.forOwner(it,project).map {t->t.id}}.orEmpty();draft.originalTechnologyIds=draft.technologyIds;draft.technologiesLoaded=true}}
-    if(state.loaded) TechnologySelection(state.catalog,draft.technologyIds,enabled) {draft.technologyIds=it}
+    if(state.loaded) TechnologySelection(state.catalog,draft.technologyIds,enabled,iconOnly=iconOnly,onChange={draft.technologyIds=it})
 }
 
 /** Decorative preview: the enclosing card owns all taps, including taps on logos. */

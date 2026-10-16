@@ -3,7 +3,7 @@ package com.r0ybt.arachn0de.ui.theme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 
-/** Meaning stays independent of theme identity, including monochrome Minimalist. */
+/** Meaning stays independent of theme identity, including light monochrome palettes. */
 object SemanticColors {
     val Error = Color(0xFFFF8C8C)
     val HighPriority = Color(0xFFFFA45B)
@@ -28,6 +28,7 @@ object Arachn0deColors {
     val Surface: Color @Composable get() = LocalAppearancePalette.current.surface
     val SurfaceRaised: Color @Composable get() = LocalAppearancePalette.current.raised
     val TextPrimary: Color @Composable get() = LocalAppearancePalette.current.text
+    val Disabled: Color @Composable get() = if(LocalAppearancePalette.current.light) LocalAppearancePalette.current.muted else BlackWhite90.Inactive
     val TextSecondary: Color @Composable get() = LocalAppearancePalette.current.muted
     val Accent: Color @Composable get() = LocalAppearancePalette.current.primary
     val Primary: Color @Composable get() = LocalAppearancePalette.current.solidPrimary
@@ -36,10 +37,21 @@ object Arachn0deColors {
     val PathHighlight: Color @Composable get() = LocalAppearancePalette.current.secondary
     val Selection: Color @Composable get() = LocalAppearancePalette.current.selection
     val AccentSurface: Color @Composable get() = LocalAppearancePalette.current.accentSurface
-    val OnPrimary = BlackWhite90.Text
+    val OnPrimary: Color @Composable get() = LocalAppearancePalette.current.text
     val OnSolidPrimary: Color @Composable get() = LocalAppearancePalette.current.onSolidPrimary
-    val ImageLink = SemanticColors.ImageLink
-    val Destructive = SemanticColors.Error
-    val Completed = SemanticColors.SprintDone
-    val TextCompleted = SemanticColors.CompletedText
+    val ImageLink: Color @Composable get() = LocalAppearancePalette.current.semantic(SemanticColors.ImageLink)
+    val Destructive: Color @Composable get() = LocalAppearancePalette.current.semantic(SemanticColors.Error)
+    val Completed: Color @Composable get() = LocalAppearancePalette.current.semantic(SemanticColors.SprintDone)
+    val TextCompleted: Color @Composable get() = LocalAppearancePalette.current.semantic(SemanticColors.CompletedText)
 }
+
+/** Light-theme status contrast; semantic roles remain unchanged. */
+internal fun AppearancePalette.semantic(color:Color):Color = if(!light) color else when(color) {
+    SemanticColors.Error->text
+    SemanticColors.HighPriority,SemanticColors.Upcoming,SemanticColors.Attention->primary
+    SemanticColors.ImageLink->primary
+    SemanticColors.SprintDone->selection
+    SemanticColors.SprintUnplanned->muted
+    else->text
+}
+@Composable internal fun semanticColor(color:Color)=LocalAppearancePalette.current.semantic(color)

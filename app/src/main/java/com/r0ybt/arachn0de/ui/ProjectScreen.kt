@@ -1,5 +1,11 @@
 package com.r0ybt.arachn0de.ui
 
+import androidx.compose.material3.VerticalDivider
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.BoxWithConstraints
+
+import androidx.compose.material.icons.filled.PushPin
+
 import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.fillMaxHeight
 
@@ -11,6 +17,7 @@ import kotlinx.coroutines.flow.first
 import androidx.compose.material.icons.filled.Workspaces
 import androidx.compose.material.icons.filled.Article
 import androidx.compose.material.icons.filled.Flag
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Edit
@@ -23,8 +30,11 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.stateDescription
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.foundation.border
 import androidx.compose.foundation.Image
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -51,6 +61,7 @@ import com.r0ybt.arachn0de.ui.state.NodeSortMode
 import com.r0ybt.arachn0de.ui.state.NodeSortPreferences
 import com.r0ybt.arachn0de.ui.state.NodePresentationSort
 import androidx.compose.material.icons.automirrored.filled.Sort
+import androidx.compose.material.icons.filled.Layers
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.FilterList
 import androidx.compose.material.icons.filled.MoreVert
@@ -211,15 +222,40 @@ internal fun ProjectNodeScreen(
         referenceReturns=referenceReturns.dropLast(1);return true
     }
     val elementAccess=LocalElementAccess.current
-    LaunchedEffect(currentNodeId,elementAccess) {currentNodeId?.let {elementAccess?.opened("node:$it")}}
+    var recordedNode by rememberSaveable(project.id) {mutableStateOf<String?>(null)}
+    LaunchedEffect(currentNodeId,elementAccess) {
+        if(elementAccess!=null && recordedNode!=currentNodeId) {
+            recordedNode=currentNodeId
+            currentNodeId?.let {elementAccess.opened("node:$it")}
+        }
+    }
     var showDefaults by rememberSaveable(currentNodeId) { mutableStateOf(false) }
     var showProjectPhoto by rememberSaveable(project.id) { mutableStateOf(false) }
     if (showProjectPhoto) ProjectPhotoDialog(project, onClose = { showProjectPhoto = false })
     var editingTechnologies by remember { mutableStateOf(false) }
     if(editingTechnologies) EditOwnerTechnologies(currentNodeId ?: project.id,currentNodeId==null) {editingTechnologies=false}
     var showContextActions by remember(currentNodeId) { mutableStateOf(false) }
+    var coreContext by remember(project.id,currentNodeId) {mutableStateOf(CoreBottomContext.Creation)}
     var planningOpen by remember(currentNodeId) {mutableStateOf(false)}
     val currentNode = projectState.nodesById[currentNodeId]
+    var projectEditField by rememberSaveable(project.id) {mutableStateOf<String?>(null)}
+    var projectFieldOriginal by rememberSaveable(project.id) {mutableStateOf("")}
+    var projectFieldValue by rememberSaveable(project.id) {mutableStateOf("")}
+    val projectEditingActions=remember(projectRepository,scope,attachmentRepository) {com.r0ybt.arachn0de.ui.state.ProjectActions(projectRepository,scope,attachmentRepository)}
+    OperationErrorDialog(projectEditingActions.operation)
+    val finishProjectEdit:()->Unit={
+        projectEditField=null;projectFieldOriginal="";projectFieldValue=""
+        coreContext=CoreBottomContext.Content
+    }
+    val editProject:(String)->Unit={field->
+        projectFieldOriginal=if(field=="title") project.name else project.description
+        projectFieldValue=projectFieldOriginal
+        projectEditField=field
+    }
+    LaunchedEffect(projectEditField) {
+        if(projectEditField!=null) coreContext=CoreBottomContext.Content
+    }
+    val cleanCompleted=if(currentNode==null || currentNode.isStructural) completedCleanupLauncher(project.id,currentNode?.id) else null
     val scopeDescription = currentNode?.description ?: project.description
     val sprintScope = currentNode?.sprintMode == true
 
@@ -315,17 +351,6 @@ internal fun ProjectNodeScreen(
         scopeFilters.person, scopeFilters.completion, scopeFilters.tag, scopeFilters.priority)
     val completedAt by remember(nodeRepository, project.id) { nodeRepository.observeCompletionTimes(project.id) }.collectAsState(initial = emptyMap())
     val sortContext = "${project.id}:${currentNodeId ?: "project-root"}"
-    val metroRepository=(LocalContext.current.applicationContext as com.r0ybt.arachn0de.Arachn0deApplication).metroRepository
-    val metroSnapshot by remember(metroRepository) {metroRepository.observe()}.collectAsState(initial=null)
-    val metroLabels by androidx.compose.runtime.produceState<Map<String,String>>(emptyMap(),metroSnapshot) {
-        value=kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {metroSnapshot?.let {snapshot->
-            val network=snapshot.preferences.network
-            snapshot.journeys.mapNotNull {journey->journey.row.nodeId?.let {id->
-                val net=com.r0ybt.arachn0de.metro.MetroCatalogRevision.forRoute(network,journey.data.plan.networkVersion)
-                id to journey.data.plan.stops.joinToString(" → ") {net.stations.getValue(it).name}
-            }}.toMap()
-        }.orEmpty()}
-    }
     val layersFirst=sortPreferences.layersFirst(sortContext)
     val sortMode = sortPreferences.mode(sortContext)
     var showSortMenu by remember(currentNodeId) { mutableStateOf(false) }
@@ -409,6 +434,8 @@ internal fun ProjectNodeScreen(
                 }
             }
             while (currentPath.size > validPath.size) currentPath.removeAt(currentPath.lastIndex)
+            // Data invalidation may return to an ancestor; this is not a user visit.
+            if (currentPath.lastOrNull() != openId) recordedNode = currentPath.lastOrNull()
             expandedLayerIds = expandedLayerIds.filter { it in snapshot.nodesById }
             projectState = snapshot
             hasLoaded = true
@@ -427,6 +454,7 @@ internal fun ProjectNodeScreen(
         }
     }
 
+    BackHandler(enabled=currentNodeId==null && coreContext!=CoreBottomContext.Creation && draft==null && projectEditField==null) {coreContext=CoreBottomContext.Creation}
     BackHandler(enabled = selection.ids.isNotEmpty()) { selection.clear() }
     BackHandler(enabled = showDrawer) { showDrawer = false }
 
@@ -439,20 +467,105 @@ internal fun ProjectNodeScreen(
     OperationErrorDialog(defaultsOperation)
     val background = Arachn0deColors.Background
 
+    // Ordinary hierarchy elements use the shared module. Specialized management views retain their editors.
+    val useNodeModule=currentNode!=null && creationMapping==null && creationRole==null && managementRoot==null && !sprintScope
+    val nodeBackDispatcher=androidx.activity.compose.LocalOnBackPressedDispatcherOwner.current?.onBackPressedDispatcher
+    var nodeEditRequest by remember(currentNodeId) {mutableStateOf<com.r0ybt.arachn0de.domain.model.NodeProperty?>(null)}
+    val nodeTechnologies by (LocalContext.current.applicationContext as com.r0ybt.arachn0de.Arachn0deApplication).technologyRepository.state.collectAsState()
+    val contextActions:ContextActions.()->Unit={
+        cleanCompleted?.let {clean->action("Limpiar completadas",androidx.compose.material.icons.Icons.Default.Delete,{showContextActions=false;clean()})}
+        if(currentNode==null || currentNode.isStructural) action(
+            if(currentNode?.isPinned ?: project.isPinned) "Desfijar" else "Fijar",
+            androidx.compose.material.icons.Icons.Default.PushPin, {
+                defaultsOperation.submit("No se pudo cambiar el estado fijado.", {
+                    if(currentNode==null) projectRepository.setPinned(project.id,!project.isPinned)
+                    else nodeRepository.setPinned(currentNode.id,!currentNode.isPinned)
+                }) {showContextActions=false}
+            },enabled=!isSubmittingNode)
+        if(contextualCreationLabel!=null) action("Nuevo elemento",androidx.compose.material.icons.Icons.Default.Add,{showContextActions=false;openTraditionalElement()},enabled=!isSubmittingNode && currentNode?.canReceiveChildren==true)
+        if(currentNode==null || managementRoot!=null) action("Planificación",androidx.compose.material.icons.Icons.Default.Settings,{showContextActions=false;planningOpen=true})
+        if (currentNode == null) action("Fotografía", androidx.compose.material.icons.Icons.Default.Image, {
+            showContextActions = false; showProjectPhoto = true
+        }, enabled = !isSubmittingNode)
+        action("Editar tecnologías", androidx.compose.material.icons.Icons.Default.Code, {showContextActions=false;if(useNodeModule) nodeEditRequest=com.r0ybt.arachn0de.domain.model.NodeProperty.TECHNOLOGIES else editingTechnologies=true})
+        action("Recurrencias", androidx.compose.material.icons.Icons.Default.Refresh, { showContextActions=false; recurrenceSelected="" })
+        if(currentNode?.isStructural == true) action(if(currentNode.sprintMode) "Desactivar Modo Sprint" else "Modo Sprint", androidx.compose.material.icons.Icons.Default.SwapHoriz, { showContextActions=false;showSprintMode=true }, enabled=!isSubmittingNode)
+        if(currentNode?.workState != null) action("Cambiar estado", androidx.compose.material.icons.Icons.Default.SwapHoriz, { showContextActions=false;changingWorkStateId=currentNode.id }, enabled=!isSubmittingNode)
+        if(currentNode != null) {
+            // Inline Kanban does not expose the ordinary editable context title.
+            if(creationMapping?.kind=="KANBAN" && managementContexts.any {it.id==creationMapping.contextId && it.enabled})
+                action("Editar",androidx.compose.material.icons.Icons.Default.Edit,{
+                    showContextActions=false;openNodeEditor(currentNode)
+                },enabled=!isSubmittingNode && assignmentsLoaded && peopleLoaded)
+            action("Eliminar", androidx.compose.material.icons.Icons.Default.Delete, { showContextActions=false;deletingNodeId=currentNode.id;deletingNodeName=currentNode.title }, enabled=!isSubmittingNode,destructive=true)
+            action("Responsables", androidx.compose.material.icons.Icons.Default.People, { showContextActions=false;if(useNodeModule) nodeEditRequest=com.r0ybt.arachn0de.domain.model.NodeProperty.PEOPLE else responsibleNodeId=currentNode.id }, enabled=!isSubmittingNode && !personActions.operation.busy && peopleLoaded && assignmentsLoaded)
+            action("Mover a…", androidx.compose.material.icons.Icons.Default.DriveFileMove, { showContextActions=false;movingNodeId=currentNode.id }, enabled=!isSubmittingNode)
+            action("Historial", androidx.compose.material.icons.Icons.Default.History, { showContextActions=false;historyNodeId=currentNode.id })
+        }
+        if(currentNode == null || (currentNode.isStructural)) action("Valores predeterminados", androidx.compose.material.icons.Icons.Default.Settings, {
+            showContextActions = false; showDefaults = true
+        }, enabled = !isSubmittingNode)
+        if(currentNode != null && !currentNode.hasChildren) action(
+            if(currentNode.purpose != NodePurpose.ACTION) "Convertir en tarea" else "Convertir en nota",
+            androidx.compose.material.icons.Icons.Default.SwapHoriz, {
+                if(currentNode.obligation != null) { showContextActions = false; convertingPurpose=NodePurpose.NOTE;convertingObligationId = currentNode.id }
+                else actions.convert(currentNode.id,if(currentNode.purpose != NodePurpose.ACTION) NodePurpose.ACTION else NodePurpose.NOTE) { showContextActions = false }
+            },enabled = !isSubmittingNode)
+        if(currentNode!=null && !currentNode.isStructural) action("Convertir en capa",androidx.compose.material.icons.Icons.Default.AccountTree,{
+            showContextActions=false
+            if(currentNode.obligation!=null) { convertingPurpose=NodePurpose.LAYER;convertingObligationId=currentNode.id }
+            else actions.convert(currentNode.id,NodePurpose.LAYER)
+        },enabled=!isSubmittingNode)
+        if(currentNode?.isStructural == true) action("Convertir en proyecto", androidx.compose.material.icons.Icons.Default.AccountTree, { showContextActions=false;promotingLayerId=currentNode.id }, enabled=!isSubmittingNode)
+        if(currentNode==null) action("Convertir en capa",androidx.compose.material.icons.Icons.Default.AccountTree,{ showContextActions=false;moveProject=true },enabled=!isSubmittingNode)
+        action(if(currentNode == null) "Copiar" else "Copiar este elemento", androidx.compose.material.icons.Icons.Default.ContentCopy, {
+            showContextActions = false
+            if(currentNode == null) copyActions.copyProject(project,projectState,false) else copyActions.copy(projectState,currentNode.id,false)
+        },enabled = !copyActions.busy)
+        if(currentNode == null || currentNode.isStructural) action("Copiar texto con descendientes", androidx.compose.material.icons.Icons.Default.CopyAll, {
+            showContextActions = false
+            if(currentNode == null) copyActions.copyProject(project,projectState,true) else copyActions.copy(projectState,currentNode.id,true)
+        },enabled = !copyActions.busy)
+    }
+    val creationActions:@Composable ()->Unit={
+                Row(Modifier.fillMaxWidth().padding(top=6.dp).background(Arachn0deColors.Surface)
+                    .testTag("project-bottom-actions"),horizontalArrangement=Arrangement.spacedBy(8.dp),verticalAlignment=Alignment.CenterVertically) {
+                    TextButton(onClick={if(contextualCreationLabel!=null) managementCreationRequest++ else if(!isSubmittingNode && (currentNode==null || currentNode.canReceiveChildren)) openTraditionalElement(quick = true)},
+                        modifier=Modifier.weight(1f).heightIn(min=48.dp),contentPadding=PaddingValues(8.dp),
+                        colors=ButtonDefaults.textButtonColors(contentColor=Arachn0deColors.TextPrimary),
+                        enabled=!isSubmittingNode && (currentNode==null || currentNode.canReceiveChildren)) {
+                        Icon(androidx.compose.material.icons.Icons.Default.Add,null,Modifier.size(20.dp))
+                        Spacer(Modifier.width(6.dp))
+                        Text("Crear",maxLines=1,style=MaterialTheme.typography.labelSmall)
+                    }
+                    VerticalDivider(Modifier.height(24.dp),thickness=.5.dp,color=Arachn0deColors.Outline)
+                    TextButton(onClick={expandedLayerIds=(expandedLayerIds.toSet()+currentPath).toList();showNavigator=true},
+                        modifier=Modifier.weight(1f).heightIn(min=48.dp),contentPadding=PaddingValues(8.dp),
+                        colors=ButtonDefaults.textButtonColors(contentColor=Arachn0deColors.TextPrimary)) {
+                        Icon(androidx.compose.material.icons.Icons.Default.Layers,null,Modifier.size(20.dp))
+                        Spacer(Modifier.width(6.dp))
+                        Text("Capas",maxLines=1,style=MaterialTheme.typography.labelSmall)
+                    }
+                }
+    }
+    val bottomControlsDensity=androidx.compose.ui.platform.LocalDensity.current
+    var bottomControlsHeight by remember { mutableStateOf(70.dp) }
     Surface(modifier = Modifier.fillMaxSize(), color = Arachn0deColors.Background) {
-        Box(
+        BoxWithConstraints(
             modifier = Modifier
                 .fillMaxSize()
-                .background(background),
+                .background(background)
+                .then(if(projectEditField!=null) Modifier.imePadding() else Modifier),
         ) {
+            val coreModuleMaxHeight=(maxHeight*.5f).coerceAtLeast(120.dp).coerceAtMost(maxHeight)
             Column(
                 modifier = Modifier
                     .fillMaxSize()
                     .then(if(showDrawer) Modifier.clearAndSetSemantics {} else Modifier)
                     .padding(horizontal = 12.dp, vertical = 10.dp),
             ) {
-                HeaderBar(onMenuClick = { showDrawer = true }, title = project.name,
-                    onBack=if(referenceReturns.lastOrNull()?.let {org.json.JSONObject(it).getString("target")==currentNodeId}==true) ({restoreReference();Unit}) else if(onBackToSearch!=null) onBackToSearch else if(currentPath.isNotEmpty()) ({
+                HeaderBar(onMenuClick = { showDrawer = true }, title = project.name, compactLock=true,
+                    onBack=if(useNodeModule) ({nodeBackDispatcher?.onBackPressed();Unit}) else if(referenceReturns.lastOrNull()?.let {org.json.JSONObject(it).getString("target")==currentNodeId}==true) ({restoreReference();Unit}) else if(onBackToSearch!=null) onBackToSearch else if(currentPath.isNotEmpty()) ({
                         if(onBackToObligations!=null) onBackToObligations()
                         else if(onBackToCalendar!=null) onBackToCalendar()
                         else currentPath.removeAt(currentPath.lastIndex)
@@ -461,7 +574,7 @@ internal fun ProjectNodeScreen(
                     trailingAction={
                         IconButton(onClick={showSortMenu=true},modifier=Modifier.size(48.dp).semantics {stateDescription="Orden: ${sortMode.label}" + if(layersFirst) "; Capas primero: arrastre de Capas" else if(sortMode!=NodeSortMode.MANUAL) "; arrastre deshabilitado" else ""}) {LucideIcon(Icons.AutoMirrored.Filled.Sort,"Ordenar")}
                         IconButton(onClick={scopeFilters.open=true},modifier=Modifier.size(48.dp)) {LucideIcon(Icons.Default.FilterList,if(scopeFilters.active) "Filtros activos" else "Filtros",tint=if(scopeFilters.active) Arachn0deColors.Accent else Arachn0deColors.TextSecondary)}
-                        IconButton(onClick={showContextActions=true},modifier=Modifier.size(48.dp)) {LucideIcon(Icons.Default.MoreVert,if(currentNode==null) "Opciones del proyecto" else "Opciones del elemento")}
+                        if(currentNodeId!=null && !useNodeModule) IconButton(onClick={showContextActions=true},modifier=Modifier.size(48.dp)) {LucideIcon(Icons.Default.MoreVert,"Opciones del elemento")}
                     })
                 if(selection.ids.isNotEmpty()) Column(Modifier.fillMaxWidth()) {
                     Text("${selection.ids.size} seleccionados", style = androidx.compose.material3.MaterialTheme.typography.titleMedium)
@@ -475,10 +588,11 @@ internal fun ProjectNodeScreen(
                 layerScrollStates.SaveableStateProvider(currentNodeId?.let { "node:$it" } ?: "project-root") {
                     val nodeListState = rememberLazyListState()
                     val groups: Map<Any,List<String>> = if(layersFirst) mapOf(
-                        "layers" to currentNodes.orEmpty().filter {it.isStructural}.map {it.id},
+                        "pinned-layers" to currentNodes.orEmpty().filter {it.isStructural && it.isPinned}.map {it.id},
+                        "layers" to currentNodes.orEmpty().filter {it.isStructural && !it.isPinned}.map {it.id},
                         "pending" to currentNodes.orEmpty().filter {sortMode==NodeSortMode.MANUAL && !it.isStructural && !it.isCompleted}.map {it.id},
                         "completed" to currentNodes.orEmpty().filter {sortMode==NodeSortMode.MANUAL && !it.isStructural && it.isCompleted}.map {it.id})
-                    else listOf(false,true).associate { completed -> completed as Any to currentNodes.orEmpty().filter {it.isCompleted==completed}.map {it.id} }
+                    else listOf(false,true).flatMap {completed->listOf(("pinned:$completed" as Any) to currentNodes.orEmpty().filter {it.isCompleted==completed && it.isStructural && it.isPinned}.map {it.id},(completed as Any) to currentNodes.orEmpty().filter {it.isCompleted==completed && !it.isPinned}.map {it.id})}.toMap()
                     val dragDisabled = sprintScope || isSubmittingNode || selection.ids.isNotEmpty() || filterActive || (sortMode != NodeSortMode.MANUAL && !layersFirst) || currentNodes == null
                     val drag = rememberDragReorderState(nodeListState, "node:", groups, dragDisabled, actions.operation.error, "$currentNodeId:${sortMode.name}:$layersFirst:$filterActive") { source, target, _ ->
                         if(layersFirst && projectState.nodesById[source]?.isStructural==true && !filterActive) actions.reorderLayersTo(source,currentNodeId,target)
@@ -491,6 +605,7 @@ internal fun ProjectNodeScreen(
                         state = nodeListState,
                         modifier = Modifier.fillMaxWidth().weight(1f).testTag("nodes-list").then(drag.gestureModifier),
                         verticalArrangement = Arrangement.spacedBy(8.dp),
+                        contentPadding = PaddingValues(bottom=bottomControlsHeight),
                     ) {
                         item(key = "layer-context", contentType = "context") {
                             Column {
@@ -501,8 +616,32 @@ internal fun ProjectNodeScreen(
                                     ProjectIdentityIcon(project)
                                     Spacer(Modifier.width(8.dp))
                                     Box(Modifier.weight(1f)) { DetailScopeTitle(project.name) }
-                                } else DetailScopeTitle(com.r0ybt.arachn0de.data.repository.storyDisplayTitle(currentNode.id,currentNode.title,LocalStoryLabels.current), onEdit =
-                                    ({ openNodeEditor(currentNode, "title") }).takeIf { !isSubmittingNode && assignmentsLoaded && peopleLoaded })
+                                } else Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                                    val nodeTitle:@Composable ()->Unit={
+                                        Box(Modifier.weight(1f)) {
+                                            DetailScopeTitle(com.r0ybt.arachn0de.data.repository.storyDisplayTitle(currentNode.id,currentNode.title,LocalStoryLabels.current), onEdit =
+                                                ({ if(useNodeModule) nodeEditRequest=com.r0ybt.arachn0de.domain.model.NodeProperty.TITLE else openNodeEditor(currentNode,"title") }).takeIf { !isSubmittingNode && assignmentsLoaded && peopleLoaded })
+                                        }
+                                    }
+                                    if(!useNodeModule) nodeTitle()
+                                    if (currentNode.isCompletable && currentNode.workState == null) {
+                                        val colors = completionControlColors(false, currentNode.isCompleted, !isSubmittingNode)
+                                        androidx.compose.material3.IconButton(
+                                            onClick = { actions.setCompleted(currentNode.id, !currentNode.isCompleted) },
+                                            enabled = !isSubmittingNode,
+                                            modifier = Modifier.size(48.dp).testTag("detail-completion:${currentNode.id}")
+                                                .semantics { stateDescription = if (currentNode.isCompleted) "Completada" else "Pendiente" }
+                                                .background(if (currentNode.isCompleted) colors.fill else Arachn0deColors.ControlSurface,
+                                                    androidx.compose.foundation.shape.RoundedCornerShape(10.dp)),
+                                        ) {
+                                            if (currentNode.isCompleted) LucideIcon(androidx.compose.material.icons.Icons.Default.Check,
+                                                "Marcar pendiente: ${currentNode.title}", tint = colors.mark)
+                                            else Box(Modifier.size(14.dp).border(2.dp, colors.border, androidx.compose.foundation.shape.RoundedCornerShape(4.dp))
+                                                .semantics { contentDescription = "Completar: ${currentNode.title}" })
+                                        }
+                                    }
+                                    if(useNodeModule) nodeTitle()
+                                }
                                 Spacer(modifier = Modifier.height(8.dp))
                                 if (currentNode == null) Text("Proyecto raíz", color = Arachn0deColors.TextSecondary, fontSize = 12.sp)
 
@@ -523,11 +662,12 @@ internal fun ProjectNodeScreen(
 
                                 Spacer(modifier = Modifier.height(10.dp))
 
+                                if (currentNode == null) AttentionIndicator(attention?.byProjectId?.get(project.id))
                                 if (scopeDescription.isNotBlank() || currentNode != null) {
                                     androidx.compose.material3.Card(
                                         modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp).testTag("detail-description")
                                             .clickable(enabled = currentNode != null && !isSubmittingNode && assignmentsLoaded && peopleLoaded,
-                                                onClickLabel = "Editar descripción") { currentNode?.let { openNodeEditor(it, "description") } },
+                                                onClickLabel = "Editar descripción") { currentNode?.let { if(useNodeModule) nodeEditRequest=com.r0ybt.arachn0de.domain.model.NodeProperty.DESCRIPTION else openNodeEditor(it,"description") } },
                                         shape = RoundedCornerShape(10.dp),
                                         colors = androidx.compose.material3.CardDefaults.cardColors(
                                             containerColor = Arachn0deColors.ControlSurface,
@@ -546,6 +686,8 @@ internal fun ProjectNodeScreen(
                                             Spacer(modifier = Modifier.height(4.dp))
                                             AttachmentText(
                                                 text = scopeDescription.ifBlank { "Añadir descripción" },
+                                                ownerNodeId=currentNodeId,
+                                                webLinks=currentNode?.purpose in setOf(NodePurpose.ACTION,NodePurpose.NOTE),
                                                 color = Arachn0deColors.TextPrimary,
                                                 fontSize = ContentTypography.Detail,
                                                 lineHeight = ContentTypography.DetailLine,
@@ -572,7 +714,7 @@ internal fun ProjectNodeScreen(
                                     val workContext=managementContexts.firstOrNull {it.id==owner && it.enabled}
                                     if(workContext!=null) ResponsibilitiesAccess(workContext.id,currentNode.id,false,nodeRepository.management.participation)
                                 }
-                                AttentionIndicator(if (currentNode == null) attention?.byProjectId?.get(project.id) else if (currentNode.isStructural) attention?.byNodeId?.get(currentNode.id) else null)
+                                if (currentNode != null) AttentionIndicator(if (currentNode.isStructural) attention?.byNodeId?.get(currentNode.id) else null)
                                 if (currentNode == null || currentNode.isStructural) FinancialSummaryCard(
                                     if (currentNode == null) financial?.byProjectId?.get(project.id) else financial?.byNodeId?.get(currentNode.id), title = "Obligaciones · Todo el período",
                                     overview = if (currentNode == null) financial?.overviewByProjectId?.get(project.id) else financial?.overviewByNodeId?.get(currentNode.id))
@@ -592,13 +734,9 @@ internal fun ProjectNodeScreen(
                                     if(!managedSprint) CompactAssignments(currentNode?.id ?: project.id, currentNode?.let {responsibleByNode[it.id]}.orEmpty(), project=currentNode==null,showTechnologies=currentNode!=null,fillWidth=false,compactSpacing=true,showPeople=currentNode?.isStructural!=true)
                                 }
                                 if (currentNode != null) {
-                                    metroLabels[currentNode.id]?.let {com.r0ybt.arachn0de.metro.MetroRoutePreview(currentNode.id,it,metroSnapshot?.journeys?.firstOrNull {j->j.row.nodeId==currentNode.id}?.row?.id)}
                                     androidx.compose.foundation.layout.FlowRow(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                         if(currentNode.workState != null) SecondaryAction("Estado: ${currentNode.workState.label}", { changingWorkStateId = currentNode.id }, enabled = !isSubmittingNode)
-                                        else if(currentNode.isCompletable) SecondaryAction(if(currentNode.isCompleted) "Reabrir" else "Completar",
-                                            { actions.setCompleted(currentNode.id,!currentNode.isCompleted) },enabled = !isSubmittingNode)
                                     }
-                                    if(currentNode.isCompletable && metroSnapshot?.journeys?.any {it.row.nodeId==currentNode.id}==true) com.r0ybt.arachn0de.metro.TaskMetroAccess(currentNode.id,metroRepository)
                                     if (currentNode.purpose == NodePurpose.NOTE && cascadeLayers.none {it.nodeId==currentNode.parentId && it.kind=="ACTA"}) Text("Nota · Convierte en capa para añadir hijos", color = Arachn0deColors.TextSecondary)
                                     PriorityIndicator(currentNode)
                                     ObligationIndicator(currentNode)
@@ -674,10 +812,11 @@ internal fun ProjectNodeScreen(
                             else currentNodes.orEmpty().distinctBy {it.id}.filter {it.isCompleted == completedGroup}
                             val expanded = sectionKey !in collapsedSprintSections
                             val renderNodes = if (sprintScope) { if (expanded) groupNodes else emptyList() } else (if(layersFirst) {
-                                val layers=groupNodes.filter {it.isStructural}.map {it.id}
+                                val pinnedLayers=groupNodes.filter {it.isStructural && it.isPinned}.map {it.id}
+                                val layers=groupNodes.filter {it.isStructural && !it.isPinned}.map {it.id}
                                 val content=groupNodes.filterNot {it.isStructural}.map {it.id}
-                                drag.orderFor("layers",layers)+drag.orderFor(if(completedGroup) "completed" else "pending",content)
-                            } else drag.orderFor(completedGroup, groupNodes.map { it.id }))
+                                drag.orderFor("pinned-layers",pinnedLayers)+drag.orderFor("layers",layers)+drag.orderFor(if(completedGroup) "completed" else "pending",content)
+                            } else drag.orderFor("pinned:$completedGroup",groupNodes.filter {it.isStructural && it.isPinned}.map {it.id})+drag.orderFor(completedGroup, groupNodes.filterNot {it.isPinned}.map { it.id }))
                                 .mapNotNull { id -> projectState.nodesById[id] }
                             if (sprintScope && (sectionKey != "structure" || groupNodes.isNotEmpty())) {
                                 item(key = "sprint-section:$sectionKey", contentType = "section") {
@@ -715,7 +854,6 @@ internal fun ProjectNodeScreen(
                                     onHistory = { historyNodeId = node.id },
                                     tags = tagState.forNode(node.id),
                                     node = node,
-                                    metroRouteLabel = metroLabels[node.id],
                                     onRecurrence = recurrenceByNode[node.id]?.let { ruleId -> ({ recurrenceSelected = ruleId }) },
                                     progress = progressMap[node.id],
                                     hasChildren = node.hasChildren,
@@ -743,8 +881,8 @@ internal fun ProjectNodeScreen(
                                     canDragReorder = !dragDisabled && !layersFirst,
                                     onCopy = { descendants -> copyActions.copy(projectState, node.id, descendants) },
                                     onEdit = { openNodeEditor(node) },
-                                    canMoveUp = !sprintScope && !isSubmittingNode && (if(layersFirst && node.isStructural) node.id!=renderNodes.firstOrNull {it.isStructural}?.id else sortMode==NodeSortMode.MANUAL && node.id!=renderNodes.firstOrNull {if(layersFirst) !it.isStructural else true}?.id),
-                                    canMoveDown = !sprintScope && !isSubmittingNode && (if(layersFirst && node.isStructural) node.id!=renderNodes.lastOrNull {it.isStructural}?.id else sortMode==NodeSortMode.MANUAL && node.id!=renderNodes.lastOrNull {if(layersFirst) !it.isStructural else true}?.id),
+                                    canMoveUp = !sprintScope && !isSubmittingNode && (if(layersFirst && node.isStructural) node.id!=renderNodes.firstOrNull {it.isStructural && it.isPinned==node.isPinned}?.id else sortMode==NodeSortMode.MANUAL && node.id!=renderNodes.firstOrNull {it.isPinned==node.isPinned && (if(layersFirst) !it.isStructural else true)}?.id),
+                                    canMoveDown = !sprintScope && !isSubmittingNode && (if(layersFirst && node.isStructural) node.id!=renderNodes.lastOrNull {it.isStructural && it.isPinned==node.isPinned}?.id else sortMode==NodeSortMode.MANUAL && node.id!=renderNodes.lastOrNull {it.isPinned==node.isPinned && (if(layersFirst) !it.isStructural else true)}?.id),
                                     onReorder = { moveUp, onSuccess ->
                                         if(layersFirst && node.isStructural) actions.reorderLayers(node.id,node.parentId,moveUp,onSuccess)
                                         else if(layersFirst && sortMode==NodeSortMode.MANUAL) actions.reorderContent(node.id,node.parentId,moveUp,onSuccess)
@@ -780,6 +918,11 @@ internal fun ProjectNodeScreen(
                         }
                     }
                 }
+            }
+            Column(Modifier.align(Alignment.BottomCenter).fillMaxWidth()
+                .padding(horizontal=12.dp,vertical=10.dp)
+                .then(if(showDrawer) Modifier.clearAndSetSemantics {} else Modifier)
+                .onSizeChanged {bottomControlsHeight=with(bottomControlsDensity) {it.height.toDp()}}) {
                 androidx.compose.material3.SnackbarHost(actions.snackbar, Modifier.fillMaxWidth()) { data ->
                     androidx.compose.material3.Snackbar(
                         snackbarData = data,
@@ -791,33 +934,39 @@ internal fun ProjectNodeScreen(
                     )
                 }
                 RecurrenceManager(nodeRepository.recurrence, project.id, projectState.nodes, people, peopleLoaded, recurrenceSelected, showLauncher = false) { recurrenceSelected = null }
+                AudioBar()
                 // Transparent layout only: the list reserves this height; AppSafeArea owns system insets.
                 if(quickCreation && draft?.id == null && draft != null) QuickCreateBar(draft, isSubmittingNode,
                     onSave = { actions.saveDraft(project.id, draft, draft.purpose == NodePurpose.ACTION) { drafts.clear(); quickCreation = false } },
                     onCancel = { actions.discardDraft(draft) { drafts.clear(); quickCreation = false } },
-                    onFullForm = { quickCreation = false })
-                else
-                Row(Modifier.fillMaxWidth().background(androidx.compose.ui.graphics.Color.Transparent).height(IntrinsicSize.Min).padding(top=6.dp).testTag("project-bottom-actions"),horizontalArrangement=Arrangement.spacedBy(8.dp)) {
-                    ProjectLockButton(Modifier.weight(1f).fillMaxHeight().heightIn(min=64.dp),boxed=true)
-                    Button(onClick={if(contextualCreationLabel!=null) managementCreationRequest++ else if(!isSubmittingNode && (currentNode==null || currentNode.canReceiveChildren)) openTraditionalElement(quick = true)},
-                        modifier=Modifier.weight(1f).fillMaxHeight().heightIn(min=64.dp),contentPadding=PaddingValues(4.dp),shape=RoundedCornerShape(8.dp),elevation=null,
-                        colors=ButtonDefaults.buttonColors(containerColor=Arachn0deColors.ControlSurface,contentColor=Arachn0deColors.TextPrimary),enabled=!isSubmittingNode && (currentNode==null || currentNode.canReceiveChildren)) {
-                        Column(horizontalAlignment=Alignment.CenterHorizontally) {
-                            Box(Modifier.size(40.dp),contentAlignment=Alignment.Center) {
-                                Icon(painterResource(com.r0ybt.arachn0de.R.drawable.lucide_plus),null,Modifier.size(28.dp))
+                    onFullForm = { quickCreation = false },
+                    onAudio = {
+                        val audio=(copyContext.applicationContext as? com.r0ybt.arachn0de.Arachn0deApplication)?.security?.current?.value?.audio
+                        if(audio?.canStartRecording==true) {
+                            val generated=draft.title.isBlank()
+                            if(generated) draft.title="Audio — "+java.text.SimpleDateFormat("d MMM, HH:mm",java.util.Locale.getDefault()).format(java.util.Date())
+                            draft.audioCreationRequested=true;draft.audioProvisionalTitle=draft.title.trim().takeIf {generated}
+                            actions.saveDraft(project.id,draft,true) {
+                                val owner=draft.creationId
+                                drafts.clear();quickCreation=false
+                                audio.startRecording(owner)
                             }
-                            Text("Crear",style=MaterialTheme.typography.labelSmall)
-                        }
-                    }
-                    Button(onClick={expandedLayerIds=(expandedLayerIds.toSet()+currentPath).toList();showNavigator=true},
-                        modifier=Modifier.weight(1f).fillMaxHeight().heightIn(min=64.dp),contentPadding=PaddingValues(4.dp),shape=RoundedCornerShape(8.dp),elevation=null,
-                        colors=ButtonDefaults.buttonColors(containerColor=Arachn0deColors.ControlSurface,contentColor=Arachn0deColors.TextPrimary)) {
-                        Column(horizontalAlignment=Alignment.CenterHorizontally) {
-                            OfficialIcon(com.r0ybt.arachn0de.R.drawable.bw90_view_layers,"Capas",size=40.dp)
-                            Text("Capas",style=MaterialTheme.typography.labelSmall)
-                        }
-                    }
-                }
+                        } else if(audio!=null) audio.state.value=audio.state.value.copy(error="Finaliza el audio actual o espera a que termine su recuperación.")
+                    })
+                else
+                if(currentNodeId==null && projectEditField!=null) {
+                    CorePropertyEditor(projectEditField!!,projectFieldValue,{projectFieldValue=it},
+                        enabled=!projectEditingActions.operation.busy,maxHeight=coreModuleMaxHeight,
+                        onCancel=finishProjectEdit,onConfirm={
+                            projectEditingActions.saveField(project.id,projectEditField!!,projectFieldOriginal,projectFieldValue,finishProjectEdit)
+                        })
+                } else if(currentNodeId==null) CoreBottomModule(coreContext,{coreContext=it},coreModuleMaxHeight,
+                    contextActions=contextActions,creationActions=creationActions,onEditProject=editProject)
+                else if(useNodeModule && currentNode!=null) androidx.compose.runtime.key(currentNode.id) {
+                    NodeBottomModule(currentNode,nodeRepository,actions,people,responsibleByNode[currentNode.id].orEmpty(),
+                        peopleLoaded && assignmentsLoaded,tagState,nodeTechnologies,coreModuleMaxHeight,contextActions,creationActions,
+                        nodeEditRequest,{nodeEditRequest=null})
+                } else creationActions()
 
             }
 
@@ -882,52 +1031,8 @@ internal fun ProjectNodeScreen(
     changingWorkStateId?.let { id -> projectState.nodesById[id]?.let { node -> node.workState?.let { state ->
         WorkStateDialog(node.title, state, isSubmittingNode, { changingWorkStateId = null }, { chosen -> actions.workState(id, chosen) { changingWorkStateId = null } })
     } } }
-    if(showContextActions) ContextActionMenu(currentNode?.title ?: project.name,{ showContextActions = false }) {
-        if(contextualCreationLabel!=null) action("Nuevo elemento",androidx.compose.material.icons.Icons.Default.Add,{showContextActions=false;openTraditionalElement()},enabled=!isSubmittingNode && currentNode?.canReceiveChildren==true)
-        if(currentNode==null || managementRoot!=null) action("Planificación",androidx.compose.material.icons.Icons.Default.Settings,{showContextActions=false;planningOpen=true})
-        if (currentNode == null) action("Fotografía", androidx.compose.material.icons.Icons.Default.Image, {
-            showContextActions = false; showProjectPhoto = true
-        }, enabled = !isSubmittingNode)
-        action("Editar tecnologías", androidx.compose.material.icons.Icons.Default.Code, {showContextActions=false;editingTechnologies=true})
-        action("Recurrencias", androidx.compose.material.icons.Icons.Default.Refresh, { showContextActions=false; recurrenceSelected="" })
-        if(currentNode?.isStructural == true) action(if(currentNode.sprintMode) "Desactivar Modo Sprint" else "Modo Sprint", androidx.compose.material.icons.Icons.Default.SwapHoriz, { showContextActions=false;showSprintMode=true }, enabled=!isSubmittingNode)
-        if(currentNode?.workState != null) action("Cambiar estado", androidx.compose.material.icons.Icons.Default.SwapHoriz, { showContextActions=false;changingWorkStateId=currentNode.id }, enabled=!isSubmittingNode)
-        if(currentNode != null) {
-            // Inline Kanban does not expose the ordinary editable context title.
-            if(creationMapping?.kind=="KANBAN" && managementContexts.any {it.id==creationMapping.contextId && it.enabled})
-                action("Editar",androidx.compose.material.icons.Icons.Default.Edit,{
-                    showContextActions=false;openNodeEditor(currentNode)
-                },enabled=!isSubmittingNode && assignmentsLoaded && peopleLoaded)
-            action("Eliminar", androidx.compose.material.icons.Icons.Default.Delete, { showContextActions=false;deletingNodeId=currentNode.id;deletingNodeName=currentNode.title }, enabled=!isSubmittingNode,destructive=true)
-            action("Responsables", androidx.compose.material.icons.Icons.Default.People, { showContextActions=false;responsibleNodeId=currentNode.id }, enabled=!isSubmittingNode && !personActions.operation.busy && peopleLoaded && assignmentsLoaded)
-            action("Mover a…", androidx.compose.material.icons.Icons.Default.DriveFileMove, { showContextActions=false;movingNodeId=currentNode.id }, enabled=!isSubmittingNode)
-            action("Historial", androidx.compose.material.icons.Icons.Default.History, { showContextActions=false;historyNodeId=currentNode.id })
-        }
-        if(currentNode == null || (currentNode.isStructural)) action("Valores predeterminados", androidx.compose.material.icons.Icons.Default.Settings, {
-            showContextActions = false; showDefaults = true
-        }, enabled = !isSubmittingNode)
-        if(currentNode != null && !currentNode.hasChildren) action(
-            if(currentNode.purpose != NodePurpose.ACTION) "Convertir en tarea" else "Convertir en nota",
-            androidx.compose.material.icons.Icons.Default.SwapHoriz, {
-                if(currentNode.obligation != null) { showContextActions = false; convertingPurpose=NodePurpose.NOTE;convertingObligationId = currentNode.id }
-                else actions.convert(currentNode.id,if(currentNode.purpose != NodePurpose.ACTION) NodePurpose.ACTION else NodePurpose.NOTE) { showContextActions = false }
-            },enabled = !isSubmittingNode)
-        if(currentNode!=null && !currentNode.isStructural) action("Convertir en capa",androidx.compose.material.icons.Icons.Default.AccountTree,{
-            showContextActions=false
-            if(currentNode.obligation!=null) { convertingPurpose=NodePurpose.LAYER;convertingObligationId=currentNode.id }
-            else actions.convert(currentNode.id,NodePurpose.LAYER)
-        },enabled=!isSubmittingNode)
-        if(currentNode?.isStructural == true) action("Convertir en proyecto", androidx.compose.material.icons.Icons.Default.AccountTree, { showContextActions=false;promotingLayerId=currentNode.id }, enabled=!isSubmittingNode)
-        if(currentNode==null) action("Convertir en capa",androidx.compose.material.icons.Icons.Default.AccountTree,{ showContextActions=false;moveProject=true },enabled=!isSubmittingNode)
-        action(if(currentNode == null) "Copiar" else "Copiar este elemento", androidx.compose.material.icons.Icons.Default.ContentCopy, {
-            showContextActions = false
-            if(currentNode == null) copyActions.copyProject(project,projectState,false) else copyActions.copy(projectState,currentNode.id,false)
-        },enabled = !copyActions.busy)
-        if(currentNode == null || currentNode.isStructural) action("Copiar texto con descendientes", androidx.compose.material.icons.Icons.Default.CopyAll, {
-            showContextActions = false
-            if(currentNode == null) copyActions.copyProject(project,projectState,true) else copyActions.copy(projectState,currentNode.id,true)
-        },enabled = !copyActions.busy)
-    }
+    if(showContextActions && currentNodeId!=null) ContextActionMenu(currentNode?.title ?: project.name,{ showContextActions = false },bottomAligned=currentNode?.purpose==NodePurpose.ACTION && currentNode.isStructural==false,content=contextActions)
+
 
     groupReview?.let { members -> draft?.let { editor ->
         val dates = editor.purpose == NodePurpose.ACTION && projectState.nodesById[editor.id]?.isCompletable == true

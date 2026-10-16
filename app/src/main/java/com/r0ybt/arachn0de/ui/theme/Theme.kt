@@ -2,11 +2,12 @@ package com.r0ybt.arachn0de.ui.theme
 
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
+import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.*
 import androidx.compose.ui.platform.LocalContext
 
 internal fun AppearancePalette.materialColors(): androidx.compose.material3.ColorScheme {
-    val base = darkColorScheme(
+    val base = (if(light) lightColorScheme() else darkColorScheme()).copy(
     primary = primary, onPrimary = background, primaryContainer = accentSurface, onPrimaryContainer = text,
     // Preserve the current Material secondary treatment in the default palette.
     secondary = if (this == AppearanceTheme.Arachn0de.palette) primary else secondary,
@@ -14,7 +15,7 @@ internal fun AppearancePalette.materialColors(): androidx.compose.material3.Colo
     tertiary = secondary, onTertiary = background,
     background = background, onBackground = text, surface = surface, onSurface = text,
     surfaceVariant = controls, onSurfaceVariant = muted, surfaceTint = primary,
-    outline = outline, outlineVariant = outline, error = SemanticColors.Error, onError = background,
+    outline = outline, outlineVariant = outline, error = semantic(SemanticColors.Error), onError = background,
     )
     // Cover Material surface/fixed roles too: custom palettes never inherit decorative violet.
     return base.copy(tertiaryContainer = accentSurface, onTertiaryContainer = text,
@@ -35,7 +36,16 @@ fun Arachn0deTheme(preferences: AppearancePreferences? = null, locked:Boolean=fa
         resolved?.observe(listener)
         onDispose {resolved?.unobserve(listener)}
     }
-    val settings = resolved?.settings ?: AppearanceSettings()
+    val settings = resolved?.settings ?: AppearanceSettings(theme=UnlockAppearanceCache.read(context))
+    val activity=LocalContext.current.let {source->generateSequence(source) {(it as? android.content.ContextWrapper)?.baseContext}.filterIsInstance<android.app.Activity>().firstOrNull()}
+    SideEffect {
+        if(!locked && (context as? com.r0ybt.arachn0de.Arachn0deApplication)?.security?.current?.value?.primary==true) UnlockAppearanceCache.update(context,settings.theme)
+        activity?.let {
+            val bars=androidx.core.view.WindowCompat.getInsetsController(it.window,it.window.decorView)
+            bars.isAppearanceLightStatusBars=settings.theme.palette.light
+            bars.isAppearanceLightNavigationBars=settings.theme.palette.light
+        }
+    }
     CompositionLocalProvider(LocalAppearancePreferences provides resolved, LocalAppearancePalette provides settings.theme.palette,
         LocalContentSizes provides contentSizes(settings.textSize)) {
         MaterialTheme(colorScheme = settings.theme.palette.materialColors(), typography = appearanceTypography(settings.textSize), content = content)

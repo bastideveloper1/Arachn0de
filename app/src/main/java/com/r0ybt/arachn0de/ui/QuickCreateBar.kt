@@ -1,9 +1,6 @@
 package com.r0ybt.arachn0de.ui
 
 import androidx.activity.compose.BackHandler
-import androidx.compose.foundation.verticalScroll
-import androidx.compose.foundation.horizontalScroll
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
@@ -20,12 +17,11 @@ import com.r0ybt.arachn0de.domain.model.NodePurpose
 import com.r0ybt.arachn0de.domain.model.TitleLimits
 import com.r0ybt.arachn0de.domain.model.RecurrenceSchedule
 import com.r0ybt.arachn0de.ui.state.EditorDraft
-import com.r0ybt.arachn0de.ui.theme.Arachn0deColors
 
 /** Presentation of the existing destination-owned draft; all writes use NodeActions.saveDraft. */
 @Composable
 internal fun QuickCreateBar(draft: EditorDraft, busy: Boolean, onSave: () -> Unit,
-    onCancel: () -> Unit, onFullForm: () -> Unit) {
+    onCancel: () -> Unit, onFullForm: () -> Unit, onAudio:(()->Unit)?=null) {
     val focus = remember(draft.creationId) { FocusRequester() }
     val keyboard = LocalSoftwareKeyboardController.current
     var selector by rememberSaveable(draft.creationId) { mutableStateOf<String?>(null) }
@@ -43,28 +39,27 @@ internal fun QuickCreateBar(draft: EditorDraft, busy: Boolean, onSave: () -> Uni
     val valid = draft.title.trim().isNotEmpty() && TitleLimits.count(draft.title) <= TitleLimits.NODE && recurrenceValid &&
         (!task || draft.activeStart == null || draft.activeDue == null || draft.activeDue!! >= draft.activeStart!!) &&
         financialValid
-    Surface(color = Arachn0deColors.Surface, modifier = Modifier.fillMaxWidth().testTag("quick-create")) {
-        Column(Modifier.padding(horizontal = 8.dp, vertical = 4.dp)) {
+    ModularPanelSurface(Modifier.fillMaxWidth().testTag("quick-create")) {
+        ModularPanelLayout(header={},body={
             Row(Modifier.fillMaxWidth(), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
                 OutlinedTextField(draft.title, { if(!busy) draft.title = it },
                     placeholder = { Text(if(task) "Nueva tarea…" else "Nueva nota…") },
-                    modifier = Modifier.weight(1f).focusRequester(focus).testTag("quick-create-title"),
+                    modifier = modularPanelFieldModifier().weight(1f).focusRequester(focus).testTag("quick-create-title"),
                     enabled = !busy, singleLine = false, minLines = 1, maxLines = 3,
                     isError = TitleLimits.count(draft.title) > TitleLimits.NODE,
                     supportingText = if(!financialValid) ({ Text("Completa Pago en Formulario completo.") }) else null)
-                IconButton(onClick = { if(valid && !busy) onSave() }, enabled = valid && !busy,
-                    modifier = Modifier.size(48.dp).testTag("quick-create-save")) {
-                    LucideIcon(Icons.Default.Check, if(busy) "Guardando" else "Guardar elemento")
-                }
+
             }
-            Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
-                TextButton(enabled = !busy, onClick = { draft.purpose = if(task) NodePurpose.NOTE else NodePurpose.ACTION }) {
-                    LucideIcon(Icons.Default.Description, null, Modifier.size(18.dp));Text(if(task) "Nota" else "Nota ✓")
+        },actions={Column {
+            Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceEvenly, verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+
+                IconButton(enabled = !busy, modifier=Modifier.size(48.dp),onClick = { draft.purpose = if(task) NodePurpose.NOTE else NodePurpose.ACTION }) {
+                    LucideIcon(Icons.Default.Description, if(task) "Nota" else "Nota activada")
                 }
-                TextButton(enabled = !busy && task, onClick = { selector = "due" }) {
-                    LucideIcon(Icons.Default.Event, null, Modifier.size(18.dp));Text(if(task && draft.activeDue != null) "Vence ✓" else "Vence")
+                IconButton(enabled = !busy && task, modifier=Modifier.size(48.dp),onClick = { selector = "due" }) {
+                    LucideIcon(Icons.Default.Event, if(task && draft.activeDue != null) "Vence activado" else "Vence")
                 }
-                TextButton(enabled = !busy && task, onClick = {
+                IconButton(enabled = !busy && task, modifier=Modifier.size(48.dp),onClick = {
                     if(draft.recurrenceFrequency == "NONE") {
                         draft.recurrenceFrequency = draft.latentFrequency
                         if(draft.recurrenceStart.isBlank() && draft.activeDue != null)
@@ -72,25 +67,30 @@ internal fun QuickCreateBar(draft: EditorDraft, busy: Boolean, onSave: () -> Uni
                     }
                     selector = "repeat"
                 }) {
-                    LucideIcon(Icons.Default.Refresh, null, Modifier.size(18.dp));Text(if(task && draft.recurrenceFrequency != "NONE") "Repetir ✓" else "Repetir")
+                    LucideIcon(Icons.Default.Refresh, if(task && draft.recurrenceFrequency != "NONE") "Repetir activado" else "Repetir")
                 }
+                AudioMicButton(enabled=!busy && task && financialValid && draft.recurrenceFrequency=="NONE" && !draft.batchEnabled && TitleLimits.count(draft.title)<=TitleLimits.NODE && onAudio!=null) {onAudio?.invoke()}
                 IconButton(onClick = onFullForm, enabled = !busy, modifier = Modifier.size(48.dp)) {
                     LucideIcon(Icons.Default.Settings, "Formulario completo")
                 }
-                IconButton(onClick = { keyboard?.hide(); onCancel() }, enabled = !busy, modifier = Modifier.size(48.dp)) {
-                    LucideIcon(Icons.Default.Close, "Cancelar creación")
-                }
+
             }
-        }
+            ModularPanelActions(cancel={IconButton(onClick = { keyboard?.hide(); onCancel() }, enabled = !busy, modifier = Modifier.size(48.dp)) {
+                    LucideIcon(Icons.Default.Close, "Cancelar creación")
+                }},confirm={IconButton(onClick = { if(valid && !busy) onSave() }, enabled = valid && !busy,
+                    modifier = Modifier.size(48.dp).testTag("quick-create-save")) {
+                    LucideIcon(Icons.Default.Check, if(busy) "Guardando" else "Guardar elemento")
+                }})
+        }})
     }
-    if(selector == "due") AlertDialog(onDismissRequest = { selector = null },
+    if(selector == "due") ModularPanelDialog(onDismissRequest = { selector = null },
         title = { Text("Vence") }, text = {
-            Column { TaskDatesEditor(draft, !busy, picker, includeStart = false) }
+            Column { TaskDatesEditor(draft, !busy, picker, includeStart = false, openImmediately = true) }
             SideEffect { draft.dueEnabled = draft.dueAt != null }
         }, confirmButton = { TextButton(onClick = { selector = null }) { Text("Listo") } })
-    if(selector == "repeat") AlertDialog(onDismissRequest = { selector = null },
+    if(selector == "repeat") ModularPanelDialog(onDismissRequest = { selector = null },
         title = { Text("Repetir") }, text = {
-            Column(Modifier.heightIn(max = 400.dp).verticalScroll(rememberScrollState())) {
+            Column {
                 if(draft.recurrenceFrequency != "NONE" && draft.recurrenceStart.isBlank())
                     Text("Elige Comienza para establecer la fecha de repetición.", style = MaterialTheme.typography.bodySmall)
                 RecurrenceFields(draft, !busy, initializeStart = false)

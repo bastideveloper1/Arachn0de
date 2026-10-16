@@ -8,18 +8,20 @@ import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
 
 internal data class MetroJourney(val row: MetroJourneyEntity, val data: MetroJourneyData)
-internal data class MetroSnapshot(val preferences: MetroPreferences, val journeys: List<MetroJourney>)
+internal data class MetroSnapshot(val preferences: MetroPreferences, val journeys: List<MetroJourney>, val observations:List<MetroObservation> = emptyList(), val lastCaptures:Map<String,MetroCaptureStatus> = emptyMap())
 internal class MetroRepository(private val db: Arachn0deDatabase, context: Context) {
     private val catalog = context.applicationContext.assets.open("metro/santiago-beta1.json").bufferedReader(Charsets.UTF_8).use { it.readText() }
     private val dao get()=db.metroDao()
     private suspend fun preferences() = dao.preferences()?.let { MetroCodec.preferences(it.payload) } ?: MetroPreferences(catalog)
-    fun observe() = combine(dao.observePreferences(),dao.observeJourneys()) { prefs,rows ->
-        val p=prefs?.let { MetroCodec.preferences(it.payload) } ?: MetroPreferences(catalog)
-        MetroSnapshot(p,rows.map { MetroJourney(it,MetroCodec.journey(it.payload,p.network)) })
-    }.flowOn(Dispatchers.IO)
+    fun observe() = db.invalidationTracker.createFlow("metro_preferences","metro_journeys","metro_learning_events").map {snapshot()}.flowOn(Dispatchers.IO)
     suspend fun snapshot(): MetroSnapshot = withContext(Dispatchers.IO) { db.withTransaction {
-        val p=preferences(); MetroSnapshot(p,dao.journeys().map { MetroJourney(it,MetroCodec.journey(it.payload,p.network)) })
+        val p=preferences()
+        val events=db.metroLearningDao().events()
+        MetroSnapshot(p,dao.journeys().map {MetroJourney(it,MetroCodec.journey(it.payload,p.network))},
+            MetroLearning.observations(events,p.network),events.groupBy {it.sessionId}.mapValues {(_,rows)->val row=rows.last();MetroCaptureStatus(MetroLearningCodec.decode(row.payload,p.network),row.invalidReason)})
     } }
+    private suspend fun adapted(route:MetroRoute):MetroRoute = MetroEstimates.adapt(route.copy(prediction=null),
+        MetroLearning.observations(db.metroLearningDao().events(),preferences().network))
     suspend fun settings(update: (MetroPreferences)->MetroPreferences) = withContext(Dispatchers.IO) { db.withTransaction {
         val p=update(preferences()); val raw=MetroCodec.preferences(p); MetroCodec.preferences(raw); dao.preferences(MetroPreferencesEntity(payload=raw)); currentCoroutineContext().ensureActive()
     } }
@@ -31,9 +33,10 @@ internal class MetroRepository(private val db: Arachn0deDatabase, context: Conte
         val task=NodeRepository(db).createNode(projectId,parentId,title,description=description,priority=priority,startAt=startAt,dueAt=dueAt,responsibleIds=personId?.let { setOf(it) }.orEmpty())
         savePlan(route,task.id,personId)
     } }
+    /** Legacy metadata writer for compatibility; this flag no longer gates tracking. */
     suspend fun enabled(id: String,enabled: Boolean)=withContext(Dispatchers.IO) { db.withTransaction {
         val row=requireNotNull(dao.journey(id)); val data=MetroCodec.journey(row.payload,preferences().network)
-        require(data.active==null) { "Finaliza el seguimiento antes de volver al modo normal." }
+        require(data.active==null) { "Cancela el seguimiento o confirma la llegada antes de volver al modo normal." }
         dao.save(row.copy(enabled=enabled,revision=Math.addExact(row.revision,1)))
     } }
     suspend fun traveler(id: String,personId: String?)=withContext(Dispatchers.IO) { db.withTransaction {
@@ -44,7 +47,7 @@ internal class MetroRepository(private val db: Arachn0deDatabase, context: Conte
     } }
     suspend fun begin(id: String,revision: Long,time: MetroTime)=act(id,revision) { data ->
         require(data.active==null)
-        val row=requireNotNull(dao.journey(id)); require(row.enabled)
+        val row=requireNotNull(dao.journey(id))
 
         val p=preferences();val net=p.network
         if(data.plan.departure!=null) {
@@ -52,11 +55,92 @@ internal class MetroRepository(private val db: Arachn0deDatabase, context: Conte
             require(actual?.steps==data.plan.steps) {"El horario de referencia cambió. Recalcula y revisa el plan antes de iniciar."}
         }
         require(dao.journeys().none { MetroCodec.journey(it.payload,net).active!=null }) { "Ya existe un seguimiento activo." }
-        data.copy(sessions=data.sessions+MetroTracking.start(data.plan,time).copy(personId=row.personId))
+        data.copy(sessions=data.sessions+MetroTracking.start(adapted(data.plan),time).copy(personId=row.personId))
     }
     suspend fun tracking(id: String,revision: Long,action: (MetroSession)->MetroSession)=act(id,revision) { data ->
-        val active=requireNotNull(data.active); data.copy(sessions=data.sessions.dropLast(1)+action(active))
+        val active=requireNotNull(data.active)
+        val updated=action(active)
+        if(updated.events.size>active.events.size && updated.events.last().kind in setOf("PAUSE","RESUME")) {
+            val kind=MetroCaptureKind.valueOf(updated.events.last().kind)
+            val time=MetroTime(updated.anchorWall,updated.anchorElapsed,updated.boot)
+            val position=MetroTracking.position(updated,time)
+            val index=position.step
+            val station=updated.route.steps.getOrNull(index)?.from ?: updated.route.stops.last()
+            val ride=MetroLearningCodec.referenceRide(updated.route,index)
+                ?: MetroStep(station,station,preferences().network.accesses(station).first().id,1,MetroService.NORMAL,MetroStepKind.WAYPOINT)
+            val learning=db.metroLearningDao()
+            val domain=learning.clock()?.domain ?: java.util.UUID.randomUUID().toString().also {learning.clock(MetroLearningClockEntity(domain=it))}
+            val event=MetroCapture(updated.route,station,index,ride.line,ride.direction,ride.service,kind,time,domain,
+                updated.pausedAt!=null,updated.pausedMillis+MetroTracking.currentPauseMillis(updated,time),false,"PAUSE",position.offset,MetroEstimates.remaining(updated,time,true))
+            val raw=MetroLearningCodec.encode(event);MetroLearningCodec.decode(raw,preferences().network)
+            val history=learning.events(active.id)
+            learning.insert(MetroLearningEventEntity(java.util.UUID.randomUUID().toString(),active.id,Math.addExact(history.lastOrNull()?.sequence ?: -1,1),raw))
+        }
+        data.copy(sessions=data.sessions.dropLast(1)+updated)
     }
+    /** Called only for explicit door-opening confirmations; begin/estimated arrivals never learn. */
+    suspend fun confirmDoors(id: String, revision: Long, station: String, time: MetroTime, arrival: Boolean = false, shownOffset:Long?=null, shownEta:Long?=null): Boolean =
+        capture(id, revision, station, time, if(arrival) MetroCaptureKind.ARRIVAL else MetroCaptureKind.DOORS,shownOffset=shownOffset,shownEta=shownEta)
+
+    /** A late positional correction is a timing barrier, not a door-opening measurement. */
+    suspend fun correctPosition(id: String, revision: Long, station: String, time: MetroTime, between:Boolean=false, shownOffset:Long?=null, shownEta:Long?=null): Boolean =
+        capture(id, revision, station, time, MetroCaptureKind.CORRECTION,between,shownOffset,shownEta)
+
+    suspend fun learningEvents() = withContext(Dispatchers.IO) { db.metroLearningDao().events() }
+
+    private suspend fun capture(id: String, revision: Long, station: String, time: MetroTime, kind: MetroCaptureKind, between:Boolean=false, shownOffset:Long?=null, shownEta:Long?=null): Boolean = act(id, revision) { data ->
+        val latest=data.sessions.lastOrNull()
+        if(data.active==null && kind==MetroCaptureKind.ARRIVAL && latest!=null) {
+            db.metroLearningDao().events(latest.id).lastOrNull()?.takeIf {it.invalidReason==null}?.let {row ->
+                val last=MetroLearningCodec.decode(row.payload,preferences().network)
+                if(last.kind==kind && last.station==station) return@act data
+            }
+        }
+        val active=requireNotNull(data.active)
+        val history=db.metroLearningDao().events(active.id)
+        val position=MetroTracking.position(active,time)
+        val updated=when(kind) {
+            MetroCaptureKind.ARRIVAL -> {
+                val target=active.route.steps.getOrNull(MetroStages.boundary(active))?.from ?: active.route.stops.last()
+                require(station==target) {"Confirma la estación de llegada de la etapa vigente."}
+                MetroStages.confirmArrival(active,time)
+            }
+            else -> MetroTracking.confirm(active,station,time,between)
+        }
+        if(kind==MetroCaptureKind.ARRIVAL && updated==active) return@act data
+        val indices=(0..active.route.steps.size).filter { index ->
+            (MetroStages.offset(active.route,index)==updated.offset || between && active.route.steps.getOrNull(index)?.kind==MetroStepKind.RIDE && MetroStages.offset(active.route,index)+active.route.duration(index)/2==updated.offset) && (active.route.steps.getOrNull(index)?.from ?: active.route.stops.last())==station
+        }
+        val index=indices.minByOrNull { kotlin.math.abs(it-MetroStages.control(updated).firstStep) }
+            ?: error("La confirmación no corresponde a una estación de la ruta.")
+        history.lastOrNull()?.takeIf {it.invalidReason==null}?.let {row ->
+            val last=MetroLearningCodec.decode(row.payload,preferences().network)
+            if(last.kind==kind && last.station==station && last.time==time && last.route==active.route && last.stepIndex==index && !between) return@act data
+        }
+        val reference=MetroLearningCodec.referenceRide(active.route,index)
+        val ride=reference ?: MetroStep(station,station,preferences().network.accesses(station).first().id,1,MetroService.NORMAL,MetroStepKind.WAYPOINT)
+        val learning=db.metroLearningDao()
+        val domain=learning.clock()?.domain ?: java.util.UUID.randomUUID().toString().also {learning.clock(MetroLearningClockEntity(domain=it))}
+        val exclusion=when {
+            kind==MetroCaptureKind.DOORS && active.pausedAt!=null -> "PAUSED"
+            reference==null -> "NO_RAIL"
+            kind==MetroCaptureKind.CORRECTION -> "CORRECTION"
+            !MetroCatalogRevision.forRoute(preferences().network,active.route.networkVersion).stops(station,ride.line,ride.service) -> "NO_STOP"
+            active.pausedAt!=null -> "PAUSED"
+            MetroStages.control(active).phase!=MetroPhase.RIDING -> "NOT_RIDING"
+            else -> null
+        }
+        val recordedKind=if(kind==MetroCaptureKind.DOORS && active.pausedAt!=null) MetroCaptureKind.PAUSED_LOCATION else kind
+        val event=MetroCapture(active.route,station,index,ride.line,ride.direction,ride.service,recordedKind,time,domain,
+            active.pausedAt!=null,active.pausedMillis+MetroTracking.currentPauseMillis(active,time),exclusion==null,exclusion,
+            shownOffset ?: position.offset,shownEta ?: MetroEstimates.remaining(active,time,true))
+        val raw=MetroLearningCodec.encode(event); MetroLearningCodec.decode(raw,preferences().network)
+        // Same-clock repeat taps are idempotent. Revision guards cover stale UI submissions.
+        if(history.lastOrNull()?.payload!=raw) learning.insert(MetroLearningEventEntity(java.util.UUID.randomUUID().toString(),active.id,
+            Math.addExact(history.lastOrNull()?.sequence ?: -1,1),raw))
+        data.copy(sessions=data.sessions.dropLast(1)+updated)
+    }
+
     suspend fun changeDestination(id:String,revision:Long,station:String,destination:String,time:MetroTime,expected:MetroRoute?=null)=act(id,revision) {data->
         val active=requireNotNull(data.active)
         val p=preferences()
@@ -64,13 +148,19 @@ internal class MetroRepository(private val db: Arachn0deDatabase, context: Conte
             ?: error("No existe ruta disponible; se conserva el recorrido anterior.")
         if(expected!=null) require(route.steps==expected.steps && route.stops==expected.stops) {"La propuesta cambió. Revisa de nuevo el recorrido antes de confirmarlo."}
         if(active.route.copy(departure=route.departure)==route && active.control?.phase==MetroPhase.READY && active.confirmed==station) return@act data
-        data.copy(plan=route,sessions=data.sessions.dropLast(1)+MetroDestination.change(active,route,station,time))
+        val predicted=adapted(route)
+        data.copy(plan=predicted,sessions=data.sessions.dropLast(1)+MetroDestination.change(active,predicted,station,time))
     }
     suspend fun undoArrival(id:String,revision:Long,time:MetroTime):Boolean=act(id,revision) {data->
         val latest=requireNotNull(data.sessions.lastOrNull())
         if(latest.control?.undo==null) return@act data
         require(latest.control.undo.reversible) {"Ya comenzó una etapa posterior. Corrige explícitamente la estación actual."}
         require(dao.journeys().none {it.id!=id && MetroCodec.journey(it.payload,preferences().network).active!=null}) {"Otro viaje está activo; no se puede restaurar un seguimiento anterior."}
+        val events=db.metroLearningDao().events(latest.id)
+        events.lastOrNull { row ->
+            val event=MetroLearningCodec.decode(row.payload,preferences().network)
+            event.kind==MetroCaptureKind.ARRIVAL && event.time.wall==latest.control.undo.time.wall && event.time.elapsed==latest.control.undo.time.elapsed && event.time.boot==latest.control.undo.time.boot
+        }?.let {db.metroLearningDao().invalidate(it.id,"UNDONE")}
         data.copy(sessions=data.sessions.dropLast(1)+MetroStages.undoArrival(latest,time))
     }
     private suspend fun act(id: String,revision: Long,action: suspend (MetroJourneyData)->MetroJourneyData): Boolean=withContext(Dispatchers.IO) { db.withTransaction {
@@ -107,7 +197,7 @@ internal class MetroRepository(private val db: Arachn0deDatabase, context: Conte
     suspend fun remove(id: String,revision:Long?=null)=withContext(Dispatchers.IO) { db.withTransaction {
         val row=requireNotNull(dao.journey(id)) {"El viaje ya no existe."}
         require(revision==null || row.revision==revision) {"El viaje cambió. Reabre el detalle antes de eliminarlo."}
-        require(MetroCodec.journey(row.payload,preferences().network).active==null) {"Finaliza el seguimiento antes de eliminar el viaje. Finalizar conserva su registro."}
+        require(MetroCodec.journey(row.payload,preferences().network).active==null) {"Cancela el seguimiento o confirma la llegada antes de eliminar el viaje."}
         dao.delete(id)
     } }
 }

@@ -22,7 +22,7 @@ class CompactCardFactsTest {
         val pending=compactNodeFacts(a,2000,zone)
         assertTrue(pending.due && pending.today && pending.high)
         val completed=compactNodeFacts(a.copy(isCompleted=true),2000,zone)
-        assertTrue(completed.due);assertFalse(completed.today);assertFalse(completed.high)
+        assertFalse(completed.due);assertFalse(completed.today);assertFalse(completed.high)
         assertTrue(compactNodeFacts(node("b"),0,zone).empty)
         assertFalse(compactNodeFacts(a,86400000,zone).today)
     }
@@ -45,7 +45,7 @@ class CompactCardFactsTest {
         val far=node("future").copy(dueAt=3*86400000L,priority=Priority.HIGH,isCompleted=true)
         val facts=compactNodeFacts(far,0).copy(people=setOf("person"),technologies=setOf("technology"),notes=setOf("note"),tasks=setOf("task"),files=setOf("file"))
         val indicators=cardIndicators(facts)
-        assertEquals(listOf("people","technologies","notes","tasks","files","due"),indicators.map {it.name})
+        assertEquals(listOf("people","technologies","notes","tasks","files"),indicators.map {it.name})
         assertEquals(IndicatorTone.PEOPLE,indicators.first().tone)
         assertTrue(indicators.drop(1).all {it.tone==IndicatorTone.CONTENT})
     }

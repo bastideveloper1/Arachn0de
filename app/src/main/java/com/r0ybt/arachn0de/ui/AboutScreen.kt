@@ -34,8 +34,9 @@ internal fun AboutScreen(onBack: () -> Unit, repository: UpdateRepository = reme
     Surface(Modifier.fillMaxSize(), color = Arachn0deColors.Background) {
         Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(14.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Row(Modifier.fillMaxWidth()) {
-                Text("Acerca de",Modifier.weight(1f),style=MaterialTheme.typography.headlineSmall)
+                GlobalChromeActions(leading=true)
                 TextButton(onClick=onBack) {Text("Volver")}
+                Text("Acerca de",Modifier.weight(1f),style=MaterialTheme.typography.headlineSmall)
                 GlobalChromeActions()
             }
             Text("Versión instalada: ${BuildConfig.VERSION_NAME}")

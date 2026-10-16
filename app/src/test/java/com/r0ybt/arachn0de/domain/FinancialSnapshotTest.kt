@@ -24,6 +24,27 @@ class FinancialSnapshotTest {
     private val clp = Obligation(50000,"CLP")
     private val usd = Obligation(1050,"USD")
 
+    @Test fun arbitraryMonthAndSharedResponsibleFilterKeepExactPendingTotalsAndUndatedHistory() {
+        val a=Person("a","Ana"); val b=Person("b","Beto")
+        val dated=GregorianCalendar(utc).apply {clear();set(2028,1,15,12,0)}.timeInMillis
+        val nodes=listOf(node("shared",money=clp,date=dated),node("paid",money=clp,date=dated,completed=true),
+            node("usd",money=usd,date=dated),node("other-month",money=clp,date=due(10)),
+            node("no-date",money=clp),node("paid-no-date",money=clp,completed=true))
+        val people=nodes.associate {it.id to listOf(a,b)}
+        fun select(person:String?,month:CalendarMonth?)=FinancialSnapshot(fixtureTree(nodes),people,
+            FinancialSelection(FinancialPeriod.ALL,person,month),this.month,utc)
+        val filtered=select("a",CalendarMonth(2028,2))
+        assertEquals(setOf("shared","paid","usd"),filtered.tasks.map {it.id}.toSet())
+        assertEquals(BigInteger.valueOf(50000),filtered.summary.byCurrency.getValue("CLP").pendingMinor)
+        assertEquals(BigInteger.valueOf(50000),filtered.summary.byCurrency.getValue("CLP").completedMinor)
+        assertEquals(BigInteger.valueOf(1050),filtered.summary.byCurrency.getValue("USD").pendingMinor)
+        assertEquals(filtered.tasks,select("b",CalendarMonth(2028,2)).tasks)
+        assertEquals(filtered.tasks,select(null,CalendarMonth(2028,2)).tasks)
+        assertEquals(nodes.size,select(null,null).tasks.size)
+        assertEquals(BigInteger.valueOf(150000),select(null,null).summary.byCurrency.getValue("CLP").pendingMinor)
+        assertTrue(select("missing",CalendarMonth(2028,2)).tasks.isEmpty())
+    }
+
     @Test fun pendingOverviewKeepsPersonAndScopeButUsesAllAndCalendarMonthWindows() {
         val roy=Person("r","Roy",null)
         val nodes=listOf(node("root"),node("current","root",money=clp,date=due(10)),

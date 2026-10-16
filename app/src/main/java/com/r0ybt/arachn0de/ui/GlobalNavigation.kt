@@ -14,16 +14,17 @@ import androidx.compose.ui.unit.dp
 internal data class GlobalNavigation(val menu: () -> Unit, val showLock: Boolean)
 internal val LocalGlobalNavigation = staticCompositionLocalOf<GlobalNavigation?> { null }
 internal val LocalSecurityPage = staticCompositionLocalOf<(@Composable (()->Unit)->Unit)?> { null }
+internal val LocalBackupsRestored = staticCompositionLocalOf<() -> Unit> { {} }
 internal val LocalOpenSecurity = staticCompositionLocalOf<(() -> Unit)?> { null }
 
-/** Slots into the existing header, never adds a second permanent toolbar. */
-@Composable internal fun GlobalChromeActions(enabled: Boolean = true) {
+/** Existing header slots: leading menu before Back/title, trailing lock at the right edge. */
+@Composable internal fun GlobalChromeActions(enabled: Boolean = true, leading: Boolean = false) {
     val navigation = LocalGlobalNavigation.current ?: return
     Row {
-        IconButton(onClick = navigation.menu, enabled = enabled, modifier = Modifier.size(48.dp)) {
+        if(leading) IconButton(onClick = navigation.menu, enabled = enabled, modifier = Modifier.size(48.dp)) {
             Icon(Icons.Default.Menu,"Abrir menú")
         }
-        if(navigation.showLock) ProjectLockButton()
+        if(!leading && navigation.showLock) ProjectLockButton()
     }
 }
 
@@ -33,8 +34,9 @@ internal val LocalOpenSecurity = staticCompositionLocalOf<(() -> Unit)?> { null 
     Surface(Modifier.fillMaxSize()) {
         Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(14.dp)) {
             Row(Modifier.fillMaxWidth()) {
-                Text("Respaldos",Modifier.weight(1f),style=MaterialTheme.typography.titleLarge)
+                GlobalChromeActions(enabled=!busy, leading=true)
                 TextButton(enabled=!busy,onClick=onBack) {Text("Volver")}
+                Text("Respaldos",Modifier.weight(1f),style=MaterialTheme.typography.titleLarge)
                 GlobalChromeActions(enabled=!busy)
             }
             BackupSection(onRestored,onBusyChange={busy=it})
@@ -65,7 +67,7 @@ internal val LocalOpenSecurity = staticCompositionLocalOf<(() -> Unit)?> { null 
         onDispose {callback.remove()}
     }
     SideEffect {callback.isEnabled=active}
-    CompositionLocalProvider(androidx.activity.compose.LocalOnBackPressedDispatcherOwner provides owner,content=content)
+    CompositionLocalProvider(androidx.activity.compose.LocalOnBackPressedDispatcherOwner provides owner,LocalAudioFooterVisible provides (active && LocalAudioFooterVisible.current),content=content)
 }
 
 internal val LocalStoryLabels=androidx.compose.runtime.staticCompositionLocalOf<Map<String,String>> {emptyMap()}

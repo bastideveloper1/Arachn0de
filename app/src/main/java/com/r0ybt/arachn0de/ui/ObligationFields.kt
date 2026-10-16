@@ -18,8 +18,8 @@ import com.r0ybt.arachn0de.ui.theme.Arachn0deColors
 import java.util.Locale
 
 @Composable
-internal fun ObligationFields(draft: EditorDraft, enabled: Boolean) {
-    Row {
+internal fun ObligationFields(draft: EditorDraft, enabled: Boolean, showToggle: Boolean = true) {
+    if (showToggle) Row {
         Checkbox(draft.financialEnabled, onCheckedChange = {
             draft.financialEnabled = it; draft.financialRemovalConfirmed = false
         }, enabled = enabled, modifier = Modifier.testTag("obligation-enabled").semantics { contentDescription = "Obligación" })

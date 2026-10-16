@@ -1,8 +1,6 @@
 package com.r0ybt.arachn0de.ui
 
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
@@ -20,8 +18,8 @@ internal fun timeFilterLabel(value: TimeFilter): String = when (value) {
 
 @Composable
 internal fun CalendarFiltersDialog(state: CalendarFilterState, today: CalendarDay, people: List<Person>, peopleLoaded: Boolean, tags: List<Tag> = emptyList()) {
-    AlertDialog(containerColor = Arachn0deColors.Surface, onDismissRequest = { state.showFilters = false }, title = { Text("Filtros del Calendario") },
-        text = { Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    ModularPanelDialog(onDismissRequest = { state.showFilters = false }, title = { Text("Filtros del Calendario") },
+        text = { Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             CalendarFilterMenu("Tiempo", if (state.timePreset == "SELECTED") "Período seleccionado" else timeFilterLabel(TimeFilter.valueOf(state.timePreset)), "calendar-time-filter") {
                 TimeFilter.entries.forEach { period -> DropdownMenuItem(text = { Text(timeFilterLabel(period)) }, onClick = { state.preset(period, today); it() }, modifier = Modifier.testTag("calendar-time-option:${period.name}")) }
             }

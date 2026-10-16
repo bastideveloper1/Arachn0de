@@ -43,7 +43,7 @@ internal fun TaskDateIndicator(node: Node, now: Long, wrap: Boolean = false) {
     val instant = if (state == TaskTemporalState.SCHEDULED) node.startAt else node.dueAt ?: node.startAt
     val color = when (state) {
         TaskTemporalState.OVERDUE -> Arachn0deColors.Destructive
-        TaskTemporalState.UPCOMING -> SemanticColors.Upcoming
+        TaskTemporalState.UPCOMING -> com.r0ybt.arachn0de.ui.theme.semanticColor(SemanticColors.Upcoming)
         else -> Arachn0deColors.TextSecondary
     }
     Text("$label · ${formatTaskDate(checkNotNull(instant), compact = true)}", color = color, fontSize = ContentTypography.Metadata, maxLines = if (wrap) Int.MAX_VALUE else 1, overflow = TextOverflow.Ellipsis)
@@ -81,15 +81,33 @@ internal class TaskDatePickerDraft {
     }
 }
 
+private fun TaskDatePickerDraft.open(draft:EditorDraft,label:String,value:Long?) {
+    initialInstant=value ?: System.currentTimeMillis()
+    val initial=Calendar.getInstance().apply {timeInMillis=initialInstant}
+    val defaultMinute=if(draft.id==null && value==null) {
+        if(label=="Inicio") draft.defaultStartMinute else draft.defaultDueMinute
+    } else null
+    hour=defaultMinute?.div(60) ?: initial.get(Calendar.HOUR_OF_DAY)
+    minute=defaultMinute?.rem(60) ?: initial.get(Calendar.MINUTE)
+    timeStage=false;selectedDay=null;invalidLocalTime=false;field=label
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-internal fun TaskDatesEditor(draft: EditorDraft, enabled: Boolean, picker: TaskDatePickerDraft, includeStart: Boolean = true, progressive: Boolean = false) {
+internal fun TaskDatesEditor(draft: EditorDraft, enabled: Boolean, picker: TaskDatePickerDraft, includeStart: Boolean = true, progressive: Boolean = false, openImmediately: Boolean = false) {
     var field by picker::field
     var timeStage by picker::timeStage
     var selectedDay by picker::selectedDay
     var initialInstant by picker::initialInstant
     var invalidLocalTime by picker::invalidLocalTime
     val context = LocalContext.current
+    var opened by androidx.compose.runtime.saveable.rememberSaveable(draft.creationId) {mutableStateOf(false)}
+    LaunchedEffect(draft.creationId,openImmediately) {
+        if(openImmediately && !opened) {
+            opened=true
+            if(picker.field==null) picker.open(draft,"Vencimiento",draft.dueAt)
+        }
+    }
     AdaptiveFormRow((if (includeStart) listOf("Inicio" to draft.startAt, "Vencimiento" to draft.dueAt) else listOf("Vencimiento" to draft.dueAt)).map { (label, value) ->
         {
             Column {
@@ -100,14 +118,7 @@ internal fun TaskDatesEditor(draft: EditorDraft, enabled: Boolean, picker: TaskD
                 }
                 if (!progressive || active) Row(Modifier.fillMaxWidth()) {
                     TextButton(enabled = enabled, modifier = Modifier.weight(1f), onClick = {
-                        initialInstant = value ?: System.currentTimeMillis()
-                        val initial = Calendar.getInstance().apply { timeInMillis = initialInstant }
-                        val defaultMinute = if (draft.id == null && value == null) {
-                            if (label == "Inicio") draft.defaultStartMinute else draft.defaultDueMinute
-                        } else null
-                        picker.hour = defaultMinute?.div(60) ?: initial.get(Calendar.HOUR_OF_DAY)
-                        picker.minute = defaultMinute?.rem(60) ?: initial.get(Calendar.MINUTE)
-                        timeStage = false; selectedDay = null; invalidLocalTime = false; field = label
+                        picker.open(draft,label,value)
                     }) { Text("$label: ${value?.let(::formatTaskDate) ?: "Sin fecha"}") }
                     if (value != null) TextButton(enabled = enabled, onClick = {
                         if (label == "Inicio") { draft.startAt = null; if (progressive) draft.startEnabled = false } else { draft.dueAt = null; if (progressive) draft.dueEnabled = false }

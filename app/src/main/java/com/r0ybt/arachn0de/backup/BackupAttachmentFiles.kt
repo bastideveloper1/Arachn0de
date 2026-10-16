@@ -37,6 +37,11 @@ internal suspend fun verifyBackupAttachment(row: AttachmentFileEntity, file: Fil
             override fun write(b: Int) {}
             override fun write(b: ByteArray, off: Int, len: Int) {}
         }) }
+        if(row.mimeType=="audio/aac") {
+            val duration=SecureFiles.input(file).use {com.r0ybt.arachn0de.audio.AacFrames.duration(it)}
+            require(kotlin.math.abs(duration-row.durationMs)<=64) {"Duración de audio inválida."}
+            return
+        }
         val bounds = android.graphics.BitmapFactory.Options().apply { inJustDecodeBounds = true }
         SecureFiles.decoded(file, bounds)
         require(bounds.outMimeType == row.mimeType && bounds.outWidth == row.width && bounds.outHeight == row.height) { "Imagen incompatible con sus metadatos." }

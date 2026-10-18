@@ -104,7 +104,7 @@ class MvpReadinessTest {
             compose.onNodeWithText("Recursos").performScrollTo().performClick(); compose.onNodeWithText("Personas").performScrollTo().assertIsEnabled().performClick()
             compose.runOnIdle { assertTrue(openedPeople) }
             compose.onNodeWithContentDescription("Abrir menú").performClick()
-            compose.onNodeWithText("Ajustes").performScrollTo().performClick(); compose.onNodeWithText("Diseño").performScrollTo().assertIsEnabled().performClick()
+            compose.onNodeWithText("Ajustes").performScrollTo().performClick(); compose.onNodeWithText("Apariencia").performScrollTo().assertIsEnabled().performClick()
             compose.runOnIdle { assertTrue(openedSettings) }
             compose.onNodeWithContentDescription("Abrir menú").performClick()
             compose.onNodeWithContentDescription("Cerrar menú").assertIsDisplayed().performClick()

@@ -43,38 +43,46 @@ class PersonMemoryIntegralUiTest {
     private fun open() {compose.setContent {CompositionLocalProvider(LocalDensity provides Density(1f,1.3f)) {Arachn0deTheme {PeopleScreen(people,initialPersonId="person") {}}}};text("Fotografías")}
     private fun entry(id:String) {compose.onNodeWithTag("person-general").performScrollToNode(hasTestTag("memory:$id"));compose.onNodeWithTag("memory:$id").performClick();text("1/2")}
     @Config(qualifiers="w320dp-h891dp")
-    @Test fun sharedEditorAndReadOnlyHistoryPreserveIndividualDescriptionsAndPhotoOrder() {
+    @Test fun modularEntryCommitsOnlyCurrentFieldAndCancelsPhotoRemovalWithoutDeletingFiles() {
         setup();open();entry("entry0")
-        compose.onNodeWithText("Compartida 0").assertExists();compose.onNodeWithText("Texto individual histórico").assertDoesNotExist()
         compose.onNodeWithText("Editar").performClick();text("Editar entrada")
-        compose.onNodeWithText("Descripción de esta fotografía").assertDoesNotExist();compose.onNodeWithText("Esta fotografía").assertDoesNotExist()
-        compose.onNodeWithText("Descripción de la entrada").performTextReplacement("Cancelar borrador");compose.onNodeWithText("Cancelar").performClick()
+        compose.onNodeWithText("Cancelar").assertDoesNotExist()
+        compose.onNodeWithText("Guardar").assertDoesNotExist()
+        compose.onNodeWithTag("memory-field-description").performClick()
+        compose.onNodeWithTag("modular-text-field").performTextReplacement("Descartar")
+        compose.onNodeWithText("Cancelar").performClick()
         assertEquals("Compartida 0",runBlocking {app.database.personMemoryDao().memories().single().description})
-        compose.onNodeWithText("Editar").performClick();text("Editar entrada");compose.onNodeWithText("Descripción de la entrada").performTextReplacement("Compartida nueva")
-        compose.onAllNodesWithContentDescription("Mover después")[0].performScrollTo().performClick()
-        val window=org.robolectric.shadows.ShadowDialog.getLatestDialog().window!!.decorView
-        compose.runOnIdle {
-            val insets=androidx.core.view.WindowInsetsCompat.Builder().setInsets(androidx.core.view.WindowInsetsCompat.Type.ime(),androidx.core.graphics.Insets.of(0,0,0,160)).setVisible(androidx.core.view.WindowInsetsCompat.Type.ime(),true).build()
-            fun composeView(view:android.view.View):android.view.View? {
-                if(view.javaClass.simpleName=="AndroidComposeView") return view
-                if(view is android.view.ViewGroup) for(i in 0 until view.childCount) composeView(view.getChildAt(i))?.let {return it}
-                return null
-            }
-            androidx.core.view.ViewCompat.dispatchApplyWindowInsets(checkNotNull(composeView(window)),insets)
-        }
-        compose.onNodeWithText("Cancelar").assertIsDisplayed();compose.onNodeWithText("Guardar").assertIsDisplayed()
-        assertTrue(compose.onNodeWithText("Guardar").fetchSemanticsNode().boundsInRoot.bottom<=window.height-160)
-        await {runCatching {compose.onNodeWithText("Guardar").assertIsEnabled()}.isSuccess};compose.onNodeWithText("Guardar").performClick()
+        compose.onNodeWithTag("memory-field-description").performClick()
+        compose.onNodeWithTag("modular-text-field").performTextReplacement("Compartida nueva")
+        compose.onNodeWithText("Confirmar").performClick()
         await {runBlocking {app.database.personMemoryDao().memories().single().description=="Compartida nueva"}}
+        text("Editar entrada")
+        compose.onNodeWithTag("memory-field-photos").performClick()
+        compose.onAllNodesWithContentDescription("Quitar fotografía")[0].performScrollTo().performClick()
+        compose.onNodeWithTag("memory-confirm-remove").performClick()
+        compose.onNodeWithText("Cancelar").performClick()
+        assertEquals(2,runBlocking {app.database.personMemoryDao().images().size})
+        compose.onNodeWithTag("memory-field-photos").performClick()
+        compose.onAllNodesWithContentDescription("Mover después")[0].performScrollTo().performClick()
+        compose.onNodeWithText("Confirmar").performClick()
+        await {runBlocking {app.database.personMemoryDao().images().first().id=="two0"}}
+        text("Editar entrada")
+        compose.onNodeWithContentDescription("Cerrar entrada").performClick()
         val images=runBlocking {app.database.personMemoryDao().images()}
-        assertEquals("two0",images.first().id);assertEquals("Texto individual histórico",images.last().description);assertEquals("1981-01-02",images.last().date)
-        compose.onNodeWithContentDescription("Volver").performClick()
-        compose.onNodeWithTag("memory-options:entry0").performClick();compose.onNodeWithText("Textos históricos").performClick();text("Texto individual histórico")
-        compose.onNodeWithText("Fotografía 2").assertExists();compose.onAllNodes(hasSetTextAction()).assertCountEquals(0)
-        compose.onNodeWithText("Cerrar").performClick()
-        compose.onNodeWithTag("memory-options:entry0").performClick();compose.onNodeWithText("Fijar").performClick()
-        await {runBlocking {app.database.personMemoryDao().memories().single().isPinned}}
-        compose.onNodeWithContentDescription("Entrada fijada").assertExists()
+        assertEquals("Texto individual histórico",images.last().description)
+        assertEquals("1981-01-02",images.last().date)
+        val state=runBlocking {PersonMemoryState(app.database.personMemoryDao().memories(),images,app.database.attachmentDao().files(),app.database.personGalleryDao().photos())}
+        val repository=PersonMemoryRepository(app.database,app.security.current.value!!.context,app.attachmentRepository,people)
+        assertTrue(repository.file(images.last(),state).exists())
+    }
+    @Test fun horizontalPhotosAndVerticalPublicationsUseSeparateAxesAndResetPhoto() {
+        setup(2);open();entry("entry0")
+        compose.onNodeWithTag("memory-carousel").performTouchInput {swipeLeft()}
+        text("2/2");compose.onNodeWithText("Compartida 0").assertExists()
+        compose.onNodeWithTag("memory-publications").performTouchInput {swipeUp()}
+        text("Compartida 1");text("1/2")
+        compose.onNodeWithTag("memory-publications").performTouchInput {swipeDown()}
+        text("Compartida 0");text("1/2")
     }
     @Test fun longPressDragMovesEntriesAcrossColumnsAndRowsWithoutOpeningViewer() {
         setup(18);open()

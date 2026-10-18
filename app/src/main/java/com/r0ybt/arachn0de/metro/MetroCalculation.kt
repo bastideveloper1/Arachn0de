@@ -26,22 +26,23 @@ internal object MetroCalculation {
     }
     fun lines(route:MetroRoute,observations:List<MetroObservation>,net:MetroNetwork,session:MetroSession?=null,latest:MetroCaptureStatus?=null):List<String> = buildList {
         add("Tiempo estándar: ${time(route.baseMillis)}")
+        if(route.provisional!=null) add(MetroExpressTiming.description(route))
         add("Estimación adaptada: ${time(route.totalMillis)}")
         add("Ajuste aplicado: ${delta(route.totalMillis-route.baseMillis)}")
         session?.let {add("Predicción original del viaje: ${time(it.originalRoute.totalMillis)}")}
         add("Método estadístico: promedio filtrado por mediana/MAD, con inercia hacia el estándar. Ventana: ${route.prediction?.window ?: MetroLearning.DEFAULT_WINDOW} observaciones por contexto.")
         if(route.prediction==null) add("Modelo estándar fijo. No se modifica una sesión histórica al incorporar nuevas mediciones.")
         val parts=route.prediction?.parts ?: route.steps.indices.map {i->
-            val estimate=MetroLearning.estimate(route.networkVersion,listOf(route.steps[i]),observations,next=route.steps.getOrNull(i+1))
+            val estimate=MetroLearning.estimate(route,i,i+1,observations)
             val last=(estimate.accepted+estimate.discarded).maxByOrNull {it.recordedOrder}
             MetroPredictionPart(i,i+1,route.duration(i),estimate.observedMean,estimate.accepted.size,
                 estimate.discarded.groupingBy {requireNotNull(it.exclusion)}.eachCount(),last?.millis,last?.at)
         }
-        val contexts=parts.distinctBy {part->MetroLearning.context(route.networkVersion,route.steps.subList(part.first,part.end),route.steps.getOrNull(part.end))}
+        val contexts=parts.distinctBy {part->MetroLearning.context(route,part.first,part.end)}
         add("Mediciones aceptadas: ${contexts.sumOf {it.accepted}} · descartadas: ${contexts.sumOf {it.discarded.values.sum()}} (evidencia de los contextos al fijar esta predicción).")
         parts.forEach {part->
             val steps=route.steps.subList(part.first,part.end)
-            val base=steps.sumOf {it.minutes*60_000L}
+            val base=route.baseDurations.subList(part.first,part.end).sum()
             val from=net.stations.getValue(steps.first().from).name
             val to=net.stations.getValue(steps.last().to).name
             add("$from → $to · ${steps.first().line} · ${steps.first().service.name} · sentido ${steps.first().direction}")
@@ -56,7 +57,7 @@ internal object MetroCalculation {
             add("Última observación registrada: ${time(last.millis)} · ${clock(last.at)}")
             add("${if(last.exclusion in setOf("PAUSE","PAUSED")) "Tiempo registrado con pausa" else "Duración real observada"}: ${time(last.millis)} · desfase respecto del estándar: ${delta(last.millis-last.baseMillis)}")
             val index=route.steps.indices.firstOrNull {i->i+last.steps.size<=route.steps.size && route.steps.subList(i,i+last.steps.size)==last.steps}
-            val filtered=if(index==null || last.steps.isEmpty()) null else MetroLearning.estimate(route.networkVersion,last.steps,observations,next=route.steps.getOrNull(index+last.steps.size)).discarded.firstOrNull {it.id==last.id}?.exclusion
+            val filtered=if(index==null || last.steps.isEmpty()) null else MetroLearning.estimate(route,index,index+last.steps.size,observations).discarded.firstOrNull {it.id==last.id}?.exclusion
             (last.exclusion ?: filtered)?.let {add("Excluida: ${reason(it)}")}
         }
         latest?.let {status->

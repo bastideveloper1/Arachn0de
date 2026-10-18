@@ -38,7 +38,15 @@ internal fun EditorDraft.propertyValues(field:NodeProperty):List<String> = when(
     fun cancel() {focus.clearFocus();keyboard?.hide();onCancel()}
     BackHandler {if(available) cancel()}
     if(field==NodeProperty.TITLE) {
-        CorePropertyEditor("title",draft.title,{draft.title=it},available,maxHeight,::cancel,onConfirm,TitleLimits.NODE)
+        CorePropertyEditor("title",draft.title,{draft.title=it},available,maxHeight,::cancel,onConfirm,TitleLimits.NODE,multilineTitle=true)
+        return
+    }
+    if(field==NodeProperty.TAGS) {
+        val changed=draft.tagIds.toSet()!=tags.nodeIds[draft.id].orEmpty()
+        TagPanel(tags,tagRepository,draft.tagIds.toSet(),{draft.tagIds=it.toList()},enabled=available,
+            modifier=Modifier.heightIn(max=maxHeight).testTag("node-property-editor:TAGS"),
+            onCancel=::cancel,pendingSelection=changed,doneLabel=if(changed) "Guardar" else "Cerrar",
+            onClose={if(changed) {focus.clearFocus();keyboard?.hide();onConfirm()} else cancel()})
         return
     }
     val picker=rememberSaveable(draft.attachmentDraftId,saver=TaskDatePickerDraft.Saver) {TaskDatePickerDraft()}
@@ -64,7 +72,10 @@ internal fun EditorDraft.propertyValues(field:NodeProperty):List<String> = when(
                 else {focus.clearFocus();keyboard?.hide();onConfirm()}
             },modifier=Modifier.fillMaxWidth().heightIn(min=48.dp)) {Text("Confirmar")}})}) {
             when(field) {
-                NodeProperty.DESCRIPTION->AttachmentDescriptionEditor(draft,available,focusRequester=requestFocus,maxLines=8)
+                NodeProperty.DESCRIPTION->{
+                    Text(draft.title,style=MaterialTheme.typography.titleMedium,modifier=Modifier.fillMaxWidth())
+                    AttachmentDescriptionEditor(draft,available,focusRequester=requestFocus,maxLines=8)
+                }
                 NodeProperty.DATES->TaskDatesEditor(draft,available,picker,progressive=true)
                 NodeProperty.PAYMENT->ObligationFields(draft,available)
                 NodeProperty.PRIORITY->{
@@ -73,10 +84,7 @@ internal fun EditorDraft.propertyValues(field:NodeProperty):List<String> = when(
                         label={Text(if(prioritized) "Prioritario" else "Común")})
                 }
                 NodeProperty.PEOPLE->ResponsiblePickerBody(draft.creationId,people,draft.responsibleIds,!available) {draft.responsibleIds=it}
-                NodeProperty.TAGS->{
-                    TextButton(enabled=available,onClick={draft.tagIds=emptyList()}) {Text("Quitar etiqueta")}
-                    TagPickerBody(tags.tags,draft.tagIds.toSet(),{draft.tagIds=it.toList()},repository=tagRepository,enabled=available)
-                }
+                NodeProperty.TAGS->Unit
                 NodeProperty.TECHNOLOGIES->TechnologyPickerBody(catalog,draft.technologyIds,available) {draft.technologyIds=it}
                 NodeProperty.TITLE->Unit
             }

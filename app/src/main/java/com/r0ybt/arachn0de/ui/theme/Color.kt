@@ -26,6 +26,7 @@ object Arachn0deColors {
     val BackgroundEnd: Color @Composable get() = LocalAppearancePalette.current.end
     val Scrim: Color @Composable get() = LocalAppearancePalette.current.scrim
     val Surface: Color @Composable get() = LocalAppearancePalette.current.surface
+    val Panel: Color @Composable get() = LocalAppearancePalette.current.panel
     val SurfaceRaised: Color @Composable get() = LocalAppearancePalette.current.raised
     val TextPrimary: Color @Composable get() = LocalAppearancePalette.current.text
     val Disabled: Color @Composable get() = if(LocalAppearancePalette.current.light) LocalAppearancePalette.current.muted else BlackWhite90.Inactive

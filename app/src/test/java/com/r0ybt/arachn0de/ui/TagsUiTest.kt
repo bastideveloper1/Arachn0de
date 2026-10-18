@@ -19,6 +19,7 @@ class TagsUiTest {
         var selected by mutableStateOf(emptySet<String>())
         compose.setContent { TagSelector((0 until 200).map { Tag("$it","Tag $it","tag $it") },selected,{ selected=it },single=true) }
         compose.onNodeWithText("Etiquetas: Todas").performClick()
+        compose.onNodeWithText("Buscar").performClick()
         compose.onNode(hasSetTextAction()).performTextInput("tag 199")
         compose.onNodeWithText("Tag 199").performClick()
         compose.runOnIdle { assertEquals(setOf("199"),selected) }
@@ -39,6 +40,24 @@ class TagsUiTest {
         compose.runOnIdle {assertTrue(selected.isEmpty())}
         compose.onNodeWithText("Listo").assertIsDisplayed().performClick()
         compose.onNodeWithText("Buscar o crear etiqueta").assertDoesNotExist()
+    }
+    @Test fun legacyAssociationsStayUntouchedUntilAnExplicitChoice() {
+        var selected by mutableStateOf(setOf("a","b"))
+        val tags=listOf(Tag("a","Alpha","alpha"),Tag("b","Beta","beta"))
+        compose.setContent {com.r0ybt.arachn0de.ui.theme.Arachn0deTheme {
+            TagSelector(tags,selected,{selected=it})
+        }}
+        compose.onNodeWithText("Etiquetas: Alpha, Beta").performClick()
+        compose.onNodeWithTag("legacy-tags").assertIsDisplayed()
+        compose.onNodeWithTag("tag-choice:a").assertIsSelected()
+        compose.onNodeWithTag("tag-choice:b").assertIsSelected()
+        compose.onNodeWithText("Eliminar").assertDoesNotExist()
+        compose.onNodeWithText("Listo").performClick()
+        compose.runOnIdle {assertEquals(setOf("a","b"),selected)}
+        compose.onNodeWithText("Etiquetas: Alpha, Beta").performClick()
+        compose.onNodeWithTag("tag-choice:b").performClick()
+        compose.runOnIdle {assertEquals(setOf("b"),selected)}
+        compose.onNodeWithTag("legacy-tags").assertDoesNotExist()
     }
     @Test fun selectionAndScopeSurviveRecreation() {
         val restorer = StateRestorationTester(compose)

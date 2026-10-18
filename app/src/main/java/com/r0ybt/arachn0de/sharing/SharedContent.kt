@@ -33,33 +33,29 @@ internal data class SharedContent(val title:String,val description:String,val im
         }
         fun read(intent:Intent):SharedContent {
             require(intent.action==Intent.ACTION_SEND) {"Solo se admite compartir un elemento."}
-            val mime=intent.type?.lowercase(java.util.Locale.ROOT)
-            require(mime in setOf("text/plain","image/png","image/jpeg")) {"Formato no compatible. Comparte texto, PNG o JPEG."}
-            val originalSubject=intent.getCharSequenceExtra(Intent.EXTRA_SUBJECT)?.toString().orEmpty()
-            val extraTitle=if(mime=="text/plain") intent.getCharSequenceExtra(Intent.EXTRA_TITLE)?.toString().orEmpty() else ""
-            val subject=originalSubject.ifBlank {extraTitle}
-            val text=intent.getCharSequenceExtra(Intent.EXTRA_TEXT)?.toString().orEmpty()
-            val bytes=Charsets.UTF_8.newEncoder().encode(CharBuffer.wrap(originalSubject+extraTitle+text)).remaining()
-            require(bytes<=TEXT_BYTES) {"El texto compartido supera 64 KiB."}
-            val stream=IntentCompat.getParcelableExtra(intent,Intent.EXTRA_STREAM,Uri::class.java)
+            val rawSubject=intent.getCharSequenceExtra(Intent.EXTRA_SUBJECT)?.toString().orEmpty().ifBlank {intent.getCharSequenceExtra(Intent.EXTRA_TITLE)?.toString().orEmpty()}
             val clips=intent.clipData
-            require(clips==null || clips.itemCount<=1) {"Solo se admite una imagen por envío."}
-            val clipUri=clips?.takeIf {it.itemCount==1}?.getItemAt(0)?.uri
-            require(stream==null || clipUri==null || stream==clipUri) {"El envío contiene imágenes diferentes."}
-            val image=stream ?: clipUri
-            if(mime=="text/plain") require(image==null) {"El envío de texto contiene un adjunto no admitido."}
-            else require(image!=null && image.scheme=="content") {"La imagen compartida no está disponible mediante una URI segura."}
-            require(subject.isNotBlank() || text.isNotBlank() || image!=null) {"El envío está vacío."}
-            if(mime=="text/plain") {
-                val url=link(text) ?: link(subject)
-                if(url!=null) return SharedContent(sharedTitle(subject,text,url),url,null,linkNote=true)
+            val rawText=intent.getCharSequenceExtra(Intent.EXTRA_TEXT)?.toString().orEmpty().ifBlank {
+                (0 until (clips?.itemCount ?: 0)).mapNotNull {clips?.getItemAt(it)?.text?.toString()}.distinct().joinToString("\n")
             }
-            val source=subject.trim().takeIf {it.isNotEmpty()} ?: text.lineSequence().firstOrNull {it.isNotBlank()}?.trim()
-                ?: "Imagen compartida"
-            val title=source.substring(0,source.offsetByCodePoints(0,minOf(TitleLimits.NODE,source.codePointCount(0,source.length))))
-            val retainSubject=TitleLimits.count(subject)>TitleLimits.NODE || (text.isEmpty() && subject.contains(Regex("https?://",RegexOption.IGNORE_CASE)))
-            val description=if(retainSubject && subject !in text) subject+(if(text.isEmpty()) "" else "\n\n"+text) else text
-            return SharedContent(title,description,image)
+            val bytes=Charsets.UTF_8.newEncoder().encode(CharBuffer.wrap(rawSubject+rawText)).remaining()
+            val subject=cleanMetadata(rawSubject)
+            val text=cleanMetadata(rawText)
+            require(bytes<=TEXT_BYTES) {"El texto compartido supera 64 KiB."}
+            require(subject.isNotBlank() || text.isNotBlank()) {"Solo se admiten textos y enlaces; no imágenes ni audios."}
+            require(!(rawText.isBlank() && intent.type?.startsWith("text/")!=true && subject.matches(Regex("""(?i)[^/\\]+\.(?:png|jpe?g|gif|webp|heic|mp3|m4a|wav|ogg|aac|opus)""")))) {"Solo se admiten textos y enlaces; no imágenes ni audios."}
+            val source=subject.trim().ifBlank {text.lineSequence().firstOrNull {it.isNotBlank()}?.trim().orEmpty()}
+            val url=link(text) ?: link(subject)
+            val title=if(url!=null) sharedTitle(subject,text,url) else shortTitle(source)
+            val retainSubject=TitleLimits.count(subject)>TitleLimits.NODE || link(subject)!=null || (text.isBlank() && subject!=title)
+            val existingUrls=web.findAll(text).map {it.value}.toSet()
+            val extraSubject=web.replace(subject) {if(it.value in existingUrls) "" else it.value}.trim()
+            val body=if(retainSubject && extraSubject.isNotBlank() && subject !in text) extraSubject+(if(text.isBlank()) "" else "\n\n"+text) else text
+            // No stream or clip URI is read: new external captures are textual notes.
+            return SharedContent(title,body,null,linkNote=true)
         }
+        internal fun cleanMetadata(text:String):String=Regex(
+            """(?im)^[ \t]*\[(?:Imagen|Audio):[ \t]*[^\]\r\n]+\.(?:png|jpe?g|gif|webp|heic|mp3|m4a|wav|ogg|aac|opus)\][ \t]*(?:\r?\n|$)"""
+        ).replace(text,"")
     }
 }

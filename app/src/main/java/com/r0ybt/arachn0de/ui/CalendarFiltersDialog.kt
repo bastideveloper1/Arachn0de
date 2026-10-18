@@ -17,7 +17,7 @@ internal fun timeFilterLabel(value: TimeFilter): String = when (value) {
 }
 
 @Composable
-internal fun CalendarFiltersDialog(state: CalendarFilterState, today: CalendarDay, people: List<Person>, peopleLoaded: Boolean, tags: List<Tag> = emptyList()) {
+internal fun CalendarFiltersDialog(state: CalendarFilterState, today: CalendarDay, people: List<Person>, peopleLoaded: Boolean, tags: List<Tag> = emptyList(), specialPreferences:com.r0ybt.arachn0de.calendar.CalendarSpecialPreferences?=null, specialCatalog:com.r0ybt.arachn0de.calendar.CalendarSpecialDates?=null) {
     ModularPanelDialog(onDismissRequest = { state.showFilters = false }, title = { Text("Filtros del Calendario") },
         text = { Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             CalendarFilterMenu("Tiempo", if (state.timePreset == "SELECTED") "Período seleccionado" else timeFilterLabel(TimeFilter.valueOf(state.timePreset)), "calendar-time-filter") {
@@ -32,6 +32,7 @@ internal fun CalendarFiltersDialog(state: CalendarFilterState, today: CalendarDa
             }
             PrioritySelector(state.priority, { state.priority = it }, filter = true)
             TagSelector(tags, setOfNotNull(state.tagId), { state.tagId = it.firstOrNull() }, single = true)
+            if(specialPreferences!=null && specialCatalog!=null) CalendarSpecialSettings(specialPreferences,specialCatalog)
             Text("Los filtros se combinan: tiempo, persona y estado deben coincidir.", style = MaterialTheme.typography.bodySmall)
             TextButton(onClick = { state.priority = null; state.tagId = null; state.personId = null; state.completion = CompletionFilter.ALL }, modifier = Modifier.testTag("calendar-clear-filters")) { Text("Todas las personas · Todos los estados") }
         } }, confirmButton = { TextButton(onClick = { state.showFilters = false }) { Text("Listo") } })

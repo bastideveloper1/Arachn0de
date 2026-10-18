@@ -13,7 +13,6 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
-import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.compose.material.icons.filled.ArrowUpward
 import androidx.compose.material.icons.filled.ArrowDownward
@@ -94,8 +93,8 @@ internal fun TechnologyLabels(assigned:List<TechnologyEntity>,compact:Boolean=fa
 
 @Composable
 private fun TechnologyWideDialog(title:String,onDismiss:()->Unit,fullscreen:Boolean=false,content:@Composable ColumnScope.()->Unit) {
-    Dialog(onDismissRequest=onDismiss,properties=DialogProperties(usePlatformDefaultWidth=false)) {
-        Surface(if(fullscreen) Modifier.fillMaxSize().safeDrawingPadding() else Modifier.fillMaxWidth().fillMaxHeight(.9f).safeDrawingPadding().padding(12.dp),shape=if(fullscreen) androidx.compose.ui.graphics.RectangleShape else RoundedCornerShape(16.dp),color=Arachn0deColors.Surface) {
+    BottomModulesDialog(onDismissRequest=onDismiss,properties=DialogProperties(usePlatformDefaultWidth=false)) {
+        Surface(if(fullscreen) Modifier.fillMaxSize().safeDrawingPadding() else Modifier.fillMaxWidth().fillMaxHeight(.9f).safeDrawingPadding(),shape=if(fullscreen) androidx.compose.ui.graphics.RectangleShape else RoundedCornerShape(16.dp),color=Arachn0deColors.Surface) {
             Column(Modifier.padding(if(fullscreen) 16.dp else 12.dp),verticalArrangement=Arrangement.spacedBy(if(fullscreen) 12.dp else 8.dp)) {
                 Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically) {
                     Text(title,Modifier.weight(1f),style=MaterialTheme.typography.titleLarge)

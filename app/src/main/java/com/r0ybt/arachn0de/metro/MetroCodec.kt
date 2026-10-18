@@ -55,14 +55,22 @@ internal object MetroCodec {
     }
     private fun JSONObject.fields(vararg expected: String) { require(keys().asSequence().all { it in expected }) }
     private fun route(r: MetroRoute) = obj("network" to r.networkVersion,"stops" to JSONArray(r.stops),"express" to r.express,"steps" to JSONArray(r.steps.map { s ->
-        obj("from" to s.from,"to" to s.to,"line" to s.line,"direction" to s.direction,"service" to s.service.name,"kind" to s.kind.name,"nextLine" to s.nextLine) })).apply {r.departure?.let {put("departure",it)};r.prediction?.let {put("prediction",MetroPredictionCodec.encode(it))}}
+        obj("from" to s.from,"to" to s.to,"line" to s.line,"direction" to s.direction,"service" to s.service.name,"kind" to s.kind.name,"nextLine" to s.nextLine) })).apply {
+            r.provisional?.let {put("expressTiming",obj("version" to 1,"baseMillis" to JSONArray(it)))}
+            r.departure?.let {put("departure",it)};r.prediction?.let {put("prediction",MetroPredictionCodec.encode(it))}}
     private fun route(o: JSONObject, snapshot: MetroNetwork, adaptive:Boolean): MetroRoute {
         val net = MetroCatalogRevision.forRoute(snapshot,o.string("network"))
         require(adaptive || !o.has("prediction"))
-        o.fields("network","stops","express","steps",*(if(o.has("departure")) arrayOf("departure") else emptyArray()),*(if(adaptive) arrayOf("prediction") else emptyArray()))
+        o.fields("network","stops","express","steps","expressTiming",*(if(o.has("departure")) arrayOf("departure") else emptyArray()),*(if(adaptive) arrayOf("prediction") else emptyArray()))
         val r=MetroRoute(o.string("network"),strings(o.getJSONArray("stops")),o.bool("express"),objects(o.getJSONArray("steps")).map { s ->
             s.fields("from","to","line","direction","service","kind","nextLine")
-            MetroStep(s.string("from"),s.string("to"),s.string("line"),s.int("direction"),MetroService.valueOf(s.string("service")),MetroStepKind.valueOf(s.string("kind")),s.string("nextLine")) },if(o.has("departure")) o.long("departure") else null,if(o.has("prediction")) MetroPredictionCodec.decode(o.getJSONObject("prediction")) else null)
+            MetroStep(s.string("from"),s.string("to"),s.string("line"),s.int("direction"),MetroService.valueOf(s.string("service")),MetroStepKind.valueOf(s.string("kind")),s.string("nextLine")) },if(o.has("departure")) o.long("departure") else null,if(o.has("prediction")) MetroPredictionCodec.decode(o.getJSONObject("prediction")) else null,
+            if(o.has("expressTiming")) o.getJSONObject("expressTiming").let {timing->
+                require(timing.keys().asSequence().toSet()==setOf("version","baseMillis") && timing.int("version")==1)
+                val values=timing.getJSONArray("baseMillis")
+                (0 until values.length()).map {i->val v=values.get(i);require(v is Int || v is Long);(v as Number).toLong()}
+            } else null)
+        r.provisional?.let {require(r.usedExpress && it==r.steps.map {step->MetroExpressTiming.base(net,step)}) {"Base provisional expresa inválida."}}
         MetroEstimates.validate(r)
         require(r.departure==null || r.departure in 0..Long.MAX_VALUE-maxOf(r.baseMillis,r.totalMillis) && r.express)
         require(!mixed(r) || r.departure!=null)
@@ -95,7 +103,7 @@ internal object MetroCodec {
         }
         if(r.departure!=null) {
             var wall=r.departure
-            require(r.steps.all {step->val valid=MetroSchedule().permits(step,wall);wall+=step.minutes*60_000L;valid}) {"Servicio incompatible con el horario de referencia de la ruta."}
+            require(r.steps.mapIndexed {index,step->val valid=MetroSchedule().permits(step,wall);wall+=r.baseDurations[index];valid}.all {it}) {"Servicio incompatible con el horario de referencia de la ruta."}
         }
         require(r.steps.filter { it.kind==MetroStepKind.WAYPOINT }.map { it.to }==r.stops.drop(1).dropLast(1))
         return r
@@ -104,12 +112,18 @@ internal object MetroCodec {
     private fun mixed(r:MetroRoute)=r.express && r.steps.any {it.service==MetroService.NORMAL && it.line in setOf("L2","L4","L5")}
     private fun adaptive(s:MetroSession):Boolean = s.route.prediction!=null || s.originalRoute.prediction!=null || s.routeHistory.any {it.prediction!=null} || s.routeArchives.any(::adaptive) || s.control?.undo?.previous?.let(::adaptive)==true
     private fun cancelled(s:MetroSession):Boolean = s.cancelled || s.routeArchives.any(::cancelled) || s.control?.undo?.previous?.let(::cancelled)==true
+    private fun hasExpressTiming(value:Any?):Boolean = when(value) {
+        is JSONObject->value.has("expressTiming") || value.keys().asSequence().any {hasExpressTiming(value.get(it))}
+        is JSONArray->(0 until value.length()).any {hasExpressTiming(value.get(it))}
+        else->false
+    }
     fun journey(j: MetroJourneyData):String = obj("version" to if(j.sessions.any(::cancelled)) 7 else if(j.plan.prediction!=null || j.sessions.any(::adaptive)) 6 else if(scheduled(j.plan) || j.sessions.any {s->scheduled(s.route) || scheduled(s.originalRoute) || s.routeHistory.any(::scheduled)}) 5 else 4,"plan" to route(j.plan),"sessions" to JSONArray(j.sessions.map { s ->
         obj("routeArchives" to JSONArray(s.routeArchives.map {a->JSONObject(journey(MetroJourneyData(a.route,listOf(a))))}),"control" to MetroControlCodec.encode(s.control),"id" to s.id,"route" to route(s.route),"originalRoute" to route(s.originalRoute),"personId" to s.personId,"startElapsed" to s.startElapsed,"startBoot" to s.startBoot,"pausedElapsed" to s.pausedElapsed,"pausedBoot" to s.pausedBoot,"realMillis" to s.realMillis,"routeHistory" to JSONArray(s.routeHistory.map { route(it) }),"historyElapsedTrusted" to s.historyElapsedTrusted,"automatic" to s.automatic,"start" to s.start,"anchorWall" to s.anchorWall,"anchorElapsed" to s.anchorElapsed,"boot" to s.boot,"offset" to s.offset,
             "pausedAt" to s.pausedAt,"pausedMillis" to s.pausedMillis,"ended" to s.ended,"confirmed" to s.confirmed,"uncertain" to s.uncertain,
-            "events" to JSONArray(s.events.map { e->obj("kind" to e.kind,"at" to e.at,"offset" to e.offset,"station" to e.station) })) })).toString()
+            "events" to JSONArray(s.events.map { e->obj("kind" to e.kind,"at" to e.at,"offset" to e.offset,"station" to e.station) })) })).apply {if(hasExpressTiming(this)) put("version",8)}.toString()
     fun journey(raw: String, net: MetroNetwork,allowUndo:Boolean=true,allowArchives:Boolean=true): MetroJourneyData {
-        val o=boundedObject(raw); val version=o.int("version"); require(version in 1..7) {"Versión de viaje Metro no compatible."};o.fields("version","plan","sessions")
+        val o=boundedObject(raw); val version=o.int("version"); require(version in 1..8) {"Versión de viaje Metro no compatible."};o.fields("version","plan","sessions")
+        require(version>=8 || !hasExpressTiming(o)) {"El modelo expreso requiere viaje v8."}
         val j=MetroJourneyData(route(o.getJSONObject("plan"),net,version>=6),objects(o.getJSONArray("sessions")).map { s->
             require(version<3 || s.has("control"));require(version<4 || s.has("routeArchives"))
             s.fields("id","route","originalRoute","personId","start","anchorWall","anchorElapsed","boot","offset","pausedAt","pausedMillis","ended","confirmed","uncertain","events","startElapsed","startBoot","pausedElapsed","pausedBoot","realMillis","routeHistory","historyElapsedTrusted",*((if(version>=2) arrayOf("automatic") else emptyArray())+(if(version>=3) arrayOf("control") else emptyArray())+(if(version>=4) arrayOf("routeArchives") else emptyArray())))

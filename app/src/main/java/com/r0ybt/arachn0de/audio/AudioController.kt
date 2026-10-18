@@ -14,12 +14,15 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.sync.Mutex
 import java.io.File
 
-internal data class AudioState(val recording:Boolean=false,val paused:Boolean=false,val durationMs:Long=0,val fileId:String?=null,val owner:String?=null,val title:String="Audio",val positionMs:Long=0,val error:String?=null,val loading:Boolean=false) {
+internal fun shouldPauseAudioForFocus(change:Int,recording:Boolean) = change<=0 &&
+    !(recording && change==AudioManager.AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK)
+
+internal data class AudioState(val recording:Boolean=false,val paused:Boolean=false,val durationMs:Long=0,val fileId:String?=null,val owner:String?=null,val title:String="Audio",val positionMs:Long=0,val error:String?=null,val loading:Boolean=false,
+    val recordingLevels:List<Float> = listOf(0f,0f,0f,0f)) {
     val visible get()=recording || fileId!=null
 }
 internal class AudioController(private val base:Context,private val session:VaultSession) {
     val state=MutableStateFlow(AudioState())
-    val editorBarHosts=MutableStateFlow(0)
     val drafts=AudioDraftStore(session.context,session.database)
     private val scope=CoroutineScope(SupervisorJob()+Dispatchers.Main.immediate+CoroutineExceptionHandler {_,_->state.value=state.value.copy(error="La operación de audio no pudo completarse. El material recuperable se conserva.")})
     private val operations=Mutex()
@@ -36,7 +39,7 @@ internal class AudioController(private val base:Context,private val session:Vaul
         private set
     @Volatile private var activeDraft:String?=null
     private val manager=base.getSystemService(AudioManager::class.java)
-    private val focus=AudioManager.OnAudioFocusChangeListener {change->if(change<=0) scope.launch {pause()}}
+    private val focus=AudioManager.OnAudioFocusChangeListener {change->if(shouldPauseAudioForFocus(change,state.value.recording)) scope.launch {pause()}}
     private var request:AudioFocusRequest?=null
     val active get()=state.value.let {it.recording || (it.fileId!=null && (!it.paused || it.loading))}
     val canToggle get()=!isClosed && if(state.value.recording) capture!=null else player!=null && prepareJob?.isActive!=true
@@ -86,7 +89,8 @@ internal class AudioController(private val base:Context,private val session:Vaul
                 require(acquireFocus()) {"El micrófono/audio está ocupado."}
                 val id=withContext(Dispatchers.IO) {com.r0ybt.arachn0de.data.repository.AttachmentRepository.fileOperations.withLock {drafts.begin(owner) {activeDraft=it}}};activeDraft=id
                 if(saving) return@launch
-                val engine=AudioCapture(drafts,id,progress={ms->state.update {it.copy(durationMs=ms)}},interrupted={state.value=state.value.copy(paused=true,error="Android ha interrumpido el micrófono. El audio anterior se conserva; continúa cuando esté disponible.")});capture=engine
+                val engine=AudioCapture(drafts,id,progress={ms->state.update {it.copy(durationMs=ms)}},interrupted={state.value=state.value.copy(paused=true,error="Android ha interrumpido el micrófono. El audio anterior se conserva; continúa cuando esté disponible.")},
+                    levels={values->state.update {if(it.recording && !it.paused) it.copy(recordingLevels=values) else it}});capture=engine
                 state.value=AudioState(recording=true,owner=owner,title=node.title)
                 engine.run()
                 if(engine.limitReached) state.value=state.value.copy(error="Se alcanzó el límite existente de 20 MiB por adjunto. La grabación se finalizó y se conserva.")

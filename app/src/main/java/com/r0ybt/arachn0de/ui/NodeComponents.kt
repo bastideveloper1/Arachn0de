@@ -91,7 +91,7 @@ internal fun NodeProgressCard(progress: NodeProgress) {
     val pending = progress.total - progress.completed
     val progressFraction = if (progress.total == 0) 0f else progress.percentage / 100f
 
-    Card(
+    GeneralCard(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(8.dp),
         colors = CardDefaults.cardColors(containerColor = Arachn0deColors.Surface),
@@ -106,13 +106,13 @@ internal fun NodeProgressCard(progress: NodeProgress) {
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(
-                    text = "Progreso",
+                    text = if(LocalBashPresentation.current) "progress=" else "Progreso",
                     color = Arachn0deColors.TextSecondary,
                     fontSize = 12.sp,
                 )
                 Spacer(modifier = Modifier.width(8.dp))
                 Text(
-                    text = "${progress.percentage}% · $pending de ${progress.total} pendientes",
+                    text = if(LocalBashPresentation.current) "${progress.percentage}% pending=$pending/${progress.total}" else "${progress.percentage}% · $pending de ${progress.total} pendientes",
                     color = Arachn0deColors.TextPrimary,
                     fontSize = 12.sp,
                     fontWeight = FontWeight.SemiBold,
@@ -171,7 +171,7 @@ internal fun NodeCard(
     stateBusy: Boolean = false,
     metroRouteLabel: String? = null,
     showOptions: Boolean = true,
-    titleMaxLines: Int = Int.MAX_VALUE,
+    titleMaxLines: Int = 2,
     navigationTool: ManagementToolVisual? = null,
     footer: (@Composable ()->Unit)? = null,
 ) {
@@ -245,9 +245,14 @@ internal fun NodeCard(
     val checkEnabled = !stateBusy && (sprintPhase == null || !sprintFinal)
     val checkColors = completionControlColors(sprintPhase != null, node.isCompleted, checkEnabled)
     val noPending = node.isStructural && progress != null && !progress.hasPending
+    val compactIdentity = !selecting && !canToggleComplete && (node.isStructural || (navigationTool==null && node.purpose==NodePurpose.NOTE))
+    val bashCursor=rememberBashTextCursor()
+    var titleLineCenter by remember {mutableStateOf(0)}
+    val titleIconCenter=with(androidx.compose.ui.platform.LocalDensity.current) {(HierarchyCardIconSize/2).roundToPx()}
     val leadingColumnWidth = when {
         selecting || canToggleComplete -> 48.dp
-        node.purpose == NodePurpose.NOTE || node.isStructural -> 36.dp
+        node.isStructural -> HierarchyCardIconSize
+        node.purpose == NodePurpose.NOTE -> if(compactIdentity) HierarchyCardIconSize else 36.dp
         else -> 0.dp
     }
     val borderColor = when (sprintPhase) {
@@ -260,14 +265,13 @@ internal fun NodeCard(
     }
     val borderWidth = if (sprintPhase == WorkState.DOING) 2.dp else 1.dp
     val rowAlpha = if (node.isCompleted || noPending) 0.92f else 1f
-    var tagHeight by remember {mutableStateOf(24.dp)}
-    val tagDensity = androidx.compose.ui.platform.LocalDensity.current
 
-    Card(
+    GeneralCard(
+        bashEntry = true,
         modifier = modifier
             .fillMaxWidth()
             .alpha(rowAlpha)
-            .border(borderWidth, borderColor, RoundedCornerShape(8.dp))
+            .then(if(LocalBashPresentation.current) Modifier else Modifier.border(borderWidth, borderColor, RoundedCornerShape(8.dp)))
             .zIndex(if (dragging) 1f else 0f)
             .semantics { onSelect?.let { select -> onLongClick("Seleccionar") { select(); true } }; this.selected = selected; if(selecting) stateDescription = if(selected) "Seleccionado" else "No seleccionado" }
             .clickable(onClick = if(selecting) ({ onSelect?.invoke(); Unit }) else onOpen),
@@ -276,23 +280,26 @@ internal fun NodeCard(
     ) {
         Box(Modifier.fillMaxWidth()) {
             Column(Modifier.fillMaxWidth()) {
+                CompactCardHeader(if(tags.size==1) tags else emptyList()) {
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .heightIn(min=72.dp)
+                        .heightIn(min=if(LocalBashPresentation.current) 48.dp else CompactCardMinHeight)
                         .padding(horizontal = 12.dp, vertical = 8.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     if (selecting || canToggleComplete) Box(Modifier.size(48.dp)) {if(node.isStructural && node.isPinned) Icon(Icons.Default.PushPin,"Capa fijada",Modifier.size(14.dp).align(Alignment.BottomEnd),tint=Arachn0deColors.TextSecondary)}
                     else if(node.isStructural) {
-                        Box(Modifier.size(48.dp)) {
-                            OfficialIcon(R.drawable.bw90_layer,"Capa",size=48.dp)
+                        Box(Modifier.width(HierarchyCardIconSize).height(48.dp).alignBy {titleIconCenter},contentAlignment=Alignment.TopCenter) {
+                            HierarchyCardIcon(R.drawable.bw90_layer,"Capa")
                             if(node.isPinned) Icon(Icons.Default.PushPin,"Capa fijada",Modifier.size(14.dp).align(Alignment.BottomEnd).testTag("node-pin:${node.id}"),tint=Arachn0deColors.TextSecondary)
                         }
                     } else if (navigationTool != null) {
                         LucideIcon(navigationTool.icon, contentDescription=null, tint=MaterialTheme.colorScheme.primary, modifier=Modifier.size(36.dp))
                     } else if (node.purpose == NodePurpose.NOTE) {
-                        NoteContentIcon(node.description.isNotBlank(),"Nota",Modifier.size(36.dp),if(node.description.isNotBlank()) Arachn0deColors.TextPrimary else Arachn0deColors.TextSecondary)
+                        Box(Modifier.size(HierarchyCardIconSize).alignBy {titleIconCenter}) {
+                            NoteContentIcon(node.description.isNotBlank(),"Nota",Modifier.size(HierarchyCardIconSize),if(node.description.isNotBlank()) Arachn0deColors.TextPrimary else Arachn0deColors.TextSecondary)
+                        }
                     } else if (node.isStructural) {
                         Image(
                             painter = painterResource(id = R.drawable.bw90_layer),
@@ -302,23 +309,24 @@ internal fun NodeCard(
                         )
                     }
 
-                    Spacer(modifier = Modifier.width(12.dp))
+                    Spacer(modifier = Modifier.width(if(compactIdentity) 8.dp else 12.dp))
 
                     Column(
-                        modifier = Modifier.weight(1f).alignBy(CardMetadataAxis),
+                        modifier = Modifier.weight(1f).alignBy(if(compactIdentity) CardTitleAxis else CardMetadataAxis),
                     ) {
                         Text(
-                            text = com.r0ybt.arachn0de.data.repository.storyDisplayTitle(node.id,node.title,LocalStoryLabels.current),
+                            text = if(LocalBashPresentation.current) bashListing(bashFileName(com.r0ybt.arachn0de.data.repository.storyDisplayTitle(node.id,node.title,LocalStoryLabels.current),node.purpose),node.isStructural) else androidx.compose.ui.text.AnnotatedString(com.r0ybt.arachn0de.data.repository.storyDisplayTitle(node.id,node.title,LocalStoryLabels.current)),
                             color = Arachn0deColors.PathHighlight,
                             fontSize = ContentTypography.CardTitle,
-                            style = TextStyle(lineHeight = ContentTypography.CardTitleLine, platformStyle = PlatformTextStyle(includeFontPadding = false)),
+                            style = TextStyle(fontFamily=if(LocalBashPresentation.current) androidx.compose.ui.text.font.FontFamily.Monospace else null,lineHeight = ContentTypography.CardTitleLine, platformStyle = PlatformTextStyle(includeFontPadding = false)),
                             fontWeight = FontWeight.SemiBold,
-                            maxLines = titleMaxLines,
+                            maxLines = if(LocalBashPresentation.current) Int.MAX_VALUE else titleMaxLines,
                             overflow = TextOverflow.Ellipsis,
                             textDecoration = if (node.isCompleted) TextDecoration.LineThrough else null,
+                            modifier=Modifier.testTag("node-title:${node.id}").then(bashCursor.modifier).cardTitleAxis(titleLineCenter),
+                            onTextLayout={bashCursor.layout=it;titleLineCenter=((it.getLineTop(0)+it.getLineBottom(0))/2).toInt()},
                         )
 
-                        if (noPending && navigationTool==null) Text("Sin pendientes", color = Arachn0deColors.TextSecondary, fontSize = 12.sp)
                         if (onRecurrence != null) TextButton(onClick = onRecurrence) { Text("↻ Recurrencia", color = Arachn0deColors.Primary, fontSize = 12.sp) }
                         navigationTool?.let {Text(it.description,style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)}
 
@@ -331,30 +339,22 @@ internal fun NodeCard(
                         if(node.isStructural && (attention?.overdue ?: 0)>0) AttentionIndicator(com.r0ybt.arachn0de.domain.model.AttentionSummary(overdue=attention!!.overdue))
 
 
-                        if (node.isStructural && progress != null) {
+                        if (node.isStructural && progress != null && progress.hasPending) {
                             Spacer(modifier = Modifier.height(6.dp))
-                            if (progress.state == NodeProgressState.NO_WORK) {
-                                Text(
-                                    text = layerContentMessage(hasChildren, progress) ?: "No hay tareas por realizar",
-                                    color = Arachn0deColors.TextSecondary,
-                                    fontSize = ContentTypography.SmallMetadata,
-                                )
-                            } else {
-                                Text(
-                                    text = "${progress.percentage}% · ${progress.total - progress.completed} de ${progress.total} pendientes",
-                                    color = Arachn0deColors.TextSecondary,
-                                    fontSize = ContentTypography.SmallMetadata,
-                                    fontWeight = FontWeight.SemiBold,
-                                )
-                                Spacer(modifier = Modifier.height(6.dp))
-                                androidx.compose.material3.LinearProgressIndicator(
-                                    progress = { progress.percentage / 100f },
-                                    modifier = Modifier.fillMaxWidth().height(4.dp),
-                                    color = Arachn0deColors.PathHighlight,
-                                    trackColor = Arachn0deColors.ControlSurface,
-                                )
-                            }
-                        } else if (node.isStructural) {
+                            Text(
+                                text = if(LocalBashPresentation.current) "progress=${progress.percentage}% pending=${progress.total-progress.completed}/${progress.total}" else "${progress.percentage}% · ${progress.total - progress.completed} de ${progress.total} pendientes",
+                                color = Arachn0deColors.TextSecondary,
+                                fontSize = ContentTypography.SmallMetadata,
+                                fontWeight = FontWeight.SemiBold,
+                            )
+                            Spacer(modifier = Modifier.height(6.dp))
+                            androidx.compose.material3.LinearProgressIndicator(
+                                progress = { progress.percentage / 100f },
+                                modifier = Modifier.fillMaxWidth().height(4.dp),
+                                color = Arachn0deColors.PathHighlight,
+                                trackColor = Arachn0deColors.ControlSurface,
+                            )
+                        } else if (node.isStructural && progress == null) {
                             Spacer(modifier = Modifier.height(6.dp))
                             Text(
                                 text = if (node.sprintMode) "Capa · Modo Sprint" else "Capa",
@@ -363,8 +363,7 @@ internal fun NodeCard(
                             )
                         }
                     }
-
-                    Column(Modifier.alignBy {it.measuredHeight/2}.then(if(tags.size==1) Modifier.padding(top=(tagHeight-8.dp).coerceAtLeast(0.dp)) else Modifier),horizontalAlignment=Alignment.End) {
+                    Column(Modifier.align(Alignment.CenterVertically),horizontalAlignment=Alignment.End) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             if(!node.isStructural) TechnologyCardButton(node.id)
                             FavoriteToggle("node:${node.id}",compactSquare=true)
@@ -383,6 +382,7 @@ internal fun NodeCard(
                             }
                         }
                     }
+                }
                 }
                 if (sprintPhase != null || tags.size>1 || (tags.size==1 && footer!=null)) Column(
                     modifier = Modifier.fillMaxWidth().padding(start = 24.dp + leadingColumnWidth, end = 12.dp, top = 2.dp, bottom = 6.dp),
@@ -430,7 +430,6 @@ internal fun NodeCard(
                     }
                 }
             }
-            if(tags.size==1) CardTagBadge(tags,Modifier.align(Alignment.TopEnd).onSizeChanged {tagHeight=with(tagDensity) {it.height.toDp()}})
             if (selecting || canToggleComplete) Box(
                 modifier = Modifier.align(Alignment.CenterStart).padding(start = 12.dp).size(48.dp),
                 contentAlignment = Alignment.Center,

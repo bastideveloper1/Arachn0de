@@ -21,7 +21,6 @@ import kotlinx.coroutines.launch
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.r0ybt.arachn0de.data.repository.*
 import com.r0ybt.arachn0de.data.local.NodeEntity
@@ -88,9 +87,7 @@ internal fun projectTimeline(state:IterationState,context:String):List<GanttRow>
             }
         };error="Exportación completa: $written PNG."} catch(e:Exception) {error="Exportación incompleta ($written PNG): ${e.message}"}
     }}
-    val p=com.r0ybt.arachn0de.gantt.GanttPalette
-    MaterialTheme(colorScheme=MaterialTheme.colorScheme.copy(primary=androidx.compose.ui.graphics.Color(p.TEXT),onPrimary=androidx.compose.ui.graphics.Color(p.BACKGROUND),primaryContainer=androidx.compose.ui.graphics.Color(p.DAY),onPrimaryContainer=androidx.compose.ui.graphics.Color(p.TEXT),secondary=androidx.compose.ui.graphics.Color(p.SECONDARY),onSecondary=androidx.compose.ui.graphics.Color(p.BACKGROUND),secondaryContainer=androidx.compose.ui.graphics.Color(p.DAY),onSecondaryContainer=androidx.compose.ui.graphics.Color(p.TEXT),surface=androidx.compose.ui.graphics.Color(p.BACKGROUND),onSurface=androidx.compose.ui.graphics.Color(p.TEXT),surfaceVariant=androidx.compose.ui.graphics.Color(p.DAY),onSurfaceVariant=androidx.compose.ui.graphics.Color(p.SECONDARY),background=androidx.compose.ui.graphics.Color(p.BACKGROUND),onBackground=androidx.compose.ui.graphics.Color(p.TEXT),outline=androidx.compose.ui.graphics.Color(p.BORDER),error=androidx.compose.ui.graphics.Color(p.TEXT))) {
-        Dialog(onDismissRequest={if(!busy) onDismiss()},properties=DialogProperties(usePlatformDefaultWidth=false)) {
+        BottomModulesDialog(onDismissRequest={if(!busy) onDismiss()},properties=DialogProperties(usePlatformDefaultWidth=false)) {
             Surface(Modifier.fillMaxSize().safeDrawingPadding()) {Column(Modifier.padding(8.dp),verticalArrangement=Arrangement.spacedBy(4.dp)) {
                 Row(Modifier.fillMaxWidth(),verticalAlignment=androidx.compose.ui.Alignment.CenterVertically) {
                     Text(doc?.heading ?: projectTitle,Modifier.weight(1f),style=MaterialTheme.typography.titleSmall)
@@ -132,7 +129,7 @@ internal fun projectTimeline(state:IterationState,context:String):List<GanttRow>
                     var content by remember(note.id) {mutableStateOf(note.text)}
                     var day by remember(note.id) {mutableLongStateOf(note.epochDay)}
                     val editorHeight=minOf(320f*androidx.compose.ui.platform.LocalDensity.current.fontScale,androidx.compose.ui.platform.LocalConfiguration.current.screenHeightDp*.7f)
-                    Dialog(onDismissRequest={if(!busy) draft=null},properties=DialogProperties(usePlatformDefaultWidth=false)) {
+                    BottomModulesDialog(onDismissRequest={if(!busy) draft=null},properties=DialogProperties(usePlatformDefaultWidth=false)) {
                         Box(Modifier.fillMaxSize().safeDrawingPadding().padding(12.dp),contentAlignment=androidx.compose.ui.Alignment.Center) {
                         Surface(Modifier.widthIn(max=560.dp).fillMaxWidth().height(editorHeight.dp)) {
                             Column(Modifier.padding(12.dp)) {
@@ -155,7 +152,6 @@ internal fun projectTimeline(state:IterationState,context:String):List<GanttRow>
                 }
             }}
         }
-    }
 }
 @Composable private fun GanttChoice(label:String,value:String,choices:List<Pair<String,String>>,onSelect:(String)->Unit) {
     var expanded by remember {mutableStateOf(false)}

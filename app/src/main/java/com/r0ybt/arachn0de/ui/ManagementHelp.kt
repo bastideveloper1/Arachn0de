@@ -6,7 +6,6 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 
 internal val objectiveHelpParagraphs=listOf(
@@ -25,7 +24,7 @@ internal val responsibilityHelpParagraphs=listOf(
     "Personas y equipo" to "El catálogo de Personas pertenece a Arachn0de. Incorporar una persona la vincula a este equipo; quitarla retira sus roles y responsabilidades en este proyecto, conservando su ficha global. Los roles describen responsabilidades, no permisos de seguridad ni autoría de acciones."
 )
 @Composable internal fun ManagementHelpScreen(title:String,paragraphs:List<Pair<String,String>>,onDismiss:()->Unit) {
-    Dialog(onDismissRequest=onDismiss,properties=DialogProperties(usePlatformDefaultWidth=false)) {
+    BottomModulesDialog(onDismissRequest=onDismiss,properties=DialogProperties(usePlatformDefaultWidth=false)) {
         Surface(Modifier.fillMaxSize().safeDrawingPadding()) {
             Column(Modifier.padding(16.dp),verticalArrangement=Arrangement.spacedBy(12.dp)) {
                 Text(title,style=MaterialTheme.typography.titleLarge)

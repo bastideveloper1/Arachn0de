@@ -1,6 +1,11 @@
 package com.r0ybt.arachn0de.ui
 
+import com.r0ybt.arachn0de.ui.theme.BashColors
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -116,24 +121,37 @@ internal val LocalIndicatorDirectory=staticCompositionLocalOf {IndicatorDirector
     val original=LocalCompactCardFacts.current[key] ?: fallback
     val facts=original.copy(notes=original.notes+if(hasOwnNotes) setOf(key) else emptySet())
     val active=cardIndicators(facts)
-    val baseline=listOf(CardIndicator("people",Icons.Default.Groups,"Personas",IndicatorTone.PEOPLE),CardIndicator("technologies",Icons.Default.Code,"Tecnologías",IndicatorTone.CONTENT),CardIndicator("notes",Icons.Default.Description,"Notas",IndicatorTone.CONTENT),CardIndicator("due",Icons.Default.Event,"Vencimiento",IndicatorTone.CONTENT))
-    val signals=(baseline.map {inactive->active.firstOrNull {it.name==inactive.name} ?: inactive}+active.filter {row->baseline.none {it.name==row.name}}).filter {showTechnologies || it.name!="technologies"}
-    if(signals.isEmpty()) return
+    // Keep the original four slots first, then reserve the formerly conditional slots.
+    val baseline=listOf(
+        CardIndicator("people",Icons.Default.Groups,"Personas",IndicatorTone.PEOPLE),
+        CardIndicator("technologies",Icons.Default.Code,"Tecnologías",IndicatorTone.CONTENT),
+        CardIndicator("notes",Icons.Default.Description,"Notas",IndicatorTone.CONTENT),
+        CardIndicator("due",Icons.Default.Event,"Vencimiento",IndicatorTone.CONTENT),
+        CardIndicator("tasks",Icons.Default.Checklist,"Tareas",IndicatorTone.CONTENT),
+        CardIndicator("files",Icons.Default.AttachFile,"Archivos en el contenido",IndicatorTone.CONTENT),
+        CardIndicator("today",Icons.Default.HourglassBottom,"Pendientes para hoy",IndicatorTone.ALERT),
+        CardIndicator("high",Icons.Default.LocalFireDepartment,"Prioritario",IndicatorTone.ALERT))
+    val signals=baseline.map {inactive->active.firstOrNull {it.name==inactive.name} ?: inactive}
+        .filter {showTechnologies || it.name!="technologies"}
     BoxWithConstraints(modifier.testTag("card-indicators:$key")) {
-        val total=signals.size
-        val rowWidth=maxWidth
-        val slots=(rowWidth.value/22f).toInt().coerceAtLeast(1)
-        val overflowWidth=(12f*androidx.compose.ui.platform.LocalDensity.current.fontScale*("+$total".length)*.7f).coerceAtLeast(22f)
-        val visible=if(total>slots) ((maxWidth.value-overflowWidth-6f)/22f).toInt().coerceIn(0,(slots-1).coerceAtLeast(0)) else total
-        Row(horizontalArrangement=Arrangement.spacedBy(6.dp),verticalAlignment=Alignment.CenterVertically) {
-            signals.take(visible).forEach {signal->
+        val density=androidx.compose.ui.platform.LocalDensity.current
+        val (gap,iconSize)=with(density) {
+            val gapPx=((constraints.maxWidth-16.dp.toPx()*signals.size)/(signals.size-1))
+                .coerceIn(2.dp.toPx(),6.dp.toPx()).toInt()
+            val iconPx=((constraints.maxWidth-gapPx*(signals.size-1)).toFloat()/signals.size)
+                .coerceIn(12.dp.toPx(),16.dp.toPx()).toInt()
+            gapPx.toDp() to iconPx.toDp()
+        }
+        // Only exceptionally narrow cards need scrolling; never hide indicators behind a count.
+        Row(Modifier.horizontalScroll(rememberScrollState()),horizontalArrangement=Arrangement.spacedBy(gap),verticalAlignment=Alignment.CenterVertically) {
+            signals.forEach {signal->
                 val present=active.any {it.name==signal.name}
-                val iconModifier=Modifier.size(16.dp).testTag("card-signal:$key:${signal.name}")
+                val iconModifier=Modifier.size(iconSize).testTag("card-signal:$key:${signal.name}")
+                    .then(if(signal.name=="notes") Modifier else Modifier.semantics {stateDescription=if(present) "Configurado" else "Sin datos"})
                 val tint=cardIndicatorColor(signal.name,present)
                 if(signal.name=="notes") NoteContentIcon(present,signal.label,iconModifier,tint)
                 else LucideIcon(signal.icon,signal.label,iconModifier,tint=tint)
             }
-            if(total>visible) Text("+${total-visible}",style=MaterialTheme.typography.labelSmall,maxLines=1,overflow=TextOverflow.Clip,modifier=Modifier.widthIn(max=rowWidth).testTag("card-overflow:$key"))
         }
     }
 }
@@ -159,7 +177,7 @@ internal val LocalIndicatorDirectory=staticCompositionLocalOf {IndicatorDirector
 
     }
     selected?.let {signal->
-        if(signal.name=="people") androidx.compose.ui.window.Dialog(onDismissRequest={selected=null},properties=androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth=false)) {
+        if(signal.name=="people") BottomModulesDialog(onDismissRequest={selected=null},properties=androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth=false)) {
             Surface(Modifier.fillMaxSize().safeDrawingPadding()) {Column(Modifier.padding(16.dp),verticalArrangement=Arrangement.spacedBy(12.dp)) {
                 Text("Personas",style=MaterialTheme.typography.titleLarge)
                 Text(if(managementContext!=null) "Participantes del proyecto y personas asociadas a este contenido." else "Personas asociadas a este contenido.",style=MaterialTheme.typography.bodySmall)
@@ -199,7 +217,7 @@ internal val LocalIndicatorDirectory=staticCompositionLocalOf {IndicatorDirector
 
 /** Only the lower card preview uses these overrides; activation and detail controls stay unchanged. */
 @Composable internal fun cardIndicatorColor(name:String,active:Boolean):Color =
-    if(!active) BlackWhite90.Inactive else com.r0ybt.arachn0de.ui.theme.LocalAppearancePreferences.current
+    if(!active) (if(LocalBashPresentation.current) BashColors.Muted else BlackWhite90.Inactive) else com.r0ybt.arachn0de.ui.theme.LocalAppearancePreferences.current
         ?.settings?.indicatorColors?.get(name)?.color ?: Arachn0deColors.TextPrimary
 
 internal val customizableCardIndicators=listOf(

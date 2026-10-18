@@ -17,7 +17,6 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.r0ybt.arachn0de.data.local.PersonEntity
 import com.r0ybt.arachn0de.data.repository.*
@@ -70,7 +69,7 @@ import kotlinx.coroutines.launch
     fun generalRoles(id:String)=ResponsibilityRole.entries.filter {role->rows.roles.any {it.contextId==context && it.personId==id && it.role==role.name}}.joinToString {it.label}
     val eligible=state.work.nodes.filter {state.work.owners[it.id]==context && (it.purpose=="ACTION" || state.work.records.roles.any {r->r.contextId==context && r.nodeId==it.id})}
     val selected=state.people.firstOrNull {it.id==personId && it.id in members}
-    Dialog(onDismissRequest={back()},properties=DialogProperties(usePlatformDefaultWidth=false)) {
+    BottomModulesDialog(onDismissRequest={back()},properties=DialogProperties(usePlatformDefaultWidth=false)) {
         BackHandler {back()}
         Surface(Modifier.fillMaxSize().safeDrawingPadding()) {Column(Modifier.padding(16.dp),verticalArrangement=Arrangement.spacedBy(12.dp)) {
             Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically) {

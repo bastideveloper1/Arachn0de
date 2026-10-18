@@ -24,16 +24,17 @@ internal object MetroEstimates {
         var first=0
         while(first < route.steps.size) {
             val step=route.steps[first]
-            var end=first+1
-            var estimate=MetroLearning.estimate(route.networkVersion,listOf(step),byContext[MetroLearning.context(route.networkVersion,listOf(step),route.steps.getOrNull(first+1))].orEmpty(),next=route.steps.getOrNull(first+1))
+            var end=MetroExpressTiming.intervalEnd(route,first)
+            var estimate=MetroLearning.estimate(route,first,end,byContext[MetroLearning.context(route,first,end)].orEmpty())
             if(step.kind==MetroStepKind.RIDE) {
                 var boundary=first+1
                 while(boundary<route.steps.size && route.steps[boundary].let {it.kind==MetroStepKind.RIDE && it.line==step.line && it.direction==step.direction && it.service==step.service}) boundary++
                 // Prefer the longest directly measured path with enough evidence; interpolate only its estimates.
                 for(candidate in boundary downTo first+2) {
                     val path=route.steps.subList(first,candidate)
-                    val samples=byContext[MetroLearning.context(route.networkVersion,path)] ?: continue
-                    val result=MetroLearning.estimate(route.networkVersion,path,samples)
+                    if(MetroExpressTiming.passes(route,candidate-1)) continue
+                    val samples=byContext[MetroLearning.context(route,first,candidate)] ?: continue
+                    val result=MetroLearning.estimate(route,first,candidate,samples)
                     if(result.weight>0) {end=candidate;estimate=result;break}
                 }
             }
@@ -43,11 +44,11 @@ internal object MetroEstimates {
             first=end
         }
         // Historical/base-only routes retain their exact representation and standard timing.
-        return if(parts.none {it.weight>0}) route else route.copy(prediction=MetroPrediction(parts))
+        return if(route.provisional==null && parts.none {it.weight>0}) route else route.copy(prediction=MetroPrediction(parts))
     }
 
     fun durations(route: MetroRoute): List<Long> {
-        val base=route.steps.map {it.minutes*60_000L}
+        val base=route.baseDurations
         val prediction=route.prediction ?: return base
         val result=base.toMutableList()
         prediction.parts.forEach {part ->
@@ -79,7 +80,7 @@ internal object MetroEstimates {
             require(p.first==next && p.end in p.first+1..route.steps.size)
             next=p.end
             val path=route.steps.subList(p.first,p.end)
-            val base=path.sumOf {it.minutes*60_000L}
+            val base=route.baseDurations.subList(p.first,p.end).sum()
             require(p.accepted in 0..prediction.window && (p.mean!=null)==(p.accepted>0))
             require(p.discarded.all {(reason,count)->reason in exclusionReasons && count in 1..100_000})
             require((p.lastAt==null)==(p.lastMillis==null) && (p.lastAt==null || p.lastAt>=0 && p.lastMillis!!>=0))

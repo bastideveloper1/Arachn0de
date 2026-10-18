@@ -11,6 +11,7 @@ import kotlinx.coroutines.flow.catch
 @OptIn(FlowPreview::class)
 open class Arachn0deApplication:Application() {
     internal val security by lazy { com.r0ybt.arachn0de.security.VaultManager(this) }
+    internal val pomodoro by lazy { com.r0ybt.arachn0de.pomodoro.PomodoroController(this) }
     private val processScope=CoroutineScope(SupervisorJob()+Dispatchers.IO)
     private val session get()=requireNotNull(security.current.value) { "Almacén bloqueado." }
     internal val privateContext get()=session.context
@@ -29,6 +30,8 @@ open class Arachn0deApplication:Application() {
         // No database, media or private preference is opened before authentication.
         processScope.launch {
             security.current.collectLatest { active ->
+                pomodoro.attach(active?.context?.getSharedPreferences(com.r0ybt.arachn0de.pomodoro.PomodoroCodec.NAME,0),
+                    active?.context?.getSharedPreferences(com.r0ybt.arachn0de.pomodoro.PomodoroSoundCodec.NAME,0))
                 if(active==null) return@collectLatest
                 coroutineScope {
                     suspend fun maintain() {

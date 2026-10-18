@@ -37,7 +37,7 @@ class IndicatorColorsTest {
         assertEquals(AppearanceTextSize.Large,preferences.settings.textSize)
         assertEquals(Color(0xFFD6D6D6),IndicatorColor.WHITE.color)
     }
-    @Test fun cardTintsUpdateImmediatelyWhileInactiveAndHiddenSignalsKeepOriginalBehavior() {
+    @Test fun cardTintsUpdateImmediatelyWhileAllInactiveSignalsRemainVisible() {
         val preferences=AppearancePreferences(storage)
         val ids=customizableCardIndicators.map {it.name}
         var active=emptyMap<String,Color>();var inactive=emptyMap<String,Color>()
@@ -54,24 +54,41 @@ class IndicatorColorsTest {
         ids.forEachIndexed {index,id->compose.runOnIdle {preferences.setIndicatorColor(id,IndicatorColor.entries[index])}}
         compose.runOnIdle {ids.forEachIndexed {index,id->assertEquals(IndicatorColor.entries[index].color,active[id]);assertEquals(BlackWhite90.Inactive,inactive[id])}}
         ids.forEach {compose.onNodeWithTag("card-signal:full:$it").assertExists()}
-        listOf("tasks","files","today","high").forEach {compose.onNodeWithTag("card-signal:empty:$it").assertDoesNotExist()}
-        listOf("people","technologies","notes","due").forEach {compose.onNodeWithTag("card-signal:empty:$it").assertExists()}
+        ids.forEach {compose.onNodeWithTag("card-signal:empty:$it").assertExists()
+            .assert(SemanticsMatcher.expectValue(androidx.compose.ui.semantics.SemanticsProperties.StateDescription,if(it=="notes") "Sin contenido" else "Sin datos"))}
         compose.runOnIdle {preferences.resetIndicatorColors()}
         compose.runOnIdle {assertTrue(active.values.all {it==BlackWhite90.Text})}
+    }
+    @Test fun permanentSlotsFitNarrowCardsAndKeepTheirPositionsWhenActivated() {
+        var facts by mutableStateOf(CompactCardFacts())
+        compose.setContent {Arachn0deTheme {
+            Box(Modifier.width(140.dp)) {CompactCardIndicators("narrow",facts,showTechnologies=false)}
+        }}
+        val ids=listOf("people","notes","due","tasks","files","today","high")
+        val before=ids.map {compose.onNodeWithTag("card-signal:narrow:$it").assertIsDisplayed().fetchSemanticsNode().boundsInRoot}
+        before.zipWithNext().forEach {(a,b)->assertTrue(a.right<=b.left)}
+        assertTrue(before.map {it.width}.all {kotlin.math.abs(it-before.first().width)<1f})
+        compose.onNodeWithTag("card-signal:narrow:technologies").assertDoesNotExist()
+        compose.runOnIdle {facts=CompactCardFacts(people=setOf("p"),notes=setOf("n"),tasks=setOf("t"),files=setOf("f"),due=true,today=true,high=true)}
+        ids.forEachIndexed {index,id->
+            val icon=compose.onNodeWithTag("card-signal:narrow:$id").assertIsDisplayed()
+            icon.assert(SemanticsMatcher.expectValue(androidx.compose.ui.semantics.SemanticsProperties.StateDescription,if(id=="notes") "Con contenido" else "Configurado"))
+            assertEquals(before[index],icon.fetchSemanticsNode().boundsInRoot)
+        }
     }
     @Test fun settingsDrawerKeepsOneRenamedDesignDestination() {
         var opened=false
         compose.setContent {Arachn0deTheme {AppIdentityDrawer({},onAppearance={opened=true})}}
         compose.onNodeWithText("Ajustes").performScrollTo().performClick()
-        compose.onAllNodesWithText("Diseño").assertCountEquals(1)
+        compose.onAllNodesWithText("Apariencia").assertCountEquals(1)
         compose.onNodeWithText("Apariencia").assertDoesNotExist()
-        compose.onNodeWithText("Diseño").performScrollTo().performClick()
+        compose.onNodeWithText("Apariencia").performScrollTo().performClick()
         assertTrue(opened)
     }
     @Test fun designSectionChoosesPaletteAndRestoresWithoutRemovingExistingOptions() {
         val preferences=AppearancePreferences(storage)
         compose.setContent {Arachn0deTheme(preferences) {AppearanceScreen({},preferences)}}
-        compose.onNodeWithText("Diseño").assertExists()
+        compose.onNodeWithText("Apariencia").assertExists()
         compose.onNodeWithText("Tema").assertExists()
         compose.onNodeWithText("Tamaño de texto").performScrollTo().assertExists()
         compose.onNodeWithTag("indicator-setting:notes").performScrollTo().performClick()

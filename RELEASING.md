@@ -1,39 +1,128 @@
-## Empaquetado local preparado — 0.4.2 / 16
+## Preparación vigente — 0.6.0 / 20, Wireframe y moldes de pantallas
 
-Se recupera el helper histórico, sin cambiar keystore, alias, certificado,
-applicationId ni configuración Gradle. Ejecutar desde la terminal integrada de
-VS Code, sin contraseñas en el comando:
+Las nuevas funcionalidades compatibles requieren incrementar MINOR, según la
+convención MAJOR.MINOR.PATCH: versionName 0.6.0 y versionCode 20. La APK oficial
+local 0.5.1 / 19 y su checksum se conservan intactos y se añaden a las referencias
+de compatibilidad del helper. Los apartados siguientes son antecedentes históricos.
+
+Se empaqueta el estado actual del proyecto, incluidas las correcciones de Wireframe
+y los 25 moldes editables. No se modifican funcionalidades, identidad, keystore,
+alias ni persistencia. Las pruebas dirigidas ya realizadas no se repiten aquí.
+No se renuevan evidencias nativas históricas ni se acredita la instalación física.
+
+Ejecutar en la terminal local del usuario:
+
+```bash
+cd /home/r0ybt/AndroidStudioProjects/Arachn0de
+bash release-assets/preparar-apk-0.3.0.sh --check
+bash release-assets/preparar-apk-0.3.0.sh
+```
+
+El helper usa exclusivamente el keystore oficial existente
+`/home/r0ybt/.local/share/arachn0de/signing/arachn0de-release.jks`, alias
+`arachn0de-release`. Solicita ambas contraseñas mediante `/dev/tty` sin eco;
+Enter en la segunda reutiliza la primera. No introducirlas en chat, argumentos,
+registros ni archivos. Codex no dispone de la entrada interactiva del usuario.
+La compilación y firma quedan pendientes de esa ejecución local.
+
+Se conserva el comando oficial `./gradlew assembleRelease --offline --console=plain
+--no-configuration-cache --no-daemon --max-workers=2`. Después se verifican firma,
+certificado oficial, paquete, versión 0.6.0 / 20, ausencia de debuggable e
+instrumentación, allowBackup deshabilitado, integridad ZIP, texturas y SQLCipher ARM.
+Solo tras aprobar se copia la APK y se genera el checksum. Una salida ya existente
+bloquea el procedimiento; no se sobrescriben APK anteriores.
+
+Preflight 0.6.0 / 20 aprobado con las 13 referencias oficiales locales hasta
+código 19. Sintaxis Bash y de los tres bloques Python correctas; `git diff --check`
+aprobado. La APK de código 19 y su checksum conservan sus hashes anteriores.
+No se ejecutó compilación ni firma: falta la entrada local de las contraseñas.
+
+Salida prevista, todavía no generada ni verificada:
+`/home/r0ybt/AndroidStudioProjects/Arachn0de/release-assets/Arachn0de-v0.6.0-code20.apk`
+y su `.apk.sha256`. No declarar completada la entrega hasta verificar el artefacto.
+No se instala, publica, hace commit ni push.
+
+## Preparación vigente — 0.5.1 / 19, corrección de módulos inferiores
+
+La APK local `release-assets/Arachn0de-v0.5.0-code18.apk` ya existe: declara
+0.5.0 / 18 y su certificado coincide con el oficial
+`d0e8d7aa348a3b50ac380dd0586b608cc7425693be0433a8dad8df4125791437`.
+Se conserva. Esta intervención correctiva incrementa PATCH y versionCode,
+según la convención del proyecto: 0.5.1 / 19.
+
+La unificación global ya está implementada y sus seis pruebas dirigidas aprobaron;
+no se repiten durante el empaquetado. No hay cambios de persistencia, modelos ni
+formato de backup por esta corrección. Se conservan Pomodoro, fechas especiales
+y cumpleaños con la cobertura y validaciones ya documentadas. Las comprobaciones
+de teclado, orientación física y captura simultánea con sonidos quedan pendientes
+en teléfono; no bloquean el empaquetado.
+
+El helper histórico conserva la firma, alias y procedimiento existentes y verifica
+también la APK de código 18. Nunca reemplaza el archivo de distribución de salida.
+Comando desde la raíz del repositorio:
+
+```bash
+bash release-assets/preparar-apk-0.3.0.sh --check
+bash release-assets/preparar-apk-0.3.0.sh
+```
+
+El segundo comando lee las dos contraseñas desde `/dev/tty`, sin eco. No incluirlas
+en chat, argumentos, registros ni archivos del proyecto. El keystore oficial está
+disponible; al preparar esta versión no hay contraseñas en el entorno ni en las
+propiedades de firma configuradas. No se declara una APK nueva como firmada.
+El helper compila con `./gradlew assembleRelease --offline --console=plain
+--no-configuration-cache --no-daemon --max-workers=2` y comprueba certificado,
+paquete, versión, ZIP, recursos, bibliotecas y ausencia de debuggable/instrumentación.
+No ejecuta suites ni renueva evidencias históricas.
+
+Validación de esta preparación: `--check` aprobado, incluidas las referencias
+oficiales hasta código 18; sintaxis del helper y `git diff --check` correctos.
+`:app:compileDebugKotlin` aprobado (35 s). No se repitieron las seis pruebas
+dirigidas ya aprobadas. La firma sigue pendiente de entrada local de credenciales.
+
+Salida prevista, pendiente de generar y verificar:
+`release-assets/Arachn0de-v0.5.1-code19.apk` y su `.apk.sha256`.
+La compatibilidad de actualización se verifica con las APK oficiales locales;
+no acredita la versión instalada en el teléfono. No se instala, publica,
+hace commit ni push.
+
+Los apartados siguientes son antecedentes históricos; la preparación de código 18
+allí descrita ya tiene una APK local, comprobada al preparar el código 19.
+
+## Empaquetado local preparado — 0.5.0 / 18
+
+La convención MAJOR.MINOR.PATCH requiere MINOR para las nuevas funcionalidades
+compatibles. La última APK oficial local es 0.4.2 / 17; se conserva íntegramente.
+No se cambian funciones, interfaz, almacenamiento, keystore, alias ni applicationId.
+
+Ejecutar desde la terminal integrada propia, sin contraseñas en el comando:
 
 ```bash
 cd /home/r0ybt/AndroidStudioProjects/Arachn0de
 bash release-assets/preparar-apk-0.3.0.sh
 ```
 
-Lee las dos contraseñas originales desde /dev/tty sin eco. Enter en la segunda
-reutiliza la primera. La compilación conserva --offline y --no-configuration-cache;
-se añade --no-daemon para no reutilizar un daemon de Gradle con las credenciales.
-La terminal de herramientas de Codex no ofrece entrada directa del usuario: usar
-la terminal integrada propia, no escribir contraseñas en el chat.
+El helper histórico se actualiza únicamente para la versión y referencias de este
+empaquetado; no se automatiza un nuevo sistema de releases. Lee las contraseñas
+desde /dev/tty sin eco; Enter en la segunda reutiliza la primera. No introducir
+contraseñas en el chat. El terminal de herramientas no ofrece entrada directa
+del usuario y las credenciales no están disponibles en el entorno ni en Gradle.
 
-El empaquetado actual no invoca verificar-seguridad-release.py: ese verificador
-se conserva intacto para código 14 / Room 38 y no es un requisito de compilación
-de cada ajuste visual. Su huella abarca todo app/src/main, por lo que usarlo como
-bloqueo universal exigía renovar pruebas incluso tras cambios de interfaz.
-No se modifican evidencias, huellas ni resultados para aparentar nuevas pruebas.
-La aprobación histórica no acredita SQLCipher nativo ni migraciones del checkout
-actual. Esta preparación verifica el artefacto y su compatibilidad de identidad y
-firma, sin certificar conservación de datos en una instalación real.
-Se mantienen la comprobación del certificado de la clave original, compatibilidad
-con releases anteriores y todas las verificaciones finales del APK.
+Compila mediante `./gradlew assembleRelease --offline --console=plain
+--no-configuration-cache --no-daemon --max-workers=2`. Verifica certificado oficial,
+paquete, versión, no-debuggable, ZIP, recursos y bibliotecas. No repite suites ni
+renueva evidencias históricas de verificar-seguridad-release.py.
 
-`--check` aprobado para 0.4.2 / 16: nueve referencias oficiales verificadas,
-sin solicitar contraseñas ni compilar. No hay APK nueva todavía.
+Salida prevista (todavía no generada):
+`release-assets/Arachn0de-v0.5.0-code18.apk` y su `.apk.sha256`.
+El helper impide reemplazar una APK previa con ese nombre. `--check` comprueba
+los antecedentes y requisitos sin pedir contraseñas ni compilar.
 
-Tras introducir las contraseñas, el mismo comando compila Release, verifica
-firma oficial, paquete, versión, no-debuggable, ZIP, recursos y bibliotecas, y crea
-release-assets/Arachn0de-v0.4.2-code16.apk y su .apk.sha256. Imprime ruta absoluta,
-tamaño y SHA-256. No hay todavía una APK nueva generada ni se acredita actualización
-en teléfono. Las secciones siguientes conservan los antecedentes históricos.
+Preflight aprobado para 0.5.0 / 18: once APK oficiales con certificado coincidente
+y códigos inferiores. Sintaxis del helper y `git diff --check` correctos.
+La compilación y la firma quedan pendientes de introducir las credenciales.
+No se acredita la firma o versión instalada en el teléfono ni una actualización
+física. Las secciones siguientes conservan antecedentes históricos.
 
 # Publicar Arachn0de manualmente
 

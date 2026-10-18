@@ -155,7 +155,7 @@ import kotlinx.coroutines.launch
             }
         }
     }}
-    if(configuration=="timeout" || configuration=="captures") ModalBottomSheet(onDismissRequest={if(!busy) configuration=null},containerColor=Arachn0deColors.Surface) {
+    if(configuration=="timeout" || configuration=="captures") com.r0ybt.arachn0de.ui.BottomModulesSheet(onDismissRequest={if(!busy) configuration=null},containerColor=Arachn0deColors.Surface) {
         Column(Modifier.fillMaxWidth().padding(horizontal=16.dp).padding(bottom=16.dp).verticalScroll(rememberScrollState()),verticalArrangement=Arrangement.spacedBy(8.dp)) {
             if(configuration=="timeout") {
                 Text("Bloqueo automático",style=MaterialTheme.typography.titleMedium)

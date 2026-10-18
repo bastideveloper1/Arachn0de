@@ -20,11 +20,13 @@ internal val LocalOpenSecurity = staticCompositionLocalOf<(() -> Unit)?> { null 
 /** Existing header slots: leading menu before Back/title, trailing lock at the right edge. */
 @Composable internal fun GlobalChromeActions(enabled: Boolean = true, leading: Boolean = false) {
     val navigation = LocalGlobalNavigation.current ?: return
+    BashMenuScope {
     Row {
         if(leading) IconButton(onClick = navigation.menu, enabled = enabled, modifier = Modifier.size(48.dp)) {
             Icon(Icons.Default.Menu,"Abrir menú")
         }
-        if(!leading && navigation.showLock) ProjectLockButton()
+        if(!leading && navigation.showLock) HeaderLockButton()
+    }
     }
 }
 
@@ -36,7 +38,7 @@ internal val LocalOpenSecurity = staticCompositionLocalOf<(() -> Unit)?> { null 
             Row(Modifier.fillMaxWidth()) {
                 GlobalChromeActions(enabled=!busy, leading=true)
                 TextButton(enabled=!busy,onClick=onBack) {Text("Volver")}
-                Text("Respaldos",Modifier.weight(1f),style=MaterialTheme.typography.titleLarge)
+                NavigationHeading("Respaldos",Modifier.weight(1f))
                 GlobalChromeActions(enabled=!busy)
             }
             BackupSection(onRestored,onBusyChange={busy=it})

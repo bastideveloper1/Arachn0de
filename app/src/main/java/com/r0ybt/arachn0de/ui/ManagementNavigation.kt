@@ -24,7 +24,7 @@ internal fun managementToolVisual(kind: String): ManagementToolVisual? = when(ki
 }
 
 @Composable internal fun ManagementNavigationCard(tool: ManagementToolVisual, onClick: () -> Unit) {
-    Card(onClick=onClick, modifier=Modifier.fillMaxWidth().heightIn(min=72.dp)) {
+    GeneralCard(onClick=onClick, modifier=Modifier.fillMaxWidth().heightIn(min=72.dp)) {
         Row(Modifier.padding(16.dp), verticalAlignment=Alignment.CenterVertically, horizontalArrangement=Arrangement.spacedBy(12.dp)) {
             Icon(tool.icon, contentDescription=null, tint=MaterialTheme.colorScheme.primary)
             Column(Modifier.weight(1f)) {

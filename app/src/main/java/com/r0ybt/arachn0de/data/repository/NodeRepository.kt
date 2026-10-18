@@ -332,7 +332,19 @@ class NodeRepository(
         val current=com.r0ybt.arachn0de.domain.model.nodePropertyValues(field,source,
             database.tagDao().nodeIds(id),database.personDao().assignmentIds(id),
             database.technologyDao().forNodes(listOf(id)).sortedBy {it.position}.map {it.technologyId})
-        check(current==original) {"La propiedad cambió durante la edición. Tu borrador se conserva."}
+        // A foreground recording may append audio while the description editor is open.
+        // Only those new audio references may differ; concurrent text edits still conflict.
+        val recordingOnlyChange=field==com.r0ybt.arachn0de.domain.model.NodeProperty.DESCRIPTION && run {
+            val before=original.single()
+            val now=current.single()
+            val added=com.r0ybt.arachn0de.domain.model.AttachmentReferences.matches(now)
+                .filter {com.r0ybt.arachn0de.domain.model.AttachmentReferences.isAudio(it) &&
+                    it.groupValues[1] !in com.r0ybt.arachn0de.domain.model.AttachmentReferences.ids(before)}.toList()
+            var withoutAdded=now
+            added.forEach {withoutAdded=com.r0ybt.arachn0de.domain.model.AttachmentReferences.remove(withoutAdded,it.groupValues[1])}
+            added.isNotEmpty() && withoutAdded.trim()==before.trim()
+        }
+        check(current==original || recordingOnlyChange) {"La propiedad cambió durante la edición. Tu borrador se conserva."}
         val shared=field in setOf(com.r0ybt.arachn0de.domain.model.NodeProperty.DESCRIPTION,com.r0ybt.arachn0de.domain.model.NodeProperty.PAYMENT,
             com.r0ybt.arachn0de.domain.model.NodeProperty.PRIORITY,com.r0ybt.arachn0de.domain.model.NodeProperty.PEOPLE,com.r0ybt.arachn0de.domain.model.NodeProperty.TAGS)
         val targets=if(groupIds!=null) {
@@ -402,6 +414,11 @@ class NodeRepository(
             }
         }
         updated
+    }
+
+    suspend fun togglePriority(id:String):Boolean = database.withTransaction {
+        val node=getNode(id) ?: return@withTransaction false
+        setPriority(id,if(node.priority==Priority.HIGH) Priority.NONE else Priority.HIGH)
     }
 
     suspend fun setPriority(id: String, priority: Priority): Boolean = database.withTransaction {

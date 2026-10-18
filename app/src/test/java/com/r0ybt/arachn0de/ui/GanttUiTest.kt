@@ -1,6 +1,10 @@
 package com.r0ybt.arachn0de.ui
 
 import androidx.activity.ComponentActivity
+import androidx.compose.foundation.layout.*
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
+import com.r0ybt.arachn0de.gantt.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Density
@@ -43,6 +47,28 @@ class GanttUiTest {
         compose.onNodeWithTag("gantt-item:${story.id}").performScrollTo().performClick();assertEquals(story.id,opened)
         compose.onNodeWithText("Volver").performClick();assertTrue(dismissed)
     }
+    @Test fun verticalDatesAndFrozenHeadersScrollIndependentlyWhileAnnotationsKeepTheirCoordinates() {
+        val first=java.time.LocalDate.of(2026,10,5)
+        val items=(1..10).map {GanttItem("story$it","Historia $it",first,first.plusDays(4),.5f,false,emptySet(),kind="Historia")}
+        val note=com.r0ybt.arachn0de.data.local.GanttAnnotationEntity("note","context","Conservar",first.plusDays(3).toEpochDay(),.25)
+        val doc=GanttDocument("Sprint","Octubre",first,first.plusDays(30),first,ganttTicks(first,first.plusDays(30),GanttScale.DAY),
+            items.map {GanttLane(it.id,it.title,listOf(it))},items,0,10,0,0f,listOf(note),storyLabels=items.mapIndexed {i,item->item.id to "HU${i+1}"}.toMap())
+        val geometry=VerticalGanttGeometry(GanttCompactModel(doc))
+        val marker=geometry.model.markers.single()
+        val position=geometry.position(geometry.markerX(marker),geometry.markerY(marker))
+        assertEquals(note.epochDay,position.first);assertEquals(note.lane,position.second,.000001)
+        compose.setContent {Arachn0deTheme {Box(Modifier.size(320.dp,400.dp)) {GanttTimeline(doc,Modifier.fillMaxSize(),{})}}}
+        val dates=compose.onNodeWithTag("gantt-dates").fetchSemanticsNode().boundsInRoot
+        val header=compose.onNodeWithTag("gantt-task-header").fetchSemanticsNode().boundsInRoot
+        compose.onNodeWithTag("gantt-item:story10").performScrollTo().assertIsDisplayed()
+        val after=compose.onNodeWithTag("gantt-dates").fetchSemanticsNode().boundsInRoot
+        assertEquals(dates.left,after.left,.5f);assertEquals(dates.width,after.width,.5f)
+        compose.onNodeWithTag("gantt-date-viewport").performTouchInput {swipeUp()}
+        assertEquals(header,compose.onNodeWithTag("gantt-task-header").fetchSemanticsNode().boundsInRoot)
+        assertTrue(compose.onNodeWithTag("gantt-dates").fetchSemanticsNode().positionInRoot.y<dates.top)
+        assertEquals(listOf(note),doc.annotations)
+    }
+
     @Test fun controlsAndAnnotationReachable()=exercise(1f)
     @Test fun largeFontsKeepActionsReachable()=exercise(1.6f)
     @Test fun projectEntryOpensTimelineAndReturnsFromRealStory() {

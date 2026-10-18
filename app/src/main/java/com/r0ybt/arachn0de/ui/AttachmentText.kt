@@ -26,11 +26,12 @@ import com.r0ybt.arachn0de.ui.theme.Arachn0deColors
 internal fun AttachmentText(text: String, modifier: Modifier = Modifier, color: Color = Arachn0deColors.TextSecondary,
     fontSize: TextUnit = 12.sp, style: TextStyle = TextStyle.Default, maxLines: Int = Int.MAX_VALUE,
     overflow: TextOverflow = TextOverflow.Clip, softWrap: Boolean = true, lineHeight: TextUnit = TextUnit.Unspecified, ownerNodeId:String?=null, webLinks:Boolean=false) {
+    val bashCursor=rememberBashTextCursor()
     val linkContext=LocalContext.current
     val onWeb:((String)->Unit)?=if(webLinks) ({url->openDescriptionWebLink(linkContext,url)}) else null
     val parts = remember(text) { DescriptionParser.parse(text) }
     if (parts.none { it.imageId != null }) {
-        Text(descriptionBody(parts, emptyMap(),Arachn0deColors.ImageLink,{},onWeb), modifier, color = color, fontSize = fontSize, style = style.copy(fontWeight = FontWeight.Normal), maxLines = maxLines, overflow = overflow, softWrap = softWrap, lineHeight = lineHeight)
+        Text(descriptionBody(parts, emptyMap(),Arachn0deColors.ImageLink,{},onWeb), modifier.then(bashCursor.modifier), onTextLayout={bashCursor.layout=it}, color = color, fontSize = fontSize, style = style.copy(fontWeight = FontWeight.Normal,fontFamily=if(LocalBashPresentation.current) androidx.compose.ui.text.font.FontFamily.Monospace else style.fontFamily), maxLines = maxLines, overflow = overflow, softWrap = softWrap, lineHeight = lineHeight)
         return
     }
     val app = LocalContext.current.applicationContext as Arachn0deApplication
@@ -39,7 +40,7 @@ internal fun AttachmentText(text: String, modifier: Modifier = Modifier, color: 
     LaunchedEffect(rows) { available = app.attachmentRepository.availableFiles() }
     var viewing by rememberSaveable { mutableStateOf<String?>(null) }
     val body = descriptionBody(parts, available,Arachn0deColors.ImageLink,{ viewing = it },onWeb)
-    Text(body, modifier, color = color, fontSize = fontSize, style = style.copy(fontWeight = FontWeight.Normal), maxLines = maxLines, overflow = overflow, softWrap = softWrap, lineHeight = lineHeight)
+    Text(body, modifier.then(bashCursor.modifier), onTextLayout={bashCursor.layout=it}, color = color, fontSize = fontSize, style = style.copy(fontWeight = FontWeight.Normal,fontFamily=if(LocalBashPresentation.current) androidx.compose.ui.text.font.FontFamily.Monospace else style.fontFamily), maxLines = maxLines, overflow = overflow, softWrap = softWrap, lineHeight = lineHeight)
         val scope=rememberCoroutineScope()
     val removal=remember(scope) {com.r0ybt.arachn0de.ui.state.OperationState(scope)}
     OperationErrorDialog(removal)

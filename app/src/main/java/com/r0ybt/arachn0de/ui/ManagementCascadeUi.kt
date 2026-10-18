@@ -80,7 +80,7 @@ import kotlinx.coroutines.launch
     val acta=layers.firstOrNull {it.contextId==context && it.kind=="ACTA"}?.nodeId
     val notes=state.nodes.filter {it.parentId==acta && it.purpose=="NOTE"}.sortedBy {it.position}
     val objectives=layers.firstOrNull {it.contextId==context && it.kind=="OBJECTIVES"}?.let {row->state.nodes.firstOrNull {it.id==row.nodeId}}
-    androidx.compose.ui.window.Dialog(onDismissRequest=onDismiss,properties=androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth=false)) {
+    BottomModulesDialog(onDismissRequest=onDismiss,properties=androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth=false)) {
         Surface(Modifier.fillMaxSize()) {
             androidx.compose.foundation.lazy.LazyColumn(Modifier.padding(20.dp),verticalArrangement=Arrangement.spacedBy(16.dp)) {
                 item {Text("Acta de constitución",style=MaterialTheme.typography.headlineSmall)}
@@ -109,7 +109,7 @@ import kotlinx.coroutines.launch
         }}
         error?.let {Text(it,color=MaterialTheme.colorScheme.error)}
     }
-    if(picking) androidx.compose.ui.window.Dialog(onDismissRequest={picking=false},properties=androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth=false)) {
+    if(picking) BottomModulesDialog(onDismissRequest={picking=false},properties=androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth=false)) {
         Surface(Modifier.fillMaxSize().safeDrawingPadding()) {
             Column(Modifier.padding(16.dp)) {
                 Text("Vincular trabajo",style=MaterialTheme.typography.titleLarge)
@@ -135,7 +135,7 @@ import kotlinx.coroutines.launch
     var busy by remember {mutableStateOf(false)}
     var error by remember {mutableStateOf<String?>(null)}
     val scope=rememberCoroutineScope()
-    androidx.compose.ui.window.Dialog(onDismissRequest={if(!busy) onDismiss()},properties=androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth=false)) {
+    BottomModulesDialog(onDismissRequest={if(!busy) onDismiss()},properties=androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth=false)) {
         Surface(Modifier.fillMaxWidth().padding(24.dp),shape=MaterialTheme.shapes.large) {
             Column(Modifier.padding(24.dp),verticalArrangement=Arrangement.spacedBy(16.dp)) {
                 Text("Crear $label",style=MaterialTheme.typography.titleLarge)

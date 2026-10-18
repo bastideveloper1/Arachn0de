@@ -42,12 +42,12 @@ fun Arachn0deTheme(preferences: AppearancePreferences? = null, locked:Boolean=fa
         if(!locked && (context as? com.r0ybt.arachn0de.Arachn0deApplication)?.security?.current?.value?.primary==true) UnlockAppearanceCache.update(context,settings.theme)
         activity?.let {
             val bars=androidx.core.view.WindowCompat.getInsetsController(it.window,it.window.decorView)
-            bars.isAppearanceLightStatusBars=settings.theme.palette.light
-            bars.isAppearanceLightNavigationBars=settings.theme.palette.light
+            bars.isAppearanceLightStatusBars=settings.theme.applicationPalette.light
+            bars.isAppearanceLightNavigationBars=settings.theme.applicationPalette.light
         }
     }
-    CompositionLocalProvider(LocalAppearancePreferences provides resolved, LocalAppearancePalette provides settings.theme.palette,
+    CompositionLocalProvider(LocalAppearancePreferences provides resolved, LocalAppearancePalette provides settings.theme.applicationPalette,
         LocalContentSizes provides contentSizes(settings.textSize)) {
-        MaterialTheme(colorScheme = settings.theme.palette.materialColors(), typography = appearanceTypography(settings.textSize), content = content)
+        MaterialTheme(colorScheme = settings.theme.applicationPalette.materialColors(), typography = appearanceTypography(settings.textSize), content = content)
     }
 }

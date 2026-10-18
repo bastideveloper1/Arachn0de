@@ -15,7 +15,6 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.r0ybt.arachn0de.data.local.*
 import com.r0ybt.arachn0de.data.repository.*
@@ -91,7 +90,7 @@ private fun parsePlanDate(text:String):Long?=if(text.isBlank()) null else try {L
     fun back() {when {pickingStory->pickingStory=false;pickingTask->pickingTask=false;showWork->showWork=false;showHistory->{showHistory=false;historicalCycle=null};pickingSprint->pickingSprint=false;initialSprintId==null && selected!=null->{selected=null;historicalCycle=null};else->onDismiss()}}
     androidx.activity.compose.BackHandler {if(!busy) back()}
     if(sprintTeam && plan!=null) ParticipationDialog(context,ParticipationRepository((androidx.compose.ui.platform.LocalContext.current.applicationContext as com.r0ybt.arachn0de.Arachn0deApplication).database),target=plan.sprintId) {sprintTeam=false}
-    Dialog(onDismissRequest={if(!busy) back()},properties=DialogProperties(usePlatformDefaultWidth=false)) {
+    BottomModulesDialog(onDismissRequest={if(!busy) back()},properties=DialogProperties(usePlatformDefaultWidth=false)) {
         Surface(Modifier.fillMaxSize().safeDrawingPadding()) {Column(Modifier.padding(12.dp)) {
             Text(if(plan==null) "Sprints" else if(pickingStory) "Gestionar historias" else if(showHistory) "Historial de ciclos" else if(showWork) "Trabajo del Sprint" else "Planificar Sprint",style=MaterialTheme.typography.titleLarge)
             error?.let {Text(it,color=MaterialTheme.colorScheme.error)}
@@ -231,7 +230,7 @@ private fun parsePlanDate(text:String):Long?=if(text.isBlank()) null else try {L
     var end by rememberSaveable {mutableStateOf(planDate(plan.endAt))}
     var notes by rememberSaveable {mutableStateOf(plan.notes)}
     var dateTarget by remember {mutableStateOf<String?>(null)}
-    Dialog(onDismissRequest={if(!busy) dismiss()},properties=DialogProperties(usePlatformDefaultWidth=false)) {
+    BottomModulesDialog(onDismissRequest={if(!busy) dismiss()},properties=DialogProperties(usePlatformDefaultWidth=false)) {
         Surface(Modifier.fillMaxSize().safeDrawingPadding()) {Column(Modifier.padding(16.dp),verticalArrangement=Arrangement.spacedBy(12.dp)) {
             Text("Editar planificación",style=MaterialTheme.typography.titleLarge)
             Column(Modifier.weight(1f).verticalScroll(rememberScrollState()),verticalArrangement=Arrangement.spacedBy(12.dp)) {

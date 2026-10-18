@@ -123,6 +123,10 @@ internal object MetroLearning {
         "${it.from}>${it.to}/${it.line}/${it.direction}/${it.service.name}/${it.kind.name}/${it.nextLine}"
     } + if(steps.lastOrNull()?.kind in setOf(MetroStepKind.TRANSFER,MetroStepKind.CHANGE) && next!=null) "/next:${next.line}/${next.direction}/${next.service.name}" else ""
 
+    fun context(route:MetroRoute,first:Int,end:Int):String = context(route.networkVersion,route.steps.subList(first,end),route.steps.getOrNull(end))+
+        if(route.provisional!=null && route.steps.subList(first,end).any {it.kind==MetroStepKind.RIDE && it.service!=MetroService.NORMAL}) "/express-timing-v1" else ""
+    fun estimate(route:MetroRoute,first:Int,end:Int,observations:List<MetroObservation>):MetroLearningEstimate =
+        estimateContext(context(route,first,end),route.baseDurations.subList(first,end).sum(),observations,DEFAULT_WINDOW)
     fun observations(rows: List<MetroLearningEventEntity>, net: MetroNetwork): List<MetroObservation> = buildList {
         val recordedOrder=rows.mapIndexed {index,row->row.id to index.toLong()}.toMap()
         rows.groupBy { it.sessionId }.values.forEach { session ->
@@ -154,9 +158,10 @@ internal object MetroLearning {
                         !measuredChange && path.any { it.kind != MetroStepKind.RIDE || it.line != a.line || it.direction != a.direction || it.service != a.service } -> "CONTEXT_CHANGE"
                         else -> null
                     }
-                    val base=path.sumOf { it.minutes*60_000L }
+                    val base=if(path.isEmpty()) 0L else e.route.baseDurations.subList(a.stepIndex,e.stepIndex).sum()
                     val duration=if(e.time.elapsed > a.time.elapsed) e.time.elapsed-a.time.elapsed else 0
-                    add(MetroObservation("${aRow.id}:${row.id}",aRow.id,row.id,context(e.route.networkVersion,path,e.route.steps.getOrNull(e.stepIndex)),path,duration,base,e.time.wall,reason,recordedOrder.getValue(row.id),row.sessionId))
+                    val key=if(path.isEmpty()) context(e.route.networkVersion,path) else context(e.route,a.stepIndex,e.stepIndex)
+                    add(MetroObservation("${aRow.id}:${row.id}",aRow.id,row.id,key,path,duration,base,e.time.wall,reason,recordedOrder.getValue(row.id),row.sessionId))
                 }
                 previous = row to e
                 interrupted=false
@@ -165,9 +170,11 @@ internal object MetroLearning {
     }
 
     fun estimate(network: String, steps: List<MetroStep>, observations: List<MetroObservation>, window: Int = DEFAULT_WINDOW, next:MetroStep?=null): MetroLearningEstimate {
+        return estimateContext(context(network,steps,next),steps.sumOf {it.minutes*60_000L},observations,window)
+    }
+    private fun estimateContext(key:String,base:Long,observations:List<MetroObservation>,window:Int):MetroLearningEstimate {
         require(window in 1..10_000)
-        val base=steps.sumOf { it.minutes*60_000L }
-        val relevant=observations.filter { it.context == context(network,steps,next) }.distinctBy { it.id }.sortedWith(compareBy<MetroObservation> {it.recordedOrder}.thenBy {it.id})
+        val relevant=observations.filter { it.context == key }.distinctBy { it.id }.sortedWith(compareBy<MetroObservation> {it.recordedOrder}.thenBy {it.id})
         val usable=relevant.filter { it.exclusion == null }.takeLast(window)
         val discarded=relevant.filter { it.exclusion != null }.toMutableList()
         discarded += relevant.filter {it.exclusion==null && it !in usable}.map {it.copy(exclusion="OUTSIDE_WINDOW")}

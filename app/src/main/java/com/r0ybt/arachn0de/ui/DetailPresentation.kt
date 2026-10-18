@@ -4,9 +4,19 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.ui.layout.FirstBaseline
+import kotlin.math.roundToInt
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.Alignment
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -17,9 +27,17 @@ import com.r0ybt.arachn0de.ui.theme.ContentTypography
 
 @Composable
 internal fun DetailScopeTitle(title: String, onEdit: (() -> Unit)? = null) {
-    Text(title, modifier = Modifier.fillMaxWidth().padding(top = 6.dp).testTag("detail-scope-title").heightIn(min = 48.dp)
-        .then(if (onEdit != null) Modifier.clickable(onClickLabel = "Editar título", onClick = onEdit) else Modifier),
+    val bashCursor=rememberBashTextCursor()
+    var firstLineCenter by remember { mutableFloatStateOf(0f) }
+    Row(Modifier.fillMaxWidth().padding(top=6.dp).heightIn(min=48.dp),
+        verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(6.dp)) {
+        PropertyIdentityIcon(modifier=Modifier.size(16.dp).alignBy {it.measuredHeight/2})
+        Text(if(LocalBashPresentation.current) "title=$title" else title, modifier = Modifier.weight(1f).testTag("detail-scope-title").then(bashCursor.modifier).heightIn(min=48.dp)
+            .alignBy {if(firstLineCenter>0f) firstLineCenter.roundToInt() else it[FirstBaseline]}
+            .then(if (onEdit != null) Modifier.clickable(onClickLabel = "Editar título", onClick = onEdit) else Modifier),
+        onTextLayout={layout->bashCursor.layout=layout;firstLineCenter=(layout.getLineTop(0)+layout.getLineBottom(0))/2f},
         color = Arachn0deColors.TextPrimary, fontSize = ContentTypography.ProjectTitle, fontWeight = FontWeight.SemiBold)
+    }
 }
 
 /** Distinguish actual content from derived work; no extra Room queries or hierarchy traversal. */

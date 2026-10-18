@@ -107,7 +107,7 @@ internal fun ContextActionMenu(title:String,onDismiss:()->Unit,header:(@Composab
             }
         }
     }
-    if(inline) menuContent() else ModalBottomSheet(onDismissRequest=onDismiss,sheetState=rememberModalBottomSheetState(skipPartiallyExpanded=true),
+    if(inline) menuContent() else BottomModulesSheet(onDismissRequest=onDismiss,sheetState=rememberModalBottomSheetState(skipPartiallyExpanded=true),
         containerColor=com.r0ybt.arachn0de.ui.theme.Arachn0deColors.Surface,
         contentColor=com.r0ybt.arachn0de.ui.theme.Arachn0deColors.TextPrimary,tonalElevation=0.dp) {menuContent()}
 
@@ -143,6 +143,11 @@ internal fun ContextActionRows(actions:List<ContextAction>,columns:Int,emphasize
 /** Keep these mappings local: other screens retain their existing icon presentation. */
 @Composable
 private fun ContextActionIcon(icon:ImageVector,modifier:Modifier) {
+    val name=icon.name.substringAfterLast('.')
+    if(name=="Title" || name=="Description") {
+        PropertyIdentityIcon(description=name=="Description",modifier=modifier)
+        return
+    }
     val resource=when(icon.name.substringAfterLast('.')) {
         "LocationOn" -> com.r0ybt.arachn0de.R.drawable.lucide_navigation
         "Add" -> com.r0ybt.arachn0de.R.drawable.lucide_plus
@@ -167,6 +172,6 @@ private fun ContextActionIcon(icon:ImageVector,modifier:Modifier) {
             "ArrowDownward" -> Modifier.rotate(-90f)
             else -> Modifier
         }))
-    else if(icon.name.substringAfterLast('.')=="PushPin") androidx.compose.material3.Icon(icon,null,modifier,tint=LocalContentColor.current)
+    else if(icon.name.substringAfterLast('.') in setOf("PushPin","Payments","Flag")) androidx.compose.material3.Icon(icon,null,modifier,tint=LocalContentColor.current)
     else LucideIcon(icon,null,modifier,tint=LocalContentColor.current)
 }

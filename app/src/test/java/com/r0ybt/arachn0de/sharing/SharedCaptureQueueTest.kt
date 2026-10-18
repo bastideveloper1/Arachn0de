@@ -27,6 +27,18 @@ class SharedCaptureQueueTest {
     private fun bind() {files=AttachmentStore(context,BackupFixture::syncDirectory);attachments=AttachmentRepository(db,files);queue=SharedCaptureQueue(db,attachments)}
     @Before fun setup()=runBlocking {context.deleteDatabase("arachn0de.db");db=Arachn0deDatabase.create(context);bind();db.projectDao().insert(ProjectEntity("p","Núcleo","",0,1,1))}
     @After fun close() {db.close()}
+    @Test fun newTextNoteHasNoAttachmentsAndExistingPendingJournalIsPreserved()=runBlocking<Unit> {
+        val legacy=SharedCaptureQueue.Entry(id(),"Pendiente anterior","Contenido anterior",null,"READY",true,1)
+        db.privatePreferenceDao().save(PrivatePreferenceEntity(SharedCaptureQueue.PREFIX+legacy.id,legacy.json()))
+        val request=id();val body="Descripción intacta\nhttps://example.org/a\nhttps://example.org/b"
+        queue.receive(request,SharedContent("Título",body,null,true));queue.recover()
+        assertEquals(legacy,queue.observe().first().first())
+        assertTrue(runCatching {queue.receive(id(),SharedContent("No importar","Texto",Uri.parse("content://unreadable/image")))}.isFailure)
+        queue.save(request,"project:p","Título",body,emptySet())
+        val saved=db.nodeDao().getById(request)!!
+        assertEquals("NOTE",saved.purpose);assertEquals(body,saved.description)
+        assertTrue(attachments.filesForNode(request).isEmpty());assertEquals(listOf(legacy),queue.observe().first())
+    }
     private fun id()=UUID.randomUUID().toString()
     @Test fun queueKeepsIdenticalLegitimateSharesOrderedAndDeduplicatesSameEventAcrossReopen()=runBlocking<Unit> {
         val a=id();val b=id();val content=SharedContent("Título","texto https://example.com",null)

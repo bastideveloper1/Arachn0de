@@ -1,5 +1,6 @@
 package com.r0ybt.arachn0de.ui
 
+import com.r0ybt.arachn0de.ui.theme.BashColors
 import androidx.compose.material3.VerticalDivider
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -13,6 +14,15 @@ import androidx.compose.material3.MaterialTheme
 import com.r0ybt.arachn0de.domain.model.Node
 
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.layout
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.material.icons.filled.KeyboardArrowUp
+import com.r0ybt.arachn0de.ui.theme.LocalAppearancePalette
 import kotlinx.coroutines.flow.first
 import androidx.compose.material.icons.filled.Workspaces
 import androidx.compose.material.icons.filled.Article
@@ -52,6 +62,7 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -136,6 +147,7 @@ internal fun ProjectNodeScreen(
     onBackToSearch: (() -> Unit)? = null,
     openNodeId: String? = null,
     onOpenNodeHandled: () -> Unit = {},
+    onHeadingNodeChanged: (String?) -> Unit = {},
     clock: () -> Long = System::currentTimeMillis,
     onOpenProjects: () -> Unit = onBackToProjects,
     sortPreferences: NodeSortPreferences = rememberSaveable(project.id, saver = NodeSortPreferences.Saver) { NodeSortPreferences() },
@@ -206,6 +218,7 @@ internal fun ProjectNodeScreen(
     val isSubmittingNode = actions.operation.busy || defaultsOperation.busy
     var referenceReturns by rememberSaveable(project.id) {mutableStateOf(listOf<String>())}
     val currentNodeId = currentPath.lastOrNull()
+    LaunchedEffect(project.id,currentNodeId) {onHeadingNodeChanged(currentNodeId)}
     fun openReference(id:String) {
         if(id==currentNodeId) return
         val origin=currentPath.toList()
@@ -235,7 +248,7 @@ internal fun ProjectNodeScreen(
     var editingTechnologies by remember { mutableStateOf(false) }
     if(editingTechnologies) EditOwnerTechnologies(currentNodeId ?: project.id,currentNodeId==null) {editingTechnologies=false}
     var showContextActions by remember(currentNodeId) { mutableStateOf(false) }
-    var coreContext by remember(project.id,currentNodeId) {mutableStateOf(CoreBottomContext.Creation)}
+    var coreContext by remember(project.id,currentNodeId) {mutableStateOf(CoreBottomContext.Content)}
     var planningOpen by remember(currentNodeId) {mutableStateOf(false)}
     val currentNode = projectState.nodesById[currentNodeId]
     var projectEditField by rememberSaveable(project.id) {mutableStateOf<String?>(null)}
@@ -528,7 +541,7 @@ internal fun ProjectNodeScreen(
         },enabled = !copyActions.busy)
     }
     val creationActions:@Composable ()->Unit={
-                Row(Modifier.fillMaxWidth().padding(top=6.dp).background(Arachn0deColors.Surface)
+                Row(Modifier.fillMaxWidth().background(Arachn0deColors.Surface)
                     .testTag("project-bottom-actions"),horizontalArrangement=Arrangement.spacedBy(8.dp),verticalAlignment=Alignment.CenterVertically) {
                     TextButton(onClick={if(contextualCreationLabel!=null) managementCreationRequest++ else if(!isSubmittingNode && (currentNode==null || currentNode.canReceiveChildren)) openTraditionalElement(quick = true)},
                         modifier=Modifier.weight(1f).heightIn(min=48.dp),contentPadding=PaddingValues(8.dp),
@@ -564,7 +577,8 @@ internal fun ProjectNodeScreen(
                     .then(if(showDrawer) Modifier.clearAndSetSemantics {} else Modifier)
                     .padding(horizontal = 12.dp, vertical = 10.dp),
             ) {
-                HeaderBar(onMenuClick = { showDrawer = true }, title = project.name, compactLock=true,
+                HeaderBar(onMenuClick = { showDrawer = true }, title = currentNode?.title ?: project.name, compactLock=true, showTitle=false,
+                    context=if(currentNode!=null) headingLocation(project,currentNode.parentId,projectState.nodesById)?.copy(core=null) else null,
                     onBack=if(useNodeModule) ({nodeBackDispatcher?.onBackPressed();Unit}) else if(referenceReturns.lastOrNull()?.let {org.json.JSONObject(it).getString("target")==currentNodeId}==true) ({restoreReference();Unit}) else if(onBackToSearch!=null) onBackToSearch else if(currentPath.isNotEmpty()) ({
                         if(onBackToObligations!=null) onBackToObligations()
                         else if(onBackToCalendar!=null) onBackToCalendar()
@@ -576,6 +590,8 @@ internal fun ProjectNodeScreen(
                         IconButton(onClick={scopeFilters.open=true},modifier=Modifier.size(48.dp)) {LucideIcon(Icons.Default.FilterList,if(scopeFilters.active) "Filtros activos" else "Filtros",tint=if(scopeFilters.active) Arachn0deColors.Accent else Arachn0deColors.TextSecondary)}
                         if(currentNodeId!=null && !useNodeModule) IconButton(onClick={showContextActions=true},modifier=Modifier.size(48.dp)) {LucideIcon(Icons.Default.MoreVert,"Opciones del elemento")}
                     })
+                BashPrompt(bashLocation(project.name,currentNode,projectState.nodesById),
+                    if(currentNode==null || currentNode.isStructural) "ls -l" else "cat "+bashQuote(bashFileName(com.r0ybt.arachn0de.data.repository.storyDisplayTitle(currentNode.id,currentNode.title,LocalStoryLabels.current),currentNode.purpose)))
                 if(selection.ids.isNotEmpty()) Column(Modifier.fillMaxWidth()) {
                     Text("${selection.ids.size} seleccionados", style = androidx.compose.material3.MaterialTheme.typography.titleMedium)
                     androidx.compose.foundation.layout.FlowRow(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -613,14 +629,12 @@ internal fun ProjectNodeScreen(
 
 
                                 if (currentNode == null) Row(verticalAlignment = Alignment.CenterVertically) {
-                                    ProjectIdentityIcon(project)
-                                    Spacer(Modifier.width(8.dp))
                                     Box(Modifier.weight(1f)) { DetailScopeTitle(project.name) }
-                                } else Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                                } else Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                     val nodeTitle:@Composable ()->Unit={
                                         Box(Modifier.weight(1f)) {
-                                            DetailScopeTitle(com.r0ybt.arachn0de.data.repository.storyDisplayTitle(currentNode.id,currentNode.title,LocalStoryLabels.current), onEdit =
-                                                ({ if(useNodeModule) nodeEditRequest=com.r0ybt.arachn0de.domain.model.NodeProperty.TITLE else openNodeEditor(currentNode,"title") }).takeIf { !isSubmittingNode && assignmentsLoaded && peopleLoaded })
+                                            DetailScopeTitle(com.r0ybt.arachn0de.data.repository.storyDisplayTitle(currentNode.id,currentNode.title,LocalStoryLabels.current))
                                         }
                                     }
                                     if(!useNodeModule) nodeTitle()
@@ -643,7 +657,10 @@ internal fun ProjectNodeScreen(
                                     if(useNodeModule) nodeTitle()
                                 }
                                 Spacer(modifier = Modifier.height(8.dp))
-                                if (currentNode == null) Text("Proyecto raíz", color = Arachn0deColors.TextSecondary, fontSize = 12.sp)
+                                if(LocalBashPresentation.current) {
+                                    if(currentNode==null) Text("id=${project.id}") else BashNodeProperties(currentNode)
+                                }
+                                if (currentNode == null) Text(if(LocalBashPresentation.current) "type=directory" else "Núcleo", color = Arachn0deColors.TextSecondary, fontSize = 12.sp)
 
                                 if (currentNode != null) {
                                     Row(
@@ -651,7 +668,7 @@ internal fun ProjectNodeScreen(
                                         verticalAlignment = Alignment.CenterVertically,
                                     ) {
                                         Text(
-                                            text = "CAPA $currentLayer",
+                                            text = if(LocalBashPresentation.current) "depth=$currentLayer" else "CAPA $currentLayer",
                                             color = Arachn0deColors.TextSecondary,
                                             fontSize = 12.sp,
                                             fontWeight = FontWeight.Bold,
@@ -664,10 +681,8 @@ internal fun ProjectNodeScreen(
 
                                 if (currentNode == null) AttentionIndicator(attention?.byProjectId?.get(project.id))
                                 if (scopeDescription.isNotBlank() || currentNode != null) {
-                                    androidx.compose.material3.Card(
-                                        modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp).testTag("detail-description")
-                                            .clickable(enabled = currentNode != null && !isSubmittingNode && assignmentsLoaded && peopleLoaded,
-                                                onClickLabel = "Editar descripción") { currentNode?.let { if(useNodeModule) nodeEditRequest=com.r0ybt.arachn0de.domain.model.NodeProperty.DESCRIPTION else openNodeEditor(it,"description") } },
+                                    GeneralCard(
+                                        modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp).testTag("detail-description"),
                                         shape = RoundedCornerShape(10.dp),
                                         colors = androidx.compose.material3.CardDefaults.cardColors(
                                             containerColor = Arachn0deColors.ControlSurface,
@@ -677,21 +692,25 @@ internal fun ProjectNodeScreen(
                                             modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
                                         ) {
                                             Text(
-                                                text = "DESCRIPCIÓN",
+                                                text = if(LocalBashPresentation.current) "description=" else "DESCRIPCIÓN",
                                                 color = Arachn0deColors.TextSecondary,
                                                 fontSize = 10.sp,
                                                 fontWeight = FontWeight.SemiBold,
                                                 letterSpacing = 0.08.sp,
                                             )
                                             Spacer(modifier = Modifier.height(4.dp))
-                                            AttachmentText(
-                                                text = scopeDescription.ifBlank { "Añadir descripción" },
-                                                ownerNodeId=currentNodeId,
-                                                webLinks=currentNode?.purpose in setOf(NodePurpose.ACTION,NodePurpose.NOTE),
-                                                color = Arachn0deColors.TextPrimary,
-                                                fontSize = ContentTypography.Detail,
-                                                lineHeight = ContentTypography.DetailLine,
-                                            )
+                                            Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(6.dp),verticalAlignment=Alignment.Top) {
+                                                PropertyIdentityIcon(description=true,modifier=Modifier.padding(top=2.dp).size(16.dp))
+                                                AttachmentText(
+                                                    modifier = Modifier.weight(1f),
+                                                    text = scopeDescription.ifBlank { "Añadir descripción" },
+                                                    ownerNodeId=currentNodeId,
+                                                    webLinks=currentNode?.purpose in setOf(NodePurpose.ACTION,NodePurpose.NOTE),
+                                                    color = Arachn0deColors.TextPrimary,
+                                                    fontSize = ContentTypography.Detail,
+                                                    lineHeight = ContentTypography.DetailLine,
+                                                )
+                                            }
                                         }
                                     }
                                 }
@@ -728,10 +747,15 @@ internal fun ProjectNodeScreen(
                                     Spacer(modifier = Modifier.height(12.dp))
                                 }
 
-                                FlowRow(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(4.dp),verticalArrangement=Arrangement.spacedBy(0.dp),itemVerticalAlignment=Alignment.CenterVertically) {
-                                    CardIndicatorDetail(currentNode?.id?.let {"node:$it"} ?: "project:${project.id}",onOpenNode={id->openReference(id)},onOpenPeople=onOpenPeople,onOpenTechnologies=onOpenTechnologies,managementContext=managementContexts.firstOrNull {it.enabled && it.id==(cascadeRoles.owners[currentNodeId] ?: managementContext?.id)}?.id,participationRepository=nodeRepository.management.participation,showPeople=!managedSprint,fillWidth=false)
-                                    if(teamScope && responsibleByNode[currentNodeId].orEmpty().isNotEmpty()) Text("Responsables del contenido Equipo",style=MaterialTheme.typography.labelLarge)
-                                    if(!managedSprint) CompactAssignments(currentNode?.id ?: project.id, currentNode?.let {responsibleByNode[it.id]}.orEmpty(), project=currentNode==null,showTechnologies=currentNode!=null,fillWidth=false,compactSpacing=true,showPeople=currentNode?.isStructural!=true)
+                                Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically,
+                                    horizontalArrangement=Arrangement.spacedBy(8.dp)) {
+                                    FlowRow(Modifier.weight(1f),horizontalArrangement=Arrangement.spacedBy(4.dp),verticalArrangement=Arrangement.spacedBy(0.dp),itemVerticalAlignment=Alignment.CenterVertically) {
+                                        CardIndicatorDetail(currentNode?.id?.let {"node:$it"} ?: "project:${project.id}",onOpenNode={id->openReference(id)},onOpenPeople=onOpenPeople,onOpenTechnologies=onOpenTechnologies,managementContext=managementContexts.firstOrNull {it.enabled && it.id==(cascadeRoles.owners[currentNodeId] ?: managementContext?.id)}?.id,participationRepository=nodeRepository.management.participation,showPeople=!managedSprint,fillWidth=false)
+                                        if(teamScope && responsibleByNode[currentNodeId].orEmpty().isNotEmpty()) Text("Responsables del contenido Equipo",style=MaterialTheme.typography.labelLarge)
+                                        if(!managedSprint) CompactAssignments(currentNode?.id ?: project.id, currentNode?.let {responsibleByNode[it.id]}.orEmpty(), project=currentNode==null,showTechnologies=currentNode!=null,fillWidth=false,compactSpacing=true,showPeople=currentNode?.isStructural!=true)
+                                    }
+                                    val scopeTags=if(currentNode==null) tagState.forProject(project.id) else tagState.forNode(currentNode.id)
+                                    if(scopeTags.isNotEmpty()) InteriorTagBadge(scopeTags,Modifier.widthIn(max=120.dp))
                                 }
                                 if (currentNode != null) {
                                     androidx.compose.foundation.layout.FlowRow(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -742,7 +766,6 @@ internal fun ProjectNodeScreen(
                                     ObligationIndicator(currentNode)
                                     if (currentNode.obligation != null) Text("Convierte esta obligación en una tarea antes de usarla como capa.", color = Arachn0deColors.TextSecondary)
                                     TaskDateIndicator(currentNode, now)
-                                    TagChips(tagState.forNode(currentNode.id))
 
                                     Spacer(modifier = Modifier.height(12.dp))
                                 }
@@ -754,7 +777,8 @@ internal fun ProjectNodeScreen(
                             else if (filteredRows!!.none { it.isMatch }) item { Text("Sin coincidencias") }
                             items(filteredRows.orEmpty(), key = { "filtered:${it.node.id}" }) { row ->
                                 if (scopeFilters.person != null && row.isMatch && row.node.obligation != null) {
-                                    androidx.compose.material3.Card(
+                                    GeneralCard(
+                                        bashEntry = true,
                                         modifier = Modifier.fillMaxWidth().padding(start = minOf(row.depth, 6).times(12).dp)
                                             .testTag("person-obligation:${row.node.id}")
                                             .semantics { selected = row.node.id in selection.ids; stateDescription = if (row.node.id in selection.ids) "Seleccionado" else "Sin seleccionar" },
@@ -762,7 +786,7 @@ internal fun ProjectNodeScreen(
                                         colors = androidx.compose.material3.CardDefaults.cardColors(containerColor = Arachn0deColors.Surface),
                                     ) {
                                         Column(Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
-                                            TextButton(modifier = Modifier.fillMaxWidth(), onClick = { if(selection.ids.isNotEmpty()) selection.toggle(row.node.id) else actions.navigate(row.node.id) { path -> currentPath.clear(); currentPath.addAll(path) } }) { Text(row.node.title, modifier = Modifier.fillMaxWidth(), color = Arachn0deColors.TextPrimary, fontSize = ContentTypography.ProjectTitle, fontWeight = FontWeight.SemiBold, maxLines = 2, overflow = TextOverflow.Ellipsis) }
+                                            TextButton(modifier = Modifier.fillMaxWidth(), onClick = { if(selection.ids.isNotEmpty()) selection.toggle(row.node.id) else actions.navigate(row.node.id) { path -> currentPath.clear(); currentPath.addAll(path) } }) { Text(if(LocalBashPresentation.current) bashFileName(row.node.title,row.node.purpose) else row.node.title, modifier = Modifier.fillMaxWidth(), color = Arachn0deColors.TextPrimary, fontSize = ContentTypography.ProjectTitle, fontWeight = FontWeight.SemiBold, maxLines = if(LocalBashPresentation.current) Int.MAX_VALUE else 2, overflow = TextOverflow.Ellipsis) }
                                             CompactCardIndicators("node:${row.node.id}")
                                             PriorityIndicator(row.node)
                                             TagChips(tagState.forNode(row.node.id))
@@ -778,7 +802,7 @@ internal fun ProjectNodeScreen(
                                         SecondaryAction(if(row.node.id in selection.ids) "✓ Seleccionado" else "Seleccionar", { selection.toggle(row.node.id) }, enabled = !isSubmittingNode)
                                         if (!row.isMatch) Text("Contexto · ${row.node.title}", color = Arachn0deColors.TextSecondary)
                                         else {
-                                            TextButton(onClick = { if(selection.ids.isNotEmpty()) selection.toggle(row.node.id) else actions.navigate(row.node.id) { path -> currentPath.clear(); currentPath.addAll(path) } }) { Text(row.node.title) }
+                                            TextButton(onClick = { if(selection.ids.isNotEmpty()) selection.toggle(row.node.id) else actions.navigate(row.node.id) { path -> currentPath.clear(); currentPath.addAll(path) } }) { Text(row.node.title,maxLines=2,overflow=TextOverflow.Ellipsis) }
                                             CompactCardIndicators("node:${row.node.id}")
                                             PriorityIndicator(row.node)
                                             TagChips(tagState.forNode(row.node.id))
@@ -909,7 +933,7 @@ internal fun ProjectNodeScreen(
                             items(nestedMatches, key = { "sprint-filtered:${it.node.id}" }) { row ->
                                 Column(Modifier.padding(start = minOf(row.depth, 6).times(12).dp)) {
                                     if (!row.isMatch) Text("Contexto · ${row.node.title}", color = Arachn0deColors.TextSecondary)
-                                    TextButton(onClick = { if (selection.ids.isNotEmpty()) selection.toggle(row.node.id) else actions.navigate(row.node.id) { path -> currentPath.clear();currentPath.addAll(path) } }) { Text(row.node.title) }
+                                    TextButton(onClick = { if (selection.ids.isNotEmpty()) selection.toggle(row.node.id) else actions.navigate(row.node.id) { path -> currentPath.clear();currentPath.addAll(path) } }) { Text(row.node.title,maxLines=2,overflow=TextOverflow.Ellipsis) }
                                     row.node.workState?.let { Text(it.label, color = Arachn0deColors.TextSecondary) }
                                     SecondaryAction(if (row.node.id in selection.ids) "✓ Seleccionado" else "Seleccionar", { selection.toggle(row.node.id) }, enabled = !isSubmittingNode)
                                 }
@@ -920,10 +944,9 @@ internal fun ProjectNodeScreen(
                 }
             }
             Column(Modifier.align(Alignment.BottomCenter).fillMaxWidth()
-                .padding(horizontal=12.dp,vertical=10.dp)
                 .then(if(showDrawer) Modifier.clearAndSetSemantics {} else Modifier)
                 .onSizeChanged {bottomControlsHeight=with(bottomControlsDensity) {it.height.toDp()}}) {
-                androidx.compose.material3.SnackbarHost(actions.snackbar, Modifier.fillMaxWidth()) { data ->
+                androidx.compose.material3.SnackbarHost(actions.snackbar, Modifier.fillMaxWidth().padding(horizontal=12.dp)) { data ->
                     androidx.compose.material3.Snackbar(
                         snackbarData = data,
                         shape = RoundedCornerShape(8.dp),
@@ -934,8 +957,13 @@ internal fun ProjectNodeScreen(
                     )
                 }
                 RecurrenceManager(nodeRepository.recurrence, project.id, projectState.nodes, people, peopleLoaded, recurrenceSelected, showLauncher = false) { recurrenceSelected = null }
-                AudioBar()
                 // Transparent layout only: the list reserves this height; AppSafeArea owns system insets.
+                val taskPanel = if(quickCreation) draft?.purpose == NodePurpose.ACTION
+                    else useNodeModule || (currentNodeId==null && projectEditField==null)
+                TaskBottomPanel(enabled=taskPanel,
+                    panelKey=if(quickCreation) draft?.creationId else currentNodeId,
+                    title=if(quickCreation) "Nueva tarea" else currentNode?.title ?: "Tareas",
+                    editRequest=nodeEditRequest) {
                 if(quickCreation && draft?.id == null && draft != null) QuickCreateBar(draft, isSubmittingNode,
                     onSave = { actions.saveDraft(project.id, draft, draft.purpose == NodePurpose.ACTION) { drafts.clear(); quickCreation = false } },
                     onCancel = { actions.discardDraft(draft) { drafts.clear(); quickCreation = false } },
@@ -967,6 +995,7 @@ internal fun ProjectNodeScreen(
                         peopleLoaded && assignmentsLoaded,tagState,nodeTechnologies,coreModuleMaxHeight,contextActions,creationActions,
                         nodeEditRequest,{nodeEditRequest=null})
                 } else creationActions()
+                }
 
             }
 
@@ -1020,7 +1049,7 @@ internal fun ProjectNodeScreen(
         )
     }
 
-    if(showDefaults) androidx.compose.ui.window.Dialog(onDismissRequest = {}, properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false, dismissOnClickOutside = false, dismissOnBackPress = false)) {
+    if(showDefaults) BottomModulesDialog(onDismissRequest = {}, properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false, dismissOnClickOutside = false, dismissOnBackPress = false)) {
         AppSafeArea { CreationDefaultsScreen(nodeRepository.creationDefaults,
             currentNodeId?.let { com.r0ybt.arachn0de.domain.defaults.DefaultsScope.Layer(project.id,it) } ?: com.r0ybt.arachn0de.domain.defaults.DefaultsScope.Project(project.id),
             currentNode?.title ?: project.name, tagState.tags, people) { showDefaults = false } }
@@ -1177,3 +1206,60 @@ internal fun ProjectNodeScreen(
     LoadErrorDialog(load)
 }
 
+
+/** Keeps the editor composed while folded so drafts, scroll and field buffers survive. */
+@Composable
+internal fun TaskBottomPanel(enabled:Boolean,panelKey:String?,title:String,editRequest:com.r0ybt.arachn0de.domain.model.NodeProperty?,
+    accessibilityLabel:String="tareas",content:@Composable ()->Unit) {
+    var minimized by rememberSaveable(panelKey) { mutableStateOf(false) }
+    val folded=enabled && minimized
+    val focus=LocalFocusManager.current
+    val keyboard=LocalSoftwareKeyboardController.current
+    val palette=LocalAppearancePalette.current
+    val charcoal=palette.taskPanel
+    val edge=if(LocalBashPresentation.current) BashColors.Separator else androidx.compose.ui.graphics.lerp(charcoal,palette.text,.22f)
+    val threshold=with(androidx.compose.ui.platform.LocalDensity.current) {24.dp.toPx()}
+    fun minimize() {focus.clearFocus();keyboard?.hide();minimized=true}
+    LaunchedEffect(editRequest) {if(editRequest!=null) minimized=false}
+    Column(Modifier.fillMaxWidth()
+        .then(if(enabled) Modifier.background(charcoal).drawWithContent {
+            drawContent()
+            drawRect(edge,size=androidx.compose.ui.geometry.Size(size.width,1.dp.toPx()))
+        } else Modifier)) {
+        if(enabled) {
+            val gesture=Modifier.pointerInput(folded,threshold) {
+                var distance=0f
+                detectVerticalDragGestures(onDragStart={distance=0f},onDragCancel={distance=0f},
+                    onDragEnd={
+                        if(!folded && distance>threshold) minimize()
+                        else if(folded && distance < -threshold) minimized=false
+                    },onVerticalDrag={change,amount->change.consume();distance+=amount})
+            }
+            if(folded) {
+                Row(Modifier.fillMaxWidth().heightIn(min=48.dp).then(gesture)
+                    .clickable(onClickLabel="Expandir panel de $accessibilityLabel") {minimized=false}
+                    .padding(horizontal=16.dp),verticalAlignment=Alignment.CenterVertically,
+                    horizontalArrangement=Arrangement.spacedBy(8.dp)) {
+                    Text(title,Modifier.weight(1f),maxLines=1,overflow=androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                        color=palette.text,style=MaterialTheme.typography.labelLarge)
+                    Icon(Icons.Default.KeyboardArrowUp,"Expandir panel",tint=palette.muted)
+                }
+            } else {
+                Box(Modifier.fillMaxWidth().height(24.dp).then(gesture)
+                    .clickable(onClickLabel="Minimizar panel de $accessibilityLabel") {minimize()}
+                    .padding(bottom=2.dp),contentAlignment=Alignment.BottomCenter) {
+                    Box(Modifier.size(36.dp,4.dp).background(palette.muted.copy(alpha=.65f),RoundedCornerShape(2.dp)))
+                }
+            }
+        }
+        // Measure normally, but do not place hidden editors or expose their accessibility nodes.
+        Box(Modifier.fillMaxWidth()
+            .then(if(folded) Modifier.clearAndSetSemantics {}.layout {measurable,constraints->
+                measurable.measure(constraints)
+                layout(constraints.minWidth,0) {}
+            } else Modifier)) {
+            CompositionLocalProvider(LocalAppearancePalette provides
+                if(enabled) palette.copy(surface=charcoal,panel=charcoal) else palette) {content()}
+        }
+    }
+}

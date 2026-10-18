@@ -60,7 +60,7 @@ internal val LocalElementAccessState=staticCompositionLocalOf {AccessState()}
             Row(Modifier.fillMaxWidth(),verticalAlignment=androidx.compose.ui.Alignment.CenterVertically) {
                 GlobalChromeActions(leading=true)
                 IconButton(onClick=onBack,modifier=Modifier.size(48.dp)) {LucideIcon(androidx.compose.material.icons.Icons.Default.ArrowBack,"Volver")}
-                Text(if(mode=="Favoritos") "Favoritos" else "Buscar",Modifier.weight(1f),style=MaterialTheme.typography.titleLarge)
+                NavigationHeading(if(mode=="Favoritos") "Favoritos" else "Buscar",Modifier.weight(1f))
                 GlobalChromeActions()
             }
             // Reserve the result viewport even while loading; controls remain above the IME
@@ -141,16 +141,16 @@ internal val LocalElementAccessState=staticCompositionLocalOf {AccessState()}
     }
     val destination=targets.firstOrNull {it.key==key}
     AccessDialog(onDismissRequest={if(!op.busy) cancel()},title={Text("Captura rápida")},text={Column(Modifier.verticalScroll(androidx.compose.foundation.rememberScrollState())) {
-        OutlinedTextField(title,{title=it},enabled=!op.busy,label={Text("Título")},modifier=Modifier.fillMaxWidth(),singleLine=true,isError=TitleLimits.count(title)>TitleLimits.NODE)
-        TextButton(enabled=!op.busy,onClick={descriptionOpen=!descriptionOpen}) {Text(if(linkNote) "Enlace" else "Descripción opcional")}
+        OutlinedTextField(title,{title=it},enabled=!op.busy,label={Text("Título")},modifier=Modifier.fillMaxWidth(),singleLine=false,maxLines=Int.MAX_VALUE,isError=TitleLimits.count(title)>TitleLimits.NODE)
+        TextButton(enabled=!op.busy,onClick={descriptionOpen=!descriptionOpen}) {Text(if(linkNote) "Texto y enlaces" else "Descripción opcional")}
         if(descriptionOpen) {
-            if(linkNote) OutlinedTextField(description,{description=it},enabled=!op.busy,label={Text("Enlace")},modifier=Modifier.fillMaxWidth())
+            if(linkNote) OutlinedTextField(description,{description=it},enabled=!op.busy,label={Text("Texto y enlaces")},modifier=Modifier.fillMaxWidth())
             else if(pending!=null) AttachmentDescriptionEditor(draft,!op.busy,tools={},repository=requireNotNull(queue).attachments)
             else OutlinedTextField(description,{description=it},enabled=!op.busy,label={Text("Descripción")},modifier=Modifier.fillMaxWidth())
         }
         OutlinedButton(enabled=!op.busy,onClick={choosing=true}) {Text("Destino: ${destination?.let {it.path+if(it.nodeId!=null) " › ${it.title}" else ""} ?: "Seleccionar"}")}
         if(targets.isEmpty()) Text(if(linkNote) "Crea primero un Proyecto para guardar notas." else "Crea primero un Proyecto para guardar tareas.")
-    }},confirmButton={TextButton(enabled=!op.busy && title.isNotBlank() && TitleLimits.count(title)<=TitleLimits.NODE && destination!=null && (!linkNote || com.r0ybt.arachn0de.sharing.SharedContent.isLink(description.trim())),onClick={
+    }},confirmButton={TextButton(enabled=!op.busy && title.isNotBlank() && TitleLimits.count(title)<=TitleLimits.NODE && destination!=null,onClick={
         op.submit(if(linkNote) "No se pudo crear la nota. Revisa el título, el enlace y el destino." else "No se pudo crear la tarea. Revisa el título y el destino.",{if(pending==null) repo.capture(requireNotNull(key),title,description,creationId) else requireNotNull(queue).save(pending.id,requireNotNull(key),title,description,draft.removedAttachmentIds.toSet());true},onDismiss)
     }) {Text(if(linkNote) "Crear nota" else "Crear tarea")}},dismissButton={TextButton(enabled=!op.busy,onClick=::cancel) {Text("Cancelar")}})
     if(choosing) {
@@ -165,8 +165,8 @@ internal val LocalElementAccessState=staticCompositionLocalOf {AccessState()}
 
 @Composable
 private fun AccessDialog(onDismissRequest:()->Unit,title:@Composable ()->Unit,text:@Composable ()->Unit,confirmButton:@Composable ()->Unit,dismissButton:(@Composable ()->Unit)?=null) {
-    androidx.compose.ui.window.Dialog(onDismissRequest=onDismissRequest,properties=androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth=false)) {
-        Surface(modifier=Modifier.fillMaxWidth().padding(16.dp),shape=androidx.compose.foundation.shape.RoundedCornerShape(16.dp),color=MaterialTheme.colorScheme.surface) {
+    BottomModulesDialog(onDismissRequest=onDismissRequest,properties=androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth=false)) {
+        Surface(modifier=Modifier.fillMaxWidth(),shape=androidx.compose.foundation.shape.RoundedCornerShape(16.dp),color=MaterialTheme.colorScheme.surface) {
             Column(Modifier.fillMaxWidth().heightIn(max=620.dp).padding(16.dp),verticalArrangement=Arrangement.spacedBy(12.dp)) {
                 androidx.compose.runtime.CompositionLocalProvider(LocalTextStyle provides MaterialTheme.typography.titleLarge) {title()}
                 Column(Modifier.weight(1f,fill=false)) {text()}

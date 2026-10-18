@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.5.1 — corrección local, código 19, firma pendiente
+
+- Pie global compartido por navegación, editores y selectores, a ancho completo.
+- Menor separación vertical; Grabación encima de Pomodoro, con divisores de 1 dp.
+- Compactación independiente de ambas barras, conservando las sesiones activas.
+- Los editores minimizados reservan su espacio sin superponerse a las barras.
+- La atenuación por notificaciones no pausa el micrófono; se respetan las interrupciones reales.
+- Sin cambios de base de datos, respaldo, identidad ni clave de firma.
+
+## 0.5.0 — preparación local, código 18, pendiente de firma
+
+- Temas Charcoal y Dark seleccionables y persistentes.
+- Pomodoro offline con vista completa y barra compacta.
+- Calendario con fechas especiales y cumpleaños derivados de Personas, con filtros.
+- Mejoras de edición modular, encabezados contextuales y presentación de tarjetas.
+- Ajustes de Antisocial y de recepción y exportación de texto compartido.
+- Conserva el identificador y la firma oficial; sin publicación.
+
 ## 0.4.0 — preparación local, pendiente de firma
 
 - Gestión de proyectos integrada: Acta, Equipo, Objetivos, Backlog, planificación de

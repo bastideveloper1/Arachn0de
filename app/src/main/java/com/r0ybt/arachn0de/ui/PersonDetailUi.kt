@@ -35,7 +35,6 @@ import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.r0ybt.arachn0de.Arachn0deApplication
 import com.r0ybt.arachn0de.data.local.*
@@ -49,7 +48,7 @@ import java.util.UUID
     val repository=(LocalContext.current.applicationContext as Arachn0deApplication).personRepository
     val navigation=LocalPersonNavigation.current
     val globalNavigation=LocalGlobalNavigation.current
-    Dialog(onDismissRequest=onDismiss,properties=DialogProperties(usePlatformDefaultWidth=false)) {
+    BottomModulesDialog(onDismissRequest=onDismiss,properties=DialogProperties(usePlatformDefaultWidth=false)) {
         CompositionLocalProvider(LocalGlobalNavigation provides globalNavigation?.copy(menu={onDismiss();globalNavigation.menu()},showLock=true),LocalPersonNavigation provides navigation?.let {open->{destination:PersonDestination->onDismiss();open(destination)}}) {
         Surface(Modifier.fillMaxSize()) {PeopleScreen(repository,initialPersonId=id,onBack=onDismiss)}
         }
@@ -60,8 +59,9 @@ import java.util.UUID
 @Composable internal fun PersonDetailView(initialId:String,people:List<Person>,repository:PersonRepository,onEditIdentity:(Person)->Unit,initialSection:String="Inicio",onEditAvatar:(Person)->Unit=onEditIdentity,onNewPerson:(()->Unit)?=null,onDeletePerson:((Person)->Unit)?=null,onBack:()->Unit) {
     var path by rememberSaveable(initialId) {mutableStateOf(listOf(initialId))}
     var section by rememberSaveable {mutableStateOf(initialSection)}
-    var editingSection by rememberSaveable {mutableStateOf<String?>(null)}
     var editingRelation by remember {mutableStateOf<PersonRelationEntity?>(null)}
+    var relationAction by rememberSaveable {mutableStateOf<String?>(null)}
+    var networkActions by rememberSaveable {mutableStateOf(false)}
     var adding by remember {mutableStateOf(false)}
     var deleting by remember {mutableStateOf<PersonRelationEntity?>(null)}
     var error by remember {mutableStateOf<String?>(null)}
@@ -76,52 +76,43 @@ import java.util.UUID
     val birthdays by remember(repository) {repository.observeBirthdays()}.collectAsState(initial=null)
     val sectionDrafts=rememberSaveableStateHolder()
     var sectionRequest by rememberSaveable {mutableIntStateOf(0)}
-    var profileMenu by remember {mutableStateOf(false)}
     val id=path.last();val person=people.firstOrNull {it.id==id}
     var networkSearch by rememberSaveable(id) {mutableStateOf("")}
     var networkCategory by rememberSaveable(id) {mutableStateOf("")}
     var viewing by rememberSaveable(id) {mutableStateOf<String?>(null)}
     val network=people.filter {contact->contact.id!=id && (identity?.personId==id || relations.orEmpty().any {it.other(id)==contact.id && (it.sourceId==id || it.targetId==id)})}
     val profile=profiles?.firstOrNull {it.personId==id} ?: PersonProfileEntity(id)
-    LaunchedEffect(id,section,profiles!=null,birthdays!=null) {
-        editingSection=if(profiles!=null && birthdays!=null && section in listOf("General","Contacto","Perfil")) section else null
-    }
-    LaunchedEffect(section) {if(section!="Relaciones") {adding=false;editingRelation=null}}
+    val editingSection=section.takeIf {profiles!=null && birthdays!=null && it in listOf("General","Contacto","Perfil")}
+    LaunchedEffect(id,section) {relationAction=null;networkActions=false;if(section!="Relaciones") {adding=false;editingRelation=null}}
     fun back() {if(section=="Red") section="Inicio" else if(path.size>1) {path=path.dropLast(1);section="Inicio"} else onBack()}
     BackHandler {if(!busy) back()}
     fun perform(action:suspend ()->Unit) {if(busy) return;busy=true;scope.launch {try {action()} catch(c:CancellationException) {throw c} catch(e:Exception) {error=e.message ?: "No se pudo guardar."} finally {busy=false}}}
-    BoxWithConstraints(Modifier.fillMaxSize().padding(14.dp)) {
+    BoxWithConstraints(Modifier.fillMaxSize().padding(top=14.dp)) {
     val identityHeight=(maxHeight*.4f).coerceAtLeast(96.dp)
     Column(Modifier.fillMaxSize().imePadding()) {
-        Row(Modifier.fillMaxWidth()) {GlobalChromeActions(enabled=!busy, leading=true);TextButton(enabled=!busy,onClick={back()}) {Text("Volver")};Text(person?.name ?: "Persona no disponible",Modifier.weight(1f),style=MaterialTheme.typography.titleLarge,maxLines=1,overflow=androidx.compose.ui.text.style.TextOverflow.Ellipsis);Box {
-            IconButton(enabled=!busy && person!=null && profiles!=null && birthdays!=null,onClick={profileMenu=true}) {Icon(Icons.Default.MoreVert,"Opciones del perfil")}
-            DropdownMenu(profileMenu,{profileMenu=false}) {
-                DropdownMenuItem(text={Text("Editar perfil")},onClick={profileMenu=false;person?.let(onEditIdentity)})
-                if(onDeletePerson!=null) DropdownMenuItem(text={Text("Eliminar")},onClick={profileMenu=false;person?.let(onDeletePerson)},enabled=!busy)
-            }
-        };GlobalChromeActions(enabled=!busy)}
+        Row(Modifier.fillMaxWidth().padding(horizontal=14.dp)) {GlobalChromeActions(enabled=!busy, leading=true);TextButton(enabled=!busy,onClick={back()}) {Text("Volver")};NavigationHeading("Antisocial · "+(person?.name ?: "Persona no disponible"),Modifier.weight(1f));GlobalChromeActions(enabled=!busy)}
         if(person==null) {Text("La Persona fue eliminada o aún se está cargando.");return@Column}
         if(profiles==null || relations==null) {Text("Cargando ficha…");return@Column}
-        if(section=="Inicio") PersonPhotoHeader(person,profile,birthday=birthdays.orEmpty().firstOrNull {it.personId==id}?.date,maximumHeight=identityHeight,
+        if(section=="Inicio") Box(Modifier.fillMaxWidth().padding(horizontal=14.dp)) { PersonPhotoHeader(person,profile,birthday=birthdays.orEmpty().firstOrNull {it.personId==id}?.date,maximumHeight=identityHeight,
             onEditAvatar={viewing=person.avatarFile?.let {"primary:${person.id}"} ?: photos.firstOrNull {it.personId==id}?.id},
-            publications=publications?.count {it.personId==id},networkCount=network.size,onNetwork={section="Red"})
-        Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),horizontalArrangement=Arrangement.spacedBy(4.dp)) {
+            publications=publications?.count {it.personId==id},networkCount=network.size,onNetwork={section="Red"}) }
+        Row(Modifier.fillMaxWidth().padding(horizontal=14.dp).horizontalScroll(rememberScrollState()),horizontalArrangement=Arrangement.spacedBy(4.dp)) {
             val sections=listOf("Inicio" to Icons.Default.Home,"General" to Icons.Default.Info,"Contacto" to Icons.Default.Call,"Perfil" to Icons.Default.Person,
                 "Relaciones" to Icons.Default.Groups,"Tecnologías" to Icons.Default.Code,"Proyectos y trabajo" to Icons.Default.Work)
             sections.forEach {(label,icon)->
                 val visible=remember(label) {BringIntoViewRequester()}
                 LaunchedEffect(section) {if(section==label) visible.bringIntoView()}
                 Column(Modifier.width(IntrinsicSize.Max)) {
-                    IconButton(enabled=!busy,onClick={section=label;sectionRequest++;editingSection=label.takeIf {it in listOf("General","Contacto","Perfil")}},modifier=Modifier.size(48.dp).bringIntoViewRequester(visible).testTag("person-section:$label").semantics {selected=section==label}) {
+                    IconButton(enabled=!busy,onClick={section=label;sectionRequest++},modifier=Modifier.size(48.dp).bringIntoViewRequester(visible).testTag("person-section:$label").semantics {selected=section==label}) {
                         Icon(icon,label,Modifier.size(20.dp),tint=if(section==label) com.r0ybt.arachn0de.ui.theme.Arachn0deColors.TextPrimary else com.r0ybt.arachn0de.ui.theme.Arachn0deColors.TextSecondary)
                     }
                     if(section==label) HorizontalDivider(thickness=2.dp,color=com.r0ybt.arachn0de.ui.theme.Arachn0deColors.TextPrimary)
                 }
             }
         }
-        Box(Modifier.weight(1f).fillMaxWidth()) {
+        Box(Modifier.weight(1f).fillMaxWidth().then(if(section=="Tecnologías") Modifier else Modifier.padding(horizontal=14.dp))) {
         if(section=="Inicio") PersonMemoryGallery(id,repository) {}
-        else if(section=="Tecnologías") PersonTechnologiesSection(id,repository,openOnEntry=true,openRequest=sectionRequest)
+        else if(section=="Tecnologías") PersonTechnologiesSection(id,repository,openOnEntry=true,openRequest=sectionRequest,contentModifier=Modifier.padding(horizontal=14.dp))
         else if(section=="Proyectos y trabajo") PersonWorkSection(id,repository)
         else if(section=="Red") {
             val contacts=network.filter {contact->
@@ -145,28 +136,19 @@ import java.util.UUID
                                         .forEach {Text(it.presentation(id),style=MaterialTheme.typography.bodySmall)}
                                 }
                                 val favorite=contact.id in favorites.orEmpty()
-                                IconButton(enabled=!busy && favorites!=null,onClick={perform {repository.toggleFavorite(contact.id)}},modifier=Modifier.size(48.dp).testTag("person-favorite:${contact.id}").semantics {selected=favorite}) {
-                                    Icon(if(favorite) Icons.Default.Star else Icons.Default.StarBorder,if(favorite) "Quitar de favoritos" else "Marcar favorito",Modifier.size(20.dp),tint=if(favorite) com.r0ybt.arachn0de.ui.theme.Arachn0deColors.TextPrimary else com.r0ybt.arachn0de.ui.theme.BlackWhite90.Inactive)
-                                }
-                                if(onDeletePerson!=null) Box {
-                                    var menu by remember {mutableStateOf(false)}
-                                    IconButton(onClick={menu=true},modifier=Modifier.size(48.dp).testTag("person-options:${contact.id}")) {Icon(Icons.Default.MoreVert,"Opciones de ${contact.name}")}
-                                    if(menu) ContextActionMenu(contact.name,{menu=false}) {
-                                        action("Editar perfil",Icons.Default.Edit,{menu=false;onEditIdentity(contact)},enabled=!busy && birthdays!=null)
-                                        action("Eliminar",Icons.Default.Delete,{menu=false;onDeletePerson(contact)},enabled=!busy,destructive=true)
-                                    }
-                                }
+                                Icon(if(favorite) Icons.Default.Star else Icons.Default.StarBorder,if(favorite) "Favorito" else null,Modifier.size(20.dp),tint=com.r0ybt.arachn0de.ui.theme.Arachn0deColors.TextSecondary)
+
                             }
                         }
                     }
                 }
                 OutlinedTextField(networkSearch,{networkSearch=it},label={Text("Buscar Personas")},singleLine=true,modifier=Modifier.fillMaxWidth())
-                if(identity?.personId==id) onNewPerson?.let {create->Button(onClick=create,modifier=Modifier.fillMaxWidth().heightIn(min=48.dp)) {Text("Nueva Persona")}}
             }
         }
-        else LazyColumn(Modifier.fillMaxSize(),verticalArrangement=Arrangement.spacedBy(8.dp)) {
+        else LazyColumn(Modifier.fillMaxSize().testTag("person-profile-consultation"),verticalArrangement=Arrangement.spacedBy(8.dp)) {
             if(section!="Relaciones") {
-                if(section=="Perfil") item {
+                item {Text(if(section=="General") "Información del perfil" else section,style=MaterialTheme.typography.titleSmall)}
+                if(section=="Perfil" && !birthdays.orEmpty().firstOrNull {it.personId==id}?.date.isNullOrBlank()) item {
                     val birth=birthdays.orEmpty().firstOrNull {it.personId==id}?.date
                     Card(Modifier.fillMaxWidth().heightIn(min=48.dp)) {
                         Row(Modifier.fillMaxWidth().padding(12.dp),verticalAlignment=androidx.compose.ui.Alignment.CenterVertically) {
@@ -174,16 +156,16 @@ import java.util.UUID
                         }
                     }
                 }
-                val fields=profileFields(profile.copy(alias=person.name),section)
+                val fields=profileConsultationFields(profile.copy(alias=person.name),section)
                 items(fields) {(label,value)->
                     Card(Modifier.fillMaxWidth().heightIn(min=48.dp)) {
                         Row(Modifier.fillMaxWidth().padding(12.dp),verticalAlignment=androidx.compose.ui.Alignment.CenterVertically) {
-                            Column(Modifier.weight(1f)) {Text(label,style=MaterialTheme.typography.labelLarge);Text(value.ifBlank {"Sin información"})}
+                            Column(Modifier.weight(1f)) {Text(label,style=MaterialTheme.typography.labelLarge);Text(value)}
                         }
                     }
                 }
             } else {
-                item {TextButton(enabled=!busy && people.size>1,onClick={adding=true}) {Text("Añadir relación")};if(people.size<2) Text("Crea otra Persona desde el listado para vincularla.")}
+                if(people.size<2) item {Text("Crea otra Persona desde el listado para vincularla.")}
                 val related=relations.orEmpty().filter {it.sourceId==id || it.targetId==id}
                 if(related.isEmpty()) item {Text("Sin relaciones.")}
                 PersonCategory.entries.forEach {category->
@@ -191,16 +173,12 @@ import java.util.UUID
                     if(group.isNotEmpty()) item {Text(category.label,style=MaterialTheme.typography.titleMedium)}
                     items(group,key={it.id}) {r->val other=people.firstOrNull {it.id==r.other(id)}
                         Card(Modifier.fillMaxWidth()) {Column(Modifier.padding(12.dp)) {
-                            var menu by remember {mutableStateOf(false)}
                             Row(Modifier.fillMaxWidth(),verticalAlignment=androidx.compose.ui.Alignment.CenterVertically) {
                                 Row(Modifier.weight(1f).heightIn(min=48.dp).clickable(enabled=other!=null) {other?.let {path=path+it.id;section="Inicio"}},verticalAlignment=androidx.compose.ui.Alignment.CenterVertically) {
                                     other?.let {PersonAvatar(it,48.dp,true)}
                                     Column(Modifier.padding(start=10.dp)) {Text(other?.name ?: "Persona no disponible");Text(r.presentation(id),style=MaterialTheme.typography.labelLarge)}
                                 }
-                                Box {TextButton(onClick={menu=true}) {Text("⋮")};DropdownMenu(menu,{menu=false}) {
-                                    DropdownMenuItem(text={Text("Editar vínculo")},onClick={menu=false;editingRelation=r},enabled=!busy)
-                                    DropdownMenuItem(text={Text("Eliminar vínculo")},onClick={menu=false;deleting=r},enabled=!busy)
-                                }}
+
                             }
                             if(r.meaning.isNotBlank()) Text(r.meaning)
                         }}
@@ -209,46 +187,88 @@ import java.util.UUID
             }
         }
         }
+        if(section=="Inicio") key(id) {PersonProfileModule(person,people,identity?.personId,repository,onDeletePerson?.let {remove->{remove(person)}})}
         editingSection?.takeIf {profiles!=null && birthdays!=null}?.let {editorSection->sectionDrafts.SaveableStateProvider("$id:$editorSection") {
-            PersonSectionEditor(person,profile,editorSection,birthdays.orEmpty().firstOrNull {it.personId==id}?.date.orEmpty(),busy,sectionRequest,
-                {sectionDrafts.removeState("$id:$editorSection");editingSection=null}) {values->perform {
-                val updated=when(editorSection) {
-                    "General"->profile.copy(alias=values[0].trim(),description=values[1],notes=values[2])
-                    "Contacto"->profile.copy(phones=values[0],emails=values[1],addresses=values[2],links=values[3])
-                    else->profile.copy(qualities=values[0],skills=values[1],interests=values[2],availability=values[3])
-                }
-                require(repository.save(id,if(editorSection=="General") values[0] else person.name,person.avatarFile,isNew=false,
+            PersonSectionEditor(person,profile,editorSection,birthdays.orEmpty().firstOrNull {it.personId==id}?.date.orEmpty(),busy,sectionRequest) {index,value,done->perform {
+                val birthdayField=editorSection=="Perfil" && index==0
+                val updated=if(birthdayField) profile else updatePersonSectionField(profile,editorSection,if(editorSection=="Perfil") index-1 else index,value)
+                require(repository.save(id,if(editorSection=="General" && index==2) value else person.name,person.avatarFile,isNew=false,
                     zoom=person.avatarZoom,x=person.avatarX,y=person.avatarY,profile=updated,
-                    birthday=if(editorSection=="Perfil") values[4] else null)) {"La Persona ya no existe."}
-                sectionDrafts.removeState("$id:$editorSection");editingSection=null
+                    birthday=if(birthdayField) value else null)) {"La Persona ya no existe."}
+                done()
             }}
         }}
+        if(section=="Relaciones") {
+            if(adding || editingRelation!=null) key(id,editingRelation?.id) {PersonRelationEditor(id,people,editingRelation,
+                {if(!busy) {adding=false;editingRelation=null}}) {relation,isNew->perform {repository.saveRelation(relation,isNew);adding=false;editingRelation=null}}}
+            else ModularPanelSurface(Modifier.fillMaxWidth()) {
+                ModularPanelLayout(compact=true,outlinedBody=false,headerDivider=false,showActions=false,
+                    header={Row(Modifier.fillMaxWidth(),verticalAlignment=androidx.compose.ui.Alignment.CenterVertically) {
+                        Text(relationAction ?: "Relaciones",Modifier.weight(1f))
+                        if(relationAction!=null) IconButton(onClick={relationAction=null}) {Icon(Icons.Default.ArrowBack,"Volver a Relaciones")}
+                    }},actions={}) {
+                    BackHandler(enabled=relationAction!=null) {relationAction=null}
+                    val related=relations.orEmpty().filter {it.sourceId==id || it.targetId==id}
+                    if(relationAction==null) ModularFieldMenu(listOf(
+                        ModularPanelOption("Añadir relación",Icons.Default.Add,"person-add-relation",!busy && people.size>1) {adding=true},
+                        ModularPanelOption("Editar vínculo",Icons.Default.Edit,"person-edit-relation",!busy && related.isNotEmpty()) {relationAction="Editar vínculo"},
+                        ModularPanelOption("Eliminar vínculo",Icons.Default.Delete,"person-delete-relation",!busy && related.isNotEmpty()) {relationAction="Eliminar vínculo"}
+                    ),compact=true)
+                    else ModularFieldMenu(related.map {relation->
+                        ModularPanelOption((people.firstOrNull {it.id==relation.other(id)}?.name ?: "Persona")+" · "+relation.presentation(id),Icons.Default.Groups,"person-relation:${relation.id}",!busy) {
+                            if(relationAction=="Editar vínculo") editingRelation=relation else deleting=relation
+                            relationAction=null
+                        }
+                    },columns=1,compact=true)
+                }
+            }
+        }
+        if(section=="Red") ModularPanelSurface(Modifier.fillMaxWidth()) {
+            ModularPanelLayout(compact=true,outlinedBody=false,headerDivider=false,showActions=false,header={Text("Red")},actions={}) {
+                BackHandler(enabled=networkActions) {networkActions=false}
+                if(networkActions) {
+                    TextButton(onClick={networkActions=false}) {Text("Volver a Red")}
+                    if(network.isEmpty()) Text("No hay contactos en esta Red.")
+                    ModularFieldMenu(network.map {contact->ModularPanelOption((if(contact.id in favorites.orEmpty()) "Quitar de favoritos: " else "Marcar favorito: ")+contact.name,if(contact.id in favorites.orEmpty()) Icons.Default.Star else Icons.Default.StarBorder,"person-favorite:${contact.id}",!busy && favorites!=null) {perform {repository.toggleFavorite(contact.id)}}},columns=1,compact=true)
+                } else ModularFieldMenu(listOfNotNull(
+                    ModularPanelOption("Favoritos",Icons.Default.StarBorder,"person-network-favorites",!busy) {networkActions=true},
+                    onNewPerson?.takeIf {identity?.personId==id}?.let {create->ModularPanelOption("Nueva Persona",Icons.Default.PersonAdd,"person-network-add",!busy,create)}
+                ),compact=true)
+            }
+        }
+
     }
     }
     if(person!=null) viewing?.let {selected->
         PersonPhotoViewer(person,photos.filter {it.personId==id},selected,busy,{viewing=it},
             {photo->perform {repository.setPhotoAsAvatar(id,photo.id)}},{viewing=null},repository)
     }
-    if(section=="Relaciones" && (adding || editingRelation!=null)) key(id,editingRelation?.id) {PersonRelationEditor(id,people,editingRelation,{adding=false;editingRelation=null}) {relation,isNew->perform {repository.saveRelation(relation,isNew);adding=false;editingRelation=null}}}
     deleting?.let {r->AlertDialog(onDismissRequest={if(!busy) deleting=null},title={Text("Eliminar vínculo")},text={Text("Solo se eliminará esta relación y su presentación inversa. Ambas Personas se conservarán.")},confirmButton={TextButton(enabled=!busy,onClick={perform {repository.deleteRelation(r.id);deleting=null}}) {Text("Eliminar")}},dismissButton={TextButton(enabled=!busy,onClick={deleting=null}) {Text("Cancelar")}})}
     error?.let {AlertDialog(onDismissRequest={error=null},title={Text("No se pudo guardar")},text={Text(it)},confirmButton={TextButton(onClick={error=null}) {Text("Cerrar")}})}
 }
+/** Each field has one section and the same order in consultation and editing. */
+internal fun profileConsultationFields(p:PersonProfileEntity,section:String)=profileFields(p,section).filter {it.second.isNotBlank()}
 internal fun profileFields(p:PersonProfileEntity,section:String)=when(section) {
-    "General"->listOf("Apodo" to p.alias,"Descripción" to p.description,"Notas" to p.notes)
-    "Contacto"->listOf("Teléfonos" to p.phones,"Correos" to p.emails,"Direcciones" to p.addresses,"Enlaces" to p.links)
+    "General"->listOf("Nombre" to p.givenName,"Apellidos" to p.familyName,"Apodo" to p.alias,"Biografía" to p.description,"DNI/RUT" to p.documentId,"Notas" to p.notes)
+    "Contacto"->listOf("Teléfonos" to p.phones,"Correos electrónicos" to p.emails,"Direcciones" to p.addresses,"Enlaces" to p.links)
     else->listOf("Cualidades" to p.qualities,"Habilidades" to p.skills,"Intereses" to p.interests,"Disponibilidad" to p.availability)
 }
+internal fun updatePersonSectionField(p:PersonProfileEntity,section:String,index:Int,value:String):PersonProfileEntity=when(section) {
+    "General"->when(index) {0->p.copy(givenName=value);1->p.copy(familyName=value);2->p.copy(alias=value.trim());3->p.copy(description=value);4->p.copy(documentId=value);5->p.copy(notes=value);else->error("Campo desconocido")}
+    "Contacto"->when(index) {0->p.copy(phones=value);1->p.copy(emails=value);2->p.copy(addresses=value);3->p.copy(links=value);else->error("Campo desconocido")}
+    else->when(index) {0->p.copy(qualities=value);1->p.copy(skills=value);2->p.copy(interests=value);3->p.copy(availability=value);else->error("Campo desconocido")}
+}
 @Composable private fun PersonSectionEditor(person:Person,p:PersonProfileEntity,section:String,birthday:String,busy:Boolean,menuRequest:Int,
-    onCancel:()->Unit,onSave:(List<String>)->Unit) {
-    val fields=profileFields(p.copy(alias=person.name),section)+(if(section=="Perfil") listOf("Fecha de nacimiento" to birthday) else emptyList())
-    ModularTextFieldsEditor(editorKey="${p.personId}:$section",title="Editar $section",labels=fields.map {it.first},
-        initialValues=fields.map {it.second},saveLabel="Guardar sección",onCancel=onCancel,inline=true,enabled=!busy,menuRequest=menuRequest,compactMenu=true,
+    onSave:(Int,String,()->Unit)->Unit) {
+    val fields=(if(section=="Perfil") listOf("Fecha de nacimiento" to birthday) else emptyList())+profileFields(p.copy(alias=person.name),section)
+    ModularTextFieldsEditor(editorKey="${p.personId}:$section:$menuRequest",title=section,labels=fields.map {it.first},showMenuTitle=true,
+        initialValues=fields.map {it.second},saveLabel="",onCancel={},inline=true,enabled=!busy,menuRequest=menuRequest,compactMenu=true,
         fieldIcon={index->antisocialFieldIcon(fields[index].first)},
-        validField={index,value->section!="General" || when(index) {0->value.isNotBlank();1->value.length<=150 || value==p.description;else->true}},
+        validField={index,value->section!="General" || when(index) {2->value.isNotBlank();3->value.length<=150 || value==p.description;else->true}},
         fieldEditor={index,value,change->
-            if(section=="Perfil" && index==4) BirthdayField(value,change,enabled=!busy)
-            else ModularTextField(value,change,fields[index].first,!busy,singleLine=section=="General" && index==0)
-        },onSave=onSave)
+            if(section=="Perfil" && index==0) BirthdayField(value,change,enabled=!busy)
+            else ModularTextField(value,change,fields[index].first,!busy,singleLine=section=="General" && index in listOf(0,1,2,4))
+        },onFieldSave=onSave,onSave={})
 }
 @OptIn(ExperimentalLayoutApi::class)
 @Composable private fun PersonRelationEditor(current:String,people:List<Person>,original:PersonRelationEntity?,onCancel:()->Unit,onSave:(PersonRelationEntity,Boolean)->Unit) {
@@ -261,10 +281,10 @@ internal fun profileFields(p:PersonProfileEntity,section:String)=when(section) {
     var mode by rememberSaveable {mutableStateOf(original?.mode ?: "ONE_WAY")}
     var stage by rememberSaveable {mutableIntStateOf(if(original==null) 0 else 1)}
     var query by rememberSaveable {mutableStateOf("")}
-    ModularPanelDialog(onDismissRequest=onCancel,compact=true,plainBody=true,fieldOwnsScroll=true,
-        foldLabel=if(original==null) "Añadir relación" else "Editar vínculo",
+    ModularPanelDialog(inline=true,onDismissRequest=onCancel,compact=true,plainBody=true,fieldOwnsScroll=true,
         title={Text(if(original==null) "Añadir relación" else "Editar vínculo")},
         text={Column(Modifier.fillMaxWidth(),verticalArrangement=Arrangement.spacedBy(6.dp)) {
+            BackHandler {if(stage==1 && original==null) stage=0 else onCancel()}
             Text("Origen: ${people.firstOrNull {it.id==source}?.name.orEmpty()}")
             if(stage==0) {
                 OutlinedTextField(query,{query=it},label={Text("Buscar Persona relacionada")},singleLine=true,modifier=Modifier.fillMaxWidth())
@@ -286,13 +306,13 @@ internal fun profileFields(p:PersonProfileEntity,section:String)=when(section) {
             }
         }},
         dismissButton={TextButton(onClick=onCancel) {Text("Cancelar")}},
-        confirmButton={if(stage==1) TextButton(enabled=target.isNotEmpty() && label.isNotBlank() && (mode!="DIRECTED" || inverse.isNotBlank()),onClick={val l=label.trim();val inv=when(mode) {"DIRECTED"->inverse.trim();"RECIPROCAL"->l;else->""};onSave(PersonRelationEntity(original?.id ?: UUID.randomUUID().toString(),source,target,category,l,inv,meaning,mode,relationKey(source,target,category,l,inv,mode)),original==null)}) {Text("Guardar vínculo")}})
+        confirmButton={if(stage==1) TextButton(enabled=target.isNotEmpty() && label.isNotBlank() && (mode!="DIRECTED" || inverse.isNotBlank()),onClick={val l=label.trim();val inv=when(mode) {"DIRECTED"->inverse.trim();"RECIPROCAL"->l;else->""};onSave(PersonRelationEntity(original?.id ?: UUID.randomUUID().toString(),source,target,category,l,inv,meaning,mode,relationKey(source,target,category,l,inv,mode)),original==null)}) {Text("Confirmar")}})
 }
 
 private fun antisocialFieldIcon(label:String)=when(label) {
-    "Apodo" -> androidx.compose.material.icons.Icons.Default.Person
+    "Nombre", "Apellidos", "Apodo", "DNI/RUT" -> androidx.compose.material.icons.Icons.Default.Person
     "Teléfonos" -> androidx.compose.material.icons.Icons.Default.Phone
-    "Correos" -> androidx.compose.material.icons.Icons.Default.Email
+    "Correos electrónicos" -> androidx.compose.material.icons.Icons.Default.Email
     "Direcciones" -> androidx.compose.material.icons.Icons.Default.Place
     "Enlaces" -> androidx.compose.material.icons.Icons.Default.Link
     "Fecha de nacimiento" -> androidx.compose.material.icons.Icons.Default.DateRange

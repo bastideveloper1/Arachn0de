@@ -47,7 +47,7 @@ class AppearanceFinalTest {
         listOf(scheme.background,scheme.surface,scheme.surfaceContainer,scheme.surfaceContainerLowest,scheme.surfaceContainerHighest,scheme.surfaceContainerHigh,scheme.surfaceContainerLow,scheme.surfaceDim,scheme.surfaceBright,scheme.primaryContainer,scheme.secondaryContainer,scheme.tertiaryContainer,scheme.inverseSurface).forEach {assertNotEquals(Color.White,it)}
         assertEquals(day.text,day.semantic(SemanticColors.Error));assertEquals(day.primary,day.semantic(SemanticColors.ImageLink))
     }
-    @Test fun privateThemesRestoreFromRealEncryptedBackupAndRejectMalformedValues()=runBlocking<Unit> {
+    @Test fun darkRestoresFromRealEncryptedBackupAndRejectsMalformedValues()=runBlocking<Unit> {
         val id=UUID.randomUUID();val root=File(context.filesDir,"appearance-vault-$id").apply {mkdirs()}
         val access=SecureFiles.Session(id,root,VaultCrypto.randomKey());SecureFiles.register(access)
         val vault=VaultContext(context,access)
@@ -55,13 +55,13 @@ class AppearanceFinalTest {
         try {
             val storage=vault.getSharedPreferences(AppearancePreferences.FILE,0)
             storage.edit().putString("theme","Minimalist").putString("text_size","Large").putBoolean("other",true).commit()
-            val settings=AppearancePreferences(storage);settings.setTheme(AppearanceTheme.DayGrey)
+            val settings=AppearancePreferences(storage);settings.setTheme(AppearanceTheme.Dark)
             val backup=BackupRepository(db,vault,BackupAvatarFiles(vault,BackupFixture::syncDirectory))
             val original=db.privatePreferenceDao().all()
             val archive=backup.create("appearance-backup-fixture".toCharArray())
             val candidate=backup.inspect(SecureFiles.input(archive),"appearance-backup-fixture".toCharArray())
             settings.setTheme(AppearanceTheme.NightBlue);backup.restore(candidate);backup.discard(candidate);backup.discardPending(archive.name)
-            settings.reload();assertEquals(AppearanceTheme.DayGrey,settings.settings.theme);assertEquals(AppearanceTextSize.Large,settings.settings.textSize);assertTrue(storage.getBoolean("other",false))
+            settings.reload();assertEquals(AppearanceTheme.Dark,settings.settings.theme);assertEquals(AppearanceTextSize.Large,settings.settings.textSize);assertTrue(storage.getBoolean("other",false))
             assertEquals(original,db.privatePreferenceDao().all())
             val before=backup.snapshot()
             val bad=before.copy(privatePreferences=listOf(PrivatePreferenceEntity(AppearancePreferences.FILE,EncryptedPreferences.encode(mapOf("theme" to false)))))

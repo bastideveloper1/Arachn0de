@@ -7,6 +7,13 @@ import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.background
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Color
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
@@ -15,6 +22,8 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -121,24 +130,26 @@ internal fun audioTime(ms:Long)="%d:%02d".format(ms/60000,ms/1000%60)
 /** One 48-dp row, hosted by the existing footer or the global navigation container. */
 internal val LocalAudioFooterVisible=staticCompositionLocalOf {true}
 
-@Composable internal fun AudioBar(inEditor:Boolean=false) {
+@Composable internal fun AudioBar(compact:Boolean=false,onCompactChange:(Boolean)->Unit={}) {
     if(!LocalAudioFooterVisible.current) return
     val session=(LocalContext.current.applicationContext as? Arachn0deApplication)?.security?.current?.value ?: return
-    val hosts by session.audio.editorBarHosts.collectAsState()
-    DisposableEffect(session,inEditor) {
-        if(inEditor) session.audio.editorBarHosts.value++
-        onDispose {if(inEditor) session.audio.editorBarHosts.value=(session.audio.editorBarHosts.value-1).coerceAtLeast(0)}
-    }
-    if(!inEditor && hosts>0) return
-    val audio=session.audio;val state by audio.state.collectAsState();val scope=rememberCoroutineScope {CoroutineExceptionHandler {_,_->audio.state.value=audio.state.value.copy(error="No se pudo completar la acción de audio. El archivo se conserva.")}}
+    val audio=session.audio;val state by audio.state.collectAsState()
+    val fallbackScope=rememberCoroutineScope {CoroutineExceptionHandler {_,_->audio.state.value=audio.state.value.copy(error="No se pudo completar la acción de audio. El archivo se conserva.")}}
+    val scope=LocalBottomModulesActionScope.current ?: fallbackScope
     val files by session.attachments.observeFiles().collectAsState(emptyList())
     val currentFile=files.firstOrNull {it.id==state.fileId}
     var closing by remember {mutableStateOf(false)};var menu by remember {mutableStateOf(false)};var controls by remember {mutableStateOf(false)}
-    if(state.visible) CompositionLocalProvider(LocalContentColor provides Arachn0deColors.TextPrimary) {
-      Row(Modifier.fillMaxWidth().heightIn(min=48.dp).testTag("audio-bar"),verticalAlignment=Alignment.CenterVertically) {
-        Icon(if(state.recording) Icons.Default.Mic else Icons.Default.VolumeUp,null,Modifier.size(20.dp),tint=Arachn0deColors.TextSecondary)
+    if(state.visible) PersistentModuleBoundary("audio-module") { CompositionLocalProvider(LocalContentColor provides Arachn0deColors.TextPrimary) {
+      Row(Modifier.fillMaxWidth().heightIn(min=48.dp)
+          .then(if(state.recording) Modifier.background(com.r0ybt.arachn0de.ui.theme.LocalAppearancePalette.current.taskPanel.copy(alpha=.94f),RoundedCornerShape(8.dp)) else Modifier)
+          .testTag("audio-bar"),verticalAlignment=Alignment.CenterVertically) {
+        IconButton(onClick={onCompactChange(!compact)},modifier=Modifier.size(48.dp).testTag("audio-compact-toggle")
+            .semantics {contentDescription=if(compact) "Expandir barra de audio" else "Minimizar barra de audio"}) {
+            if(state.recording) RecordingLevelIcon(state.recordingLevels)
+            else Icon(Icons.Default.VolumeUp,null,Modifier.size(20.dp),tint=Arachn0deColors.TextSecondary)
+        }
         Row(Modifier.weight(1f).heightIn(min=48.dp).clickable(enabled=!state.recording) {controls=true},verticalAlignment=Alignment.CenterVertically) {
-            Text(if(state.recording) (if(state.paused) "Pausa" else "Grabando") else state.title,Modifier.weight(1f),maxLines=1,overflow=TextOverflow.Ellipsis,style=MaterialTheme.typography.bodySmall)
+            Text(if(state.recording) (if(state.paused) "Pausa" else if(compact) "REC" else "Grabando") else if(compact) "Audio" else state.title,Modifier.weight(1f),maxLines=1,overflow=TextOverflow.Ellipsis,style=MaterialTheme.typography.bodySmall)
             Text(audioTime(if(state.recording) state.durationMs else state.positionMs),maxLines=1,style=MaterialTheme.typography.bodySmall)
         }
         IconButton(enabled=audio.canToggle,onClick={scope.launch {audio.toggle()}},modifier=Modifier.size(48.dp)) {Icon(if(state.paused) Icons.Default.PlayArrow else Icons.Default.Pause,if(state.paused) "Continuar" else "Pausar")}
@@ -158,7 +169,22 @@ internal val LocalAudioFooterVisible=staticCompositionLocalOf {true}
         }
     }
     }
+    }
     if(controls) state.fileId?.let {AudioViewer(it,session.attachments,onClose={controls=false})}
     if(closing) AlertDialog(onDismissRequest={closing=false},text={Text("Finaliza y conserva el audio, o descarta la grabación.")},confirmButton={TextButton(onClick={scope.launch {audio.finish();closing=false}}) {Text("Finalizar y conservar")}},dismissButton={TextButton(onClick={scope.launch {audio.finish(discard=true);closing=false}}) {Text("Descartar")}})
     state.error?.let {message->AlertDialog(onDismissRequest={audio.state.value=audio.state.value.copy(error=null)},text={Text(message)},confirmButton={TextButton(onClick={audio.state.value=audio.state.value.copy(error=null)}) {Text("Cerrar")}})}
+}
+
+/** Data-driven movement only: paused/stopped capture produces no animation frames. */
+@Composable private fun RecordingLevelIcon(levels:List<Float>) {
+    Canvas(Modifier.size(20.dp)) {
+        val width=3.dp.toPx()
+        val gap=2.dp.toPx()
+        val left=(size.width-(4*width+3*gap))/2
+        for(bar in 0 until 4) {
+            val height=3.dp.toPx()+levels[bar]*(size.height-3.dp.toPx())
+            drawRoundRect(Color(0xFFD88C8C),Offset(left+bar*(width+gap),(size.height-height)/2),
+                Size(width,height),CornerRadius(width/2,width/2))
+        }
+    }
 }

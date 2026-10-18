@@ -12,6 +12,8 @@ data class AppearancePalette(
     val outline: Color, val controls: Color, val selection: Color, val accentSurface: Color,
     val onSolidPrimary: Color = Color.White,
     val light:Boolean=false,
+    val panel: Color = surface,
+    val taskPanel: Color = if (light) surface else Color(0xFF202224),
 )
 private fun palette(background: Long, middle: Long, end: Long, surface: Long, raised: Long,
     text: Long, muted: Long, primary: Long, secondary: Long, solid: Long,
@@ -20,7 +22,12 @@ private fun palette(background: Long, middle: Long, end: Long, surface: Long, ra
         Color(text), Color(muted), Color(primary), Color(secondary), Color(solid), Color(outline), Color(controls), Color(selection), Color(accentSurface))
 
 enum class AppearanceTheme(val label: String, val palette: AppearancePalette) {
-    Arachn0de("Black & White 90", BlackWhite90.palette),
+    Arachn0de("Charcoal", BlackWhite90.palette),
+    Dark("Dark", BlackWhite90.palette.copy(
+        background=Color(0xFF141517),middle=Color(0xFF141517),end=Color(0xFF141517),scrim=Color(0xFF141517),
+        surface=Color(0xFF27292D),raised=Color(0xFF303237),outline=Color(0xFF36393E),
+        controls=Color(0xFF303237),selection=Color(0xFF3A3D42),accentSurface=Color(0xFF303237),
+        solidPrimary=Color(0xFF303237),panel=Color(0xFF1D1F22),taskPanel=Color(0xFF1D1F22))),
     KingCrimson("King Crimson", palette(0xFF0C080A,0xFF100A0D,0xFF150D11,0xFF1D1519,0xFF171014,
         0xFFF7EEF1,0xFFD4BBC3,0xFFD65B78,0xFFC98578,0xFF70263D,0xFF4A2933,0xFF30232A,0xFF593341,0xFF34202A)),
     DeepMoss("Deep Moss", palette(0xFF080C0A,0xFF0B100D,0xFF0F1511,0xFF171E19,0xFF121813,
@@ -38,7 +45,10 @@ enum class AppearanceTheme(val label: String, val palette: AppearancePalette) {
         primary=Color(0xFF515963),secondary=Color(0xFF41474E),solidPrimary=Color(0xFF515963),
         outline=Color(0xFF515963),controls=Color(0xFFD4D9DE),selection=Color(0xFFD4D9DE),accentSurface=Color(0xFFD4D9DE),onSolidPrimary=Color(0xFFEDF0F2),light=true)),
 
+    GreenBash("Green Bash", BashColors.palette(BlackWhite90.palette)),
 }
+/** Every destination shares the selected colors; terminal layout remains scoped to General. */
+internal val AppearanceTheme.applicationPalette get() = palette
 enum class AppearanceTextSize(val label: String) { Small("Pequeña"), Medium("Mediana"), Large("Grande") }
 enum class IndicatorColor(val label:String,val color:Color) {
     WHITE("Blanco",BlackWhite90.Text), GREY("Gris",Color(0xFF8D8D8D)), RED("Rojo",Color(0xFFFF8C8C)),
@@ -46,13 +56,15 @@ enum class IndicatorColor(val label:String,val color:Color) {
     BLUE("Azul",Color(0xFF83BFFF)), VIOLET("Violeta",Color(0xFFC3A1E6))
 }
 internal val cardIndicatorNames=setOf("people","technologies","notes","tasks","files","due","today","high")
-data class AppearanceSettings(val theme: AppearanceTheme = AppearanceTheme.Arachn0de, val textSize: AppearanceTextSize = AppearanceTextSize.Small, val indicatorColors:Map<String,IndicatorColor> = emptyMap())
+data class AppearanceSettings(val theme: AppearanceTheme = AppearanceTheme.Arachn0de, val textSize: AppearanceTextSize = AppearanceTextSize.Small, val indicatorColors:Map<String,IndicatorColor> = emptyMap()) {
+    val bashTheme get() = theme == AppearanceTheme.GreenBash
+}
 
 /** Reads before the first composition; apply updates memory immediately and persists locally. */
 class AppearancePreferences(private val storage: SharedPreferences) {
     private fun read():AppearanceSettings {
         if(storage.all[THEME]=="Minimalist") check(storage.edit().putString(THEME,AppearanceTheme.Arachn0de.name).commit()) {"No se pudo conservar la apariencia."}
-        return AppearanceSettings(AppearanceTheme.entries.firstOrNull {it.name==storage.all[THEME]} ?: AppearanceTheme.Arachn0de,
+        return AppearanceSettings(if (storage.all[BASH] == true) AppearanceTheme.GreenBash else AppearanceTheme.entries.firstOrNull {it.name==storage.all[THEME]} ?: AppearanceTheme.Arachn0de,
             AppearanceTextSize.entries.firstOrNull {it.name==storage.all[TEXT]} ?: AppearanceTextSize.Small,
             cardIndicatorNames.mapNotNull {name->IndicatorColor.entries.firstOrNull {it.name==storage.all[INDICATOR+name]}?.let {name to it}}.toMap())
     }
@@ -61,7 +73,7 @@ class AppearancePreferences(private val storage: SharedPreferences) {
     fun reload() {settings=read()}
     fun observe(listener:android.content.SharedPreferences.OnSharedPreferenceChangeListener) {storage.registerOnSharedPreferenceChangeListener(listener)}
     fun unobserve(listener:android.content.SharedPreferences.OnSharedPreferenceChangeListener) {storage.unregisterOnSharedPreferenceChangeListener(listener)}
-    fun setTheme(theme: AppearanceTheme) { storage.edit().putString(THEME, theme.name).apply();settings = settings.copy(theme = theme) }
+    fun setTheme(theme: AppearanceTheme) { storage.edit().putString(THEME, theme.name).remove(BASH).apply();settings = settings.copy(theme = theme) }
     fun setTextSize(size: AppearanceTextSize) { storage.edit().putString(TEXT, size.name).apply();settings = settings.copy(textSize = size) }
     fun setIndicatorColor(name:String,color:IndicatorColor) {
         require(name in cardIndicatorNames)
@@ -77,11 +89,13 @@ class AppearancePreferences(private val storage: SharedPreferences) {
         fun validate(payload:String) {
             val values=com.r0ybt.arachn0de.security.EncryptedPreferences.decode(payload)
             require(THEME !in values || values[THEME] is String) {"Tema inválido."}
+            require(BASH !in values || values[BASH] is Boolean) {"Modo Bash inválido."}
             require(TEXT !in values || values[TEXT] is String) {"Tamaño de texto inválido."}
             values.filterKeys {it.startsWith(INDICATOR)}.forEach {(key,value)->
                 require(key.removePrefix(INDICATOR) in cardIndicatorNames && IndicatorColor.entries.any {it.name==value}) {"Color de indicador inválido."}
             }
         }
+        private const val BASH="bash_theme"
         const val FILE = "appearance_preferences"; private const val THEME = "theme"; private const val TEXT = "text_size" }
 }
 internal val LocalAppearancePreferences = staticCompositionLocalOf<AppearancePreferences?> { null }

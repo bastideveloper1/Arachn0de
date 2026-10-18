@@ -39,6 +39,47 @@ class AudioPersistenceTest {
         db.close();db=Arachn0deDatabase.create(context)
         assertEquals(saved,db.nodeDao().getById(node.id));assertEquals(2,db.attachmentDao().forNode(node.id).size)
     }
+    @Test fun descriptionEditorCanConfirmRemoveAndRecordAgainAfterConcurrentAudio()=runBlocking<Unit> {
+        val node=task();val repository=NodeRepository(db)
+        val first=audio(node.id)
+        assertTrue(attachments.saveNodeDraft("editor",listOf(node.id),"Texto editado",emptySet()) {text->
+            repository.updateProperty(node.id,NodeProperty.DESCRIPTION,listOf(node.description),listOf(text))
+        })
+        val saved=db.nodeDao().getById(node.id)!!
+        assertEquals(setOf(first.id),AttachmentReferences.ids(saved.description))
+        assertTrue(attachments.saveNodeDraft("editor",listOf(node.id),"Sin audio",setOf(first.id)) {text->
+            repository.updateProperty(node.id,NodeProperty.DESCRIPTION,listOf(saved.description),listOf(text))
+        })
+        val second=audio(node.id)
+        assertEquals(setOf(second.id),AttachmentReferences.ids(db.nodeDao().getById(node.id)!!.description))
+        assertTrue(repository.updateNode(node.id,"Todavía editable",db.nodeDao().getById(node.id)!!.description))
+        assertNull(db.attachmentDao().get(first.id));assertTrue(recordings.pending().isEmpty())
+        assertTrue(repository.togglePriority(node.id));assertEquals(Priority.HIGH,repository.getNode(node.id)!!.priority)
+        assertTrue(repository.togglePriority(node.id));assertEquals(Priority.NONE,repository.getNode(node.id)!!.priority)
+    }
+
+    @Test fun rejectedOwnerWriteCannotCommitAttachmentRemoval()=runBlocking<Unit> {
+        val node=task();val row=audio(node.id);val before=db.nodeDao().getById(node.id)!!
+        assertTrue(runCatching {
+            attachments.saveNodeDraft("editor",listOf(node.id),"Rechazado",setOf(row.id)) {false}
+        }.isFailure)
+        assertEquals(before,db.nodeDao().getById(node.id))
+        assertEquals(listOf(row.id),db.attachmentDao().forNode(node.id).map {it.attachmentId})
+        assertTrue(attachments.localFile(row).isFile)
+    }
+
+    @Test fun concurrentTextEditStillRejectsDescriptionSaveWithoutLosingAudio()=runBlocking<Unit> {
+        val node=task();val repository=NodeRepository(db);val row=audio(node.id)
+        assertTrue(repository.updateNode(node.id,node.title,"Otro texto\n"+AttachmentReferences.audioToken(row.id)))
+        assertTrue(runCatching {
+            attachments.saveNodeDraft("editor",listOf(node.id),"Texto obsoleto",emptySet()) {text->
+                repository.updateProperty(node.id,NodeProperty.DESCRIPTION,listOf(node.description),listOf(text))
+            }
+        }.isFailure)
+        assertTrue(db.nodeDao().getById(node.id)!!.description.startsWith("Otro texto"))
+        assertEquals(listOf(row.id),db.attachmentDao().forNode(node.id).map {it.attachmentId})
+    }
+
     @Test fun interruptedSegmentsRecoverOnceWithoutPauseSilence()=runBlocking<Unit> {
         val node=task();val id=recordings.begin(node.id);val bytes=tone()
         recordings.append(id,0,bytes);recordings.append(id,1,bytes)

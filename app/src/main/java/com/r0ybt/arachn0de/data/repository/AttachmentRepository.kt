@@ -142,6 +142,8 @@ class AttachmentRepository(private val database: Arachn0deDatabase, private val 
                     else dao.attachNode(ready.map { NodeAttachmentEntity(owner, it) })
                 }
                 val result = write(if (ownersExist && ready.size == ids.size) effectiveDescription else AttachmentReferences.withoutReferences(effectiveDescription))
+                // Do not commit references or overwrite content when the owner write was rejected.
+                check(result != false && result != 0) { "No se confirmó el guardado del contenido." }
                 for (owner in owners) {
                     if (project) {
                         val row = requireNotNull(database.projectDao().getById(owner))

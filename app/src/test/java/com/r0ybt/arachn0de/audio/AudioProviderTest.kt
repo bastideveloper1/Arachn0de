@@ -54,7 +54,7 @@ class AudioProviderTest {
         assertTrue(parts.first {it.imageId==id}.audio);assertFalse(parts.first {it.imageId==image.id}.audio)
         assertTrue(com.r0ybt.arachn0de.domain.model.DescriptionParser.Format.Bold in parts.first {it.imageId==id}.formats)
         val clipboard=com.r0ybt.arachn0de.ui.state.descriptionClipboardText(text,mapOf(id to audio.originalName,image.id to image.originalName))
-        assertTrue(clipboard.contains("[Audio: ${audio.originalName}]"));assertTrue(clipboard.contains("[Imagen: ${image.originalName}]"))
+        assertEquals("Texto anterior\n[Audio: ${audio.originalName}]\n", clipboard)
         val card=com.r0ybt.arachn0de.report.CardShareSource.snapshot(app,main.context,node.id)
         assertEquals(1,card.pictures.size);assertNotNull(card.pictures.single().load());assertTrue(card.information.contains("Audio: ${audio.originalName}"));assertTrue(card.information.contains("Texto anterior"))
         source.delete()

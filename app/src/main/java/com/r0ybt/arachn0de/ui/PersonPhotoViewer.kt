@@ -14,7 +14,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.r0ybt.arachn0de.data.local.AvatarStore
 import com.r0ybt.arachn0de.domain.model.Person
@@ -53,7 +52,7 @@ private data class ViewedPersonPhoto(val id:String,val file:String,val reference
     }
     LaunchedEffect(pager.currentPage,photo?.id) {photo?.let {if(it.id!=selected) onSelect(it.id)}}
     BackHandler {if(!blocked) onClose()}
-    Dialog(onDismissRequest={if(!blocked) onClose()},properties=DialogProperties(usePlatformDefaultWidth=false,decorFitsSystemWindows=false)) {
+    BottomModulesDialog(onDismissRequest={if(!blocked) onClose()},properties=DialogProperties(usePlatformDefaultWidth=false,decorFitsSystemWindows=false)) {
         Column(Modifier.fillMaxSize().background(Arachn0deColors.Background).safeDrawingPadding().testTag("person-photo-viewer")) {
             Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween) {
                 Text("${person.name} · ${if(photo==null) 0 else pager.currentPage+1}/${images.size}",Modifier.weight(1f).padding(12.dp))

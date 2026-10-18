@@ -83,6 +83,10 @@ internal class NodeActions(private val repository: NodeRepository, private val s
         }
     }
 
+    fun togglePriority(id:String) = operation.submit("No se pudo cambiar la prioridad.", {
+        repository.togglePriority(id)
+    })
+
     fun saveProperty(draft:EditorDraft,field:com.r0ybt.arachn0de.domain.model.NodeProperty,original:List<String>,values:List<String>,
         groupIds:Set<String>?=null,onSuccess:()->Unit) = operation.submit(
         "No se pudo guardar la propiedad. Revisa si cambió en otro editor; tu borrador se conserva.", {

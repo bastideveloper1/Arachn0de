@@ -1,5 +1,6 @@
 package com.r0ybt.arachn0de.ui
 
+import com.r0ybt.arachn0de.ui.theme.BashColors
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -25,12 +26,13 @@ internal enum class CoreBottomContext(val label:String) {Content("Contenido"),Cr
 /** Local to the interior of a Core. Editors keep owning their drafts and modal navigation. */
 @Composable internal fun CoreBottomModule(context:CoreBottomContext,onContext:(CoreBottomContext)->Unit,maxHeight:Dp,
     contextActions:ContextActions.()->Unit,creationActions:@Composable ()->Unit,onEditProject:((String)->Unit)?=null,contentActions:List<ContextAction>?=null,habitualLabel:String=CoreBottomContext.Creation.label) {
-    Surface(color=Arachn0deColors.Surface,modifier=Modifier.fillMaxWidth().testTag("core-bottom-module")) {
+    Surface(color=Arachn0deColors.Panel,modifier=Modifier.fillMaxWidth().testTag("core-bottom-module")) {
         Column(Modifier.fillMaxWidth().heightIn(max=maxHeight)) {
             Column(Modifier.weight(1f,fill=false).fillMaxWidth()) {
                 when(context) {
                     CoreBottomContext.Creation->creationActions()
-                    CoreBottomContext.Options->ContextActionMenu("Opciones",{onContext(CoreBottomContext.Creation)},inline=true,showCancel=false,content=contextActions)
+                    CoreBottomContext.Options->ContextActionMenu("Opciones",{onContext(CoreBottomContext.Creation)},inline=true,showCancel=false,
+                        content={items.addAll(ContextActions().apply(contextActions).items.filterNot {it.label=="Editar tecnologías"})})
                     CoreBottomContext.Content-> {
                         val editing=onEditProject?.let {edit->listOf(
                             ContextAction("Título",Icons.Default.Title,{edit("title")}),
@@ -54,12 +56,12 @@ internal enum class CoreBottomContext(val label:String) {Content("Contenido"),Cr
                         TextButton(onClick={onContext(item)},modifier=Modifier.fillMaxWidth().heightIn(min=48.dp)
                             .testTag("core-context:${item.name}").semantics {selected=context==item},
                             contentPadding=PaddingValues(horizontal=4.dp,vertical=4.dp),
-                            colors=ButtonDefaults.textButtonColors(contentColor=if(context==item) Arachn0deColors.TextPrimary else Arachn0deColors.TextSecondary)) {
+                            colors=ButtonDefaults.textButtonColors(contentColor=if(context==item && LocalBashPresentation.current) BashColors.Electric else if(context==item) Arachn0deColors.TextPrimary else Arachn0deColors.TextSecondary)) {
                             Icon(when(item) {CoreBottomContext.Content->Icons.Default.Description;CoreBottomContext.Creation->Icons.Default.Add;CoreBottomContext.Options->Icons.Default.MoreVert},null,Modifier.size(18.dp))
                             Spacer(Modifier.width(4.dp))
                             Text(if(item==CoreBottomContext.Creation) habitualLabel else item.label,style=MaterialTheme.typography.labelSmall)
                         }
-                        HorizontalDivider(thickness=2.dp,color=if(context==item) Arachn0deColors.TextPrimary else Arachn0deColors.Surface)
+                        HorizontalDivider(thickness=2.dp,color=if(context==item && LocalBashPresentation.current) BashColors.Electric else if(context==item) Arachn0deColors.TextPrimary else Arachn0deColors.Panel)
                     }
                 }
             }

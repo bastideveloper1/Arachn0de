@@ -35,7 +35,7 @@ internal fun AppearanceScreen(onBack: () -> Unit, preferences: AppearancePrefere
             Row(verticalAlignment = Alignment.CenterVertically) {
                 GlobalChromeActions(leading=true)
                 IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Volver") }
-                Text("Diseño",modifier=Modifier.weight(1f), style = MaterialTheme.typography.titleLarge)
+                NavigationHeading("Apariencia",Modifier.weight(1f))
                 GlobalChromeActions()
             }
             Text("Preview", style = MaterialTheme.typography.titleSmall)
@@ -50,8 +50,12 @@ internal fun AppearanceScreen(onBack: () -> Unit, preferences: AppearancePrefere
                     .padding(horizontal = 12.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     RadioButton(selected, onClick = null)
-                    Box(Modifier.size(14.dp).background(theme.palette.primary, CircleShape))
-                    Box(Modifier.size(14.dp).background(theme.palette.secondary, CircleShape))
+                    // Preview the actual backgrounds; primary/secondary may be near-white text colors.
+                    Box(Modifier.size(14.dp).background(theme.palette.background, CircleShape))
+                    Box(Modifier.size(14.dp).background(theme.palette.surface, CircleShape),
+                        contentAlignment = Alignment.Center) {
+                        Box(Modifier.size(5.dp).background(theme.palette.primary, CircleShape))
+                    }
                     Text(theme.label, Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
                 }
             }

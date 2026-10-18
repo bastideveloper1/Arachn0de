@@ -158,18 +158,20 @@ class AudioUiTest {
         assertEquals("Título escrito por mí",runBlocking {app.database.backupDao().nodes().single().title})
         compose.onNodeWithTag("audio-bar").assertExists()
     }
-    @Test fun fullDescriptionEditorHostsOnlyOneBarAboveItsTools() {
+    @Test fun fullDescriptionEditorHostsOnlyOneBarBelowItsTools() {
         val draft=EditorDraft("task",null,"Tarea","Descripción").apply {attachmentsLoaded=true}
         compose.runOnUiThread {app.security.current.value!!.audio.state.value=AudioState(recording=true,durationMs=1000)}
-        compose.setContent {Arachn0deTheme {Column {
-            AudioBar()
-            NodeDialog(draft,false,{}, {_,_->},initialField="description",hasUnsavedChanges=false)
-        }}}
+        compose.setContent {Arachn0deTheme {
+            val modules=rememberBottomModulesState()
+            CompositionLocalProvider(LocalBottomModulesState provides modules,LocalBottomModulesContent provides {AudioBar()}) {
+                BottomModulesFrame {NodeDialog(draft,false,{}, {_,_->},initialField="description",hasUnsavedChanges=false)}
+            }
+        }}
         await {compose.onAllNodesWithTag("audio-bar").fetchSemanticsNodes().size==1}
         compose.onNodeWithTag("node-editor").assertExists()
         val bar=compose.onNodeWithTag("audio-bar").fetchSemanticsNode().boundsInRoot
         val tools=compose.onNodeWithContentDescription("Negrita").fetchSemanticsNode().boundsInRoot
-        assertTrue(bar.bottom<=tools.top+1)
+        assertTrue(tools.bottom<=bar.top+1)
     }
 
 }

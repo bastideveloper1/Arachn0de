@@ -54,7 +54,7 @@ internal fun ObligationsScreen(
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                 GlobalChromeActions(leading=true)
                 TextButton(onClick = onBack) { Text("Volver") }
-                Text("Obligaciones",modifier=Modifier.weight(1f),maxLines=1,overflow=androidx.compose.ui.text.style.TextOverflow.Ellipsis, style = MaterialTheme.typography.titleLarge)
+                NavigationHeading("Obligaciones",Modifier.weight(1f))
                 GlobalChromeActions()
             }
             ObligationReportActions(if (ready) financial else null, projects, selectedPerson?.name, locale, completed=completedView)

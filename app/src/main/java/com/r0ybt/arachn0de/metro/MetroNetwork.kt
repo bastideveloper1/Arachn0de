@@ -46,10 +46,11 @@ internal data class MetroRestrictions(val closed: Set<String> = emptySet(), val 
 internal data class MetroStep(val from: String, val to: String, val line: String, val direction: Int, val service: MetroService, val kind: MetroStepKind, val nextLine: String = line) {
     val minutes: Int get() = when (kind) { MetroStepKind.RIDE -> 2; MetroStepKind.WAYPOINT -> 0; else -> 4 }
 }
-internal data class MetroRoute(val networkVersion: String, val stops: List<String>, val express: Boolean, val steps: List<MetroStep>,val departure:Long?=null, val prediction:MetroPrediction?=null) {
+internal data class MetroRoute(val networkVersion: String, val stops: List<String>, val express: Boolean, val steps: List<MetroStep>,val departure:Long?=null, val prediction:MetroPrediction?=null,val provisional:List<Long>?=null) {
     val durations:List<Long> by lazy {MetroEstimates.durations(this)}
     val totalMillis:Long get() = durations.sum()
-    val baseMillis:Long get() = steps.sumOf {it.minutes*60_000L}
+    val baseDurations:List<Long> get() = provisional ?: steps.map {it.minutes*60_000L}
+    val baseMillis:Long get() = baseDurations.sum()
     val minutes:Int get() = ((totalMillis+59_999)/60_000).toInt()
     fun duration(index:Int):Long = durations[index]
     val physicalSegments get() = steps.count { it.kind == MetroStepKind.RIDE }
@@ -62,9 +63,10 @@ internal object MetroPlanner {
     private data class State(val station: String, val line: String, val direction: Int, val service: MetroService, val arrival:Int=0) {
         val key get() = "$station/$line/$direction/${service.name}/$arrival"
     }
+    // Internal cost units are quarter-minutes (15 s); public route times remain milliseconds.
     private data class Cost(val minutes: Int = 0, val changes: Int = 0, val segments: Int = 0): Comparable<Cost> {
         override fun compareTo(other: Cost) = compareValuesBy(this, other, Cost::minutes, Cost::changes, Cost::segments)
-        fun plus(step: MetroStep) = Cost(minutes + step.minutes, changes + if (step.kind != MetroStepKind.RIDE) 1 else 0, segments + if (step.kind == MetroStepKind.RIDE) 1 else 0)
+        fun plus(step: MetroStep,net:MetroNetwork) = Cost(minutes + (MetroExpressTiming.base(net,step)/15_000L).toInt(), changes + if (step.kind != MetroStepKind.RIDE) 1 else 0, segments + if (step.kind == MetroStepKind.RIDE) 1 else 0)
     }
     private data class Entry(val state: State, val cost: Cost)
     fun plan(snapshot: MetroNetwork, stops: List<String>, express: Boolean, restrictions: MetroRestrictions): MetroRoute? {
@@ -89,14 +91,14 @@ internal object MetroPlanner {
     private fun planPreferred(net: MetroNetwork, stops: List<String>, express: Boolean, restrictions: MetroRestrictions,departure:Long?=null,schedule:MetroSchedule?=null): MetroRoute? {
         val steps = mutableListOf<MetroStep>()
         stops.zipWithNext().forEachIndexed { index, (a,b) ->
-            val leg = direct(net, a, b, express, restrictions,departure?.plus(steps.sumOf {it.minutes*60_000L}),schedule) ?: return null
+            val leg = direct(net, a, b, express, restrictions,departure?.plus(steps.sumOf {MetroExpressTiming.base(net,it)}),schedule) ?: return null
             steps.addAll(leg)
             if (index < stops.size - 2) {
                 val previous = steps.lastOrNull()
                 steps.add(MetroStep(b, b, previous?.line ?: net.accesses(b).first().id, previous?.direction ?: 1, previous?.service ?: if(express && net.accesses(b).first().express.isNotEmpty()) listOf(MetroService.RED,MetroService.GREEN).first { net.stops(b,net.accesses(b).first().id,it) } else MetroService.NORMAL, MetroStepKind.WAYPOINT))
             }
         }
-        return MetroRoute(net.version, stops, express, steps,departure)
+        return MetroExpressTiming.apply(net,MetroRoute(net.version, stops, express, steps,departure))
     }
     private fun direct(net: MetroNetwork, origin: String, destination: String, express: Boolean, r: MetroRestrictions,departure:Long?=null,schedule:MetroSchedule?=null): List<MetroStep>? {
         if (origin == destination) return emptyList()
@@ -111,7 +113,7 @@ internal object MetroPlanner {
             val (state,cost) = queue.remove()
             if (costs[state] != cost) continue
             val canStop = state.station !in r.closed && state.station !in r.avoided && net.stops(state.station, state.line, state.service)
-            if (state.station == destination && parents[state]?.second?.kind==MetroStepKind.RIDE && canStop && (schedule==null || departure==null || schedule.express(state.line,state.direction,departure+cost.minutes*60_000L)==(state.service!=MetroService.NORMAL))) {
+            if (state.station == destination && parents[state]?.second?.kind==MetroStepKind.RIDE && canStop && (schedule==null || departure==null || schedule.express(state.line,state.direction,departure+cost.minutes*15_000L)==(state.service!=MetroService.NORMAL))) {
                 val result = mutableListOf<MetroStep>(); var cursor = state
                 while (cursor in parents) { val (prev,step) = parents.getValue(cursor); result.add(step); cursor = prev }
                 return result.asReversed()
@@ -121,17 +123,17 @@ internal object MetroPlanner {
             val edges = mutableListOf<Pair<State,MetroStep>>()
             if (next != null && next !in r.avoided && MetroRestrictions.segment(state.line, state.station, next) !in r.interrupted) {
                 val ride=MetroStep(state.station,next,state.line,state.direction,state.service,MetroStepKind.RIDE)
-                if(schedule==null || departure==null || schedule.permits(ride,departure+cost.minutes*60_000L))
+                if(schedule==null || departure==null || schedule.permits(ride,departure+cost.minutes*15_000L))
                     edges.add(state.copy(station = next) to ride)
             }
-            if (canStop) board(state.station,departure?.plus((cost.minutes+4)*60_000L)).filter { it.line!=state.line || it.direction!=state.direction || it.service!=state.service }.forEach { candidate ->
+            if (canStop) board(state.station,departure?.plus((cost.minutes+16)*15_000L)).filter { it.line!=state.line || it.direction!=state.direction || it.service!=state.service }.forEach { candidate ->
                 edges.add(candidate to MetroStep(state.station, state.station, state.line, state.direction, state.service,
                     if (candidate.line == state.line) MetroStepKind.CHANGE else MetroStepKind.TRANSFER, candidate.line))
             }
             edges.sortedBy { it.first.key }.forEach { (rawTarget,step) ->
-                val candidate = cost.plus(step)
+                val candidate = cost.plus(step,net)
                 // Finite horizon; cycles cannot create an unbounded time-expanded graph.
-                if(schedule!=null && candidate.minutes>net.stations.size*2+net.lines.size*4) return@forEach
+                if(schedule!=null && candidate.minutes>(net.stations.size*2+net.lines.size*4)*4) return@forEach
                 val target=if(schedule!=null) rawTarget.copy(arrival=candidate.minutes) else rawTarget
                 if(schedule!=null) {
                     // A cyclic detour is not an implicit way of waiting for a new service.

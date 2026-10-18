@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.lazy.LazyColumn
@@ -69,7 +70,7 @@ internal fun SummaryCard(
     value: String,
     icon: String,
 ) {
-    Card(
+    GeneralCard(
         modifier = modifier
             .fillMaxWidth()
             .wrapContentHeight(),
@@ -118,7 +119,7 @@ internal fun SummaryCard(
 
 @Composable
 internal fun EmptyProjectsState(onCreateProject: () -> Unit) {
-    Card(
+    GeneralCard(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(containerColor = Arachn0deColors.Surface.copy(alpha = 0.96f)),
         shape = RoundedCornerShape(8.dp),
@@ -234,51 +235,58 @@ internal fun ProjectCard(
     OperationErrorDialog(pinOperation)
     var showActions by remember { mutableStateOf(false) }
     var planning by remember {mutableStateOf(false)}
-    var tagHeight by remember {mutableStateOf(24.dp)}
-    val tagDensity = androidx.compose.ui.platform.LocalDensity.current
+    val bashCursor=rememberBashTextCursor()
+    var titleLineCenter by remember {mutableStateOf(0)}
+    val titleIconCenter=with(androidx.compose.ui.platform.LocalDensity.current) {(HierarchyCardIconSize/2).roundToPx()}
     if(planning) ProjectPlanningDialog(project.id) {planning=false}
-    Card(
+    GeneralCard(
+        bashEntry = true,
         shape = RoundedCornerShape(8.dp),
         colors = CardDefaults.cardColors(containerColor = Arachn0deColors.Surface),
         modifier = modifier
             .fillMaxWidth()
-            .border(1.dp, Arachn0deColors.Outline.copy(alpha = 0.85f), RoundedCornerShape(8.dp))
+            .then(if(LocalBashPresentation.current) Modifier else Modifier.border(1.dp, Arachn0deColors.Outline.copy(alpha = 0.85f), RoundedCornerShape(8.dp)))
             .zIndex(if (dragging) 1f else 0f)
             .testTag("project-card:${project.id}")
             .clickable(onClickLabel = "Abrir proyecto", onClick = onOpen),
     ) {
-        Box(Modifier.fillMaxWidth()) {
+        CompactCardHeader(tags) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .heightIn(min = 72.dp)
+                .heightIn(min = if(LocalBashPresentation.current) 48.dp else CompactCardMinHeight)
                 .padding(horizontal = 12.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Box(Modifier.size(48.dp)) {
-                ProjectIdentityIcon(project)
+            Box(Modifier.width(if(project.photo!=null) 48.dp else HierarchyCardIconSize).height(48.dp)
+                .then(if(project.photo==null) Modifier.alignBy {titleIconCenter} else Modifier),
+                contentAlignment=if(project.photo!=null) Alignment.Center else Alignment.TopCenter) {
+                if(project.photo!=null) ProjectIdentityIcon(project)
+                else HierarchyCardIcon(com.r0ybt.arachn0de.R.drawable.bw90_project,"Proyecto sin fotografía")
                 if(project.isPinned) Icon(Icons.Default.PushPin,"Núcleo fijado",Modifier.size(14.dp).align(Alignment.BottomEnd).testTag("project-pin:${project.id}"),tint=Arachn0deColors.TextSecondary)
             }
-            Spacer(modifier = Modifier.width(12.dp))
+            Spacer(modifier = Modifier.width(if(project.photo!=null) 12.dp else 8.dp))
             Column(
                 modifier = Modifier
                     .weight(1f)
-                    .fillMaxWidth(),
+                    .fillMaxWidth()
+                    .then(if(project.photo==null) Modifier.alignBy(CardTitleAxis) else Modifier),
             ) {
                 Text(
-                    text = project.name,
+                    text = if(LocalBashPresentation.current) bashListing(project.name+"/",true) else androidx.compose.ui.text.AnnotatedString(project.name),
                     color = Arachn0deColors.TextPrimary,
                     fontSize = ContentTypography.ProjectTitle,
                     fontWeight = FontWeight.SemiBold,
+                    fontFamily = if(LocalBashPresentation.current) androidx.compose.ui.text.font.FontFamily.Monospace else null,
                     softWrap = true,
-                    modifier = Modifier.testTag("project-title:${project.id}"),
+                    modifier = Modifier.testTag("project-title:${project.id}").then(bashCursor.modifier).cardTitleAxis(titleLineCenter),
+                    onTextLayout={bashCursor.layout=it;titleLineCenter=((it.getLineTop(0)+it.getLineBottom(0))/2).toInt()},
                 )
                 CompactCardIndicators("project:${project.id}",modifier=Modifier.padding(top=4.dp,bottom=4.dp),hasOwnNotes=project.description.isNotBlank())
 
             }
 
-            Column(modifier=if(tags.size==1) Modifier.padding(top=(tagHeight-8.dp).coerceAtLeast(0.dp)) else Modifier,horizontalAlignment=Alignment.End) {
-                if(tags.size>1) CardTagBadge(tags)
+            Column(Modifier.align(Alignment.CenterVertically).widthIn(max=96.dp),horizontalAlignment=Alignment.End) {
                 Row(verticalAlignment=Alignment.CenterVertically) {
             FavoriteToggle("project:${project.id}")
             IconButton(onClick = { showActions = true }, modifier = Modifier.size(48.dp)) {
@@ -287,7 +295,6 @@ internal fun ProjectCard(
                 }
             }
         }
-        if(tags.size==1) CardTagBadge(tags,Modifier.align(Alignment.TopEnd).onSizeChanged {tagHeight=with(tagDensity) {it.height.toDp()}})
         }
     }
     if (showActions) {

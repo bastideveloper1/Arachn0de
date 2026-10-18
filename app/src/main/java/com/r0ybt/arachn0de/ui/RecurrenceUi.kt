@@ -75,7 +75,7 @@ internal fun RecurrenceManager(repository: RecurrenceRepository, projectId: Stri
     val operation = remember(repository, scope) { OperationState(scope) }
 
     if(showLauncher) OutlinedButton(onClick={ open=true }) { Text("Recurrencias") }
-    if (open && selected == null && projectId.isEmpty() && !showLauncher) androidx.compose.ui.window.Dialog(
+    if (open && selected == null && projectId.isEmpty() && !showLauncher) BottomModulesDialog(
         onDismissRequest = { open = false },
         properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false),
     ) {
@@ -106,7 +106,7 @@ internal fun RecurrenceManager(repository: RecurrenceRepository, projectId: Stri
             }
         }
     }
-    else if (open && selected == null) ModalBottomSheet(
+    else if (open && selected == null) BottomModulesSheet(
         onDismissRequest = { open = false },
         sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
         containerColor = Arachn0deColors.Surface,

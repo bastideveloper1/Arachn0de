@@ -45,7 +45,7 @@ internal fun QuickCreateBar(draft: EditorDraft, busy: Boolean, onSave: () -> Uni
                 OutlinedTextField(draft.title, { if(!busy) draft.title = it },
                     placeholder = { Text(if(task) "Nueva tarea…" else "Nueva nota…") },
                     modifier = modularPanelFieldModifier().weight(1f).focusRequester(focus).testTag("quick-create-title"),
-                    enabled = !busy, singleLine = false, minLines = 1, maxLines = 3,
+                    enabled = !busy, singleLine = false, minLines = 1, maxLines = if(task) Int.MAX_VALUE else 3,
                     isError = TitleLimits.count(draft.title) > TitleLimits.NODE,
                     supportingText = if(!financialValid) ({ Text("Completa Pago en Formulario completo.") }) else null)
 

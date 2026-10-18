@@ -6,7 +6,8 @@ import java.io.ByteArrayOutputStream
 import java.util.concurrent.atomic.AtomicBoolean
 
 /** Microphone PCM is encoded directly to AAC; only encrypted segments reach disk. */
-internal class AudioCapture(private val store:AudioDraftStore,private val draft:String,private val progress:(Long)->Unit,private val interrupted:()->Unit={}) {
+internal class AudioCapture(private val store:AudioDraftStore,private val draft:String,private val progress:(Long)->Unit,private val interrupted:()->Unit={},
+    private val levels:(List<Float>)->Unit={}) {
     val paused=AtomicBoolean(false)
     val stopped=AtomicBoolean(false)
     @Volatile var limitReached=false
@@ -55,6 +56,7 @@ internal class AudioCapture(private val store:AudioDraftStore,private val draft:
             }
             codec.configure(format,null,null,MediaCodec.CONFIGURE_FLAG_ENCODE);codec.start();record.startRecording()
             var recording=true
+            var lastLevelSample=0L
             val pcm=ByteArray(2048)
             while(!stopped.get()) {
                 currentCoroutineContext().ensureActive()
@@ -65,6 +67,10 @@ internal class AudioCapture(private val store:AudioDraftStore,private val draft:
                 val n=record.read(pcm,0,pcm.size,AudioRecord.READ_BLOCKING)
                 if(n<=0) {if(stopped.get()) {codec.queueInputBuffer(index,0,0,samples*1000000/AacFrames.RATE,MediaCodec.BUFFER_FLAG_END_OF_STREAM);eosQueued=true;break};error("La captura se interrumpió; se conserva el audio parcial.")}
                 if(paused.get()) {codec.queueInputBuffer(index,0,0,samples*1000000/AacFrames.RATE,0);continue}
+                // Reuse captured PCM, at most ten meter updates per audio second; no extra reader/timer.
+                if(!stopped.get() && samples-lastLevelSample>=AacFrames.RATE/10) {
+                    levels(pcmRecordingLevels(pcm,n));lastLevelSample=samples
+                }
                 val buffer=codec.getInputBuffer(index)!!;buffer.clear();buffer.put(pcm,0,n)
                 codec.queueInputBuffer(index,0,n,samples*1000000/AacFrames.RATE,0);samples+=n/2
                 progress(samples*1000/AacFrames.RATE);drain();pcm.fill(0)

@@ -178,7 +178,7 @@ internal fun MetroScreen(nodes: List<Node>, projects: List<Project>, nodeId: Str
         else onBack()
     }
     LaunchedEffect(page) {if(page=="Recientes") page="Viajes"}
-    BackHandler {navigateBack()}
+    BackHandler {if(contextMenu) contextMenu=false else navigateBack()}
     var pendingBegin by rememberSaveable {mutableStateOf<String?>(null)}
     suspend fun startJourney(journey:MetroJourney) {
         val fresh=repository.snapshot()
@@ -265,46 +265,9 @@ internal fun MetroScreen(nodes: List<Node>, projects: List<Project>, nodeId: Str
     }
     CompositionLocalProvider(LocalContentColor provides MaterialTheme.colorScheme.onBackground) {
     Column(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).padding(horizontal=12.dp,vertical=10.dp)) {
-        com.r0ybt.arachn0de.ui.HeaderBar(onMenuClick=onBack,title="Metro",onBack={navigateBack()},trailingAction={
-            Box {
-                IconButton(onClick={contextMenu=true},modifier=Modifier.size(48.dp)) {com.r0ybt.arachn0de.ui.LucideIcon(Icons.Default.MoreVert,"Opciones de Metro")}
-                DropdownMenu(contextMenu,{contextMenu=false}) {
-                    if(page=="Recorrido" && searchPreview && route!=null) DropdownMenuItem(text={Text("Guardar ruta")},enabled=!busy,onClick={
-                        contextMenu=false
-                        work {
-                            selectedId=repository.savePlan(route,if(returnDraft) null else nodeId,traveler,selectedId)
-                            searchPreview=false;page="Viajes"
-                        }
-                    })
-                    fun navigate(target:String) {searchPreview=false;page=target;full=false;managing=false;contextMenu=false}
-                    DropdownMenuItem(text={Text("Viajes")},trailingIcon={Icon(if(tripsExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,null)},onClick={tripsExpanded=!tripsExpanded})
-                    if(tripsExpanded) {
-                        DropdownMenuItem(text={Text("Viajar")},onClick={navigate("Planificar")})
-                        DropdownMenuItem(text={Text("Viajes guardados")},onClick={navigate("Viajes")})
-                    }
-                    DropdownMenuItem(text={Text("Preferencias")},trailingIcon={Icon(if(preferencesExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,null)},onClick={preferencesExpanded=!preferencesExpanded})
-                    if(preferencesExpanded) {
-                        DropdownMenuItem(text={Text("Restricciones de viaje")},onClick={navigate("Restricciones")})
-                        DropdownMenuItem(text={Text("Estaciones favoritas")},onClick={navigate("Favoritos")})
-                        DropdownMenuItem(text={Text("Configurar vibración")},onClick={navigate("Vibración")})
-                    }
-                    DropdownMenuItem(text={Text("Configuración")},trailingIcon={Icon(if(settingsExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,null)},onClick={settingsExpanded=!settingsExpanded})
-                    if(settingsExpanded) DropdownMenuItem(text={Text("Configuración general de Metro")},onClick={navigate("Configuración")})
-                }
-            }
-        })
-        if(!full && !(page=="Recorrido" && searchPreview)) Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(4.dp)) {
-            listOf("Inicio","Líneas").forEach {tab->
-                val chosen=page==tab || tab=="Viajes" && page in setOf("Seguimiento","Recorrido")
-                Surface(onClick={searchPreview=false;page=tab;managing=false},modifier=Modifier.weight(1f),shape=androidx.compose.foundation.shape.RoundedCornerShape(12.dp),
-                    color=if(chosen) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surface,
-                    border=androidx.compose.foundation.BorderStroke(1.dp,if(chosen) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant)) {
-                    Box(Modifier.heightIn(min=48.dp).padding(horizontal=4.dp,vertical=8.dp),contentAlignment=Alignment.Center) {Text(tab,style=MaterialTheme.typography.labelMedium.copy(fontSize=12.sp,letterSpacing=0.sp))}
-                }
-            }
-        }
-        if(!full && !(page=="Recorrido" && searchPreview)) { Spacer(Modifier.height(8.dp)); HorizontalDivider(); Spacer(Modifier.height(8.dp)) }
+        com.r0ybt.arachn0de.ui.HeaderBar(onMenuClick=onBack,title=if(page=="Aprendizaje") "Aprendizaje" else "Metro",onBack={navigateBack()})
         when(page) {
+            "Aprendizaje" -> Box(Modifier.weight(1f)) {MetroStatisticsScreen(onBack={if(contextMenu) contextMenu=false else page="Inicio"},showHeader=false)}
             "Inicio" -> LazyColumn(Modifier.weight(1f),verticalArrangement=Arrangement.spacedBy(10.dp),contentPadding=PaddingValues(vertical=8.dp)) {
                 item { Card(Modifier.fillMaxWidth()) { Column(Modifier.padding(14.dp),verticalArrangement=Arrangement.spacedBy(8.dp)) {
                     Text("Tu próximo recorrido",style=MaterialTheme.typography.titleLarge)
@@ -368,7 +331,6 @@ internal fun MetroScreen(nodes: List<Node>, projects: List<Project>, nodeId: Str
                 } }
                 item { Row(horizontalArrangement=Arrangement.spacedBy(6.dp)) {
                     OutlinedButton(onClick={val old=origin;origin=destination;destination=old;vias=ArrayList(vias.reversed());searched=false},enabled=origin!=null && destination!=null) {Text("Invertir estaciones")}
-                    if(preferences.home!=null) FilledTonalButton(onClick={destination=preferences.home;searched=false}) {Text("Casa")}
                 } }
                 itemsIndexed(vias) {i,id->
                     OutlinedCard(Modifier.fillMaxWidth()) {Column(Modifier.padding(horizontal=10.dp,vertical=4.dp)) {
@@ -546,6 +508,45 @@ internal fun MetroScreen(nodes: List<Node>, projects: List<Project>, nodeId: Str
                 }
             }
         }
+        HorizontalDivider()
+        if(contextMenu) Column(Modifier.fillMaxWidth().heightIn(max=280.dp).verticalScroll(rememberScrollState()).testTag("metro-bottom-actions")) {
+                    if(page=="Recorrido" && searchPreview && route!=null) DropdownMenuItem(text={Text("Guardar ruta")},enabled=!busy,onClick={
+                        contextMenu=false
+                        work {
+                            selectedId=repository.savePlan(route,if(returnDraft) null else nodeId,traveler,selectedId)
+                            searchPreview=false;page="Viajes"
+                        }
+                    })
+                    DropdownMenuItem(text={Text("Aprendizaje")},onClick={contextMenu=false;page="Aprendizaje";full=false;managing=false})
+                    fun navigate(target:String) {searchPreview=false;page=target;full=false;managing=false;contextMenu=false}
+                    DropdownMenuItem(text={Text("Viajes")},trailingIcon={Icon(if(tripsExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,null)},onClick={tripsExpanded=!tripsExpanded})
+                    if(tripsExpanded) {
+                        DropdownMenuItem(text={Text("Viajar")},onClick={navigate("Planificar")})
+                        DropdownMenuItem(text={Text("Viajes guardados")},onClick={navigate("Viajes")})
+                    }
+                    DropdownMenuItem(text={Text("Preferencias")},trailingIcon={Icon(if(preferencesExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,null)},onClick={preferencesExpanded=!preferencesExpanded})
+                    if(preferencesExpanded) {
+                        DropdownMenuItem(text={Text("Restricciones de viaje")},onClick={navigate("Restricciones")})
+                        DropdownMenuItem(text={Text("Estaciones favoritas")},onClick={navigate("Favoritos")})
+                        DropdownMenuItem(text={Text("Configurar vibración")},onClick={navigate("Vibración")})
+                    }
+                    DropdownMenuItem(text={Text("Configuración")},trailingIcon={Icon(if(settingsExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,null)},onClick={settingsExpanded=!settingsExpanded})
+                    if(settingsExpanded) DropdownMenuItem(text={Text("Configuración general de Metro")},onClick={navigate("Configuración")})
+        }
+        Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(4.dp)) {
+            if(!full && !(page=="Recorrido" && searchPreview)) listOf("Inicio","Líneas").forEach {tab->
+                val chosen=page==tab || tab=="Viajes" && page in setOf("Seguimiento","Recorrido")
+                Surface(onClick={searchPreview=false;page=tab;managing=false},modifier=Modifier.weight(1f),shape=androidx.compose.foundation.shape.RoundedCornerShape(12.dp),
+                    color=if(chosen) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surface,
+                    border=androidx.compose.foundation.BorderStroke(1.dp,if(chosen) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant)) {
+                    Box(Modifier.heightIn(min=48.dp).padding(horizontal=4.dp,vertical=8.dp),contentAlignment=Alignment.Center) {Text(tab,style=MaterialTheme.typography.labelMedium.copy(fontSize=12.sp,letterSpacing=0.sp))}
+                }
+            }
+            TextButton(onClick={contextMenu=!contextMenu},modifier=Modifier.weight(1f).heightIn(min=48.dp).testTag("metro-bottom-menu")) {
+                com.r0ybt.arachn0de.ui.LucideIcon(Icons.Default.MoreVert,"Opciones de Metro")
+                Spacer(Modifier.width(4.dp));Text("Opciones",style=MaterialTheme.typography.labelMedium)
+            }
+        }
         if(busy) LinearProgressIndicator(Modifier.fillMaxWidth())
     }
     }
@@ -629,11 +630,13 @@ private fun Set<String>.toggle(id: String)=if(id in this) this-id else this+id
 }
 @Composable private fun RouteTechnicalDetails(route:MetroRoute,net:MetroNetwork) {
     Text("${route.physicalSegments} tramos físicos · ${MetroPresentation.stoppingStations(route,net)} estaciones con detención · ${route.steps.map {it.line}.distinct().joinToString(" · ")}",style=MaterialTheme.typography.bodySmall)
+    if(route.provisional!=null) Text(MetroExpressTiming.description(route),style=MaterialTheme.typography.bodySmall)
 }
 @Composable private fun RouteTimeline(route:MetroRoute,net:MetroNetwork,modifier:Modifier,selectedStation:String?=null,onStation:(String)->Unit) {
     val rows=route.steps.mapIndexed {i,s->MetroTimelineNode(s.from,s.line,listOf(
+        if(route.provisional!=null && s.kind==MetroStepKind.RIDE) (if(net.stops(s.from,s.line,s.service)) "Parada efectiva" else "Paso sin detención") else "",
         if(i==0 || route.steps.getOrNull(i-1)?.kind!=MetroStepKind.RIDE || s.kind!=MetroStepKind.RIDE) MetroPresentation.instruction(route,i,net) else if(!net.stops(s.to,s.line,s.service)) "Siguiente estación sin detención" else "",
-        MetroEstimates.mapEta(route,i)).filter {it.isNotBlank()}.joinToString(" · "),s.kind!=MetroStepKind.RIDE)}+
+        MetroEstimates.mapEta(route,i)).filter {it.isNotBlank()}.joinToString(" · "),s.kind!=MetroStepKind.RIDE,s.kind!=MetroStepKind.RIDE || net.stops(s.from,s.line,s.service))}+
         MetroTimelineNode(route.stops.last(),route.steps.lastOrNull()?.line ?: net.accesses(route.stops.last()).first().id,"Baja aquí · Destino · ${MetroEstimates.mapEta(route,route.steps.size)}")
     MetroVerticalTimeline(rows,net,modifier,selectedStation=selectedStation,onStation=onStation)
 }
@@ -650,12 +653,12 @@ private fun Set<String>.toggle(id: String)=if(id in this) this-id else this+id
             net.lines.values.forEach {line->FilterChip(selected=filter==line.id,onClick={filter=line.id},label={Text(line.id,color=Color(line.color))})}
         }
         if(preferences!=null && query.isBlank()) Row(Modifier.horizontalScroll(rememberScrollState()),horizontalArrangement=Arrangement.spacedBy(4.dp)) {
-            preferences.home?.let {id->AssistChip(onClick={onSelect(id)},label={Text("Casa")})}
-            preferences.favorites.sorted().forEach {id->AssistChip(onClick={onSelect(id)},label={Text("★ ${net.stations.getValue(id).name}")})}
+            preferences.home?.takeIf {it in net.stations}?.let {id->AssistChip(onClick={onSelect(id)},label={Text("Casa")},modifier=Modifier.testTag("metro-home-shortcut"))}
+            preferences.favorites.filter {it!=preferences.home}.sorted().forEach {id->AssistChip(onClick={onSelect(id)},label={Text("★ ${net.stations.getValue(id).name}")})}
         }
         LazyColumn(Modifier.heightIn(max=400.dp)) {
             items(result,key={it.id}) {station->Column(Modifier.fillMaxWidth().clickable {onSelect(station.id)}.padding(vertical=10.dp)) {
-                Text(station.name+(if(preferences?.home==station.id) " · Casa" else "")+(if(station.id in preferences?.favorites.orEmpty()) " ★" else ""),style=MaterialTheme.typography.titleSmall)
+                Text(station.name+(if(station.id in preferences?.favorites.orEmpty()) " ★" else ""),style=MaterialTheme.typography.titleSmall)
                 LineBadges(net,station.id);HorizontalDivider(Modifier.padding(top=8.dp))
             } }
             if(result.isEmpty()) item {Text("No se encontraron estaciones.")}
@@ -668,7 +671,19 @@ private fun Set<String>.toggle(id: String)=if(id in this) this-id else this+id
     TextButton(onClick={open=!open}) {Text("Horarios y tipos de servicio ${if(open) "▴" else "▾"}")}
     if(open) Text("Ruta Expresa L2, L4 y L5: días hábiles 06:00–09:00 y 18:00–21:00, con inicio y término gradual. Punta tarifaria referencial: lunes a viernes 07:00–08:59 y 18:00–19:59; festivos excluidos. No cambia automáticamente tu ruta. Sin información de operación en tiempo real.\nFuentes oficiales Metro, Red y tarjeta bip! · revisión ${net.checkedAt} · catálogo ${net.version}.")
 }
-@Composable private fun TrackingMap(s: MetroSession,p: MetroPosition,net: MetroNetwork,full: Boolean,modifier: Modifier,selectedStation:String?,onExpand:()->Unit,onStation: (String)->Unit) {
+@Composable private fun TrackingMap(s: MetroSession,position: MetroPosition,net: MetroNetwork,full: Boolean,modifier: Modifier,selectedStation:String?,onExpand:()->Unit,onStation: (String)->Unit) {
+    val context=LocalContext.current
+    val lifecycle=LocalLifecycleOwner.current.lifecycle
+    var visualPosition by remember(s) {mutableStateOf(position)}
+    LaunchedEffect(s,lifecycle) {
+        if(s.route.provisional!=null && s.pausedAt==null && s.ended==null && MetroStages.control(s).phase==MetroPhase.RIDING) {
+            lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) {
+                while(isActive) {visualPosition=MetroTracking.position(s,metroTime(context));delay(50)}
+            }
+        }
+    }
+    // Faster redraw is local to the marker/map; it never replans routes or records observations.
+    val p=if(s.route.provisional!=null) visualPosition else position
     val list=rememberLazyListState()
     val scope=rememberCoroutineScope()
     var follow by rememberSaveable(s.id) { mutableStateOf(true) }
@@ -683,7 +698,14 @@ private fun Set<String>.toggle(id: String)=if(id in this) this-id else this+id
             if(item==null || y>viewport-48 || y<24) list.animateScrollToItem(p.step.coerceAtMost(s.route.steps.size),((item?.size ?: 0)*p.fraction+inset-viewport/3).toInt().coerceAtLeast(0))
         }
     }
-    val rows=s.route.steps.mapIndexed {i,step->MetroTimelineNode(step.from,step.line,listOf(if(i==p.step || i==0 || step.kind!=MetroStepKind.RIDE) MetroPresentation.instruction(s.route,i,net) else "",if(i>=p.step) MetroEstimates.mapEta(s.route,i,p.offset) else "").filter {it.isNotBlank()}.joinToString(" · "),i==p.step || step.kind!=MetroStepKind.RIDE)}+
+    val rows=s.route.steps.mapIndexed {i,step->
+        val stop=step.kind!=MetroStepKind.RIDE || net.stops(step.from,step.line,step.service)
+        // Express labels keep their geometry while the marker passes each physical station.
+        val detail=if(s.route.provisional!=null) (if(stop) "Parada efectiva" else "Paso sin detención")+
+            " · "+MetroEstimates.mapEta(s.route,i)+" · avance intermedio estimado"
+        else listOf(if(i==p.step || i==0 || step.kind!=MetroStepKind.RIDE) MetroPresentation.instruction(s.route,i,net) else "",if(i>=p.step) MetroEstimates.mapEta(s.route,i,p.offset) else "").filter {it.isNotBlank()}.joinToString(" · ")
+        MetroTimelineNode(step.from,step.line,detail,i==p.step || step.kind!=MetroStepKind.RIDE,stop)
+    }+
         MetroTimelineNode(s.route.stops.last(),s.route.steps.lastOrNull()?.line ?: net.accesses(s.route.stops.last()).first().id,"Destino · ${MetroEstimates.mapEta(s.route,s.route.steps.size,p.offset)} · Confirma Llegué para finalizar",p.step==s.route.steps.size)
     Column(modifier) {
         MapToolbar(full,onExpand,onCenter={follow=true;scope.launch {list.animateScrollToItem(p.step.coerceAtMost(s.route.steps.size))}})

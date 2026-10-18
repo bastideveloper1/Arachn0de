@@ -1,5 +1,7 @@
 package com.r0ybt.arachn0de.ui
 
+import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.pager.HorizontalPager
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
@@ -34,7 +36,6 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.r0ybt.arachn0de.Arachn0deApplication
 import com.r0ybt.arachn0de.data.local.*
@@ -115,7 +116,7 @@ private val MemoryRequestSaver=listSaver<MemoryEditRequest?,String>(save={reques
                     var menu by remember {mutableStateOf(false)}
                     Box(Modifier.weight(1f).aspectRatio(1f).onGloballyPositioned {drag.bounds[entry.id]=it.boundsInRoot()}
                         .graphicsLayer {alpha=if(drag.dragged==entry.id) .35f else 1f}
-                        .testTag("memory:${entry.id}").clickable(enabled=!busy && images.isNotEmpty()) {viewing=entry.id}) {
+                        .testTag("memory:${entry.id}").clickable(enabled=!busy) {viewing=entry.id}) {
                         images.firstOrNull()?.let {MemoryThumbnail(it,state!!,repository,Modifier.fillMaxSize())}
                         if(images.size>1) Surface(Modifier.align(Alignment.BottomEnd).padding(4.dp),color=Arachn0deColors.ControlSurface,shape=MaterialTheme.shapes.small) {
                             Row(Modifier.padding(4.dp),horizontalArrangement=Arrangement.spacedBy(3.dp),verticalAlignment=Alignment.CenterVertically) {
@@ -154,7 +155,7 @@ private val MemoryRequestSaver=listSaver<MemoryEditRequest?,String>(save={reques
     }
     historical?.let {entryId->
         val texts=state?.photos(entryId).orEmpty().mapIndexedNotNull {index,image->image.description.takeIf {it.isNotBlank()}?.let {index+1 to it}}
-        if(texts.isNotEmpty()) Dialog(onDismissRequest={historical=null},properties=DialogProperties(usePlatformDefaultWidth=false)) {
+        if(texts.isNotEmpty()) BottomModulesDialog(onDismissRequest={historical=null},properties=DialogProperties(usePlatformDefaultWidth=false)) {
             Surface(Modifier.fillMaxSize(),color=Arachn0deColors.Background) {
                 Column(Modifier.safeDrawingPadding().padding(12.dp),verticalArrangement=Arrangement.spacedBy(8.dp)) {
                     Text("Textos históricos",style=MaterialTheme.typography.titleLarge)
@@ -167,8 +168,8 @@ private val MemoryRequestSaver=listSaver<MemoryEditRequest?,String>(save={reques
         }
     }
     val selected=entries.firstOrNull {it.id==viewing}
-    if(selected!=null && state!=null) MemoryViewer(selected,state!!,repository,people,attachments,onEdit={image->
-        editing=MemoryEditRequest(selected,state!!.photos(selected.id),UUID.randomUUID().toString(),image)
+    if(selected!=null && state!=null) MemoryViewer(selected,entries,state!!,repository,people,attachments,onEntryChanged={viewing=it},onEdit={active,image->
+        editing=MemoryEditRequest(active,state!!.photos(active.id),UUID.randomUUID().toString(),image)
     },onClose={viewing=null},onError={error=it})
     editing?.let {request->if(state!=null) MemoryEditor(request,state!!,repository,people,attachments,
         onClose={editing=null},onError={error=it})}
@@ -187,16 +188,19 @@ private val MemoryRequestSaver=listSaver<MemoryEditRequest?,String>(save={reques
 }
 
 @OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
-@Composable private fun MemoryViewer(entry:PersonMemoryEntity,state:PersonMemoryState,repository:PersonMemoryRepository,people:PersonRepository,attachments:AttachmentRepository,
-    onEdit:(String)->Unit,onClose:()->Unit,onError:(String)->Unit) {
+@Composable private fun MemoryViewer(initialEntry:PersonMemoryEntity,entries:List<PersonMemoryEntity>,state:PersonMemoryState,repository:PersonMemoryRepository,people:PersonRepository,attachments:AttachmentRepository,
+    onEntryChanged:(String)->Unit,onEdit:(PersonMemoryEntity,String?)->Unit,onClose:()->Unit,onError:(String)->Unit) {
+    val publications=rememberPagerState(initialPage=entries.indexOfFirst {it.id==initialEntry.id}.coerceAtLeast(0),pageCount={entries.size})
+    val entry=entries.getOrNull(publications.currentPage) ?: return
+    LaunchedEffect(entry.id) {onEntryChanged(entry.id)}
     val images=state.photos(entry.id)
-    val pager=rememberPagerState(pageCount={images.size})
+    var photoIndex by remember(entry.id) {mutableIntStateOf(0)}
     val scope=rememberCoroutineScope()
     var busy by remember {mutableStateOf(false)}
     var deletion by remember {mutableStateOf(false)}
     var wholeEntry by remember {mutableStateOf(false)}
-    val current=images.getOrNull(pager.currentPage)
-    val exportDraft=rememberSaveable(entry.id) {UUID.randomUUID().toString()}
+    val current=images.getOrNull(photoIndex)
+    val exportDraft=rememberSaveable {UUID.randomUUID().toString()}
     var exportImage by rememberSaveable(entry.id,stateSaver=MemoryImageSaver) {mutableStateOf<PersonMemoryImageEntity?>(null)}
     val exportState by rememberUpdatedState(state)
     val download=rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("image/*")) {uri->
@@ -206,25 +210,38 @@ private val MemoryRequestSaver=listSaver<MemoryEditRequest?,String>(save={reques
             finally {withContext(NonCancellable) {runCatching {attachments.discardDraft(exportDraft)};exportImage?.legacyPhotoId?.let {id->state.legacy.firstOrNull {it.id==id}?.let {runCatching {people.discardAvatar(it.file,exportDraft)}}}};exportImage=null;busy=false}
         }
     }
-    Dialog(onDismissRequest={if(!busy) onClose()},properties=DialogProperties(usePlatformDefaultWidth=false,decorFitsSystemWindows=false)) {
-        Column(Modifier.fillMaxSize().background(Arachn0deColors.Background).safeDrawingPadding().padding(12.dp).testTag("memory-viewer")) {
-            Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically) {
+    BottomModulesDialog(onDismissRequest={if(!busy) onClose()},properties=DialogProperties(usePlatformDefaultWidth=false,decorFitsSystemWindows=false)) {
+        Column(Modifier.fillMaxSize().background(Arachn0deColors.Background).safeDrawingPadding().padding(top=12.dp).testTag("memory-viewer")) {
+            Row(Modifier.fillMaxWidth().padding(horizontal=12.dp),verticalAlignment=Alignment.CenterVertically) {
                 IconButton(enabled=!busy,onClick=onClose,modifier=Modifier.size(48.dp)) {Icon(Icons.Default.ArrowBack,"Volver")}
-                Spacer(Modifier.weight(1f));Text("${if(images.isEmpty()) 0 else pager.currentPage+1}/${images.size}")
+                Spacer(Modifier.weight(1f));Text("${if(images.isEmpty()) 0 else photoIndex+1}/${images.size}")
             }
-            VerticalPager(pager,Modifier.fillMaxWidth().weight(1f).testTag("memory-carousel")) {page->
-                val image=images[page]
-                val file=runCatching {repository.file(image,state)}.getOrNull()
-                val loaded by produceState<Pair<android.graphics.Bitmap?,Boolean>>(null to false,file?.absolutePath) {
-                    value=withContext(Dispatchers.IO) {(if(file==null) null else runCatching {decodeAttachment(file)}.getOrNull()) to true}
+            VerticalPager(publications,Modifier.fillMaxWidth().padding(horizontal=12.dp).weight(1f).testTag("memory-publications"),userScrollEnabled=!busy,key={entries[it].id}) {publication->
+                val item=entries[publication]
+                val photos=state.photos(item.id)
+                key(item.id,publications.currentPage) {
+                    val photosPager=rememberPagerState(pageCount={maxOf(1,photos.size)})
+                    val visiblePhoto=photosPager.currentPage
+                    if(publication==publications.currentPage) SideEffect {photoIndex=visiblePhoto}
+                    HorizontalPager(photosPager,Modifier.fillMaxSize().testTag(if(publication==publications.currentPage) "memory-carousel" else "memory-carousel:${item.id}"),userScrollEnabled=!busy,key={photos.getOrNull(it)?.id ?: "empty"}) {page->
+                        val image=photos.getOrNull(page)
+                        if(image==null) Box(Modifier.fillMaxSize(),contentAlignment=Alignment.Center) {Text("Sin fotografías")}
+                        else {
+                            val file=runCatching {repository.file(image,state)}.getOrNull()
+                            val loaded by produceState<Pair<android.graphics.Bitmap?,Boolean>>(null to false,file?.absolutePath) {
+                                value=withContext(Dispatchers.IO) {(if(file==null) null else runCatching {decodeAttachment(file)}.getOrNull()) to true}
+                            }
+                            ZoomableImage(loaded.first,loaded.second,"Fotografía ${page+1}",Modifier.fillMaxSize(),carousel=true)
+                        }
+                    }
                 }
-                ZoomableImage(loaded.first,loaded.second,"Fotografía ${page+1}",Modifier.fillMaxSize(),carousel=true)
             }
-            Column(Modifier.fillMaxWidth().heightIn(max=160.dp).verticalScroll(rememberScrollState()),verticalArrangement=Arrangement.spacedBy(4.dp)) {
+            Column(Modifier.fillMaxWidth().padding(horizontal=12.dp).heightIn(max=160.dp).verticalScroll(rememberScrollState()),verticalArrangement=Arrangement.spacedBy(4.dp)) {
                 Text(current?.date ?: entry.date ?: "Sin fecha",style=MaterialTheme.typography.bodySmall)
                 if(entry.description.isNotBlank()) Text(entry.description)
             }
-            Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(6.dp)) {
+            ModularPanelSurface(Modifier.fillMaxWidth(),shadowElevation=0.dp) {
+            Row(Modifier.fillMaxWidth().padding(4.dp),horizontalArrangement=Arrangement.spacedBy(6.dp)) {
                 TextButton(enabled=!busy && current!=null,onClick={
                     val image=current ?: return@TextButton
                     busy=true;scope.launch {
@@ -238,15 +255,16 @@ private val MemoryRequestSaver=listSaver<MemoryEditRequest?,String>(save={reques
                         catch(e:Exception) {withContext(NonCancellable) {runCatching {attachments.discardDraft(exportDraft)};image.legacyPhotoId?.let {id->state.legacy.firstOrNull {it.id==id}?.let {runCatching {people.discardAvatar(it.file,exportDraft)}}}};exportImage=null;busy=false;onError(e.message ?: "No se pudo abrir Descargar.")}
                     }
                 },modifier=Modifier.weight(1f).heightIn(min=48.dp)) {Column(horizontalAlignment=Alignment.CenterHorizontally) {Icon(Icons.Default.Download,null,Modifier.size(20.dp));Text("Descargar")}}
-                TextButton(enabled=!busy && current!=null,onClick={current?.let {onEdit(it.id)}},modifier=Modifier.weight(1f).heightIn(min=48.dp)) {Column(horizontalAlignment=Alignment.CenterHorizontally) {Icon(Icons.Default.Edit,null,Modifier.size(20.dp));Text("Editar")}}
-                TextButton(enabled=!busy && current!=null,onClick={wholeEntry=false;deletion=true},modifier=Modifier.weight(1f).heightIn(min=48.dp)) {Column(horizontalAlignment=Alignment.CenterHorizontally) {Icon(Icons.Default.Delete,null,Modifier.size(20.dp));Text("Eliminar")}}
+                TextButton(enabled=!busy,onClick={onEdit(entry,current?.id)},modifier=Modifier.weight(1f).heightIn(min=48.dp)) {Column(horizontalAlignment=Alignment.CenterHorizontally) {Icon(Icons.Default.Edit,null,Modifier.size(20.dp));Text("Editar")}}
+                TextButton(enabled=!busy,onClick={wholeEntry=images.isEmpty();deletion=true},modifier=Modifier.weight(1f).heightIn(min=48.dp)) {Column(horizontalAlignment=Alignment.CenterHorizontally) {Icon(Icons.Default.Delete,null,Modifier.size(20.dp));Text("Eliminar")}}
             }
         }
+    }
     }
     if(deletion) AlertDialog(onDismissRequest={if(!busy) deletion=false},title={Text("Eliminar fotografía")},text={Column {
         Text("Las imágenes utilizadas por el avatar u otros elementos se conservan.")
         if(images.size>1) Row(verticalAlignment=Alignment.CenterVertically) {Checkbox(wholeEntry,{wholeEntry=it},enabled=!busy);Text("Eliminar la entrada completa (${images.size} fotografías)")}
-        Text(if(wholeEntry || images.size==1) "Se eliminará esta entrada." else "Se quitará la fotografía actual del carrusel.")
+        Text(if(wholeEntry || images.size<=1) "Se eliminará esta entrada." else "Se quitará la fotografía actual del carrusel.")
     }},confirmButton={TextButton(enabled=!busy,onClick={busy=true;scope.launch {
         try {if(wholeEntry || images.size==1) {repository.deleteEntry(entry.id);onClose()} else current?.let {repository.removeImage(it.id)};deletion=false}
         catch(c:CancellationException) {throw c} catch(e:Exception) {onError(e.message ?: "No se pudo eliminar.")}
@@ -260,6 +278,18 @@ private val MemoryRequestSaver=listSaver<MemoryEditRequest?,String>(save={reques
     var date by rememberSaveable(request.draft) {mutableStateOf(request.entry.date)}
     var description by rememberSaveable(request.draft) {mutableStateOf(request.entry.description)}
     var images by rememberSaveable(request.draft,stateSaver=MemoryImagesSaver) {mutableStateOf(request.images)}
+    var confirmedDate by rememberSaveable(request.draft) {mutableStateOf(request.entry.date)}
+    var confirmedDescription by rememberSaveable(request.draft) {mutableStateOf(request.entry.description)}
+    var confirmedImages by rememberSaveable(request.draft,stateSaver=MemoryImagesSaver) {mutableStateOf(request.images)}
+    var savedOnce by rememberSaveable(request.draft) {mutableStateOf(!request.creating)}
+    var field by rememberSaveable(request.draft) {mutableStateOf<String?>(null)}
+    var preview by rememberSaveable(request.draft) {mutableStateOf(false)}
+    // Encadre remains part of the current field until its confirmation.
+    var frames by rememberSaveable(request.draft) {mutableStateOf(emptyList<String>())}
+    fun framed(photo:PersonPhotoEntity):PersonPhotoEntity {
+        val frame=frames.chunked(4).firstOrNull {it[0]==photo.id} ?: return photo
+        return photo.copy(zoom=frame[1].toFloat(),x=frame[2].toFloat(),y=frame[3].toFloat())
+    }
     var selected by rememberSaveable(request.draft) {mutableStateOf(request.image ?: request.images.firstOrNull()?.id)}
     var ready by remember {mutableStateOf(false)}
     var busy by remember {mutableStateOf(false)}
@@ -296,24 +326,35 @@ private val MemoryRequestSaver=listSaver<MemoryEditRequest?,String>(save={reques
         }
     }}
     val current=images.firstOrNull {it.id==selected} ?: images.firstOrNull()
-    Dialog(onDismissRequest=::cancel,properties=DialogProperties(usePlatformDefaultWidth=false,decorFitsSystemWindows=false)) {
-        Surface(Modifier.fillMaxSize(),color=Arachn0deColors.Background) {
-            Column(Modifier.fillMaxSize().safeDrawingPadding().imePadding().padding(12.dp),verticalArrangement=Arrangement.spacedBy(8.dp)) {
-                Text(if(request.creating) "Nueva entrada" else "Editar entrada",style=MaterialTheme.typography.titleLarge)
-                Column(Modifier.weight(1f).verticalScroll(rememberScrollState()),verticalArrangement=Arrangement.spacedBy(8.dp)) {
+    fun cancelField() {date=confirmedDate;description=confirmedDescription;images=confirmedImages;frames=emptyList();field=null}
+    BackHandler(enabled=field!=null) {if(!busy) cancelField()}
+    ModularPanelDialog(showActions=field!=null,onDismissRequest={if(field!=null) {if(!busy) cancelField()} else cancel()},compact=true,plainBody=true,
+        title={Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically) {
+            Text(field ?: if(savedOnce) "Editar entrada" else "Nueva entrada",Modifier.weight(1f))
+            if(field==null) IconButton(enabled=!busy,onClick=::cancel) {Icon(Icons.Default.Close,"Cerrar entrada")}
+        }},text={Column(Modifier.fillMaxWidth(),verticalArrangement=Arrangement.spacedBy(8.dp)) {
+            if(field==null) ModularFieldMenu(listOfNotNull(
+                ModularPanelOption("Fecha",Icons.Default.CalendarMonth,"memory-field-date",!busy) {field="Fecha"},
+                ModularPanelOption("Descripción de la entrada",Icons.Default.Subject,"memory-field-description",!busy) {field="Descripción de la entrada"},
+                ModularPanelOption("Fotografías",Icons.Default.Image,"memory-field-photos",!busy) {field="Fotografías"},
+                current?.let {ModularPanelOption("Avatar principal",Icons.Default.Person,"memory-field-avatar",!busy) {field="Avatar principal"}}
+            ),compact=true)
+            if(field=="Fecha") {
                     Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically) {
                         TextButton(enabled=!busy,onClick={dateTarget="entry"},modifier=Modifier.weight(1f).heightIn(min=48.dp)) {Icon(Icons.Default.CalendarMonth,null,Modifier.size(20.dp));Spacer(Modifier.width(6.dp));Text(date ?: "Seleccionar fecha")}
                         if(date!=null) IconButton(enabled=!busy,onClick={date=null},modifier=Modifier.size(48.dp)) {Icon(Icons.Default.Close,"Quitar fecha de la entrada")}
                     }
-                    OutlinedTextField(description,{if(it.length<=16000) description=it},label={Text("Descripción de la entrada")},modifier=Modifier.fillMaxWidth(),minLines=2,maxLines=5,enabled=!busy)
+            }
+            if(field=="Descripción de la entrada") ModularTextField(description,{if(it.length<=16000) description=it},"Descripción de la entrada",!busy)
+            if(field=="Fotografías" || field=="Avatar principal") {
                     Text("Fotografías",style=MaterialTheme.typography.labelLarge)
                     images.forEachIndexed {index,image->
                         Card(Modifier.fillMaxWidth(),shape=MaterialTheme.shapes.medium,colors=CardDefaults.cardColors(containerColor=if(current?.id==image.id) Arachn0deColors.ControlSurface else Arachn0deColors.Surface)) {
                             Row(Modifier.fillMaxWidth().padding(8.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(8.dp)) {
                                 MemoryThumbnail(image,state,repository,Modifier.size(88.dp).clickable(onClickLabel="Seleccionar fotografía ${index+1}") {selected=image.id})
                                 Column(Modifier.weight(1f)) {
-                                    TextButton(enabled=!busy,onClick={selected=image.id},modifier=Modifier.fillMaxWidth().heightIn(min=48.dp),contentPadding=PaddingValues(0.dp)) {Text("${index+1}${if(current?.id==image.id) " · Seleccionada" else ""}")}
-                                    Row {
+                                    TextButton(enabled=!busy,onClick={selected=image.id;preview=true},modifier=Modifier.fillMaxWidth().heightIn(min=48.dp),contentPadding=PaddingValues(0.dp)) {Text("${index+1}${if(current?.id==image.id) " · Seleccionada" else ""}")}
+                                    if(field=="Fotografías") Row {
                                         IconButton(enabled=!busy && index>0,onClick={images=images.toMutableList().also {java.util.Collections.swap(it,index,index-1)}.mapIndexed {i,row->row.copy(position=i)}},modifier=Modifier.size(48.dp)) {Icon(Icons.Default.ArrowUpward,"Mover antes")}
                                         IconButton(enabled=!busy && index<images.lastIndex,onClick={images=images.toMutableList().also {java.util.Collections.swap(it,index,index+1)}.mapIndexed {i,row->row.copy(position=i)}},modifier=Modifier.size(48.dp)) {Icon(Icons.Default.ArrowDownward,"Mover después")}
                                         IconButton(enabled=!busy,onClick={removing=image},modifier=Modifier.size(48.dp)) {Icon(Icons.Default.Delete,"Quitar fotografía")}
@@ -322,33 +363,61 @@ private val MemoryRequestSaver=listSaver<MemoryEditRequest?,String>(save={reques
                             }
                         }
                     }
-                    TextButton(enabled=!busy && ready,onClick={picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))}) {Text("Agregar fotografías")}
+                    if(field=="Fotografías") TextButton(enabled=!busy && ready,onClick={picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))}) {Text("Agregar fotografías")}
                     if(current!=null) {
                         val legacy=state.legacy.firstOrNull {it.id==current.legacyPhotoId}
-                        if(legacy!=null) TextButton(enabled=!busy && framing==null,onClick={if(!busy && framing==null) framing=legacy}) {Text("Ajustar encuadre")}
-                        TextButton(enabled=!busy,onClick={busy=true;scope.launch {
-                            try {repository.setAvatar(request.entry.personId,current,state)} catch(c:CancellationException) {throw c} catch(e:Exception) {onError(e.message ?: "No se pudo cambiar el avatar.")} finally {busy=false}
-                        }}) {Text("Establecer como avatar principal")}
+                        if(legacy!=null) TextButton(enabled=!busy && framing==null,onClick={if(!busy && framing==null) framing=framed(legacy)}) {Text("Ajustar encuadre")}
+                        if(field=="Avatar principal") Text("Selecciona una fotografía y confirma para usarla como avatar.")
                     }
-                }
-                Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.End) {
-                    TextButton(enabled=!busy,onClick=::cancel) {Text("Cancelar")}
-                    Button(enabled=ready && !busy && images.isNotEmpty(),onClick={busy=true;scope.launch {
-                        try {repository.save(request.entry.copy(date=date,description=description),images,request.draft);withContext(NonCancellable) {runCatching {release()}};onClose()}
-                        catch(c:CancellationException) {throw c} catch(e:Exception) {onError(e.message ?: "No se pudo guardar.")} finally {busy=false}
-                    }}) {Text("Guardar")}
-                }
             }
+        }},dismissButton={if(field!=null) PrimaryControlButton(enabled=!busy,onClick=::cancelField,modifier=Modifier.fillMaxWidth().heightIn(min=48.dp)) {Text("Cancelar")}},
+        confirmButton={if(field!=null) PrimaryControlButton(enabled=ready && !busy && (field!="Avatar principal" || current!=null),onClick={
+            busy=true;scope.launch {
+                try {
+                    val framedState=state.copy(legacy=state.legacy.map(::framed))
+                    if(field=="Fotografías" && images.isEmpty()) {
+                        if(savedOnce) repository.deleteEntry(request.entry.id)
+                        release();onClose()
+                    } else if(field=="Avatar principal") {
+                        state.legacy.filter {photo->frames.chunked(4).any {it[0]==photo.id}}.forEach {people.savePhoto(framed(it),request.draft)}
+                        current?.let {repository.setAvatar(request.entry.personId,it,framedState)}
+                    } else {
+                        val latest=request.entry.copy(date=confirmedDate,description=confirmedDescription)
+                        val updated=when(field) {
+                            "Fecha"->latest.copy(date=date)
+                            "Descripción de la entrada"->latest.copy(description=description)
+                            else->latest
+                        }
+                        repository.save(updated,if(field=="Fotografías" || !savedOnce) images else confirmedImages,request.draft)
+                        if(field=="Fotografías") state.legacy.filter {photo->frames.chunked(4).any {it[0]==photo.id}}.forEach {people.savePhoto(framed(it),request.draft)}
+                        savedOnce=true
+                        confirmedDate=updated.date;confirmedDescription=updated.description;confirmedImages=images
+                        attachments.retainGallery(request.draft,images.mapNotNullTo(hashSetOf()) {it.attachmentId})
+                    }
+                    date=confirmedDate;description=confirmedDescription;images=confirmedImages;frames=emptyList();field=null
+                } catch(c:CancellationException) {throw c} catch(e:Exception) {onError(e.message ?: "No se pudo guardar.")} finally {busy=false}
+            }
+        },modifier=Modifier.fillMaxWidth().heightIn(min=48.dp)) {Text("Confirmar")}})
+    if(preview && current!=null) BottomModulesDialog(onDismissRequest={preview=false},properties=DialogProperties(usePlatformDefaultWidth=false)) {
+        Column(Modifier.fillMaxSize().background(Arachn0deColors.Background).safeDrawingPadding()) {
+            IconButton(onClick={preview=false}) {Icon(Icons.Default.Close,"Cerrar previsualización")}
+            val file=runCatching {repository.file(current,state)}.getOrNull()
+            val loaded by produceState<Pair<android.graphics.Bitmap?,Boolean>>(null to false,file?.absolutePath) {
+                value=withContext(Dispatchers.IO) {(if(file==null) null else runCatching {decodeAttachment(file)}.getOrNull()) to true}
+            }
+            ZoomableImage(loaded.first,loaded.second,"Previsualización",Modifier.fillMaxWidth().weight(1f))
         }
     }
-    removing?.let {image->AlertDialog(onDismissRequest={removing=null},title={Text(if(images.size==1) "Eliminar entrada" else "Quitar fotografía")},text={Text(if(images.size==1) "Se eliminará la entrada completa. El avatar y los archivos usados por otros elementos se conservan." else "Se quitará esta fotografía del grupo al guardar. Los archivos compartidos se conservan.")},
-        confirmButton={TextButton(enabled=!busy,onClick={
-            if(images.size>1) {images=images.filter {it.id!=image.id}.mapIndexed {i,row->row.copy(position=i)};selected=images.firstOrNull()?.id;removing=null}
-            else {busy=true;scope.launch {try {if(!request.creating) repository.deleteEntry(request.entry.id);withContext(NonCancellable) {runCatching {release()}};onClose()} catch(c:CancellationException) {throw c} catch(e:Exception) {onError(e.message ?: "No se pudo eliminar.")} finally {busy=false}}}
+    removing?.let {image->AlertDialog(onDismissRequest={removing=null},title={Text("Quitar fotografía")},text={Text(if(images.size==1) "Al confirmar se eliminará la entrada porque quedará sin fotografías. Los archivos compartidos se conservan." else "Se quitará esta fotografía del grupo al guardar. Los archivos compartidos se conservan.")},
+        confirmButton={TextButton(modifier=Modifier.testTag("memory-confirm-remove"),enabled=!busy,onClick={
+            images=images.filter {it.id!=image.id}.mapIndexed {i,row->row.copy(position=i)};selected=images.firstOrNull()?.id;removing=null
         }) {Text("Eliminar")}},dismissButton={TextButton(onClick={removing=null}) {Text("Cancelar")}})}
-    framing?.let {photo->AvatarEditor(photo.file,com.r0ybt.arachn0de.domain.model.AvatarFraming(photo.zoom,photo.x,photo.y),enabled=!busy,onConfirm={frame->if(busy || framing?.id!=photo.id) return@AvatarEditor;busy=true;scope.launch {
-        try {people.savePhoto(photo.copy(zoom=frame.zoom,x=frame.x,y=frame.y),request.draft);framing=null} catch(c:CancellationException) {throw c} catch(e:Exception) {onError(e.message ?: "No se pudo guardar el encuadre.")} finally {busy=false}
-    }},onCancel={if(!busy) framing=null})}
+    framing?.let {photo->AvatarEditor(photo.file,com.r0ybt.arachn0de.domain.model.AvatarFraming(photo.zoom,photo.x,photo.y),enabled=!busy,onConfirm={frame->
+        if(!busy && framing?.id==photo.id) {
+            frames=frames.chunked(4).filterNot {it[0]==photo.id}.flatten()+listOf(photo.id,frame.zoom.toString(),frame.x.toString(),frame.y.toString())
+            framing=null
+        }
+    },onCancel={if(!busy) framing=null})}
     if(dateTarget!=null) {
         val old=date
         val initial=runCatching {LocalDate.parse(old).atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli()}.getOrDefault(LocalDate.now().atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli())

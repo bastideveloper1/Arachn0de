@@ -4,6 +4,7 @@
 
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.VIBRATE" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
@@ -31,6 +32,13 @@
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
         android:theme="@style/Theme.Arachn0de">
+        <receiver android:name=".pomodoro.PomodoroReceiver" android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.TIME_SET" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+            </intent-filter>
+        </receiver>
         <service android:name=".cleanup.CleanupJobService" android:permission="android.permission.BIND_JOB_SERVICE" android:exported="true" />
         <service android:name=".audio.AudioService" android:exported="false" android:foregroundServiceType="microphone|mediaPlayback" />
         <service android:name=".metro.MetroTrackingService" android:exported="false" android:foregroundServiceType="specialUse">
@@ -55,6 +63,7 @@
         </provider>
         <activity
             android:name=".MainActivity"
+            android:screenOrientation="portrait"
             android:launchMode="singleTop"
             android:exported="true"
             android:label="@string/app_name"
@@ -69,8 +78,8 @@
                 <action android:name="android.intent.action.SEND" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <data android:mimeType="text/plain" />
-                <data android:mimeType="image/png" />
-                <data android:mimeType="image/jpeg" />
+                <data android:mimeType="text/html" />
+                <data android:mimeType="text/uri-list" />
             </intent-filter>
         </activity>
     </application>

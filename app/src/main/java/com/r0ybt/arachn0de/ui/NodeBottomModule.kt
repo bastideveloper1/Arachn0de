@@ -4,6 +4,7 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.outlined.Flag
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -19,7 +20,7 @@ import com.r0ybt.arachn0de.ui.state.*
     people:List<Person>,assigned:List<Person>,assignmentsLoaded:Boolean,tags:TagState,technologies:TechnologyState,
     maxHeight:Dp,contextActions:ContextActions.()->Unit,creationActions:@Composable ()->Unit,
     editRequest:NodeProperty?,onRequestHandled:()->Unit) {
-    var context by remember(node.id) {mutableStateOf(CoreBottomContext.Creation)}
+    var context by remember(node.id) {mutableStateOf(CoreBottomContext.Content)}
     val drafts=rememberSaveable(node.id,saver=EditorDraftStore.Saver) {EditorDraftStore()}
     var fieldName by rememberSaveable(node.id) {mutableStateOf<String?>(null)}
     var baseline by rememberSaveable(node.id) {mutableStateOf(emptyList<String>())}
@@ -70,7 +71,9 @@ import com.r0ybt.arachn0de.ui.state.*
             property("Descripción",Icons.Default.Description,NodeProperty.DESCRIPTION)
             if(node.isCompletable) {
                 property("Planificación",Icons.Default.Settings,NodeProperty.DATES)
-                property("Prioridad",Icons.Default.LocalFireDepartment,NodeProperty.PRIORITY)
+                add(ContextAction(if(node.priority==Priority.HIGH) "Prioritario" else "Común",
+                    if(node.priority==Priority.HIGH) Icons.Default.Flag else androidx.compose.material.icons.Icons.Outlined.Flag,
+                    {actions.togglePriority(node.id)},enabled=!busy))
                 property("Pago",Icons.Default.Payments,NodeProperty.PAYMENT)
             }
             property("Responsables",Icons.Default.People,NodeProperty.PEOPLE)

@@ -65,7 +65,7 @@ internal fun AttentionScreen(
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                 GlobalChromeActions(leading=true)
                 TextButton(onClick = onBack) { Text("Volver") }
-                Text("Atención",modifier=Modifier.weight(1f),maxLines=1,overflow=androidx.compose.ui.text.style.TextOverflow.Ellipsis, style = MaterialTheme.typography.titleLarge)
+                NavigationHeading("Atención",Modifier.weight(1f))
                 TextButton(onClick = { filters.open = true }) { Text(if (filters.active) "Filtros activos" else "Filtros") }
                 GlobalChromeActions()
             }

@@ -52,6 +52,8 @@ internal fun PeopleScreen(repository: PersonRepository, initialPersonId:String?=
     val relations by remember(repository) {repository.observeRelations()}.collectAsState(emptyList())
     var category by rememberSaveable {mutableStateOf("")}
     var search by rememberSaveable {mutableStateOf("")}
+    var detailSection by rememberSaveable {mutableStateOf(initialSection)}
+    var detailRequest by rememberSaveable {mutableIntStateOf(0)}
     var editorId by rememberSaveable { mutableStateOf<String?>(null) }
     val birthdays by remember(repository) {repository.observeBirthdays()}.collectAsState(initial=null as List<com.r0ybt.arachn0de.data.local.PersonBirthdayEntity>?)
     val identityRows by remember(repository) {repository.observeSelf().map {listOfNotNull(it)}}.collectAsState(initial=null)
@@ -61,7 +63,7 @@ internal fun PeopleScreen(repository: PersonRepository, initialPersonId:String?=
         if(initialPersonId==null && identityRows!=null && peopleReady) {
             val principal=identityRows?.firstOrNull()?.personId?.takeIf {candidate->people.any {it.id==candidate}}
             if(!entryResolved || principal!=resolvedPrincipal) {
-                detailId=principal;resolvedPrincipal=principal;entryResolved=true
+                detailId=principal;detailSection=initialSection;resolvedPrincipal=principal;entryResolved=true
             }
         }
     }
@@ -116,12 +118,7 @@ internal fun PeopleScreen(repository: PersonRepository, initialPersonId:String?=
     BackHandler { if (!busy) { if (editorId != null) cancelEditor() else if (deletingId != null) deletingId = null else onBack() } }
     fun edit(person:Person) {
         if(editorId!=null || profiles==null || birthdays==null || identityRows==null) return
-        val p=profiles.orEmpty().firstOrNull {it.personId==person.id} ?: PersonProfileEntity(person.id)
-        profileValues=listOf(p.alias,p.description,p.phones,p.emails,p.addresses,p.links,p.givenName,p.familyName,p.documentId);initialProfileValues=profileValues
-        birthday=birthdays.orEmpty().firstOrNull {it.personId==person.id}?.date.orEmpty();initialBirthday=birthday
-        editorId=person.id;ownPerson=identityRows?.firstOrNull()?.personId==person.id;initialOwnPerson=ownPerson;ownInitialized=true
-        isNew=false;name=person.name;avatar=person.avatarFile;zoom=person.avatarZoom;frameX=person.avatarX;frameY=person.avatarY
-        initialIdentity=listOf(name,avatar,zoom.toString(),frameX.toString(),frameY.toString())
+        detailId=person.id;detailSection="General";detailRequest++
     }
     fun newPerson() {editorId=UUID.randomUUID().toString();isNew=true;ownInitialized=true;ownPerson=false;initialOwnPerson=false;name="";avatar=null;zoom=1f;frameX=0f;frameY=0f;profileValues=List(9) {""};initialProfileValues=profileValues;birthday="";initialBirthday="";initialIdentity=listOf(name,avatar,zoom.toString(),frameX.toString(),frameY.toString())}
     LaunchedEffect(editorId,identityRows) {
@@ -130,14 +127,14 @@ internal fun PeopleScreen(repository: PersonRepository, initialPersonId:String?=
         }
     }
     if(detailId!=null) Surface(Modifier.fillMaxSize(),color=Arachn0deColors.Background) {
-        key(detailId) {PersonDetailView(detailId!!,people,repository,::edit,initialSection,onNewPerson=::newPerson,onDeletePerson={deletingId=it.id}) {if(initialPersonId!=null || detailId==identityRows?.firstOrNull()?.personId) onBack() else detailId=null}}
+        key(detailId,detailRequest) {PersonDetailView(detailId!!,people,repository,::edit,detailSection,onNewPerson=::newPerson,onDeletePerson={deletingId=it.id}) {if(initialPersonId!=null || detailId==identityRows?.firstOrNull()?.personId) onBack() else detailId=null}}
     } else if(!entryResolved) Surface(Modifier.fillMaxSize(),color=Arachn0deColors.Background) {Text("Cargando perfil principal…")}
     else Surface(Modifier.fillMaxSize(), color = Arachn0deColors.Background) {
         Column(Modifier.fillMaxSize().padding(14.dp)) {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                 GlobalChromeActions(enabled=!busy, leading=true)
                 TextButton(enabled = !busy, onClick = onBack) { Text("Volver") }
-                Text("Personas",modifier=Modifier.weight(1f),maxLines=1,overflow=androidx.compose.ui.text.style.TextOverflow.Ellipsis, style = MaterialTheme.typography.titleLarge)
+                NavigationHeading("Antisocial",Modifier.weight(1f))
                 GlobalChromeActions(enabled=!busy)
             }
             FlowRow(horizontalArrangement=Arrangement.spacedBy(6.dp)) {
@@ -157,7 +154,7 @@ internal fun PeopleScreen(repository: PersonRepository, initialPersonId:String?=
                     val birth=birthdayByPerson[person.id]?.date?.let {runCatching {java.time.LocalDate.parse(it)}.getOrNull()}
                     val assignedIds=technologyIdsByPerson[person.id].orEmpty().map {it.technologyId}.toSet()
                     val assigned=technologies.filter {it.id in assignedIds}.take(3)
-                    Card(Modifier.fillMaxWidth().testTag("person-card:${person.id}").clickable {detailId=person.id},
+                    Card(Modifier.fillMaxWidth().testTag("person-card:${person.id}").clickable {detailId=person.id;detailSection=initialSection},
                         shape=androidx.compose.foundation.shape.RoundedCornerShape(8.dp),colors=CardDefaults.cardColors(containerColor=Arachn0deColors.Surface)) {
                         Row(Modifier.fillMaxWidth().padding(10.dp),verticalAlignment=androidx.compose.ui.Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(12.dp)) {
                             PersonPhoto(person,Modifier.size(64.dp).clip(androidx.compose.foundation.shape.RoundedCornerShape(6.dp)),framed=true)
@@ -176,8 +173,8 @@ internal fun PeopleScreen(repository: PersonRepository, initialPersonId:String?=
                             Box {
                                 IconButton(enabled=!busy,onClick={menu=true},modifier=Modifier.size(48.dp).testTag("person-options:${person.id}")) {LucideIcon(androidx.compose.material.icons.Icons.Default.MoreVert,"Opciones de ${person.name}")}
                                 if(menu) ContextActionMenu(person.name,{menu=false}) {
-                                    action("Editar perfil",androidx.compose.material.icons.Icons.Default.Edit,{menu=false;edit(person)},enabled=!busy && profiles!=null && birthdays!=null && identityRows!=null)
-                                    action("Eliminar",androidx.compose.material.icons.Icons.Default.Delete,{menu=false;deletingId=person.id},enabled=!busy,destructive=true)
+                                    action("Información general",androidx.compose.material.icons.Icons.Default.Edit,{menu=false;edit(person)},enabled=!busy && profiles!=null && birthdays!=null && identityRows!=null)
+                                    action("Eliminar perfil",androidx.compose.material.icons.Icons.Default.Delete,{menu=false;deletingId=person.id},enabled=!busy,destructive=true)
                                 }
                             }
                         }
@@ -191,11 +188,11 @@ internal fun PeopleScreen(repository: PersonRepository, initialPersonId:String?=
         }
     }
     editorId?.let { id ->
-        androidx.compose.ui.window.Dialog(onDismissRequest={if(!busy) cancelEditor()},properties=androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth=false)) {
+        BottomModulesDialog(onDismissRequest={if(!busy) cancelEditor()},properties=androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth=false)) {
             Box(Modifier.fillMaxSize().safeDrawingPadding().imePadding()) {
                 Surface(Modifier.fillMaxSize(),color=Arachn0deColors.Background) {
                     Column(Modifier.padding(16.dp),verticalArrangement=Arrangement.spacedBy(8.dp)) {
-                        Text(if(isNew) "Nueva Persona" else "Editar perfil",style=MaterialTheme.typography.titleLarge)
+                        Text("Nueva Persona",style=MaterialTheme.typography.titleLarge)
                         Column(Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()).testTag("person-profile-fields"),verticalArrangement=Arrangement.spacedBy(8.dp)) {
                             Row(Modifier.fillMaxWidth(),verticalAlignment=androidx.compose.ui.Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(12.dp)) {
                                 PersonPhoto(Person(id,name.ifBlank {"?"},avatar,zoom,frameX,frameY),Modifier.size(80.dp).clip(androidx.compose.foundation.shape.RoundedCornerShape(8.dp)).clickable(enabled=!busy && !pickerOpen && !cropOpen,onClickLabel="Cambiar fotografía") {pickPhoto()},framed=true)
@@ -227,7 +224,7 @@ internal fun PeopleScreen(repository: PersonRepository, initialPersonId:String?=
                                     label={Text(label)},modifier=Modifier.fillMaxWidth(),enabled=!busy,singleLine=true)
                             }
                             Row(Modifier.fillMaxWidth().heightIn(min=48.dp).clickable(enabled=!busy && ownInitialized) {ownPerson=!ownPerson},verticalAlignment=androidx.compose.ui.Alignment.CenterVertically) {
-                                Checkbox(ownPerson,null,enabled=!busy && ownInitialized);Text("Identificar como yo")
+                                Checkbox(ownPerson,null,enabled=!busy && ownInitialized);Text("Soy yo")
                             }
                         }
                         Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.End) {

@@ -76,6 +76,12 @@ La persistencia exigida al cerrar la aplicación o reiniciar el dispositivo es a
 
 Las nuevas funciones deben construirse encima del núcleo existente y no convertir la aplicación en un sistema monolítico difícil de mantener.
 
+### Distribución de módulos inferiores
+
+`BottomModulesFrame` aloja el contenido y un único pie compartido en navegación. `BottomModulesDialog` y `BottomModulesSheet` trasladan ese pie a la ventana activa mediante una reserva de presentación anidada; no duplican controladores ni sesiones. Los nuevos paneles deben reutilizar estas envolturas. El orden es controles de la sección, editores minimizados, Audio y Pomodoro. Cada barra visible añade un único divisor de 1 dp y su altura real, sin offsets ni espacios para barras ocultas. Los editores minimizados se registran con `FoldedBottomPanel`, sin popups que cubran las barras.
+
+La compactación independiente de las barras pertenece al estado restaurable de la interfaz (`rememberSaveable`), no a preferencias ni a los datos de la sesión. Con teclado o poco alto disponible se utiliza la presentación compacta sin sustituir la elección del usuario. Los insets se consumen en el contenedor correspondiente; diálogos de alerta/seguridad conservan su tratamiento especial y las sesiones continúan en sus controladores existentes. Las acciones de Audio utilizan el ámbito de navegación para no cancelarse al trasladar el pie entre ventanas.
+
 ## Simplicidad
 
 No implementar funciones futuras antes de que sean necesarias.
@@ -5290,3 +5296,350 @@ recurrencias, Personas, adjuntos compartidos y confirmaciones de interfaz.
 No se repitieron las pruebas anteriores de protección de archivos ni suites
 generales. Pendiente revisar menús/paneles en teléfono y ejecución real de
 JobScheduler con bloqueo, reinicio y ahorro de batería.
+
+### Recepción externa exclusivamente textual
+
+Los envíos nuevos conservan texto, títulos y enlaces como notas (`linkNote=true`),
+sin importar streams multimedia. Se conservan el texto mixto y todas sus URLs;
+solo se omiten marcadores de medios explícitos en líneas independientes.
+El diario operativo mantiene su versión y estructura; los pendientes anteriores
+y su recuperación multimedia no se modifican. Las notas usan Node NOTE y el
+respaldo existente, sin migraciones, nuevos tipos ni cambios de versión.
+
+### Apariencia: Charcoal y Dark
+
+El tema predeterminado conserva íntegra la paleta BlackWhite90 y el identificador
+persistido `Arachn0de`; su etiqueta visible es Charcoal. Dark se selecciona desde
+Ajustes → Apariencia y reutiliza `appearance_preferences.theme`, la recomposición
+de Arachn0deTheme y la caché regenerable de desbloqueo. No añade claves, tablas,
+archivos ni cambios al formato de respaldo. Los otros temas existentes se conservan.
+La selección confirmada se exporta/restaura mediante las preferencias cifradas
+existentes; una ausencia o un nombre desconocido conserva el default histórico.
+
+Dark centraliza fondo #141517, tarjetas #27292D, paneles #1D1F22 y bordes #36393E.
+Los tokens de panel compartido y panel de tareas mantienen sus valores anteriores
+en Charcoal y los otros temas. Material, formularios, diálogos y menús consumen la
+misma paleta; los colores funcionales, recursos gráficos y naranja permanecen
+intactos. No se modifican dimensiones, navegación, edición ni exportaciones PNG.
+
+### Pomodoro global (sin relación con la jerarquía)
+
+La pantalla completa ofrece Resplandor solar, Azul nocturno, Verde tenue y
+Minimalista en Ajustes de Pomodoro → Apariencia. `PomodoroDial` reutiliza el anillo
+Compose y un Brush.radialGradient estático cacheado; Minimalista omite el halo.
+No añade imágenes, efectos animados ni escrituras por tick. El estilo pertenece
+a PomodoroConfig y viaja en el checkpoint cifrado versionado (interno 2, lector 1–2),
+con pruebas dirigidas de selección, tamaños vertical/horizontal y respaldo.
+Los estados históricos sin apariencia usan SOLAR y conservan los demás datos.
+La barra compacta, la política de orientación y la máquina del temporizador
+permanecen intactas.
+
+`pomodoro/` contiene la máquina de fases, el controlador único de aplicación y
+los avisos nativos. `PomodoroUi` utiliza los encabezados, temas y paneles modulares
+existentes. El acceso propio Pomodoro del menú lateral, fuera de Seguimiento,
+abre la vista circular; salir conserva la sesión. La barra compacta presenta una
+sola fila: manzana, tiempo monoespaciado de ancho estable, ciclo, estado e iconos
+con objetivos táctiles independientes de 48 dp. La fase solo aparece en la vista
+completa. Los controles usan Icon directamente, evitando el fallback textual del
+adaptador Lucide para vectores no registrados. Solo los botones ejecutan acciones;
+Finalizar conserva la confirmación existente. En ventanas muy estrechas o con
+fuente ampliada, la fila admite desplazamiento horizontal en lugar de superponer
+controles o cortar sus textos.
+
+La barra reserva espacio en la columna raíz, encima del pie de audio cuando este
+existe. La presencia visual de paneles modulares se comunica al contenedor sin
+modificar su estado ni sus dimensiones: permite una separación de 8 dp solo con
+un panel adyacente; el audio tiene su propia separación de 8 dp. Solo se observa
+la visibilidad del audio, no sus niveles de grabación. No se modifica la grabación. No hay enlaces a tareas,
+estadísticas, historial ni cambios automáticos sobre otros módulos.
+
+El checkpoint confirma configuración, fase, estado, número/tamaño del ciclo,
+duración, tiempo pendiente, anclas wall/elapsed y contador de arranques. El reloj
+monotónico mide el tiempo dentro del mismo arranque; después de un reinicio se usa
+la fecha guardada, acotando el restante a la duración pendiente. No se decrementa
+un contador persistente cada segundo. Una fase vencida pasa una sola vez a la
+siguiente, lista para iniciar manualmente. El ciclo conserva su tamaño hasta el
+descanso largo; las nuevas duraciones afectan las fases siguientes, no una fase
+ya iniciada o pausada. La finalización manual requiere confirmación.
+
+`pomodoro_preferences.checkpoint` pertenece a las preferencias cifradas existentes
+y se valida antes de restaurar. No cambia Room ni el formato JSON del respaldo.
+Una caché operativa Android `pomodoro_clock_cache` permite recuperar el aviso aun
+con el almacén bloqueado. Solo contiene números, fases, identificadores cerrados de apariencia y booleanos; no contiene
+identidades, nombres, texto del usuario, claves ni referencias a la jerarquía.
+Es regenerable desde el checkpoint cifrado, que prevalece siempre al autenticar;
+una restauración reemplaza también el estado vivo y la caché. No se exporta la
+caché. Es un único registro acotado; finalizar elimina la sesión activa y cancela
+el aviso programado; no genera archivos multimedia ni reservas de archivos.
+Borrar los datos de la aplicación elimina la caché. Un respaldo histórico sin el
+namespace restaura valores predeterminados y ninguna sesión activa.
+
+Solo se programa una alarma inexacta `setAndAllowWhileIdle` por fase en marcha.
+El receptor reprograma tras BOOT_COMPLETED/TIME_SET/MY_PACKAGE_REPLACED. No hay un
+servicio permanente, permisos de alarma exacta ni acceso a Internet. Android puede
+retrasar los avisos por Doze, restricciones del fabricante o cierre forzado; el
+restante se recalcula al volver. Tras reiniciar, un cambio manual de la fecha puede
+afectar la recuperación, pues el reloj monotónico previo ya no es válido.
+Las notificaciones respetan POST_NOTIFICATIONS, canales, volumen y No molestar.
+El tic-tac es opcional, apagado por defecto, solo en primer plano durante
+concentración; se libera al pausar o pasar a segundo plano y se silencia cuando hay grabación.
+Inicio automático pospuesto: todas las transiciones requieren inicio manual.
+
+### Calendario: fechas informativas offline
+
+`calendar/CalendarSpecialDates` lee exclusivamente el recurso empaquetado
+`assets/calendar_special_dates.json` (versión 1). No consulta APIs, permisos,
+calendarios externos, alarmas ni repositorios personales. La cobertura nacional
+es explícitamente **2026**: 16 feriados generales, sin regionales/comunales.
+Semana Santa y solsticio están registrados con fechas verificadas para ese año;
+no se calcula un solsticio aproximado ni se extrapolan años completos.
+Los traslados de 29 de junio/12 de octubre siguen Ley 19.668; el 31 de octubre,
+Ley 20.299. Ampliar los años cubiertos exige verificar el catálogo íntegro de cada
+año, incluidos feriados adicionales, electorales y excepcionales, no solo añadir
+un año a la lista de cobertura. Fuentes: Gobierno de Chile (listado de 2026), BCN
+y Dirección del Trabajo. Fuera de cobertura se muestra un aviso, no una lista
+presuntamente completa. La fecha de revisión del catálogo es 2026-10-16.
+
+Santoral: **15 de 366 fechas nominales**, selección del calendario propio de Chile
+publicado por la Conferencia Episcopal en Ordo Litúrgico Pastoral 2022, p. 13.
+Se mantienen los nombres conjuntos de la fuente. No incluye 29 de febrero, no
+rellena los días sin registros ni calcula precedencia/traslados litúrgicos; no es
+un calendario universal ni una actualización íntegra del ordo anual. Las diez
+conmemoraciones de Naciones Unidas son una selección, con dos registros distintos
+el 24 de octubre. Cada entrada conserva nombre, categoría, descripción disponible
+y referencia institucional. Los recursos no contienen biografías inventadas.
+
+La integración usa la selección y lista actuales del Calendario. Las celebraciones
+son filas de consulta separadas; tocar abre el panel modular de detalle y fuente.
+El punto discreto en la esquina de las celdas no ocupa la fila de indicadores de
+tareas/eventos. Ninguna celebración se convierte en evento, tarea, recurrencia o
+aviso. La vista Todo conserva su listado personal, sin expandir indefinidamente
+el catálogo anual. Los controles viven en Filtros del Calendario, separados de
+los filtros personales; desactivar solo oculta la categoría y sus puntos.
+
+`calendar_special_preferences` contiene holidays/saints/commemorations, booleanos,
+con defaults true/false/false. Usa VaultContext y las preferencias cifradas ya
+respaldadas. Se observa su recarga tras restaurar. No hay tablas, migraciones,
+archivos de usuario ni cachés que liberar: el catálogo es un recurso constante de
+la APK; únicamente se guardan las tres preferencias. Si falla la escritura, se
+conserva la selección confirmada y se informa en el panel. El namespace se valida
+antes de restaurar, con defaults explícitos para respaldos históricos sin él.
+
+### Cumpleaños en Calendario — proyección de Personas
+
+CalendarBirthdays combina las Personas y person_birthdays ya existentes del
+PersonRepository de la sesión activa. No crea eventos, tareas, filas de aniversario,
+alarmas ni otra fuente persistente. Cada consulta usa mes y día de nacimiento y el
+año civil seleccionado; excluye personas ausentes y años anteriores al nacimiento.
+Los nacimientos del 29 de febrero solo aparecen ese día de años bisiestos, sin
+trasladarse a febrero 28 ni marzo 1. Varias Personas aparecen por separado.
+La edad es el año consultado menos el año conocido. La proyección admite lectura
+sin año (--MM-DD) sin edad; no se cambia el editor ni el formato de persistencia
+existente, que actualmente valida fechas completas AAAA-MM-DD.
+
+Calendario escucha los flujos existentes: cambiar/eliminar la fecha, renombrar o
+eliminar una Persona actualiza filas e indicadores. El anillo discreto de cumpleaños
+ocupa la otra esquina de la celda, sin desplazar tareas/eventos ni el punto de fechas
+especiales. La sección diaria abre PersonDetailDialog, la ficha existente del perfil
+activo, conservando el día seleccionado al volver. No utiliza datos de otro vault.
+La vista Todo continúa siendo el listado de compromisos personales.
+
+calendar_special_preferences añade birthdays booleano, predeterminado true,
+independiente de los otros filtros. Utiliza la validación y respaldo cifrado del
+namespace existente. Ausencia histórica equivale a activado; desactivarlo oculta
+la proyección sin tocar fichas ni fechas. No hay migraciones, archivos nuevos de
+usuario, rutas privadas, reservas ni procesos adicionales. Los catálogos estáticos
+de feriados/santoral/conmemoraciones permanecen intactos.
+
+### Green Bash — presentación alternativa de General
+
+Green Bash se selecciona en la misma lista que los demás temas y persiste
+`theme=GreenBash` en las preferencias cifradas ya respaldadas. La antigua clave
+booleana `bash_theme=true` se interpreta como Green Bash al leer respaldos históricos;
+elegir cualquier tema elimina esa clave en la misma operación. No existe switch.
+La paleta de Green Bash se aplica globalmente, incluidas las barras persistentes.
+Solo General recibe la presentación de terminal; los demás módulos conservan
+su distribución y tipografía. Pomodoro conserva sus estilos de anillo y halo. `BashGeneralScope` se aplica únicamente a los destinos existentes de
+General, incluidos sus resultados abiertos desde búsqueda. Reutiliza sus estados,
+repositorios, navegación y editores; Antisocial, Calendario, Personas, Metro y Pomodoro
+no reciben este ámbito. Desactivado, las ramas tradicionales usan los mismos Card,
+colores y tipografía anteriores. No se añade una ruta o pila de navegación.
+
+`BashPresentation` aporta fondo de terminal, tipografía monoespaciada, filas de salida
+sin superficies de tarjeta y prompts derivados de relaciones parentId reales. Los
+iconos, acciones, etiquetas y adjuntos reutilizan sus componentes originales. Las
+extensiones virtuales y permisos son texto de presentación; no hay intérprete,
+ejecución de procesos, comandos de sistema ni archivos virtuales persistentes.
+Las propiedades editables siguen guardando exclusivamente sus valores originales.
+General permite orientación adaptable durante este modo mediante la excepción por
+destino existente; la política del resto de módulos permanece intacta.
+
+Validación dirigida de Bash Theme: compilación Kotlin y cuatro comprobaciones
+aprobadas (rutas/Unicode/ciclos, presentación y navegación táctil, contraste/horas y
+estilo original de barras persistentes, respaldo cifrado/restauración histórica y
+rechazo de preferencias inválidas). No se ejecutaron suites generales. Queda
+pendiente la comprobación visual física de tipografía, teclado, rotación e imágenes
+con datos reales; no se generó APK ni se cambió la versión de la aplicación.
+
+### Bash verde y confirmación estable del Pomodoro
+
+`BashColors` centraliza los seis colores aprobados: fondo 090C0A, directorios/selección
+39FF14, prompts/archivos 7CFF7A, propiedades/iconos neutros A5D6A7, información
+secundaria 829588 y separadores 486A50. Los colores semánticos siguen en sus roles
+existentes. `BashMenuScope` aplica solo cromatismo al menú compartido y sus controles
+globales, incluso desde otros destinos; los cuerpos utilizan la misma paleta global
+sin recibir la presentación de terminal.
+Las entradas de General añaden una única línea ASCII de guiones después de su
+contenido y controles, medida con la fuente monoespaciada y el ancho disponible.
+
+La confirmación de terminar Pomodoro pertenece a `AppRoot`, por encima del pie.
+Los controles emiten `LocalPomodoroFinishRequest`; el diálogo no se aloja en la barra.
+Esto evita el ciclo: abrir diálogo → transferir pie → desmontar barra y su estado
+local → cerrar diálogo → restaurar barra. La cancelación solo cierra la confirmación;
+finalizar invoca el controlador existente únicamente tras la elección explícita.
+No se cambian sesiones, fases, sonidos, alarmas, preferencias ni backups.
+
+Validación dirigida: pruebas nuevas de paleta/colores semánticos, menú desde otro
+módulo, separadores adaptables y retorno al modo tradicional; regresión con el pie
+real para confirmación estable, cancelación y finalización desde la barra compacta,
+y cancelación desde la vista completa, con Bash activado y desactivado. La prueba
+nativa conduce manualmente la respiración de la vista completa; el producto conserva
+su animación. Comprobación visual en teléfono pendiente; sin APK ni nueva versión.
+
+### Correcciones puntuales de Núcleos y contenido (2026-10-18)
+
+El interior de Núcleos y nodos abre Contenido en el módulo inferior. Título y
+Descripción superiores son de consulta; la edición usa el módulo existente.
+La prioridad del módulo alterna Común/Prioritario en una transacción sobre la
+propiedad existente, sin formulario ni propagación automática al grupo.
+
+La validación optimista de descripción admite exclusivamente referencias nuevas
+de audio añadidas durante la edición; otros cambios concurrentes siguen causando
+conflicto y conservan el borrador. El guardado de adjuntos conserva esas referencias
+bajo el bloqueo común y revierte la transacción si la escritura del propietario
+es rechazada. No hay nuevos datos, archivos, migraciones ni cambios de backup;
+los audios y la prioridad mantienen su exportación/restauración y liberación actuales.
+
+Validación dirigida: tres casos de AudioPersistenceTest (edición con audio
+concurrente/eliminación/nueva grabación y alternancia de prioridad; rechazo de
+conflicto textual; rollback de escritura rechazada) y un caso de CoreBottomModuleTest
+(apertura en Contenido y navegación existente), aprobados. Compilación Kotlin y
+`git diff --check` correctos. Sin suite global ni APK. Pendiente validación visual
+y captura nativa en dispositivo.
+
+### Pomodoro: audio único, ajustes y confirmación (2026-10-18)
+
+`pomodoroRemaining` solo repinta: no crea ToneGenerator ni reproduce tonos. El
+controlador global posee `PomodoroSounds` y el ámbito de navegación informa del
+ciclo de vida visible y la grabación. Cambiar pantalla completa/barra no cambia
+la clave ni recrea el reproductor. El WAV de reloj local contiene dos golpes secos
+alternados separados por un segundo; el aviso local tiene ataques breves con
+mayor amplitud. Los recursos se sintetizaron localmente sin muestras externas.
+La reproducción usa volumen multimedia sin modificarlo, y se inhibe en silencio,
+No molestar o grabación. La notificación de fase es silenciosa para no duplicar
+el aviso del reproductor. Android sigue controlando disponibilidad y latencia.
+
+Los ajustes ±1/±5 minutos usan el reloj de la sesión y reanclan el tiempo restante,
+conservando estado, fase y ciclo. Se limitan a [0,total]; llegar a cero manualmente
+retiene la fase hasta retroceder o finalizar. Se guarda el checkpoint y se actualiza
+la alarma/notificación silenciosa con el mismo resultado. No hay escrituras por
+segundo. La confirmación Finalizar usa AlertDialog y el propietario global existente;
+no reserva/traslada el pie compartido al abrirse, evitando recreaciones del control.
+
+Sonidos personalizados: selector SAF OpenDocument sin permisos generales; copias
+acotadas en preferencias cifradas, respaldadas con sus bytes y checksum. El formato,
+compatibilidad histórica, validación y liberación por reemplazo están descritos en
+BACKUP_FORMAT.md. No se añaden tablas, archivos privados ni migraciones.
+
+Validación dirigida: cuatro casos aprobados (ajuste manual y límites; persistencia
+al reabrir; backup cifrado de ambos sonidos, rechazo de checksum inválido y ausencia
+histórica; confirmación estable en dos temas). El caso de backup se comprobó también
+con una fase pausada en el límite manual de cero. Compilación Kotlin final y
+`git diff --check` correctos. WAV locales sin muestras recortadas. Sin suite general
+ni APK. Pendiente en dispositivo: continuidad acústica en transiciones/orientación,
+percepción mecánica y volumen, SAF/decodificadores MP3-WAV-OGG y aviso en segundo plano.
+
+### Metro: intervalos expresos y modelo provisional v1 (2026-10-18)
+
+MetroExpressTiming separa aristas físicas de intervalos entre paradas compatibles.
+Mantiene el recorrido completo y usa provisionalmente 105 s de avance por arista más
+15 s de margen si el destino es una parada efectiva. Es una descomposición conservadora
+no medida de la referencia anterior de 120 s, no una velocidad real ni un ahorro de
+dos minutos por estación omitida. NORMAL mantiene su estándar. Las predicciones agrupan
+hasta la parada efectiva; la evidencia acumulada no se divide en observaciones ficticias.
+Se conservan ventana, filtros, inercia y exclusiones del aprendizaje existente.
+
+Los payloads nuevos son viaje v8, con bases expresas validadas por catálogo; los v1–v7
+siguen con su semántica anterior. La separación de contextos añade express-timing-v1
+solo al modelo nuevo expreso. No hay migración ni cambios en registros existentes.
+BACKUP_FORMAT.md especifica validación, exportación/restauración y compatibilidad.
+Las filas gráficas expresas distinguen paso/detención sin variar su texto al cruzarlas;
+el progreso usa el reloj, no eventos sintéticos. Los detalles y la propuesta futura
+(no implementada) de recomendaciones offline por horario están en docs/METRO_APRENDIZAJE.md.
+
+### Wireframe: dibujos estáticos independientes
+
+`wireframe/` ofrece biblioteca propia desde el menú junto a Pomodoro, sin relaciones
+con Recursos, Núcleos, Capas ni Tareas. El lienzo ajusta el documento completo al
+espacio disponible: un toque selecciona y un toque vacío deselecciona. Posición,
+tamaño, texto, apariencia y orden se cambian con controles inferiores; no hay
+arrastre, tiradores, zoom, guías inteligentes, auto-layout ni interacción simulada.
+El panel reutiliza la minimización existente y conserva la selección. Los controles
+dibujados nunca ejecutan acciones. El tema afecta al editor, no al documento.
+
+Los documentos usan coordenadas relativas, orden de lista como superposición y dos
+formatos de referencia (1080×2340, 1920×1080). El renderer Canvas nativo sirve para
+vista, miniatura y PNG completo; la selección queda fuera del renderer. La firma
+opcional agrega un margen de exportación. No se captura la pantalla.
+
+El guardado explícito confirma documento e imágenes juntos en `wireframe_library`,
+preferencias privadas en SQLCipher. Volver a la biblioteca con cambios pendientes
+ofrece Guardar/Descartar. El estado de navegación/recreación conserva el borrador;
+no equivale a un guardado confirmado. El historial de 40 pasos es de sesión.
+La escritura comprueba la versión anterior para no sobrescribir una restauración
+ni otro editor. Un fallo conserva el guardado previo y el borrador editable.
+
+Imágenes importadas por SAF se normalizan a PNG de hasta 1024×1024 / 1 MiB, sin
+conservar URI ni solicitar permisos generales. Los bytes forman parte del documento
+cifrado, no de archivos sueltos. Eliminar/reemplazar/descartar usa valores inmutables;
+prune retira bytes solo cuando no quedan elementos que los referencien y el commit
+publica el reemplazo atómicamente. Duplicar documentos conserva copias independientes.
+Undo puede retener bytes en RAM hasta cerrar la sesión; no crea reservas de archivos.
+No hay caché privada en disco, diarios nuevos ni limpieza física posterior. Backups
+incluyen todos los bytes confirmados; no incluyen borradores ni historial de edición.
+Límites y validación se detallan en BACKUP_FORMAT.md.
+
+### Wireframe 2: catálogo visual y manipulación directa
+
+WireframeTemplates centraliza ocho categorías, identidades estables y valores
+iniciales. WireframeRenderer dibuja cada plantilla estática con la misma rutina
+nativa para miniaturas, lienzo y PNG, reutilizando los iconos Lucide locales.
+Los documentos históricos sin plantilla conservan la ruta de dibujo anterior.
+WireCodec admite documentos v1 y v2; v2 conserva template y valida su relación con
+kind antes del guardado/restauración. Se mantiene el namespace cifrado existente,
+con imágenes embebidas y commit atómico; no hay nuevas rutas ni archivos privados.
+
+El lienzo conserva una previsualización local durante el gesto y confirma una
+única operación al levantar el dedo. Cancelar descarta esa previsualización.
+El tirador inferior derecho redimensiona; los componentes circulares y cuadrados
+conservan proporción y todos quedan limitados al área útil. El panel inferior
+mantiene el ciclo de minimizar/restaurar existente. Propiedades ofrece texto,
+relleno y tinta, duplicar y eliminar; posición y tamaño se ajustan sobre el lienzo.
+
+### Wireframe: moldes de pantallas editables
+
+`WireScreens` define 25 moldes locales en cinco grupos: 20 móviles verticales y
+cinco de escritorio horizontales. Reutiliza exclusivamente los 80 componentes
+existentes. Al insertar se generan UUID nuevos y elementos independientes, sin
+identidad de molde persistida ni agrupación. La inserción se registra una sola vez
+en el historial; sobre contenido existente requiere confirmación. Un formato
+incompatible remite a la elección explícita de formato del lienzo. «Crear desde
+molde» abre un borrador nuevo y usa el mismo catálogo, generador y renderizador.
+
+No añade tablas, preferencias, archivos ni versiones documentales. Los moldes
+usan marcadores de imagen generados offline, sin bytes externos. Al guardar,
+WireCodec v2 valida los elementos y el repositorio cifrado confirma el documento
+completo. El backup existente recupera sus posiciones, colores, textos e IDs sin
+necesitar el catálogo de pantallas. Miniaturas e historial siguen siendo de sesión.
+Las pruebas dirigidas cubren los 25 diseños, edición y eliminación individual,
+confirmación, navegación, formato, undo/redo, PNG y restauración cifrada en vacío.

@@ -952,7 +952,9 @@ y valores inválidos sin reemplazar datos, ausencia histórica con 30.000 ms
 predeterminados y reapertura que conserva la preferencia, pero exige autenticar
 una nueva sesión. No se respaldan claves ni sesiones abiertas.
 
-appearance_preferences conserva theme y text_size. NightBlue y DayGrey se
+appearance_preferences conserva theme y text_size. Dark se guarda como "Dark";
+Charcoal conserva el identificador histórico "Arachn0de" y es el predeterminado.
+No hay claves nuevas ni cambios de formato. Dark, NightBlue y DayGrey se
 exportan y restauran como strings mediante privatePreferences. Leer Minimalist
 lo reemplaza durablemente por Arachn0de, sin cambiar tamaño de texto ni campos
 ajenos; la adaptación también se aplica al recargar preferencias restauradas.
@@ -1177,3 +1179,196 @@ la limpieza. El observador de la sesión actualiza o cancela la programación.
 No se añaden archivos ni copias permanentes de tareas eliminadas. Las notas,
 Capas, Núcleos, Personas, comprobantes de ocurrencias y archivos compartidos o
 reservados conservan las protecciones existentes.
+
+### Recepción externa exclusivamente textual
+
+Los envíos nuevos conservan texto, títulos y enlaces como notas (`linkNote=true`),
+sin importar streams multimedia. Se conservan el texto mixto y todas sus URLs;
+solo se omiten marcadores de medios explícitos en líneas independientes.
+El diario operativo mantiene su versión y estructura; los pendientes anteriores
+y su recuperación multimedia no se modifican. Las notas usan Node NOTE y el
+respaldo existente, sin migraciones, nuevos tipos ni cambios de versión.
+
+## Pomodoro — preferencias privadas, sin nuevo esquema
+
+El namespace `pomodoro_preferences` usa únicamente `checkpoint`, string JSON
+acotado a 4096 caracteres, versión interna 2 (lector compatible con 1). Se incluye automáticamente en
+`privatePreferences`, con el cifrado, snapshot y restauración transaccional ya
+existentes. No se añaden tablas, columnas ni campos al formato de backup.
+
+El checkpoint contiene `version`, `revision`, `config` (focus/short/long en minutos
+1–180, sessions 1–12, ticking/sound booleanos y appearance) y `session` nullable.
+`appearance` acepta exclusivamente SOLAR, NIGHT_BLUE, SOFT_GREEN o MINIMAL;
+se respalda y restaura en el mismo checkpoint cifrado. La versión interna 1 carece
+del campo y recibe SOLAR, conservando su configuración y sesión. La versión 2
+requiere el campo y rechaza tipos o valores desconocidos antes de reemplazar datos.
+No cambia la versión exterior del backup; lectores antiguos del checkpoint no
+pueden leer la versión interna 2. La sesión usa
+phase FOCUS/SHORT_BREAK/LONG_BREAK, status READY/RUNNING/PAUSED/FINISHED, number y
+cycle coherentes (1–12), total y remaining en ms, wall/elapsed no negativos y boot
+no negativo. Los tipos y campos son estrictos, sin rutas ni identificadores externos.
+Las pausas conservan el restante; una fase en marcha conserva sus anclas. Restaurar
+reconstruye el tiempo por fecha y lo ancla al dispositivo actual; si ya venció deja
+la siguiente fase lista, sin encadenar fases ni iniciar trabajo automáticamente.
+Una ausencia histórica equivale a 25/5/15 minutos, cuatro sesiones, tic-tac apagado,
+aviso sonoro activado y ninguna sesión. Un payload inválido falla antes de sustituir
+los datos anteriores, incluyendo la configuración viva del módulo.
+
+`pomodoro_clock_cache` es una copia operativa regenerable, sin texto ni información
+personal, para el aviso con el almacén bloqueado o tras reiniciar. No forma parte
+del backup y nunca prevalece sobre el checkpoint cifrado al autenticar/restaurar.
+No se exportan permisos, canales de notificación ni alarmas de Android; se vuelven
+a programar desde el estado recuperado. La caché tiene un solo registro limitado,
+se sobrescribe al cambiar de estado y elimina la sesión activa al finalizar.
+No hay archivos de usuario que liberar, bytes adicionales ni migraciones.
+
+## Fechas informativas del Calendario — sin nuevo formato
+
+El namespace privado `calendar_special_preferences` contiene exclusivamente
+`holidays`, `saints`, `commemorations` y `birthdays`, todos booleanos. Su ausencia,
+incluso en respaldos históricos, equivale a true/false/false/true. El nuevo filtro
+birthdays solo controla visibilidad; las fechas siguen en person_birthdays y se
+respaldan con el mecanismo preexistente, sin duplicarlas ni cambiar su formato. Se exporta y restaura mediante
+la colección `privatePreferences` existente, sin nuevas tablas ni cambios en el
+formato JSON. Se rechazan tipos incompatibles y claves ajenas antes del reemplazo
+transaccional; una restauración rechazada conserva datos y preferencias anteriores.
+Las instancias de pantalla escuchan la recarga de preferencias tras el commit.
+
+El catálogo `assets/calendar_special_dates.json` es un recurso fijo de la APK:
+16 feriados nacionales de 2026, 15 fechas nominales del santoral propio CECh
+(Ordo 2022, p. 13) y diez conmemoraciones ONU. Sus referencias y cobertura están
+en el recurso y en la interfaz. No se edita, descarga ni copia al almacenamiento
+privado; no se serializan rutas ni se requieren bytes de archivos privados en el
+backup. El recurso se recupera con la instalación de la aplicación. Desactivar
+una categoría no elimina entradas. No hay adjuntos, cachés, reservas, crecimiento
+de archivos ni nuevos permisos. No se crean ni modifican eventos personales,
+registros de tareas, recurrencias o notificaciones.
+
+## Green Bash — tema de presentación de General
+
+Se selecciona mediante `theme=GreenBash` en `appearance_preferences`, igual que
+los demás temas. Se exporta/restaura en `privatePreferences`, mediante el namespace
+cifrado existente, sin nuevas tablas, archivos ni cambios de formato.
+La clave histórica opcional `bash_theme` sigue validándose como booleana:
+true se interpreta como Green Bash, su ausencia conserva el tema almacenado.
+Elegir un tema elimina la clave histórica en la misma escritura, evitando que
+reactive el modo al reiniciar. Cada perfil mantiene sus propias preferencias.
+Las rutas, extensiones y permisos Unix son representaciones visuales sin archivos
+ni datos adicionales de respaldo.
+
+## Pomodoro — progreso manual y sonidos locales (2026-10-18)
+
+El checkpoint conserva el formato interno 2 salvo cuando la fase alcanza cero
+mediante un ajuste manual: entonces usa versión 3 y exige `session.manualEnd`
+booleano. Esta marca solo admite remaining=0 y evita transiciones automáticas;
+conserva RUNNING/PAUSED y se retira al retroceder o finalizar. Los lectores aceptan
+1–3; 1–2 inicializan false. No cambia Room ni la versión exterior del backup.
+
+`pomodoro_sounds` es un namespace opcional de privatePreferences con dos claves
+opcionales string: `ticking` y `completion`. Cada una contiene JSON estricto con
+version int 1, sha256 hexadecimal del contenido y data base64 canónica. Se limita
+cada original a 512 KiB; se admiten firmas WAV/OGG/MP3 y Android debe poder preparar
+el sonido (1 ms–30 s) antes de guardarlo. El backup incluye los bytes originales,
+valida tamaño, estructura, firma y SHA-256 antes del reemplazo transaccional.
+No contiene URI, rutas absolutas ni permisos de acceso al documento original.
+Sin namespace/claves se usan los sonidos integrados, incluso tras restaurar un
+backup histórico. La recarga de preferencias reemplaza también la reproducción
+actual. Los originales personalizados no se copian a pomodoro_clock_cache:
+con el almacén bloqueado se utiliza el aviso integrado.
+
+Importar prepara/valida en memoria antes de un commit del almacén cifrado. Cancelar
+el selector, fallar la lectura/decodificación o rechazar el commit conserva la
+selección anterior. Reemplazar/restablecer elimina el valor anterior en la misma
+escritura; las dos claves son copias independientes aunque compartan bytes. No hay
+archivos privados nuevos, staging físico ni cachés multimedia que liberar. Al
+restaurar se aplican el snapshot/transacción y las reservas de backup existentes.
+La aplicación conserva como máximo dos clips; el reproductor lee de memoria.
+Los WAV integrados en res/raw son recursos regenerables de la APK y no se exportan.
+
+## Metro: Ruta Expresa provisional — viaje interno v8
+
+Sin migración Room ni cambio de contenedor/JSON exterior: el viaje sigue siendo un
+payload opaco validado por MetroCodec. Los viajes con modelos expresos nuevos, incluso
+en originales, archivos o undo, usan versión interna 8. Los v1–v7 siguen leyéndose y
+no reciben un modelo nuevo al importar. Sin modelos nuevos el escritor conserva la
+versión histórica mínima. Un lector antiguo rechaza v8 antes de restaurar.
+
+La ruta puede incorporar expressTiming: objeto estricto con version int 1 y baseMillis,
+array de enteros largos, uno por paso físico. Exige algún servicio expreso; cada valor
+debe coincidir con el catálogo propio de la ruta: RIDE expreso sin detención en su
+extremo=105000 ms, RIDE con detención/NORMAL=120000, cambios=240000 y WAYPOINT=0.
+Se rechazan valores, tipos, longitudes y versiones incompatibles antes de sustituir
+registros. Las predicciones se validan contra esa base, conservando sus medias,
+conteos, exclusiones y peso originales. Sin expressTiming se conserva la base previa.
+
+El snapshot y el backup existentes transportan la ruta, planes, sesiones, originales,
+archivos, undo y capturas con todos sus campos. Las capturas mantienen versiones 1/2,
+con viaje v8 interno cuando corresponde; los intervalos nuevos expresos usan un sufijo
+de contexto /express-timing-v1. El contexto histórico se conserva, sin reclasificar
+muestras ni cambiar sus milisegundos reales. NORMAL, servicios, sentidos y líneas no
+comparten evidencia. No hay nuevos archivos, reservas ni reglas de liberación.
+
+## Wireframe: namespace opcional `wireframe_library`
+
+Sin migraciones Room ni cambio del contenedor/versiones de la aplicación. Se usa
+el transporte existente de `privatePreferences`: claves UUID de dibujo, valores
+string con JSON documental versión 1. Cada documento contiene exactamente identidad,
+nombre, formato, fondo, creación/modificación, lista ordenada de elementos y assets.
+Los elementos incluyen UUID, tipo estático, coordenadas/tamaño relativos, texto,
+colores ARGB, borde/radio/opacidad, tipografía/alineación, icono integrado, estado
+visual y referencia de imagen. Los assets usan UUID → {data: base64 PNG, sha256}.
+Nunca se guardan rutas absolutas, URI ni dependencias del archivo externo.
+
+Validación previa al reemplazo: versión/campos/tipos estrictos, UUID y unicidad,
+fechas, valores finitos dentro del lienzo, enumeraciones conocidas, referencias
+exactas sin imágenes huérfanas, SHA-256 y decodificación PNG. Límites: 32 dibujos,
+128 elementos y 16 imágenes por dibujo; PNG normalizado de 1 MiB / 1024×1024;
+JSON de documento hasta 3 Mi caracteres, limitado además por el namespace
+serializado completo de 1,5 MiB UTF-8 (para no exceder CursorWindow en Android).
+Este límite es compartido por los dibujos e imágenes de la biblioteca. También rigen los límites globales
+existentes del backup; superarlos produce error explícito, nunca omisión.
+
+Las imágenes viven en el mismo valor confirmado que sus elementos: reemplazo y
+eliminación se realizan mediante el commit atómico existente. Una imagen compartida
+por elementos se conserva hasta retirar su última referencia. Las copias de dibujos
+son independientes. Un editor cancelado no escribe imágenes. No hay archivos
+privados temporales/confirmados que barrer ni rutas que reconstruir. La recuperación
+tras fallo usa la atomicidad de SQLCipher y el protocolo de restauración existente.
+La exportación PNG elegida por el usuario en SAF es externa; no es fuente del dibujo.
+Miniaturas e historial son regenerables/de sesión y no se respaldan.
+
+El snapshot/restauración transaccional existente incluye el namespace completo.
+El validador WireCodec se ejecuta antes de sustituir datos. Corrupción o referencias
+inválidas preservan el estado anterior. Un backup histórico sin este namespace
+restaura una biblioteca vacía. Lectores históricos transportan genéricamente las
+preferencias aunque no ofrecen el módulo; una versión documental desconocida se
+rechaza, sin intentar convertirla silenciosamente.
+
+### Wireframe 2: identidad de plantillas
+
+Los documentos que contienen plantillas usan versión documental 2 y añaden
+`template` nullable a cada elemento. El identificador debe existir en el catálogo
+y corresponder al tipo del elemento; valores desconocidos se rechazan antes del
+reemplazo. Los documentos versión 1 siguen leyéndose con template=null y conservan
+su renderizado y propiedades anteriores. Sin plantillas se sigue escribiendo v1.
+La plantilla define la disposición estática; texto, relleno y tinta permanecen en
+el elemento. Las ocho categorías y sus valores iniciales son recursos de código,
+no archivos privados. No cambia Room ni el formato exterior del backup.
+
+El namespace cifrado, validación, snapshot y restauración atómica existentes
+transportan íntegramente v1/v2, incluidas imágenes originales embebidas. No se
+crean archivos privados ni nuevas reglas de limpieza: las imágenes continúan
+liberándose al retirar la última referencia del documento confirmado. Los
+borradores de arrastre e historial son estado de sesión; un gesto cancelado no
+confirma cambios. Un lector documental anterior rechaza v2 explícitamente.
+
+### Wireframe: documentos creados desde moldes de pantalla
+
+Los 25 moldes son recursos de código. Insertarlos produce elementos ordinarios
+v2 con identificadores de los componentes existentes y UUID propios. No se guarda
+el ID del molde ni se introduce un nuevo tipo, relación, preferencia o archivo.
+Los marcadores de imágenes se dibujan localmente y no requieren adjuntos.
+Guardar y respaldar transporta el documento íntegro mediante `wireframe_library`,
+con las validaciones, límites y restauración transaccional existentes. Se conserva
+la lectura de dibujos v1/v2 y de backups históricos sin biblioteca. No cambia el
+formato del backup ni las reglas de liberación de archivos.

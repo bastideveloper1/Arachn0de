@@ -36,7 +36,7 @@ internal fun AboutScreen(onBack: () -> Unit, repository: UpdateRepository = reme
             Row(Modifier.fillMaxWidth()) {
                 GlobalChromeActions(leading=true)
                 TextButton(onClick=onBack) {Text("Volver")}
-                Text("Acerca de",Modifier.weight(1f),style=MaterialTheme.typography.headlineSmall)
+                NavigationHeading("Acerca de",Modifier.weight(1f))
                 GlobalChromeActions()
             }
             Text("Versión instalada: ${BuildConfig.VERSION_NAME}")

@@ -113,7 +113,7 @@ internal fun NodeDialog(
                         label = { Text("Título") },
                         supportingText = { Text("${TitleLimits.count(title)} / ${TitleLimits.NODE}") },
                         isError = TitleLimits.count(title) > TitleLimits.NODE,
-                        singleLine = false, minLines = 1, maxLines = 5,
+                        singleLine = false, minLines = 1, maxLines = Int.MAX_VALUE,
                         modifier = Modifier
                             .fillMaxWidth()
                             .focusRequester(titleFocusRequester),
@@ -347,7 +347,7 @@ private fun NodeFullscreenDialog(containerColor: androidx.compose.ui.graphics.Co
     onDismissRequest: () -> Unit, title: @Composable () -> Unit, text: @Composable () -> Unit,
     confirmButton: @Composable () -> Unit, dismissButton: @Composable () -> Unit,
     editingTools: (@Composable (@Composable () -> Unit) -> Unit)? = null) {
-    androidx.compose.ui.window.Dialog(onDismissRequest = onDismissRequest,
+    BottomModulesDialog(onDismissRequest = onDismissRequest,
         properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)) {
         androidx.compose.material3.Surface(modifier = Modifier.fillMaxSize().testTag("node-editor"), color = containerColor) {
             Column(Modifier.safeDrawingPadding().imePadding().padding(24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
@@ -360,7 +360,6 @@ private fun NodeFullscreenDialog(containerColor: androidx.compose.ui.graphics.Co
                     }
                 }
                 Column(Modifier.fillMaxWidth()) {
-                    AudioBar(inEditor=true)
                     if(editingTools!=null) editingTools {dismissButton();confirmButton()}
                     else Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End, verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
                         dismissButton(); confirmButton()

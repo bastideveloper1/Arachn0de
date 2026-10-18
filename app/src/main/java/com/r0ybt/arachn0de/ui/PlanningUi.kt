@@ -16,7 +16,6 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.r0ybt.arachn0de.data.local.*
 import com.r0ybt.arachn0de.data.repository.*
@@ -131,7 +130,7 @@ private fun moved(ids:List<String>,id:String,offset:Int):List<String> = ids.toMu
     }
 }
 @Composable private fun PlanningSurface(onDismiss:()->Unit,content:@Composable ColumnScope.()->Unit) {
-    Dialog(onDismissRequest=onDismiss,properties=DialogProperties(usePlatformDefaultWidth=false)) {
+    BottomModulesDialog(onDismissRequest=onDismiss,properties=DialogProperties(usePlatformDefaultWidth=false)) {
         Surface(Modifier.fillMaxWidth().fillMaxHeight(.9f).safeDrawingPadding().padding(12.dp),shape=MaterialTheme.shapes.large) {
             Column(Modifier.padding(12.dp),verticalArrangement=Arrangement.spacedBy(8.dp),content=content)
         }

@@ -25,7 +25,6 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.IntSize
-import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.r0ybt.arachn0de.data.repository.AttachmentRepository
 import com.r0ybt.arachn0de.ui.theme.Arachn0deColors
@@ -58,6 +57,8 @@ internal fun AttachmentViewer(id: String, repository: AttachmentRepository, onEd
     val files by repository.observeFiles().collectAsState(emptyList())
     val row=files.firstOrNull {it.id==id}
     if(row?.mimeType=="audio/aac") {AudioViewer(id,repository,onRemove=onRemove,onClose=onClose);return}
+    // Editors keep their portrait policy; only the standalone image viewer may rotate.
+    ScreenOrientation(allowLandscape = onEditName == null && onRemove == null)
     var loaded by remember(id) { mutableStateOf(false) }
     LaunchedEffect(id) {
         image = withContext(Dispatchers.IO) {
@@ -67,7 +68,7 @@ internal fun AttachmentViewer(id: String, repository: AttachmentRepository, onEd
     }
     // Leave bitmap lifetime to the renderer/GC: recycling while a frame still owns it is unsafe.
     BackHandler(onBack = onClose)
-    Dialog(onDismissRequest = onClose, properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)) {
+    BottomModulesDialog(onDismissRequest = onClose, properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)) {
         Column(Modifier.fillMaxSize().background(Arachn0deColors.Background).safeDrawingPadding().testTag("attachment-viewer")) {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End, verticalAlignment = Alignment.CenterVertically) {
                 AttachmentExportActions(row,repository,compact=true)

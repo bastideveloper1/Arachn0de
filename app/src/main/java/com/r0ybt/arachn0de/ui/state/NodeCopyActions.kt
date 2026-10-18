@@ -28,12 +28,21 @@ internal class NodeCopyActions(context: Context, private val scope: CoroutineSco
     }
     private fun choose(request: (Boolean) -> Unit) { if(!busy && pendingCopy == null) pendingCopy = request }
     fun copy(tree: NodeTreeSnapshot, id: String, descendants: Boolean) {
-        if(descendants) choose { onlyPending -> copyText { check -> val names = imageNames(); PendingChatRenderer.render(tree,id,people=people(),checkCancelled=check,descriptionText={ descriptionClipboardText(it, names) },completeHierarchy=true,onlyPending=onlyPending) } }
-        else copySnapshot { check -> NodeExportSnapshot.capture(tree,id,false,check) }
+        if(descendants) choose {onlyPending->copyBranch(tree,id,null,onlyPending)}
+        else copyBranch(tree,id,null,false,descendants=false)
     }
     fun copyProject(project: Project, tree: NodeTreeSnapshot, descendants: Boolean) {
-        if(descendants) choose { onlyPending -> copyText { check -> val names = imageNames(); PendingChatRenderer.render(tree,null,project,people(),check,descriptionText={ descriptionClipboardText(it, names) },completeHierarchy=true,onlyPending=onlyPending) } }
-        else copySnapshot { check -> NodeExportSnapshot.captureProject(project,tree,false,check) }
+        if(descendants) choose {onlyPending->copyBranch(tree,null,project,onlyPending)}
+        else copySnapshot {check->NodeExportSnapshot.captureProject(project,tree,false,check)}
+    }
+    private fun copyBranch(tree:NodeTreeSnapshot,id:String?,knownProject:Project?,onlyPending:Boolean,descendants:Boolean=true) {
+        copyText {check->
+            val project=knownProject ?: requireNotNull((appContext as com.r0ybt.arachn0de.Arachn0deApplication)
+                .projectRepository.getProject(tree.nodesById.getValue(requireNotNull(id)).projectId)) {"El Núcleo ya no existe."}
+            val ids=if(descendants) TaskPlainTextRenderer.branch(tree,id,project.id,onlyPending,check) else listOf(requireNotNull(id))
+            val names=imageNames()
+            if(ids.isEmpty()) "Sin pendientes" else TaskPlainTextRenderer.render(tree,ids,mapOf(project.id to project),check) {descriptionClipboardText(it,names)}
+        }
     }
     private fun copySnapshot(capture: (() -> Unit) -> NodeExportSnapshot) {
         copyText { check -> val names = imageNames(); NodeMarkdownRenderer.render(capture(check),check,descriptionText={ descriptionClipboardText(it, names) }) }

@@ -17,7 +17,7 @@ internal fun AnnotatedString.Builder.appendWebLinks(text:String,color:androidx.c
         val uri=Uri.parse(raw)
         if(uri.scheme?.lowercase() !in setOf("http","https") || uri.host.isNullOrBlank()) return@forEach
         append(text.substring(at,start))
-        withLink(LinkAnnotation.Clickable(raw,TextLinkStyles(style=SpanStyle(color=color)),linkInteractionListener={onOpen(raw)})) {append(raw)}
+        withLink(LinkAnnotation.Clickable(raw,TextLinkStyles(style=SpanStyle(color=color)),linkInteractionListener={onOpen(raw)})) {append(if(raw.length>80) raw.take(77)+"…" else raw)}
         at=end
     }
     append(text.substring(at))

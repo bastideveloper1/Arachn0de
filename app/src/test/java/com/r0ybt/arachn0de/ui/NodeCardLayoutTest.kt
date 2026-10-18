@@ -32,6 +32,22 @@ class NodeCardLayoutTest {
         }
     }
 
+    @Config(application=android.app.Application::class)
+    @org.robolectric.annotation.GraphicsMode(org.robolectric.annotation.GraphicsMode.Mode.NATIVE)
+    @Test fun longNoteStaysAtTwoTitleLinesAndTagSharesIndicatorRow() {
+        val note=task.copy(purpose=NodePurpose.NOTE,title="Título largo ".repeat(80),description="Texto completo ".repeat(500))
+        compose.setContent {Box(Modifier.width(420.dp)) {
+            NodeCard(note,null,false,false,{},{},{},false,false,{_,done->done()},{},tags=listOf(Tag("tag","Etiqueta extensa para truncar","etiqueta")))
+        }}
+        val title=compose.onNodeWithText(note.title,useUnmergedTree=true)
+        val layouts=mutableListOf<androidx.compose.ui.text.TextLayoutResult>()
+        title.performSemanticsAction(androidx.compose.ui.semantics.SemanticsActions.GetTextLayoutResult) {it(layouts)}
+        assertEquals(2,layouts.single().lineCount);assertTrue(layouts.single().hasVisualOverflow)
+        val icons=compose.onNodeWithTag("card-indicators:node:task",useUnmergedTree=true).fetchSemanticsNode().boundsInRoot
+        val tag=compose.onNodeWithText("Etiqueta extensa para truncar",useUnmergedTree=true).fetchSemanticsNode().boundsInRoot
+        assertTrue(tag.center.y>=icons.top && tag.center.y<=icons.bottom)
+        compose.onAllNodesWithTag("card-signal:node:task:people",useUnmergedTree=true).assertCountEquals(1)
+    }
     @Test fun smallCardKeepsMetadataInsideItsBounds() {
         render(task.copy(priority = Priority.HIGH, dueAt = 86400000, workState = WorkState.DOING), 240, true)
         compose.onNodeWithText(task.title).assertIsDisplayed()

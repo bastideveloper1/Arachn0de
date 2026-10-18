@@ -15,7 +15,7 @@ import com.r0ybt.arachn0de.domain.model.TitleLimits
 /** One property, using the shared Antisocial panel primitives; the screen owns its draft. */
 @Composable
 internal fun CorePropertyEditor(field:String,value:String,onChange:(String)->Unit,enabled:Boolean,
-    maxHeight:Dp,onCancel:()->Unit,onConfirm:()->Unit,titleLimit:Int=TitleLimits.PROJECT) {
+    maxHeight:Dp,onCancel:()->Unit,onConfirm:()->Unit,titleLimit:Int=TitleLimits.PROJECT,multilineTitle:Boolean=false) {
     val focus=LocalFocusManager.current
     val keyboard=LocalSoftwareKeyboardController.current
     fun finish(action:()->Unit) {focus.clearFocus();keyboard?.hide();action()}
@@ -29,7 +29,7 @@ internal fun CorePropertyEditor(field:String,value:String,onChange:(String)->Uni
             },confirm={
                 PrimaryControlButton(enabled=enabled && valid,onClick={finish(onConfirm)},modifier=Modifier.fillMaxWidth().heightIn(min=48.dp)) {Text("Confirmar")}
             })}) {
-            ModularTextField(value,onChange,if(title) "Título" else "Descripción",enabled,singleLine=title)
+            ModularTextField(value,onChange,if(title) "Título" else "Descripción",enabled,singleLine=title && !multilineTitle,growVertically=title && multilineTitle)
             if(title) Text("${TitleLimits.count(value)} / $titleLimit",style=MaterialTheme.typography.labelSmall)
         }
     }

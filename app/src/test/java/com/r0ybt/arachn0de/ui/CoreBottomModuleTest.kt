@@ -42,11 +42,15 @@ class CoreBottomModuleTest {
         val closing=CoroutineScope(Dispatchers.Default).async {manager.lock()}
         await {closing.isCompleted};runBlocking {closing.await()}
     }
-    @Test fun rootStartsCompactAndBottomOptionsUsesTheSameModuleAndBackCompactsFirst() {
+    @Test fun rootStartsInContentAndBottomOptionsUsesTheSameModuleAndBackCompactsFirst() {
         val project=runBlocking {app.projectRepository.createProject("Núcleo modular","Descripción original")}
         var exits=0
         compose.setContent {Arachn0deTheme {ProjectNodeScreen(project,app.nodeRepository,{exits++})}}
         await {compose.onAllNodesWithTag("core-bottom-module").fetchSemanticsNodes().isNotEmpty()}
+        compose.onNodeWithTag("core-context:Content").assertIsSelected()
+        compose.onNodeWithTag("context-action:Título").assertIsDisplayed()
+        compose.onNodeWithTag("context-action:Descripción").assertIsDisplayed()
+        compose.onNodeWithTag("core-context:Creation").performClick()
         compose.onNodeWithTag("core-context:Creation").assertIsSelected()
         compose.onNodeWithTag("project-bottom-actions").assertIsDisplayed()
         compose.onNodeWithText("Crear",substring=false).assertIsEnabled()
@@ -56,7 +60,7 @@ class CoreBottomModuleTest {
         compose.onNodeWithTag("core-context:Options").assertIsSelected()
         compose.onAllNodesWithTag("core-bottom-module").assertCountEquals(1)
         compose.onNodeWithTag("project-bottom-actions").assertDoesNotExist()
-        listOf("Limpiar completadas","Fijar","Planificación","Fotografía","Editar tecnologías","Recurrencias","Valores predeterminados","Convertir en capa","Copiar","Copiar texto con descendientes").forEach {
+        listOf("Limpiar completadas","Fijar","Planificación","Fotografía","Recurrencias","Valores predeterminados","Convertir en capa","Copiar","Copiar texto con descendientes").forEach {
             compose.onNodeWithTag("context-action:$it").performScrollTo().assertIsDisplayed()
         }
         compose.onNodeWithTag("core-context:Content").performClick()
@@ -75,7 +79,8 @@ class CoreBottomModuleTest {
         await {compose.onAllNodesWithTag("core-context:Options").fetchSemanticsNodes().isNotEmpty()}
         compose.onNodeWithTag("core-context:Options").performClick()
         compose.onNodeWithText("Capa de prueba",substring=false).performScrollTo().performClick()
-        await {runCatching {compose.onNodeWithTag("core-context:Creation").assertIsSelected()}.isSuccess}
+        await {runCatching {compose.onNodeWithTag("core-context:Content").assertIsSelected()}.isSuccess}
+        compose.onNodeWithTag("core-context:Creation").performClick()
         compose.onNodeWithTag("project-bottom-actions").assertIsDisplayed()
         compose.onNodeWithText("Tarea de prueba",substring=false).performScrollTo().performClick()
         await {compose.onAllNodesWithContentDescription("Completar: Tarea de prueba").fetchSemanticsNodes().isNotEmpty()}
@@ -91,7 +96,7 @@ class CoreBottomModuleTest {
         compose.onNodeWithTag("project-bottom-actions").assertIsDisplayed()
         back()
         await {compose.onAllNodesWithTag("core-context:Creation").fetchSemanticsNodes().isNotEmpty()}
-        compose.onNodeWithTag("core-context:Creation").assertIsSelected()
+        compose.onNodeWithTag("core-context:Content").assertIsSelected()
     }
     @Test fun creationDraftOwnsTheFooterAndSurvivesRecreationUntilExplicitSave() {
         val project=runBlocking {app.projectRepository.createProject("Núcleo")}

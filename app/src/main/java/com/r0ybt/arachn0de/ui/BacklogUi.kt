@@ -17,7 +17,6 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.r0ybt.arachn0de.data.local.*
 import com.r0ybt.arachn0de.data.repository.*
@@ -216,7 +215,7 @@ private data class BacklogConfirmation(val text:String,val action:suspend ()->Un
     }
 }
 @Composable private fun BacklogSurface(onDismiss:()->Unit,content:@Composable ColumnScope.()->Unit) {
-    Dialog(onDismissRequest=onDismiss,properties=DialogProperties(usePlatformDefaultWidth=false)) {Surface(Modifier.fillMaxSize().safeDrawingPadding()) {Column(Modifier.padding(12.dp),verticalArrangement=Arrangement.spacedBy(8.dp),content=content)}}
+    BottomModulesDialog(onDismissRequest=onDismiss,properties=DialogProperties(usePlatformDefaultWidth=false)) {Surface(Modifier.fillMaxSize().safeDrawingPadding()) {Column(Modifier.padding(12.dp),verticalArrangement=Arrangement.spacedBy(8.dp),content=content)}}
 }
 @Composable private fun BacklogSelector(request:BacklogSelection,busy:Boolean,error:String?,onDismiss:()->Unit,onSelect:(String)->Unit) {
     var query by remember {mutableStateOf("")};var selected by remember {mutableStateOf<String?>(null)}

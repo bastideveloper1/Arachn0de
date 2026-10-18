@@ -28,6 +28,64 @@ import org.robolectric.annotation.Config
 class ModularPanelTest {
     @get:Rule val compose=createAndroidComposeRule<ComponentActivity>()
 
+    @Test fun immediateFieldsCommitOnlyConfirmedValueAndKeepMenuOnCancelAndBack() {
+        var values by mutableStateOf(listOf("A","B"))
+        var saves=0
+        compose.setContent {Arachn0deTheme {
+            ModularTextFieldsEditor("immediate","General",listOf("Apodo","Notas"),values,"Guardar sección",{},
+                inline=true,compactMenu=true,onFieldSave={index,value,done->
+                    values=values.toMutableList().also {it[index]=value};saves++;done()
+                },onSave={error("No global save")})
+        }}
+        compose.onNodeWithText("Cancelar").assertDoesNotExist()
+        compose.onNodeWithText("Guardar sección").assertDoesNotExist()
+        compose.onNodeWithTag("modular-field:0").performClick()
+        compose.onNodeWithTag("modular-text-field").performTextReplacement("Confirmado")
+        compose.onNodeWithText("Confirmar").performClick()
+        compose.onNodeWithTag("modular-field-menu").assertIsDisplayed()
+        assertEquals(listOf("Confirmado","B"),values);assertEquals(1,saves)
+        compose.onNodeWithTag("modular-field:1").performClick()
+        compose.onNodeWithTag("modular-text-field").performTextReplacement("Descartar")
+        compose.onNodeWithText("Cancelar").performClick()
+        compose.onNodeWithTag("modular-field:1").performClick()
+        compose.onNodeWithTag("modular-text-field").assert(hasText("B"))
+        compose.onNodeWithTag("modular-text-field").performTextReplacement("Atrás")
+        compose.runOnUiThread {compose.activity.onBackPressedDispatcher.onBackPressed()}
+        compose.onNodeWithTag("modular-field:1").performClick()
+        compose.onNodeWithTag("modular-text-field").assert(hasText("B"))
+        assertEquals(1,saves)
+    }
+
+    @org.robolectric.annotation.GraphicsMode(org.robolectric.annotation.GraphicsMode.Mode.NATIVE)
+    @Test fun taskTitleWrapsGrowsAndPreservesLineBreaksOnConfirmationAndReopen() {
+        var title by mutableStateOf("Breve")
+        var editing by mutableStateOf(true)
+        var saved=""
+        compose.setContent {Arachn0deTheme {
+            Box(Modifier.width(220.dp)) {
+                if(editing) CorePropertyEditor("title",title,{title=it},true,600.dp,{},
+                    onConfirm={saved=title;editing=false},
+                    titleLimit=com.r0ybt.arachn0de.domain.model.TitleLimits.NODE,multilineTitle=true)
+                else Button(onClick={title=saved;editing=true}) {Text("Volver a editar")}
+            }
+        }}
+        val field=compose.onNodeWithTag("modular-text-field")
+        val initial=field.fetchSemanticsNode().boundsInRoot
+        field.performTextReplacement("Un título suficientemente largo para continuar automáticamente en varias líneas")
+        val grown=field.fetchSemanticsNode().boundsInRoot
+        assertEquals(initial.width,grown.width,1f)
+        assertTrue("Initial: $initial; grown: $grown",grown.height>initial.height)
+        val layouts=mutableListOf<androidx.compose.ui.text.TextLayoutResult>()
+        field.performSemanticsAction(androidx.compose.ui.semantics.SemanticsActions.GetTextLayoutResult) {it(layouts)}
+        assertTrue(layouts.single().lineCount>1)
+        val multiline="Primera línea\nSegunda línea\nTercera línea\nCuarta línea\nQuinta línea\nSexta línea"
+        field.performTextReplacement(multiline)
+        compose.onNodeWithText("Confirmar").performClick()
+        compose.runOnIdle {assertEquals(multiline,saved)}
+        compose.onNodeWithText("Volver a editar").performClick()
+        compose.onNodeWithTag("modular-text-field").assert(hasText(multiline))
+    }
+
     @Test fun compactMenuUsesHorizontalContentAndFallsBackForLargeFonts() {
         var large by mutableStateOf(false)
         compose.setContent {Arachn0deTheme {

@@ -31,7 +31,9 @@ internal class SharedCaptureQueue(private val db:Arachn0deDatabase,internal val 
     private suspend fun put(e:Entry)=dao.save(PrivatePreferenceEntity(PREFIX+e.id,e.json()))
     private suspend fun remove(id:String)=dao.delete(PREFIX+id)
     suspend fun receive(id:String,input:SharedContent) = withContext(Dispatchers.IO) {ingestion.withLock {
-        require(!input.linkNote || (input.image==null && SharedContent.isLink(input.description)))
+        // Admission applies only to a new delivery. Existing journals and recovery stay intact.
+        require(input.image==null) {"Solo se admiten textos y enlaces."}
+        require(input.title.isNotBlank() || input.description.isNotBlank())
         val inserted=AttachmentRepository.fileOperations.withLock {db.withTransaction {
             require(UUID.fromString(id).toString()==id)
             if(dao.get(PREFIX+id)!=null || db.nodeDao().getById(id)!=null) false else {
@@ -74,8 +76,7 @@ internal class SharedCaptureQueue(private val db:Arachn0deDatabase,internal val 
     suspend fun save(id:String,destination:String,title:String,description:String,removed:Set<String>)=withContext(Dispatchers.IO) {
         attachments.saveNodeDraft(id,listOf(id),description,removed) {effective->
             val row=requireNotNull(entries().firstOrNull {it.id==id && it.phase=="READY"}) {"La captura ya fue procesada."}
-            if(row.linkNote) require(SharedContent.isLink(description.trim())) {"Introduce únicamente un enlace HTTP o HTTPS válido."}
-            AccessRepository(db).capture(destination,title,if(row.linkNote) description.trim() else effective,id,
+            AccessRepository(db).capture(destination,title,effective,id,
                 purpose=if(row.linkNote) com.r0ybt.arachn0de.domain.model.NodePurpose.NOTE else com.r0ybt.arachn0de.domain.model.NodePurpose.ACTION)
             remove(id)
         }

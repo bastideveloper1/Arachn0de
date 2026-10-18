@@ -24,9 +24,20 @@ internal fun FinancialState.label(): String = when (this) {
 internal fun FinancialSummaryCard(summary: FinancialSummary?, modifier: Modifier = Modifier, title: String = "Pagos pendientes", overview: FinancialSummary? = summary) {
     if (summary == null || overview == null || overview.count == 0) return
     val locale = LocalConfiguration.current.locales[0]
+    if(LocalBashPresentation.current) {
+        Column(modifier.fillMaxWidth().padding(vertical=4.dp)) {
+            Text("# $title",style=MaterialTheme.typography.bodySmall)
+            overview.byCurrency.toSortedMap().forEach { (code,totals) ->
+                Text("payments.$code.this_month=${Money.format(totals.thisMonthPendingMinor,code,locale)}")
+                Text("payments.$code.next_month=${Money.format(totals.nextMonthPendingMinor,code,locale)}")
+                Text("payments.$code.pending=${Money.format(totals.pendingMinor,code,locale)}")
+            }
+        }
+        return
+    }
     val density=LocalDensity.current
     val measurer=rememberTextMeasurer()
-    Card(modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = Arachn0deColors.ControlSurface)) {
+    GeneralCard(modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = Arachn0deColors.ControlSurface)) {
         Column(Modifier.padding(12.dp),verticalArrangement=Arrangement.spacedBy(6.dp)) {
             Text(title,style=MaterialTheme.typography.titleSmall)
             overview.byCurrency.toSortedMap().forEach { (code,totals) ->

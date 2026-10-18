@@ -14,11 +14,42 @@ import org.robolectric.annotation.Config
 @Config(sdk = [28], application = Application::class)
 class AppearancePreferencesTest {
     private val storage get() = RuntimeEnvironment.getApplication().getSharedPreferences(AppearancePreferences.FILE, 0)
-    @Test fun exactlySixThemesAndThreeSizesDefaultToCurrentAppearance() {
+    @Test fun availableThemesAndThreeSizesDefaultToCharcoal() {
         storage.edit().clear().commit()
-        assertEquals(listOf("Black & White 90", "King Crimson", "Deep Moss", "Heavy Gold", "Azul noche", "Gris día"), AppearanceTheme.entries.map { it.label })
+        assertEquals(listOf("Charcoal", "Dark", "King Crimson", "Deep Moss", "Heavy Gold", "Azul noche", "Gris día", "Green Bash"), AppearanceTheme.entries.map { it.label })
         assertEquals(listOf("Pequeña", "Mediana", "Grande"), AppearanceTextSize.entries.map { it.label })
         assertEquals(AppearanceSettings(), AppearancePreferences(storage).settings)
+    }
+    @Test fun darkUsesSharedSurfacesAndPreservesBrandAndFunctionalColors() {
+        val charcoal=AppearanceTheme.Arachn0de.palette
+        val dark=AppearanceTheme.Dark.palette
+        assertEquals(BlackWhite90.palette,charcoal)
+        assertEquals(Color(0xFF141517),dark.background)
+        assertEquals(Color(0xFF27292D),dark.surface)
+        assertEquals(Color(0xFF1D1F22),dark.panel)
+        assertEquals(dark.panel,dark.taskPanel)
+        assertEquals(Color(0xFF36393E),dark.outline)
+        assertEquals(charcoal.primary,dark.primary)
+        assertEquals(charcoal.secondary,dark.secondary)
+        assertEquals(Color(0xFFB86A2C),BlackWhite90.Copper)
+        assertEquals(SemanticColors.Error,dark.semantic(SemanticColors.Error))
+        assertEquals(SemanticColors.HighPriority,dark.semantic(SemanticColors.HighPriority))
+        assertEquals(dark.background,dark.materialColors().background)
+        assertEquals(dark.surface,dark.materialColors().surface)
+        listOf(dark.background,dark.panel,dark.surface,dark.controls).forEach { surface ->
+            assertNotEquals(Color.Black,surface)
+            assertTrue(contrast(dark.text,surface)>=4.5f)
+            assertTrue(contrast(dark.muted,surface)>=4.5f)
+        }
+        storage.edit().clear().commit()
+        assertEquals(AppearanceTheme.Arachn0de,AppearancePreferences(storage).settings.theme)
+        val settings=AppearancePreferences(storage)
+        settings.setTheme(AppearanceTheme.Dark)
+        assertEquals(AppearanceTheme.Dark,settings.settings.theme)
+        assertEquals(AppearanceTheme.Dark,AppearancePreferences(storage).settings.theme)
+        val context=RuntimeEnvironment.getApplication()
+        UnlockAppearanceCache.update(context,AppearanceTheme.Dark)
+        assertEquals(AppearanceTheme.Dark,UnlockAppearanceCache.read(context))
     }
     @Test fun everyThemeAndSizePersistAndRestoreBeforeUiIsDrawn() {
         val preferences = AppearancePreferences(storage)

@@ -18,6 +18,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.IntOffset
@@ -32,7 +33,7 @@ internal fun metroStationColors(palette:AppearancePalette,emphasized:Boolean)=
 
 internal val MetroRed=Color(0xffff7369)
 internal val MetroGreen=Color(0xff69d695)
-internal data class MetroTimelineNode(val station: String, val line: String, val detail: String = "", val emphasized: Boolean = false)
+internal data class MetroTimelineNode(val station: String, val line: String, val detail: String = "", val emphasized: Boolean = false,val effectiveStop:Boolean=true)
 
 /** No item spacing: every segment ends exactly at its measured row boundary.
  * Nodes have one consistent inset; row height comes from accessible Compose content.
@@ -57,7 +58,10 @@ internal fun MetroVerticalTimeline(
                 val cardColors=metroStationColors(LocalAppearancePalette.current,row.emphasized || row.station==selectedStation)
                 val complete=progress!=null && index<progress.first
                 val fraction=if(progress?.first==index) progress.second else 0f
-                Row(Modifier.fillMaxWidth().testTag("metro-row-$index").semantics {selected=row.station==selectedStation}.drawBehind {
+                Row(Modifier.fillMaxWidth().testTag("metro-row-$index").semantics {
+                    selected=row.station==selectedStation
+                    if(!row.effectiveStop) stateDescription="Paso sin detención; no confirma apertura de puertas"
+                }.drawBehind {
                     val color=Color(line.color)
                     val top=if(index==0) nodeInset else 0f
                     val bottom=if(index==rows.lastIndex) nodeInset else size.height
@@ -82,6 +86,7 @@ internal fun MetroVerticalTimeline(
                         }
                         else -> drawCircle(color,8.dp.toPx(),Offset(trackX,nodeInset))
                     }
+                    if(!row.effectiveStop) drawCircle(surface,4.dp.toPx(),Offset(trackX,nodeInset))
                 }) {
                     Spacer(Modifier.width(48.dp))
                     OutlinedCard(Modifier.weight(1f).padding(bottom=6.dp),

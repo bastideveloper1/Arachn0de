@@ -7,7 +7,6 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.r0ybt.arachn0de.domain.model.*
 import com.r0ybt.arachn0de.data.local.SprintLinkEntity
@@ -26,7 +25,7 @@ internal fun sprintOrigin(node:Node,tree:NodeTreeSnapshot):String = node.parentI
     val candidates=tree.nodes.filter {it.projectId==sprint.projectId && it.isCompletable &&
         tree.nodesById[it.parentId]?.sprintMode!=true && links.none {link->link.taskId==it.id} &&
         (it.title.contains(query,true) || sprintOrigin(it,tree).contains(query,true))}
-    Dialog(onDismissRequest={if(!busy) onDismiss()},properties=DialogProperties(usePlatformDefaultWidth=false)) {
+    BottomModulesDialog(onDismissRequest={if(!busy) onDismiss()},properties=DialogProperties(usePlatformDefaultWidth=false)) {
         Surface(Modifier.fillMaxWidth().fillMaxHeight(.85f).safeDrawingPadding().padding(12.dp),shape=MaterialTheme.shapes.large) {
             Column(Modifier.padding(16.dp),verticalArrangement=Arrangement.spacedBy(8.dp)) {
                 Text("Vincular tareas",style=MaterialTheme.typography.titleLarge)

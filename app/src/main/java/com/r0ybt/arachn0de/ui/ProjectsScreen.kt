@@ -136,7 +136,7 @@ internal fun ProjectDashboardScreen(
                     .padding(horizontal = 12.dp, vertical = 10.dp)
                     .padding(horizontal = 2.dp),
             ) {
-                HeaderBar(compactLock=true,
+                HeaderBar(compactLock=true,showBrandMark=false,
                     onMenuClick = { showDrawer = true },
                     trailingAction = {
                         Box {
@@ -147,7 +147,7 @@ internal fun ProjectDashboardScreen(
                         }
                     },
                 )
-
+                BashPrompt("~/General","ls -l")
                 Spacer(modifier = Modifier.height(6.dp))
 
 
@@ -186,10 +186,10 @@ internal fun ProjectDashboardScreen(
                     }
                 }
             }
-            Row(Modifier.align(Alignment.BottomEnd).fillMaxWidth().padding(horizontal=14.dp,vertical=10.dp)
+            Row(Modifier.align(Alignment.BottomEnd).fillMaxWidth()
                 .then(if(showDrawer) Modifier.clearAndSetSemantics {} else Modifier)
                 .onSizeChanged {bottomControlsHeight=with(bottomControlsDensity) {it.height.toDp()}}
-                .padding(top=6.dp).background(Arachn0deColors.Surface),horizontalArrangement=Arrangement.Center) {
+                .background(Arachn0deColors.Surface),horizontalArrangement=Arrangement.Center) {
                 androidx.compose.material3.TextButton(
                     onClick={drafts.open(null) {EditorDraft(null,null,"","")}},
                     modifier=Modifier.weight(1f).height(48.dp),

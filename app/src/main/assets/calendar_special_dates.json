@@ -1,0 +1,404 @@
+{
+  "version": 1,
+  "verifiedOn": "2026-10-16",
+  "holidayYears": [
+    2026
+  ],
+  "sources": {
+    "gob2026": {
+      "name": "Gobierno de Chile · Feriados 2026",
+      "url": "https://www.gob.cl/noticias/feriados-2026-revisa-cuantos-habra-y-cuales-son-irrenunciables/"
+    },
+    "lunes": {
+      "name": "BCN · Ley 19.668; Dirección del Trabajo · traslados",
+      "url": "https://www.bcn.cl/leychile/Navegar?idNorma=160270"
+    },
+    "evangelicas": {
+      "name": "BCN · Ley 20.299, artículos 1 y 2",
+      "url": "https://www.bcn.cl/historiadelaley/historia-de-la-ley/vista-expandida/5174/"
+    },
+    "solsticio": {
+      "name": "BCN · Ley 21.357; Gobierno de Chile · fecha 2026",
+      "url": "https://www.bcn.cl/leychile/navegar?i=1161743"
+    },
+    "cech": {
+      "name": "Conferencia Episcopal de Chile · Ordo Litúrgico Pastoral 2022, p. 13",
+      "url": "https://www.iglesia.cl/docs/Ordo_Pastoral_2022_Final.pdf"
+    },
+    "onu": {
+      "name": "Naciones Unidas · Listado de días y semanas internacionales",
+      "url": "https://www.un.org/es/observances/list-days-weeks"
+    }
+  },
+  "entries": [
+    {
+      "id": "holiday-01-01-0",
+      "kind": "HOLIDAY",
+      "date": "01-01",
+      "name": "Año Nuevo",
+      "source": "gob2026",
+      "rule": "fixed",
+      "description": ""
+    },
+    {
+      "id": "holiday-05-01-1",
+      "kind": "HOLIDAY",
+      "date": "05-01",
+      "name": "Día Nacional del Trabajo",
+      "source": "gob2026",
+      "rule": "fixed",
+      "description": ""
+    },
+    {
+      "id": "holiday-05-21-2",
+      "kind": "HOLIDAY",
+      "date": "05-21",
+      "name": "Día de las Glorias Navales",
+      "source": "gob2026",
+      "rule": "fixed",
+      "description": ""
+    },
+    {
+      "id": "holiday-07-16-3",
+      "kind": "HOLIDAY",
+      "date": "07-16",
+      "name": "Día de la Virgen del Carmen",
+      "source": "gob2026",
+      "rule": "fixed",
+      "description": ""
+    },
+    {
+      "id": "holiday-08-15-4",
+      "kind": "HOLIDAY",
+      "date": "08-15",
+      "name": "Asunción de la Virgen",
+      "source": "gob2026",
+      "rule": "fixed",
+      "description": ""
+    },
+    {
+      "id": "holiday-09-18-5",
+      "kind": "HOLIDAY",
+      "date": "09-18",
+      "name": "Independencia Nacional",
+      "source": "gob2026",
+      "rule": "fixed",
+      "description": ""
+    },
+    {
+      "id": "holiday-09-19-6",
+      "kind": "HOLIDAY",
+      "date": "09-19",
+      "name": "Día de las Glorias del Ejército",
+      "source": "gob2026",
+      "rule": "fixed",
+      "description": ""
+    },
+    {
+      "id": "holiday-11-01-7",
+      "kind": "HOLIDAY",
+      "date": "11-01",
+      "name": "Día de Todos los Santos",
+      "source": "gob2026",
+      "rule": "fixed",
+      "description": ""
+    },
+    {
+      "id": "holiday-12-08-8",
+      "kind": "HOLIDAY",
+      "date": "12-08",
+      "name": "Inmaculada Concepción",
+      "source": "gob2026",
+      "rule": "fixed",
+      "description": ""
+    },
+    {
+      "id": "holiday-12-25-9",
+      "kind": "HOLIDAY",
+      "date": "12-25",
+      "name": "Navidad",
+      "source": "gob2026",
+      "rule": "fixed",
+      "description": ""
+    },
+    {
+      "id": "holiday-2026-04-03-10",
+      "kind": "HOLIDAY",
+      "date": "2026-04-03",
+      "name": "Viernes Santo",
+      "source": "gob2026",
+      "rule": "fixed",
+      "description": "Fecha móvil de Semana Santa, contrastada en el calendario oficial de 2026. No se extrapola a otros años."
+    },
+    {
+      "id": "holiday-2026-04-04-11",
+      "kind": "HOLIDAY",
+      "date": "2026-04-04",
+      "name": "Sábado Santo",
+      "source": "gob2026",
+      "rule": "fixed",
+      "description": "Fecha móvil de Semana Santa, contrastada en el calendario oficial de 2026. No se extrapola a otros años."
+    },
+    {
+      "id": "holiday-2026-06-21-12",
+      "kind": "HOLIDAY",
+      "date": "2026-06-21",
+      "name": "Día Nacional de los Pueblos Indígenas",
+      "source": "solsticio",
+      "rule": "fixed",
+      "description": "Feriado del solsticio de invierno según la Ley 21.357. La fecha de 2026 fue contrastada con el Gobierno de Chile; no se fija siempre el 21 de junio."
+    },
+    {
+      "id": "holiday-06-29-13",
+      "kind": "HOLIDAY",
+      "date": "06-29",
+      "name": "San Pedro y San Pablo",
+      "source": "lunes",
+      "rule": "monday",
+      "description": "La Ley 19.668 lo traslada al lunes de esa semana si cae martes, miércoles o jueves, o al lunes siguiente si cae viernes. Sábado y domingo no se trasladan."
+    },
+    {
+      "id": "holiday-10-12-14",
+      "kind": "HOLIDAY",
+      "date": "10-12",
+      "name": "Encuentro de Dos Mundos",
+      "source": "lunes",
+      "rule": "monday",
+      "description": "La Ley 19.668 lo traslada al lunes de esa semana si cae martes, miércoles o jueves, o al lunes siguiente si cae viernes. Sábado y domingo no se trasladan."
+    },
+    {
+      "id": "holiday-10-31-15",
+      "kind": "HOLIDAY",
+      "date": "10-31",
+      "name": "Día Nacional de las Iglesias Evangélicas y Protestantes",
+      "source": "evangelicas",
+      "rule": "evangelical",
+      "description": "La Ley 20.299 lo traslada al viernes anterior cuando el 31 cae martes, y al viernes de la misma semana cuando cae miércoles."
+    },
+    {
+      "id": "saint-01-22-16",
+      "kind": "SAINT",
+      "date": "01-22",
+      "name": "Beata Laura Vicuña",
+      "source": "cech",
+      "rule": "fixed",
+      "description": ""
+    },
+    {
+      "id": "saint-02-07-17",
+      "kind": "SAINT",
+      "date": "02-07",
+      "name": "Beato Pío IX",
+      "source": "cech",
+      "rule": "fixed",
+      "description": ""
+    },
+    {
+      "id": "saint-02-11-18",
+      "kind": "SAINT",
+      "date": "02-11",
+      "name": "Nuestra Señora de Lourdes",
+      "source": "cech",
+      "rule": "fixed",
+      "description": ""
+    },
+    {
+      "id": "saint-05-03-19",
+      "kind": "SAINT",
+      "date": "05-03",
+      "name": "Santa Cruz de mayo",
+      "source": "cech",
+      "rule": "fixed",
+      "description": ""
+    },
+    {
+      "id": "saint-05-04-20",
+      "kind": "SAINT",
+      "date": "05-04",
+      "name": "Santos Felipe y Santiago",
+      "source": "cech",
+      "rule": "fixed",
+      "description": ""
+    },
+    {
+      "id": "saint-05-24-21",
+      "kind": "SAINT",
+      "date": "05-24",
+      "name": "Santa María, Auxilio de los cristianos",
+      "source": "cech",
+      "rule": "fixed",
+      "description": ""
+    },
+    {
+      "id": "saint-07-13-22",
+      "kind": "SAINT",
+      "date": "07-13",
+      "name": "Santa Teresa de los Andes",
+      "source": "cech",
+      "rule": "fixed",
+      "description": ""
+    },
+    {
+      "id": "saint-07-14-23",
+      "kind": "SAINT",
+      "date": "07-14",
+      "name": "Santos Enrique y Camilo de Lelis",
+      "source": "cech",
+      "rule": "fixed",
+      "description": ""
+    },
+    {
+      "id": "saint-07-16-24",
+      "kind": "SAINT",
+      "date": "07-16",
+      "name": "Nuestra Señora del Carmen",
+      "source": "cech",
+      "rule": "fixed",
+      "description": ""
+    },
+    {
+      "id": "saint-08-18-25",
+      "kind": "SAINT",
+      "date": "08-18",
+      "name": "San Alberto Hurtado",
+      "source": "cech",
+      "rule": "fixed",
+      "description": ""
+    },
+    {
+      "id": "saint-08-26-26",
+      "kind": "SAINT",
+      "date": "08-26",
+      "name": "Beato Ceferino Namuncurá",
+      "source": "cech",
+      "rule": "fixed",
+      "description": ""
+    },
+    {
+      "id": "saint-08-30-27",
+      "kind": "SAINT",
+      "date": "08-30",
+      "name": "Santa Rosa de Lima",
+      "source": "cech",
+      "rule": "fixed",
+      "description": ""
+    },
+    {
+      "id": "saint-10-11-28",
+      "kind": "SAINT",
+      "date": "10-11",
+      "name": "San Juan XXIII",
+      "source": "cech",
+      "rule": "fixed",
+      "description": ""
+    },
+    {
+      "id": "saint-10-22-29",
+      "kind": "SAINT",
+      "date": "10-22",
+      "name": "San Juan Pablo II",
+      "source": "cech",
+      "rule": "fixed",
+      "description": ""
+    },
+    {
+      "id": "saint-12-12-30",
+      "kind": "SAINT",
+      "date": "12-12",
+      "name": "Nuestra Señora de Guadalupe",
+      "source": "cech",
+      "rule": "fixed",
+      "description": ""
+    },
+    {
+      "id": "observance-01-24-31",
+      "kind": "OBSERVANCE",
+      "date": "01-24",
+      "name": "Día Internacional de la Educación",
+      "source": "onu",
+      "rule": "fixed",
+      "description": ""
+    },
+    {
+      "id": "observance-03-08-32",
+      "kind": "OBSERVANCE",
+      "date": "03-08",
+      "name": "Día Internacional de la Mujer",
+      "source": "onu",
+      "rule": "fixed",
+      "description": ""
+    },
+    {
+      "id": "observance-03-22-33",
+      "kind": "OBSERVANCE",
+      "date": "03-22",
+      "name": "Día Mundial del Agua",
+      "source": "onu",
+      "rule": "fixed",
+      "description": ""
+    },
+    {
+      "id": "observance-04-22-34",
+      "kind": "OBSERVANCE",
+      "date": "04-22",
+      "name": "Día Internacional de la Madre Tierra",
+      "source": "onu",
+      "rule": "fixed",
+      "description": ""
+    },
+    {
+      "id": "observance-05-21-35",
+      "kind": "OBSERVANCE",
+      "date": "05-21",
+      "name": "Día Mundial de la Diversidad Cultural para el Diálogo y el Desarrollo",
+      "source": "onu",
+      "rule": "fixed",
+      "description": ""
+    },
+    {
+      "id": "observance-06-05-36",
+      "kind": "OBSERVANCE",
+      "date": "06-05",
+      "name": "Día Mundial del Medio Ambiente",
+      "source": "onu",
+      "rule": "fixed",
+      "description": ""
+    },
+    {
+      "id": "observance-09-21-37",
+      "kind": "OBSERVANCE",
+      "date": "09-21",
+      "name": "Día Internacional de la Paz",
+      "source": "onu",
+      "rule": "fixed",
+      "description": ""
+    },
+    {
+      "id": "observance-10-24-38",
+      "kind": "OBSERVANCE",
+      "date": "10-24",
+      "name": "Día de las Naciones Unidas",
+      "source": "onu",
+      "rule": "fixed",
+      "description": ""
+    },
+    {
+      "id": "observance-10-24-39",
+      "kind": "OBSERVANCE",
+      "date": "10-24",
+      "name": "Día Mundial de Información sobre el Desarrollo",
+      "source": "onu",
+      "rule": "fixed",
+      "description": ""
+    },
+    {
+      "id": "observance-12-10-40",
+      "kind": "OBSERVANCE",
+      "date": "12-10",
+      "name": "Día de los Derechos Humanos",
+      "source": "onu",
+      "rule": "fixed",
+      "description": ""
+    }
+  ]
+}

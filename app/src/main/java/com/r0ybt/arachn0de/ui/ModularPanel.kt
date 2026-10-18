@@ -34,15 +34,14 @@ import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.r0ybt.arachn0de.ui.theme.Arachn0deColors
 
 /** Presentation only. The caller owns drafts, confirmation, cancellation and back navigation. */
 @Composable
 internal fun ModularPanelSurface(modifier: Modifier = Modifier, shadowElevation: Dp = 4.dp, content: @Composable () -> Unit) {
-    Surface(modifier, color = Arachn0deColors.Surface, contentColor = Arachn0deColors.TextPrimary,
-        shadowElevation = shadowElevation) {
+    Surface(modifier.fillMaxWidth(), color = Arachn0deColors.Panel, contentColor = Arachn0deColors.TextPrimary,
+        shadowElevation = if(LocalBashPresentation.current) 0.dp else shadowElevation) {
         Column {
             HorizontalDivider(color = Arachn0deColors.Outline)
             content()
@@ -59,6 +58,7 @@ internal fun ModularPanelLayout(
     outlinedBody: Boolean = true,
     headerDivider: Boolean = true,
     compact: Boolean = false,
+    showActions: Boolean = true,
     header: @Composable () -> Unit,
     actions: @Composable () -> Unit,
     body: @Composable ColumnScope.() -> Unit
@@ -67,15 +67,17 @@ internal fun ModularPanelLayout(
         Column(Modifier.fillMaxWidth()
             .heightIn(max = if (fieldOwnsScroll && !fullScreen) maxHeight * .75f else maxHeight)
             .then(if (fullScreen) Modifier.fillMaxHeight() else Modifier)
-            .padding(horizontal = if(compact) 8.dp else 16.dp, vertical = if(compact) 4.dp else 8.dp)) {
+            .padding(horizontal = if(compact) 8.dp else 16.dp, vertical = 4.dp)) {
             header()
-            if(headerDivider) HorizontalDivider(Modifier.padding(vertical = if(compact) 4.dp else 8.dp), color = Arachn0deColors.Outline)
+            if(headerDivider) HorizontalDivider(Modifier.padding(vertical = 4.dp), color = Arachn0deColors.Outline)
             Column(Modifier.weight(1f, fill = fullScreen).fillMaxWidth()
-                .then(if(outlinedBody) Modifier.border(1.dp, Arachn0deColors.Outline, RoundedCornerShape(8.dp)).padding(8.dp) else Modifier)
+                .then(if(outlinedBody && !LocalBashPresentation.current) Modifier.border(1.dp, Arachn0deColors.Outline, RoundedCornerShape(8.dp)).padding(8.dp) else Modifier)
                 .then(if (fieldOwnsScroll) Modifier else Modifier.verticalScroll(rememberScrollState()))
-                .then(bodyModifier), verticalArrangement = Arrangement.spacedBy(8.dp), content = body)
-            HorizontalDivider(Modifier.padding(vertical = if(compact) 4.dp else 8.dp), color = Arachn0deColors.Outline)
-            actions()
+                .then(bodyModifier), verticalArrangement = Arrangement.spacedBy(4.dp), content = body)
+            if(showActions) {
+                HorizontalDivider(Modifier.padding(vertical = 4.dp), color = Arachn0deColors.Outline)
+                actions()
+            }
         }
     }
 }
@@ -102,7 +104,7 @@ internal fun ModularFieldMenu(options: List<ModularPanelOption>, modifier: Modif
         val actualColumns=if(compact && (density.fontScale>=1.5f || options.any {
             measurer.measure(it.label,style,softWrap=false).size.width>horizontalLabelWidth
         })) 1 else columns
-        val gap=if(compact) 4.dp else 8.dp
+        val gap=4.dp
         val textWidth=with(density) {((maxWidth-gap*(actualColumns-1))/actualColumns-if(compact) 48.dp else 16.dp).roundToPx().coerceAtLeast(1)}
         val labelHeight=with(density) {options.maxOf {measurer.measure(it.label,style,
             softWrap=!compact, maxLines=if(compact) 1 else Int.MAX_VALUE,
@@ -150,6 +152,9 @@ internal fun ModularTextFieldsEditor(editorKey:String,title:String,labels:List<S
     fieldIcon:(Int)->ImageVector={Icons.Default.Subject},
     validField:(Int,String)->Boolean={_,_->true},
     fieldEditor:(@Composable (Int,String,(String)->Unit)->Unit)?=null,
+    onFieldSave:((Int,String,()->Unit)->Unit)?=null,
+    menuFooter:(@Composable ()->Unit)?=null,
+    showMenuTitle:Boolean=false,
     onSave:(List<String>)->Unit) {
     require(labels.isNotEmpty() && labels.size==initialValues.size)
     var values by rememberSaveable(editorKey) {mutableStateOf(initialValues)}
@@ -157,15 +162,17 @@ internal fun ModularTextFieldsEditor(editorKey:String,title:String,labels:List<S
     var active by rememberSaveable(editorKey) {mutableIntStateOf(-1)}
     var lastMenuRequest by rememberSaveable(editorKey) {mutableStateOf(menuRequest)}
     LaunchedEffect(menuRequest) {if(menuRequest!=lastMenuRequest) {active=-1;lastMenuRequest=menuRequest}}
+    LaunchedEffect(initialValues) {if(onFieldSave!=null) {values=initialValues;if(active<0) buffers=initialValues}}
     val editing=active>=0
     val pending=buffers!=values
     val focus=androidx.compose.ui.platform.LocalFocusManager.current
     val keyboard=LocalSoftwareKeyboardController.current
-    fun returnToMenu() {focus.clearFocus();keyboard?.hide();active=-1}
+    LaunchedEffect(active) {if(onFieldSave!=null && active<0) {focus.clearFocus();keyboard?.hide()}}
+    fun returnToMenu() {if(onFieldSave!=null && active>=0) buffers=buffers.toMutableList().also {it[active]=values[active]};focus.clearFocus();keyboard?.hide();active=-1}
     ModularPanelDialog(onDismissRequest={if(enabled) {if(editing) returnToMenu() else onCancel()}},
-        title={if(editing || !compactMenu) Text(if(editing) labels[active] else title)},
+        title={if(editing || !compactMenu || showMenuTitle) Text(if(editing) labels[active] else title)},
         text={
-            BackHandler {if(enabled) {if(editing) returnToMenu() else onCancel()}}
+            BackHandler(enabled=editing || onFieldSave==null) {if(enabled) {if(editing) returnToMenu() else onCancel()}}
             if(editing) key(active) {
                 val index=active
                 val change:(String)->Unit={text->if(active==index && enabled && text.length<=maxOf(16000,initialValues[index].length))
@@ -173,23 +180,25 @@ internal fun ModularTextFieldsEditor(editorKey:String,title:String,labels:List<S
                 if(fieldEditor!=null) fieldEditor(index,buffers[index],change)
                 else ModularTextField(buffers[index],change,labels[index],enabled)
 
-            } else ModularFieldMenu(labels.mapIndexed {index,label->
+            } else Column {ModularFieldMenu(labels.mapIndexed {index,label->
                 ModularPanelOption(label,fieldIcon(index),"modular-field:$index",enabled) {active=index}
-            },Modifier.testTag("modular-field-menu"),compact=compactMenu)
-        },dismissButton={PrimaryControlButton(enabled=enabled,onClick={
+            },Modifier.testTag("modular-field-menu"),compact=compactMenu);menuFooter?.invoke()}
+        },dismissButton={if(editing || onFieldSave==null) PrimaryControlButton(enabled=enabled,onClick={
             if(editing) {buffers=buffers.toMutableList().also {it[active]=values[active]};returnToMenu()}
             else onCancel()
         },modifier=Modifier.fillMaxWidth().heightIn(min=48.dp)) {Text("Cancelar")}},
-        confirmButton={PrimaryControlButton(enabled=enabled && (if(editing) validField(active,buffers[active]) else !pending && values.indices.all {validField(it,values[it])}),onClick={
-            if(editing) {values=values.toMutableList().also {it[active]=buffers[active]};returnToMenu()}
+        confirmButton={if(editing || onFieldSave==null) PrimaryControlButton(enabled=enabled && (if(editing) validField(active,buffers[active]) else !pending && values.indices.all {validField(it,values[it])}),onClick={
+            if(editing) {val index=active;val value=buffers[index]
+                if(onFieldSave!=null) onFieldSave(index,value) {values=values.toMutableList().also {it[index]=value};active=-1}
+                else {values=values.toMutableList().also {it[index]=value};returnToMenu()}}
             else onSave(values)
         },modifier=Modifier.fillMaxWidth().heightIn(min=48.dp)) {Text(if(editing) "Confirmar" else saveLabel)}},
-        plainBody=true,inline=inline,compact=compactMenu)
+        plainBody=true,inline=inline,compact=compactMenu,showActions=editing || onFieldSave==null)
 }
 
 @Composable
-internal fun ModularTextField(value:String,onChange:(String)->Unit,label:String,enabled:Boolean=true,singleLine:Boolean=false) {
-    OutlinedTextField(value,onChange,label={Text(label)},minLines=if(singleLine) 1 else 2,maxLines=if(singleLine) 1 else 4,singleLine=singleLine,enabled=enabled,
+internal fun ModularTextField(value:String,onChange:(String)->Unit,label:String,enabled:Boolean=true,singleLine:Boolean=false,growVertically:Boolean=false) {
+    OutlinedTextField(value,onChange,label={Text(label)},minLines=if(singleLine || growVertically) 1 else 2,maxLines=if(singleLine) 1 else if(growVertically) Int.MAX_VALUE else 4,singleLine=singleLine,enabled=enabled,
         modifier=modularPanelFieldModifier(autoFocus=enabled).testTag("modular-text-field"))
 }
 
@@ -220,15 +229,16 @@ internal fun ModularPanelDialog(
     inline: Boolean = false,
     compact: Boolean = false,
     foldLabel: String? = null,
-    foldEnabled: Boolean = true
+    foldEnabled: Boolean = true,
+    showActions: Boolean = true
 ) {
     var folded by rememberSaveable(foldLabel) { mutableStateOf(false) }
     val keyboard=LocalSoftwareKeyboardController.current
     val focus=androidx.compose.ui.platform.LocalFocusManager.current
     val fold:()->Unit={if(foldEnabled) {focus.clearFocus();keyboard?.hide();folded=true}}
     if(foldLabel!=null && folded) {
-        Popup(alignment=Alignment.BottomCenter,properties=PopupProperties(focusable=false)) {
-            Surface(color=Arachn0deColors.Surface,modifier=Modifier.fillMaxWidth().navigationBarsPadding()) {
+        val row: @Composable ()->Unit = {
+            Surface(color=Arachn0deColors.Panel,modifier=Modifier.fillMaxWidth()) {
                 TextButton(onClick={folded=false},modifier=Modifier.fillMaxWidth().heightIn(min=48.dp)
                     .testTag("modular-reopen:$foldLabel"),colors=ButtonDefaults.textButtonColors(contentColor=Arachn0deColors.TextPrimary)) {
                     Icon(Icons.Default.KeyboardArrowUp,null,Modifier.size(18.dp))
@@ -236,11 +246,15 @@ internal fun ModularPanelDialog(
                 }
             }
         }
+        if(LocalBottomModulesState.current!=null) FoldedBottomPanel(row)
+        else Popup(alignment=Alignment.BottomCenter,properties=PopupProperties(focusable=false)) {
+            Box(Modifier.navigationBarsPadding()) {row()}
+        }
         return
     }
     val panel:@Composable ()->Unit={
         ModularPanelSurface(Modifier.fillMaxWidth(),shadowElevation=if(plainBody) 0.dp else 4.dp) {
-            ModularPanelLayout(fieldOwnsScroll=fieldOwnsScroll,outlinedBody=!plainBody,headerDivider=!plainBody,compact=compact,
+            ModularPanelLayout(fieldOwnsScroll=fieldOwnsScroll,outlinedBody=!plainBody,headerDivider=!plainBody,compact=compact,showActions=showActions,
                 header={
                     if(foldLabel!=null) {
                         val threshold=with(LocalDensity.current) {40.dp.toPx()}
@@ -256,12 +270,12 @@ internal fun ModularPanelDialog(
                     }
                     ProvideTextStyle(if(compact) MaterialTheme.typography.titleMedium else MaterialTheme.typography.titleLarge) {title()}
                 },
-                actions={ModularPanelActions(cancel=dismissButton,confirm=confirmButton)},body={text()})
+                actions={if(showActions) ModularPanelActions(cancel=dismissButton,confirm=confirmButton)},body={text()})
         }
     }
     if(inline) {panel();return}
     val dismiss=if(foldLabel!=null) fold else onDismissRequest
-    Dialog(dismiss, properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)) {
+    BottomModulesDialog(dismiss, properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)) {
         Box(Modifier.fillMaxSize().safeDrawingPadding().imePadding()) {
             Box(Modifier.matchParentSize().pointerInput(dismiss) {
                 detectTapGestures { dismiss() }

@@ -64,7 +64,8 @@ internal val LocalQuickCaptureIndex = staticCompositionLocalOf<List<ElementResul
     IconButton(onClick={action?.run?.invoke()},enabled=action?.enabled==true,
         modifier=Modifier.size(48.dp)) {
         androidx.compose.material3.Icon(androidx.compose.material.icons.Icons.Default.Lock,"Bloquear",Modifier.size(24.dp),
-            tint=androidx.compose.ui.graphics.Color(0xFFFF9800).copy(alpha=if(action?.enabled==true) 1f else .38f))
+            tint=(if(bashMenusEnabled()) com.r0ybt.arachn0de.ui.theme.BashColors.Electric else androidx.compose.ui.graphics.Color(0xFFFF9800))
+                .copy(alpha=if(action?.enabled==true) 1f else .38f))
     }
 }
 

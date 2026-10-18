@@ -26,6 +26,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.r0ybt.arachn0de.domain.model.*
+import com.r0ybt.arachn0de.calendar.*
+import androidx.compose.ui.platform.LocalContext
 import com.r0ybt.arachn0de.data.local.*
 import com.r0ybt.arachn0de.data.repository.CalendarEventRepository
 import com.r0ybt.arachn0de.data.repository.CalendarEventState
@@ -47,8 +49,22 @@ internal fun CalendarScreen(
     people: List<Person> = emptyList(), peopleLoaded: Boolean = true,
     tagState: TagState = TagState(),
     eventRepository: CalendarEventRepository? = null,
+    specialPreferences:CalendarSpecialPreferences?=null,
+    specialCatalog:CalendarSpecialDates?=null,
+    birthdayRepository:com.r0ybt.arachn0de.data.repository.PersonRepository?=null,
+    onOpenBirthday:((String)->Unit)?=null,
 ) {
     BackHandler(onBack = onBack)
+    val specialSettings=rememberCalendarSpecialPreferences(specialPreferences)
+    val catalogContext=LocalContext.current
+    val catalog=specialCatalog ?: remember(catalogContext.assets) {CalendarSpecialDates.load(catalogContext)}
+    var inspectedSpecial by remember {mutableStateOf<SpecialDateEntry?>(null)}
+    var birthdayIndex by remember(birthdayRepository) {mutableStateOf<CalendarBirthdays?>(null)}
+    var birthdayPersonId by rememberSaveable {mutableStateOf<String?>(null)}
+    val birthdayLoad=remember(birthdayRepository) {com.r0ybt.arachn0de.ui.state.LoadState()}
+    LaunchedEffect(birthdayRepository,birthdayLoad.attempt) {birthdayRepository?.let {repo->
+        birthdayLoad.collect(kotlinx.coroutines.flow.combine(repo.observePeople(),repo.observeBirthdays()) {persons,birthdays->CalendarBirthdays(persons,birthdays)}) {birthdayIndex=it}
+    }}
     val locale = LocalConfiguration.current.locales[0]
     val zone = remember(zoneId) { TimeZone.getTimeZone(zoneId) }
     val today = remember(now, zoneId) { CalendarDates.localDay(now, zone) }
@@ -82,6 +98,16 @@ internal fun CalendarScreen(
     val monthFormat = remember(locale) { SimpleDateFormat("MMMM yyyy", locale).apply { timeZone = TimeZone.getTimeZone("UTC") } }
     val timeFormat = remember(locale, zoneId) { DateFormat.getTimeInstance(DateFormat.SHORT, locale).apply { timeZone = zone } }
     val weekDays = remember(selected, firstWeekday) { val start = TemporalRanges.weekStart(selected, firstWeekday); List(7) { TemporalRanges.shift(start, it) } }
+    val specialEntries=remember(catalog,selected,specialSettings.settings) {catalog.on(selected,specialSettings.settings)}
+    val specialCounts=remember(catalog,month,weekDays,specialSettings.settings) {
+        (List(month.days) {CalendarDay(month.year,month.month,it+1)}+weekDays).associateWith {catalog.on(it,specialSettings.settings).size}
+    }
+    val selectedBirthdays=remember(birthdayIndex,selected,specialSettings.settings.birthdays) {
+        if(specialSettings.settings.birthdays) birthdayIndex?.on(selected).orEmpty() else emptyList()
+    }
+    val birthdayCounts=remember(birthdayIndex,month,weekDays,specialSettings.settings.birthdays) {
+        if(!specialSettings.settings.birthdays) emptyMap() else (List(month.days) {CalendarDay(month.year,month.month,it+1)}+weekDays).associateWith {birthdayIndex?.on(it).orEmpty().size}
+    }
     val listState = rememberLazyListState()
     val all = state.timePreset == "ALL"
     val extraTime = state.timePreset in setOf("TOMORROW", "NEXT_WEEK", "PREVIOUS_MONTH", "NEXT_MONTH", "ALL")
@@ -102,7 +128,7 @@ internal fun CalendarScreen(
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                 GlobalChromeActions(enabled=eventDraft==null,leading=true)
                 TextButton(enabled=eventDraft==null,onClick = onBack) { Text("Volver") }
-                Text("Calendario",modifier=Modifier.weight(1f),maxLines=1,overflow=androidx.compose.ui.text.style.TextOverflow.Ellipsis, style = MaterialTheme.typography.titleLarge)
+                NavigationHeading("Calendario",Modifier.weight(1f))
                 GlobalChromeActions()
             }
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -120,7 +146,7 @@ internal fun CalendarScreen(
             LazyColumn(Modifier.weight(1f).testTag("calendar-list"), state = listState, verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 if (!all && state.view == CalendarView.MONTH) item(key = "month", contentType = "month") {
                     CalendarMonthGrid(month, selected, today, firstWeekday, locale, filtered.takeIf { ready }, dayFormat, monthFormat,
-                        onPrevious = { state.navigate(-1, today) }, onNext = { state.navigate(1, today) }, onSelect = state::select, eventCounts=eventsByDay.mapValues {it.value.size}, eventColors=eventsByDay.mapValues {it.value.map {event->event.color}})
+                        onPrevious = { state.navigate(-1, today) }, onNext = { state.navigate(1, today) }, onSelect = state::select, eventCounts=eventsByDay.mapValues {it.value.size}, eventColors=eventsByDay.mapValues {it.value.map {event->event.color}},specialCounts=specialCounts,birthdayCounts=birthdayCounts)
                 }
                 if (!all && state.view != CalendarView.MONTH) item(key = "period", contentType = "heading") {
                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
@@ -134,13 +160,27 @@ internal fun CalendarScreen(
                     }
                 }
                 if (!all && state.view == CalendarView.WEEK) item(key = "week-strip", contentType = "week-strip") {
-                    CalendarWeekStrip(weekDays, selected, today, locale, filtered.takeIf { ready }, dayFormat, state::select, eventsByDay.mapValues {it.value.size}, eventsByDay.mapValues {it.value.map {event->event.color}})
+                    CalendarWeekStrip(weekDays, selected, today, locale, filtered.takeIf { ready }, dayFormat, state::select, eventsByDay.mapValues {it.value.size}, eventsByDay.mapValues {it.value.map {event->event.color}},specialCounts,birthdayCounts)
                 }
                 item(key = "selected-day", contentType = "heading") {
                     FlowRow(Modifier.fillMaxWidth(), itemVerticalAlignment = Alignment.CenterVertically) {
                         Text(if (all) "Todo el período" else dayFormat.format(Date(CalendarDates.labelInstant(selected))), Modifier.widthIn(min=140.dp).weight(1f).testTag("calendar-selected-date"), fontSize = 14.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
                         TextButton(onClick = { state.current(today) }, modifier = Modifier.testTag("calendar-current-period")) { Text("Actual") }
                         if(eventRepository!=null) TextButton(enabled=eventDraft==null,onClick={eventDraft=CalendarEventDraft(UUID.randomUUID().toString(),true,"",CalendarEventDates.format(selected),null,"",emptyList())},modifier=Modifier.testTag("calendar-new-event")) {Text("Nuevo evento")}
+                    }
+                }
+                if(!all && specialSettings.settings.holidays && selected.year !in catalog.holidayYears) item(key="special-coverage") {
+                    Text("Feriados de Chile: ${selected.year} fuera de cobertura (catálogo: ${catalog.holidayYears.sorted().joinToString()}).",Modifier.testTag("calendar-special-coverage"),style=MaterialTheme.typography.bodySmall,color=Arachn0deColors.TextSecondary)
+                }
+                if(!all) items(specialEntries,key={"special:${it.id}"},contentType={"special"}) {entry->
+                    CalendarSpecialRow(entry) {inspectedSpecial=entry}
+                }
+                if(!all && selectedBirthdays.isNotEmpty()) {
+                    item(key="birthdays-heading") {Text("Cumpleaños",Modifier.testTag("calendar-birthdays-heading"),style=MaterialTheme.typography.titleSmall,color=Arachn0deColors.TextSecondary)}
+                    items(selectedBirthdays,key={"birthday:${it.person.id}"},contentType={"birthday"}) {birthday->
+                        CalendarBirthdayRow(birthday) {
+                            if(onOpenBirthday!=null) onOpenBirthday(birthday.person.id) else birthdayPersonId=birthday.person.id
+                        }
                     }
                 }
                 if (!ready) item(key = "loading") { Text("Cargando Calendario…") }
@@ -175,7 +215,7 @@ internal fun CalendarScreen(
                         items(eventsByDay[day].orEmpty(),key={"event:${it.id}"},contentType={"event"}) {event->
                             Card(Modifier.fillMaxWidth().testTag("calendar-event:${event.id}").clickable(enabled=eventDraft==null) {
                                 eventDraft=CalendarEventDraft(event.id,false,event.title,event.date,event.minute,event.description,eventState?.people.orEmpty().filter {it.eventId==event.id}.map {it.personId},event.color)
-                            },colors=CardDefaults.cardColors(containerColor=com.r0ybt.arachn0de.ui.theme.BlackWhite90.Card,contentColor=com.r0ybt.arachn0de.ui.theme.BlackWhite90.Text)) {
+                            },colors=CardDefaults.cardColors(containerColor=Arachn0deColors.Surface,contentColor=Arachn0deColors.TextPrimary)) {
                                 val color=androidx.compose.ui.graphics.Color(CalendarEventColor.valueOf(event.color).argb)
                                 Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min)) {
                                 Box(Modifier.width(3.dp).fillMaxHeight().background(color).testTag("calendar-event-line:${event.id}"))
@@ -194,17 +234,21 @@ internal fun CalendarScreen(
         }
     }
     LoadErrorDialog(eventLoad)
+    LoadErrorDialog(birthdayLoad)
     if(eventRepository!=null) eventDraft?.let {draft->CalendarEventEditor(draft,eventRepository,people,peopleLoaded) {eventDraft=null}}
     }
-    if (state.showFilters) CalendarFiltersDialog(state, today, people, peopleLoaded, tagState.tags)
+    if (state.showFilters) CalendarFiltersDialog(state, today, people, peopleLoaded, tagState.tags,specialSettings,catalog)
+    inspectedSpecial?.let {entry->CalendarSpecialDetail(entry) {inspectedSpecial=null}}
+    birthdayPersonId?.takeIf {birthdayIndex?.containsPerson(it)==true}?.let {id->PersonDetailDialog(id) {birthdayPersonId=null}}
 }
 
 @Composable
 private fun CalendarMonthGrid(month: CalendarMonth, selected: CalendarDay, today: CalendarDay, firstWeekday: Int, locale: Locale,
-    filtered: FilteredCalendar?, dayFormat: DateFormat, monthFormat: DateFormat, onPrevious: () -> Unit, onNext: () -> Unit, onSelect: (CalendarDay) -> Unit, eventCounts:Map<CalendarDay,Int> = emptyMap(), eventColors:Map<CalendarDay,List<String>> = emptyMap()) {
+    filtered: FilteredCalendar?, dayFormat: DateFormat, monthFormat: DateFormat, onPrevious: () -> Unit, onNext: () -> Unit, onSelect: (CalendarDay) -> Unit, eventCounts:Map<CalendarDay,Int> = emptyMap(), eventColors:Map<CalendarDay,List<String>> = emptyMap(),specialCounts:Map<CalendarDay,Int> = emptyMap(),birthdayCounts:Map<CalendarDay,Int> = emptyMap()) {
     val cells = remember(month, firstWeekday) { month.cells(firstWeekday) }
     val weekdays = remember(locale, firstWeekday) { val names = DateFormatSymbols(locale).shortWeekdays; List(7) { names[(firstWeekday - 1 + it) % 7 + 1] } }
     val numbers = remember(locale) { NumberFormat.getIntegerInstance(locale) }
+    val specialColor=Arachn0deColors.TextSecondary
     Card(colors = CardDefaults.cardColors(containerColor = Arachn0deColors.Surface)) {
         Column(Modifier.fillMaxWidth().padding(6.dp)) {
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
@@ -219,12 +263,12 @@ private fun CalendarMonthGrid(month: CalendarMonth, selected: CalendarDay, today
                 else {
                     val count = filtered?.tasksOn(day)?.size ?: 0
                     val isSelected = day == selected; val shape = RoundedCornerShape(8.dp)
-                    Column(Modifier.weight(1f).heightIn(min = 48.dp).background(if (isSelected) Arachn0deColors.Primary else Arachn0deColors.Surface, shape)
+                    Column(Modifier.weight(1f).heightIn(min = 48.dp).calendarSpecialMarker(specialCounts[day] ?: 0,specialColor).calendarBirthdayMarker(birthdayCounts[day] ?: 0,specialColor).background(if (isSelected) Arachn0deColors.Primary else Arachn0deColors.Surface, shape)
                         .then(if (day == today) Modifier.border(1.dp, Arachn0deColors.PathHighlight, shape) else Modifier)
                         .clickable(role = Role.Button) { onSelect(day) }.testTag("calendar-day:${day.key}").semantics {
                             contentDescription = dayFormat.format(Date(CalendarDates.labelInstant(day))); this.selected = isSelected
                             stateDescription = listOfNotNull(if (day == today) "Hoy" else null, if (count > 0) "$count ${if (count == 1) "tarea" else "tareas"}" else null,
-                                eventCounts[day]?.takeIf {it>0}?.let {"$it Eventos"}).joinToString(" · ")
+                                eventCounts[day]?.takeIf {it>0}?.let {"$it Eventos"},specialCounts[day]?.takeIf {it>0}?.let {"$it fechas informativas"},birthdayCounts[day]?.takeIf {it>0}?.let {"$it cumpleaños"}).joinToString(" · ")
                         }.padding(vertical = 4.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
                         Text(numbers.format(day.day), fontSize = 14.sp, color = Arachn0deColors.TextPrimary)
                         CalendarDayIndicators(count,eventCounts[day] ?: 0,eventColors[day].orEmpty())
@@ -249,11 +293,12 @@ private fun CalendarDayIndicators(taskCount: Int,eventCount:Int,eventColors:List
 
 @Composable
 internal fun CalendarWeekStrip(days: List<CalendarDay>, selected: CalendarDay, today: CalendarDay,
-    locale: Locale, filtered: FilteredCalendar?, dayFormat: DateFormat, onSelect: (CalendarDay) -> Unit, eventCounts:Map<CalendarDay,Int> = emptyMap(), eventColors:Map<CalendarDay,List<String>> = emptyMap()) {
+    locale: Locale, filtered: FilteredCalendar?, dayFormat: DateFormat, onSelect: (CalendarDay) -> Unit, eventCounts:Map<CalendarDay,Int> = emptyMap(), eventColors:Map<CalendarDay,List<String>> = emptyMap(),specialCounts:Map<CalendarDay,Int> = emptyMap(),birthdayCounts:Map<CalendarDay,Int> = emptyMap()) {
     val initials = remember(locale) { DateFormatSymbols(locale).weekdays.let { names ->
         List(7) { names[(Calendar.MONDAY - 1 + it) % 7 + 1].take(1).uppercase(locale) }
     } }
     val numbers = remember(locale) { NumberFormat.getIntegerInstance(locale) }
+    val specialColor=Arachn0deColors.TextSecondary
     Card(colors = CardDefaults.cardColors(containerColor = Arachn0deColors.Surface)) {
         // Keep seven equal cells when space allows; scroll rather than squeeze enlarged text.
         BoxWithConstraints(Modifier.fillMaxWidth().padding(4.dp)) {
@@ -262,7 +307,7 @@ internal fun CalendarWeekStrip(days: List<CalendarDay>, selected: CalendarDay, t
                 days.forEachIndexed { index, day ->
                     val count = filtered?.tasksOn(day)?.size ?: 0
                     val shape = RoundedCornerShape(8.dp)
-                    Column(Modifier.width(cellWidth).heightIn(min = 64.dp)
+                    Column(Modifier.width(cellWidth).heightIn(min = 64.dp).calendarSpecialMarker(specialCounts[day] ?: 0,specialColor).calendarBirthdayMarker(birthdayCounts[day] ?: 0,specialColor)
                         .background(if (day == selected) Arachn0deColors.Primary else Arachn0deColors.Surface, shape)
                         .then(if (day == today) Modifier.border(1.dp, Arachn0deColors.PathHighlight, shape) else Modifier)
                         .clickable(role = Role.Button) { onSelect(day) }.testTag("calendar-week-day:${day.key}")
@@ -271,7 +316,7 @@ internal fun CalendarWeekStrip(days: List<CalendarDay>, selected: CalendarDay, t
                             this.selected = day == selected
                             stateDescription = listOfNotNull(if (day == today) "Hoy" else null,
                                 if (count > 0) "$count ${if (count == 1) "tarea" else "tareas"}" else null,
-                                eventCounts[day]?.takeIf {it>0}?.let {"$it Eventos"}).joinToString(" · ")
+                                eventCounts[day]?.takeIf {it>0}?.let {"$it Eventos"},specialCounts[day]?.takeIf {it>0}?.let {"$it fechas informativas"},birthdayCounts[day]?.takeIf {it>0}?.let {"$it cumpleaños"}).joinToString(" · ")
                         }.padding(vertical = 6.dp), horizontalAlignment = Alignment.CenterHorizontally,
                         verticalArrangement = Arrangement.spacedBy(3.dp, Alignment.CenterVertically)) {
                         Text(initials[index], fontSize = 12.sp, color = Arachn0deColors.TextSecondary)

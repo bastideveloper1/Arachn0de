@@ -115,6 +115,10 @@ internal fun BackupData.validate(): List<NodeEntity> {
     privatePreferences.forEach { row ->
         require(row.name.matches(Regex("[a-zA-Z0-9_-]+")) && row.name != "vault_meta")
         com.r0ybt.arachn0de.security.EncryptedPreferences.decode(row.payload)
+        if(row.name==com.r0ybt.arachn0de.calendar.CalendarSpecialPreferences.NAME) com.r0ybt.arachn0de.calendar.CalendarSpecialPreferences.validatePayload(row.payload)
+        if(row.name==com.r0ybt.arachn0de.pomodoro.PomodoroSoundCodec.NAME) com.r0ybt.arachn0de.pomodoro.PomodoroSoundCodec.validatePayload(row.payload)
+        if(row.name==com.r0ybt.arachn0de.wireframe.WireCodec.NAME) com.r0ybt.arachn0de.wireframe.WireCodec.validatePayload(row.payload)
+        if(row.name==com.r0ybt.arachn0de.pomodoro.PomodoroCodec.NAME) com.r0ybt.arachn0de.pomodoro.PomodoroCodec.validatePayload(row.payload)
         if(row.name==com.r0ybt.arachn0de.cleanup.CleanupPreference.NAME) com.r0ybt.arachn0de.cleanup.CleanupPreference.decode(row.payload)
         if(row.name==com.r0ybt.arachn0de.ui.theme.AppearancePreferences.FILE) com.r0ybt.arachn0de.ui.theme.AppearancePreferences.validate(row.payload)
         if(row.name==com.r0ybt.arachn0de.security.ScreenCapturePreference.NAME) com.r0ybt.arachn0de.security.ScreenCapturePreference.validate(row.payload)

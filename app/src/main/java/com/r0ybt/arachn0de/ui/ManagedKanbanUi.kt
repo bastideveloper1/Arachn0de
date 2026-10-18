@@ -27,7 +27,6 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.r0ybt.arachn0de.data.local.toNode
 import com.r0ybt.arachn0de.data.repository.*
@@ -115,8 +114,8 @@ import kotlinx.coroutines.launch
             OutlinedButton(enabled=!busy,onClick=onDismiss) {Text("Cerrar")}
         }}
     }
-    if(inline) content() else Dialog(onDismissRequest={if(!busy) onDismiss()},properties=DialogProperties(usePlatformDefaultWidth=false)) {content()}
-    if(selectingSprint) Dialog(onDismissRequest={selectingSprint=false},properties=DialogProperties(usePlatformDefaultWidth=false)) {
+    if(inline) content() else BottomModulesDialog(onDismissRequest={if(!busy) onDismiss()},properties=DialogProperties(usePlatformDefaultWidth=false)) {content()}
+    if(selectingSprint) BottomModulesDialog(onDismissRequest={selectingSprint=false},properties=DialogProperties(usePlatformDefaultWidth=false)) {
         Surface(Modifier.fillMaxSize().safeDrawingPadding()) {Column(Modifier.padding(16.dp),verticalArrangement=Arrangement.spacedBy(8.dp)) {
             Text("Seleccionar Sprint",style=MaterialTheme.typography.titleLarge)
             LazyColumn(Modifier.weight(1f),verticalArrangement=Arrangement.spacedBy(8.dp)) {items(sprints,key={it.id}) {row->

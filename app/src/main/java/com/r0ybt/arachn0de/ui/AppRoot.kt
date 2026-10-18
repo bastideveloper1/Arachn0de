@@ -1,6 +1,10 @@
 package com.r0ybt.arachn0de.ui
 
 import kotlinx.coroutines.launch
+import androidx.lifecycle.repeatOnLifecycle
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.sync.withLock
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.fillMaxSize
@@ -13,8 +17,10 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.background
@@ -46,6 +52,31 @@ private fun AppRootContent(projectRepository: ProjectRepository, nodeRepository:
     val tagState by remember(nodeRepository) { nodeRepository.tags.observe() }.collectAsState(initial = com.r0ybt.arachn0de.domain.model.TagState())
     val personRepository = (androidx.compose.ui.platform.LocalContext.current.applicationContext as com.r0ybt.arachn0de.Arachn0deApplication).personRepository
     val screenStates = androidx.compose.runtime.saveable.rememberSaveableStateHolder()
+    val pomodoro=(androidx.compose.ui.platform.LocalContext.current.applicationContext as com.r0ybt.arachn0de.Arachn0deApplication).pomodoro
+    val bottomContext=androidx.compose.ui.platform.LocalContext.current
+    val bottomModules=rememberBottomModulesState()
+    val bottomActions=rememberCoroutineScope {kotlinx.coroutines.CoroutineExceptionHandler {_,_->
+        val audio=(bottomContext.applicationContext as? com.r0ybt.arachn0de.Arachn0deApplication)?.security?.current?.value?.audio
+        audio?.let {it.state.value=it.state.value.copy(error="No se pudo completar la acción de audio. El archivo se conserva.")}
+    }}
+    // A single lifecycle owner for playback, independent of footer/dialog/fullscreen composition.
+    val pomodoroLifecycle=androidx.lifecycle.compose.LocalLifecycleOwner.current.lifecycle
+    LaunchedEffect(pomodoro,pomodoroLifecycle) {
+        pomodoroLifecycle.repeatOnLifecycle(androidx.lifecycle.Lifecycle.State.STARTED) {
+            while(true) {
+                    pomodoro.sounds.recording=(bottomContext.applicationContext as com.r0ybt.arachn0de.Arachn0deApplication).security.current.value?.audio?.state?.value?.recording==true
+                    pomodoro.refresh();pomodoro.sounds.update(pomodoro.state.value)
+                    kotlinx.coroutines.delay(100)
+            }
+        }
+    }
+    val pomodoroData by pomodoro.state.collectAsState()
+    val pomodoroError by pomodoro.error.collectAsState()
+    var confirmPomodoroFinish by rememberSaveable {mutableStateOf(false)}
+    LaunchedEffect(pomodoroData.visible) {if(!pomodoroData.visible) confirmPomodoroFinish=false}
+    var showWireframe by rememberSaveable {mutableStateOf(false)}
+    var showPomodoro by rememberSaveable {mutableStateOf(false)}
+    LaunchedEffect(Unit) {com.r0ybt.arachn0de.pomodoro.PomodoroNavigation.requested.collect {requested->if(requested) {showWireframe=false;showPomodoro=true;com.r0ybt.arachn0de.pomodoro.PomodoroNavigation.requested.value=false}}}
     var showMetroStatistics by rememberSaveable { mutableStateOf(false) }
     var showAppearance by rememberSaveable { mutableStateOf(false) }
     var showMetro by rememberSaveable { mutableStateOf(false) }
@@ -85,6 +116,7 @@ private fun AppRootContent(projectRepository: ProjectRepository, nodeRepository:
     val conversionScope = androidx.compose.runtime.rememberCoroutineScope()
     val projectsListState = rememberLazyListState()
     var selectedProjectId by rememberSaveable { mutableStateOf<String?>(null) }
+    var headingNodeId by rememberSaveable(selectedProjectId) {mutableStateOf<String?>(null)}
     var projects by remember(projectRepository) { mutableStateOf<List<Project>?>(initialProjects) }
     var allState by remember(nodeRepository) { mutableStateOf(NodeTreeSnapshot(emptyList())) }
     val metroRepository=(androidx.compose.ui.platform.LocalContext.current.applicationContext as com.r0ybt.arachn0de.Arachn0deApplication).metroRepository
@@ -135,7 +167,7 @@ private fun AppRootContent(projectRepository: ProjectRepository, nodeRepository:
             financialPeopleLoad.collect(personRepository.observePeople()) { people = it; financialPeopleLoaded = true }
         }
     }
-    val globalView = !showMetro && !showMetroStatistics && !showGame && !showAppearance && !showAbout && !showPeople && !showTechnologies &&
+    val globalView = !showWireframe && !showPomodoro && !showMetro && !showMetroStatistics && !showGame && !showAppearance && !showAbout && !showPeople && !showTechnologies &&
         (showObligations || showCalendar || showAttention || selectedProjectId == null)
     val projectsView = globalView && !showCalendar && !showObligations && !showAttention
     val now = if (globalView) rememberTaskScreenNow(allState.nodes, clock, onRefresh = { zoneId = java.util.TimeZone.getDefault().id }, dayOnly = projectsView) else 0L
@@ -186,8 +218,21 @@ private fun AppRootContent(projectRepository: ProjectRepository, nodeRepository:
     var securityOpen by rememberSaveable {mutableStateOf(false)}
     val securityPage=LocalSecurityPage.current
     val openSecurity=LocalOpenSecurity.current
-    val rootProjectActions=projects.orEmpty().any {it.id==selectedProjectId} && !showMetro && !showMetroStatistics && !showGame && !showAppearance && !showAbout && !showPeople && !showTechnologies && !showAttention && !showCalendar && !showObligations
+    val rootProjectActions=projects.orEmpty().any {it.id==selectedProjectId} && !showWireframe && !showPomodoro && !showMetro && !showMetroStatistics && !showGame && !showAppearance && !showAbout && !showPeople && !showTechnologies && !showAttention && !showCalendar && !showObligations
     val visibleProjectActions=if(searchOpen) projects.orEmpty().any {it.id==searchProjectId} else rootProjectActions && !backupsOpen && !securityOpen
+    val returnHeading=if(selectedProjectId==null) {
+        if(projects!=null) HeadingLocation("Núcleos",HeadingKind.SECTION) else null
+    } else headingLocation(projects?.firstOrNull {it.id==selectedProjectId},headingNodeId,allState.nodesById)
+    // Same priority as the existing rendering branches below; labels only, never navigation state.
+    val visibleSectionNames=listOfNotNull(
+        "Wireframe".takeIf {showWireframe},
+        "Pomodoro".takeIf {showPomodoro},
+        "Metro".takeIf {showMetro},"Estadísticas de Metro".takeIf {showMetroStatistics},
+        "Juego".takeIf {showGame},"Apariencia".takeIf {showAppearance},"Acerca de".takeIf {showAbout},
+        "Tecnologías".takeIf {showTechnologies},"Antisocial".takeIf {showPeople},
+        "Obligaciones".takeIf {showObligations},"Calendario".takeIf {showCalendar},"Atención".takeIf {showAttention})
+    val sectionReturnHeading=visibleSectionNames.getOrNull(1)?.let {HeadingLocation(it,HeadingKind.SECTION)} ?: returnHeading
+    val overlayReturnHeading=visibleSectionNames.firstOrNull()?.let {HeadingLocation(it,HeadingKind.SECTION)} ?: returnHeading
     val navigation=GlobalNavigation(menu={drawerOpen=true},showLock=!visibleProjectActions)
     fun openSearch(mode:String?=null) {
         securityOpen=false;searchOpen=true;searchProjectId=null;searchNodeId=null;searchPendingNode=null
@@ -198,6 +243,8 @@ private fun AppRootContent(projectRepository: ProjectRepository, nodeRepository:
         searchOpen=false;searchProjectId=null;searchNodeId=null;backupsOpen=false;securityOpen=false
         showPeople=destination=="people";showTechnologies=destination=="technologies"
         showAppearance=destination=="appearance";showAbout=destination=="about"
+        showWireframe=destination=="wireframe"
+        showPomodoro=destination=="pomodoro"
         showMetroStatistics=destination=="metro-statistics"
         showMetro=destination=="metro";showGame=destination=="game"
         showAttention=destination=="attention";showCalendar=destination=="calendar";showObligations=destination=="obligations"
@@ -224,7 +271,13 @@ private fun AppRootContent(projectRepository: ProjectRepository, nodeRepository:
     }
     val reportActions=LocalProjectActionsVisibility.current
     androidx.compose.runtime.SideEffect {reportActions(visibleProjectActions)}
-    androidx.compose.runtime.CompositionLocalProvider(LocalCaptureGate provides remember(accessDb) {CaptureGate()},LocalGlobalNavigation provides navigation,LocalStoryLabels provides com.r0ybt.arachn0de.data.repository.storyLabels(indicatorParticipation.work.nodes,indicatorParticipation.work.records.roles),LocalQuickCaptureIndex provides accessIndex.orEmpty(),LocalElementAccess provides accessRepo,LocalElementAccessState provides accessState,LocalPersonNavigation provides {destination:PersonDestination->
+    androidx.compose.runtime.CompositionLocalProvider(LocalPomodoroFinishRequest provides {confirmPomodoroFinish=true},LocalBottomModulesActionScope provides bottomActions,LocalBottomModulesState provides bottomModules,LocalBottomModulesContent provides {compact:Boolean->
+        FoldedBottomPanels()
+        AudioBar(compact=compact || bottomModules.audioCompact,onCompactChange={bottomModules.audioCompact=it})
+        if(!showPomodoro || searchOpen || backupsOpen || securityOpen || drawerOpen || bottomModulesInDialog()) PomodoroBar(pomodoro,pomodoroData,
+            compact=compact || bottomModules.pomodoroCompact,onCompactChange={bottomModules.pomodoroCompact=it},
+            onExpand={searchOpen=false;backupsOpen=false;securityOpen=false;drawerOpen=false;showWireframe=false;showPomodoro=true})
+    },LocalOpenPomodoro provides {showWireframe=false;showPomodoro=true},LocalCaptureGate provides remember(accessDb) {CaptureGate()},LocalGlobalNavigation provides navigation,LocalStoryLabels provides com.r0ybt.arachn0de.data.repository.storyLabels(indicatorParticipation.work.nodes,indicatorParticipation.work.records.roles),LocalQuickCaptureIndex provides accessIndex.orEmpty(),LocalElementAccess provides accessRepo,LocalElementAccessState provides accessState,LocalPersonNavigation provides {destination:PersonDestination->
         if(projects.orEmpty().any {it.id==destination.projectId} && (destination.nodeId==null || allState.nodesById[destination.nodeId]?.projectId==destination.projectId)) {
             searchOpen=false;searchProjectId=null;backupsOpen=false
             personReturnToList=showPeople && (personReturnId==null || personReturnToList)
@@ -233,13 +286,18 @@ private fun AppRootContent(projectRepository: ProjectRepository, nodeRepository:
             screenStates.removeState("project:${destination.projectId}");selectedProjectId=destination.projectId; projectVisitToken++;openNodeId=destination.nodeId
         }
     }) {
-    Column(Modifier.fillMaxSize()) {
+    androidx.compose.runtime.CompositionLocalProvider(LocalReturnHeading provides if(securityOpen || backupsOpen || searchOpen) overlayReturnHeading else if(visibleSectionNames.isNotEmpty()) sectionReturnHeading else null) {
+    BottomModulesFrame(Modifier.fillMaxSize()) {
     Box(Modifier.fillMaxWidth().weight(1f)) {
         NavigationContent(active=!searchOpen && !backupsOpen && !drawerOpen && !securityOpen) {
         Box(Modifier.fillMaxSize().then(if(searchOpen || backupsOpen || drawerOpen || securityOpen) Modifier.clearAndSetSemantics {} else Modifier)) {
     val selectedProject = projects?.firstOrNull { it.id == selectedProjectId }
     androidx.compose.runtime.CompositionLocalProvider(com.r0ybt.arachn0de.metro.LocalMetroActivity provides metroActivity,com.r0ybt.arachn0de.metro.LocalMetroPreview provides metroPreviews,LocalCompactCardFacts provides indicatorFacts,LocalIndicatorDirectory provides indicatorDirectory) {
-    if (showMetro) {
+    if (showWireframe) {
+        screenStates.SaveableStateProvider("wireframe") {com.r0ybt.arachn0de.wireframe.WireframeScreen {showWireframe=false}}
+    } else if (showPomodoro) {
+        PomodoroScreen(pomodoro,pomodoroData,onBack={showPomodoro=false},allowLandscape=!searchOpen && !backupsOpen && !securityOpen && !drawerOpen)
+    } else if (showMetro) {
         screenStates.SaveableStateProvider("metro:${metroJourneyId ?: metroNodeId ?: "main"}") { com.r0ybt.arachn0de.metro.MetroScreen(allState.nodes,projects.orEmpty(),metroNodeId,requestToken=metroRequestToken,journeyId=metroJourneyId,onBack={showMetro=false;metroNodeId=null;metroJourneyId=null}) }
     } else if (showMetroStatistics) {
         screenStates.SaveableStateProvider("metro-statistics") {
@@ -292,6 +350,7 @@ private fun AppRootContent(projectRepository: ProjectRepository, nodeRepository:
                 },
                 people = people, peopleLoaded = financialPeopleLoaded, tagState = tagState,
                 eventRepository = indicatorApp.security.current.value?.calendarEvents,
+                birthdayRepository = personRepository,
                 onBack = { showCalendar = false },
             )
         }
@@ -313,7 +372,7 @@ private fun AppRootContent(projectRepository: ProjectRepository, nodeRepository:
             )
         }
     } else if (selectedProjectId == null) {
-        if(projects==null) androidx.compose.material3.Text("Cargando Núcleos…") else ProjectDashboardScreen(
+        if(projects==null) androidx.compose.material3.Text("Cargando Núcleos…") else BashGeneralScope { ProjectDashboardScreen(
             exportTree = allState,
             copyDescendantsReady = nodesLoaded,
 
@@ -334,13 +393,14 @@ private fun AppRootContent(projectRepository: ProjectRepository, nodeRepository:
             onOpenAbout = { showAbout = true },
             onOpenGame = { showGame = true },
             onOpenMetro = { metroNodeId=null;metroJourneyId=null;metroRequestToken=0L;showMetro=true },
-        )
+        ) }
     } else if (selectedProject != null) {
         // Recreate the destination even within the same project, dismissing source dialogs.
         androidx.compose.runtime.key(personNavigationToken) {
         screenStates.SaveableStateProvider("project:${selectedProject.id}") {
-            ProjectNodeScreen(
+            BashGeneralScope { ProjectNodeScreen(
                 project = selectedProject,
+                onHeadingNodeChanged={headingNodeId=it},
                 conversionScope = conversionScope,
                 onConverted = { id, node -> screenStates.removeState("project:$id"); selectedProjectId = id; projectVisitToken++; openNodeId = node; returnToAttention = false; returnToCalendar = false; returnToObligations = false },
                 sortPreferences = sortPreferences,
@@ -381,7 +441,7 @@ private fun AppRootContent(projectRepository: ProjectRepository, nodeRepository:
                     if (returnToAttention) { showAttention = true; returnToAttention = false }
                     if (returnToCalendar) { showCalendar = true; returnToCalendar = false }
                 },
-            )
+            ) }
         }
         }
     } else {
@@ -421,12 +481,12 @@ private fun AppRootContent(projectRepository: ProjectRepository, nodeRepository:
                 } else {
                     androidx.compose.runtime.CompositionLocalProvider(LocalCompactCardFacts provides indicatorFacts,LocalIndicatorDirectory provides indicatorDirectory,com.r0ybt.arachn0de.metro.LocalMetroActivity provides metroActivity) {
                     screenStates.SaveableStateProvider("search-result:$searchDestinationToken:${destination.id}") {
-                        ProjectNodeScreen(project=destination,nodeRepository=nodeRepository,projectRepository=projectRepository,
+                        BashGeneralScope { ProjectNodeScreen(project=destination,nodeRepository=nodeRepository,projectRepository=projectRepository,
                             personRepository=personRepository,sortPreferences=sortPreferences,clock=clock,conversionScope=conversionScope,
                             onBackToProjects={searchProjectId=null;searchNodeId=null;searchPendingNode=null},
                             onBackToSearch={searchProjectId=null;searchNodeId=null;searchPendingNode=null},
                             openNodeId=searchPendingNode,onOpenNodeHandled={searchPendingNode=null},
-                            onConverted={id,node->searchProjectId=id;searchNodeId=node;searchPendingNode=node;searchDestinationToken++})
+                            onConverted={id,node->searchProjectId=id;searchNodeId=node;searchPendingNode=node;searchDestinationToken++}) }
                     }
                     }
                 }
@@ -436,7 +496,7 @@ private fun AppRootContent(projectRepository: ProjectRepository, nodeRepository:
         if(quickOpen) QuickCaptureDialog(accessIndex.orEmpty(),accessRepo) {quickOpen=false}
         if(drawerOpen) {
             Box(Modifier.fillMaxSize().background(Arachn0deColors.Background.copy(alpha=0.65f)).clickable {drawerOpen=false})
-            AppIdentityDrawer(onDismiss={drawerOpen=false},onSearch={openSearch()},onFavorites={openSearch("Favoritos")},
+            AppIdentityDrawer(onWireframe={navigate("wireframe")},onDismiss={drawerOpen=false},onSearch={openSearch()},onFavorites={openSearch("Favoritos")},
                 onSecurity=if(securityPage!=null) ({searchOpen=false;backupsOpen=false;securityOpen=true}) else openSecurity,onBackups={securityOpen=false;searchOpen=false;backupsOpen=true},
                 onQuickCapture=if(visibleProjectActions) null else ({quickOpen=true}),
                 onProjects={navigate("projects")},projectsSelected=projectsView && !searchOpen && !backupsOpen && !securityOpen,
@@ -445,7 +505,10 @@ private fun AppRootContent(projectRepository: ProjectRepository, nodeRepository:
                 onAppearance={navigate("appearance")}, onMetroStatistics={navigate("metro-statistics")},onAbout={navigate("about")},onMetro={navigate("metro")},onGame={navigate("game")})
         }
     }
-    if(!visibleProjectActions || drawerOpen) AudioBar()
+    if(confirmPomodoroFinish && pomodoroData.visible) PomodoroFinishConfirmation(pomodoro) {confirmPomodoroFinish=false}
+    if(pomodoroError!=null) ModularPanelDialog(onDismissRequest={pomodoro.error.value=null},title={androidx.compose.material3.Text("Pomodoro")},
+        text={androidx.compose.material3.Text(pomodoroError.orEmpty())},confirmButton={androidx.compose.material3.TextButton(onClick={pomodoro.error.value=null}) {androidx.compose.material3.Text("Aceptar")}},compact=true)
+    }
     }
     }
 }

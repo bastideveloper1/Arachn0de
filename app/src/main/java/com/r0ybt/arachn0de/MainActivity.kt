@@ -42,7 +42,7 @@ class MainActivity:ComponentActivity() {
             return
         }
         val input=try {com.r0ybt.arachn0de.sharing.SharedContent.read(incoming)} catch(_:Exception) {
-            android.widget.Toast.makeText(this,"Envío no admitido: texto de hasta 64 KiB o una imagen PNG/JPEG de hasta 20 MiB.",android.widget.Toast.LENGTH_LONG).show();return
+            android.widget.Toast.makeText(this,"Solo se admiten textos y enlaces de hasta 64 KiB; no imágenes ni audios.",android.widget.Toast.LENGTH_LONG).show();return
         }
         lifecycleScope.launch {
             manager.foreground()
@@ -52,7 +52,7 @@ class MainActivity:ComponentActivity() {
             expected.scope.launch {try {
                 expected.sharedCaptures.receive(id,input)
             } catch(c:CancellationException) {throw c} catch(_:Exception) {
-                withContext(Dispatchers.Main) {android.widget.Toast.makeText(this@MainActivity,"No se pudo recibir el contenido. Usa texto de hasta 64 KiB o PNG/JPEG de hasta 20 MiB.",android.widget.Toast.LENGTH_LONG).show()}
+                withContext(Dispatchers.Main) {android.widget.Toast.makeText(this@MainActivity,"No se pudo recibir el contenido. Solo se admiten textos y enlaces de hasta 64 KiB.",android.widget.Toast.LENGTH_LONG).show()}
             }}
         }
     }
@@ -64,11 +64,22 @@ class MainActivity:ComponentActivity() {
         outState.putBoolean("share_consumed",incomingConsumed)
         super.onSaveInstanceState(outState)
     }
+    override fun onStart() {
+        super.onStart()
+        (application as Arachn0deApplication).pomodoro.let {timer->
+            timer.sounds.foreground=true;timer.sounds.update(timer.state.value)
+        }
+    }
     override fun onPause() {
         super.onPause()
     }
     override fun onStop() {
-        if(!isChangingConfigurations) (application as Arachn0deApplication).security.background()
+        if(!isChangingConfigurations) {
+            (application as Arachn0deApplication).pomodoro.let {timer->
+                timer.sounds.foreground=false;timer.sounds.update(timer.state.value)
+            }
+            (application as Arachn0deApplication).security.background()
+        }
         super.onStop()
     }
     override fun onResume() {
@@ -83,12 +94,14 @@ class MainActivity:ComponentActivity() {
         super.onNewIntent(intent)
         setIntent(intent);incomingConsumed=false
         receiveShare(intent)
+        if(intent.getBooleanExtra("pomodoro",false)) {com.r0ybt.arachn0de.pomodoro.PomodoroNavigation.requested.value=true;intent.removeExtra("pomodoro")}
         if(intent.getBooleanExtra("metro",false)) { com.r0ybt.arachn0de.metro.MetroNavigation.open();intent.removeExtra("metro") }
     }
     override fun onCreate(savedInstanceState:Bundle?) {
         super.onCreate(savedInstanceState)
         (application as Arachn0deApplication).security.captures.attach(window)
         enableEdgeToEdge(statusBarStyle=SystemBarStyle.dark(Color.TRANSPARENT),navigationBarStyle=SystemBarStyle.dark(Color.TRANSPARENT))
+        if(intent.getBooleanExtra("pomodoro",false)) {com.r0ybt.arachn0de.pomodoro.PomodoroNavigation.requested.value=true;intent.removeExtra("pomodoro")}
         if(intent.getBooleanExtra("metro",false)) {com.r0ybt.arachn0de.metro.MetroNavigation.open();intent.removeExtra("metro")}
         val app=application as Arachn0deApplication
         incomingConsumed=savedInstanceState?.getBoolean("share_consumed",false) ?: false

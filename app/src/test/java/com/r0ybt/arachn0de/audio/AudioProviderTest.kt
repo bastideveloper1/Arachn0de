@@ -95,4 +95,33 @@ class AudioProviderTest {
         assertFalse(secondary.audio.state.value.visible)
         outside.delete()
     }
+    @Test
+    @org.robolectric.annotation.GraphicsMode(org.robolectric.annotation.GraphicsMode.Mode.NATIVE)
+    fun individualProviderReturnsOnlySanitizedPixelsAndReportsPublicSize()=runBlocking<Unit> {
+        val main=open(true);val project=main.projects.createProject("Public test");val node=main.nodes.createNode(project.id,null,"Image")
+        val repository=AttachmentRepository(main.database,AttachmentStore(main.context,BackupFixture::syncDirectory))
+        fun png(color:Int):ByteArray {
+            val b=android.graphics.Bitmap.createBitmap(32,16,android.graphics.Bitmap.Config.ARGB_8888).apply {eraseColor(color)}
+            return try {com.r0ybt.arachn0de.annotations.markedPng(b,emptyList())} finally {b.recycle()}
+        }
+        val private=com.r0ybt.arachn0de.annotations.EditableImagePng.write(png(android.graphics.Color.BLACK),png(android.graphics.Color.RED),emptyList())
+        val source=File(app.cacheDir,"private-editable.png").apply {writeBytes(private)}
+        try {
+            val row=repository.import(Uri.fromFile(source),"public");repository.associateNode(node.id,row.id)
+            val provider=AttachmentExportProvider().apply {attachInfo(app,ProviderInfo().apply {authority="${app.packageName}.attachments";exported=false;grantUriPermissions=true})}
+            val uri=Uri.parse("content://${app.packageName}.attachments/${main.access.id}/${row.id}")
+            val expected=com.r0ybt.arachn0de.photos.PublicImages.prepare(private)
+            provider.query(uri,null,null,null,null).use {c->assertTrue(c.moveToFirst());assertEquals(expected.size.toLong(),c.getLong(c.getColumnIndexOrThrow(android.provider.OpenableColumns.SIZE)))}
+            val bytes=readPipe(provider.openFile(uri,"r"),expected.size)
+            assertArrayEquals(expected,bytes);assertNull(com.r0ybt.arachn0de.annotations.EditableImagePng.read(bytes))
+            val b=android.graphics.BitmapFactory.decodeByteArray(bytes,0,bytes.size);assertEquals(android.graphics.Color.BLACK,b.getPixel(5,5));b.recycle()
+            assertArrayEquals(private,SecureFiles.read(repository.localFile(row)));assertEquals(row,main.database.attachmentDao().get(row.id))
+        } finally {
+            source.delete()
+            // This provider-only fixture has no running audio; close it synchronously so
+            // Robolectric teardown does not wait for its paused main looper.
+            app.security.current.value=null;SecureFiles.activeProfile=null;main.close()
+        }
+    }
+
 }

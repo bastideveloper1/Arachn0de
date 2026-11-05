@@ -35,7 +35,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalLayoutApi::class)
-@Composable internal fun ManagedKanbanDialog(context:String,repository:KanbanRepository,onOpenNode:(String)->Unit,onPlanning:()->Unit,inline:Boolean=false,description:String="",onEditDescription:(()->Unit)?=null,modifier:Modifier=Modifier,onDismiss:()->Unit) {
+@Composable internal fun ManagedKanbanDialog(context:String,repository:KanbanRepository,onOpenNode:(String)->Unit,onPlanning:()->Unit,inline:Boolean=false,description:String="",onEditDescription:(()->Unit)?=null,modifier:Modifier=Modifier,bottomInset:androidx.compose.ui.unit.Dp=0.dp,onDismiss:()->Unit) {
     val state by remember(repository,context) {repository.observe(context)}.collectAsState(initial=IterationState())
     var selectingSprint by rememberSaveable(context) {mutableStateOf(false)}
     var selectedPhase by rememberSaveable(context) {mutableStateOf<String?>(null)}
@@ -63,11 +63,12 @@ import kotlinx.coroutines.launch
     val enabled=state.work.contexts.any {it.id==context && it.enabled}
     val plan=state.records.plans.firstOrNull {it.contextId==context && it.sprintId==sprint}
     val content:@Composable ()->Unit = {
-        Surface(modifier.fillMaxSize().safeDrawingPadding()) {Column(Modifier.padding(12.dp)) {
+        Surface(modifier.fillMaxSize().safeDrawingPadding()) {Column(Modifier.padding(start=12.dp,end=12.dp,top=12.dp,bottom=12.dp+bottomInset)) {
             Text("Kanban",style=MaterialTheme.typography.titleLarge)
             error?.let {Text(it,color=MaterialTheme.colorScheme.error)}
-            LazyColumn(Modifier.weight(1f).fillMaxWidth().testTag("kanban-list"),verticalArrangement=Arrangement.spacedBy(8.dp)) {
-                if(description.isNotBlank() || onEditDescription!=null) item {Card(onClick={onEditDescription?.invoke()},enabled=onEditDescription!=null,modifier=Modifier.fillMaxWidth()) {Column(Modifier.padding(12.dp)) {Text("Descripción",style=MaterialTheme.typography.labelLarge);Text(description.ifBlank {"Añadir descripción"})}}}
+            Box(Modifier.weight(1f).fillMaxWidth()) {
+            LazyColumn(Modifier.fillMaxSize().testTag("kanban-list"),verticalArrangement=Arrangement.spacedBy(8.dp)) {
+                if(description.isNotBlank()) item {Card(onClick={onEditDescription?.invoke()},enabled=onEditDescription!=null,modifier=Modifier.fillMaxWidth()) {Column(Modifier.padding(start=12.dp,end=12.dp,top=12.dp,bottom=12.dp+bottomInset)) {Text("Descripción",style=MaterialTheme.typography.labelLarge);Text(description)}}}
                 item {OutlinedTextField(query,{query=it},label={Text("Buscar tareas u origen")},singleLine=true,modifier=Modifier.fillMaxWidth())}
                 item {Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min).testTag("kanban-filters"),horizontalArrangement=Arrangement.spacedBy(4.dp)) {
                     KanbanSelector("Ámbito",view.label,listOf(KanbanScope.SPRINT,KanbanScope.PROJECT,KanbanScope.BACKLOG).map {it to it.label},enabled && !busy,Modifier.weight(1f).fillMaxHeight()) {view=it}
@@ -111,6 +112,8 @@ import kotlinx.coroutines.launch
                     }
                 }
             }
+            StatusSelector(workStatusItems(),selectedPhase,{selectedPhase=it},Modifier.align(Alignment.BottomEnd).padding(8.dp))
+            }
             OutlinedButton(enabled=!busy,onClick=onDismiss) {Text("Cerrar")}
         }}
     }
@@ -120,7 +123,7 @@ import kotlinx.coroutines.launch
             Text("Seleccionar Sprint",style=MaterialTheme.typography.titleLarge)
             LazyColumn(Modifier.weight(1f),verticalArrangement=Arrangement.spacedBy(8.dp)) {items(sprints,key={it.id}) {row->
                 val visual=sprintCardVisual(row.id,row.title,state,storyRefs.count {it.sprintId==row.id})
-                Card(onClick={sprint=row.id;selectingSprint=false},modifier=Modifier.fillMaxWidth().testTag("kanban-sprint:${row.id}").semantics {selected=sprint==row.id},border=BorderStroke(if(sprint==row.id) 2.dp else 1.dp,if(sprint==row.id) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant)) {Column(Modifier.padding(12.dp)) {Text(row.title,style=MaterialTheme.typography.titleMedium);Text(visual.description)}}
+                Card(onClick={sprint=row.id;selectingSprint=false},modifier=Modifier.fillMaxWidth().testTag("kanban-sprint:${row.id}").semantics {selected=sprint==row.id},border=BorderStroke(if(sprint==row.id) 2.dp else 1.dp,if(sprint==row.id) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant)) {Column(Modifier.padding(start=12.dp,end=12.dp,top=12.dp,bottom=12.dp+bottomInset)) {Text(row.title,style=MaterialTheme.typography.titleMedium);Text(visual.description)}}
             }}
             OutlinedButton(onClick={selectingSprint=false}) {Text("Volver al tablero")}
         }}
@@ -161,7 +164,7 @@ import kotlinx.coroutines.launch
                 FavoriteToggle("node:${node.id}",compactSquare=true)
             }
             Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically) {
-                CompactCardIndicators("node:${node.id}",compactNodeFacts(node,System.currentTimeMillis()).copy(people=people),Modifier.weight(1f))
+                CompactCardIndicators("node:${node.id}",compactNodeFacts(node,System.currentTimeMillis()).copy(people=people),Modifier.weight(1f),showContainedTasks=node.isStructural)
                 var menu by remember {mutableStateOf(false)}
                 Box {
                     IconButton(enabled=!busy,onClick={menu=true},modifier=Modifier.size(48.dp)) {Icon(Icons.Default.MoreVert,"Opciones Kanban: ${node.title}")}

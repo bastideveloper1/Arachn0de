@@ -59,13 +59,13 @@ class VisualActionsNavigationTest {
     @Test fun drawerGroupsCollapseIndependentlyAndKeepPrimaryDestinationsOrdered() {
         var destination="";var dismissed=0
         mount {AppIdentityDrawer({dismissed++},onSearch={destination="Buscar"},onProjects={destination="Proyectos"},onMetro={destination="Metro"},
-            onFavorites={destination="Favoritos"},onAttention={destination="Avisos"},onObligations={destination="Obligaciones"},onCalendar={destination="Calendario"},
+            onFavorites={destination="Favoritos"},onAttention={destination="Avisos"},onObligations={destination="Pagos"},onCalendar={destination="Calendario"},
             onPeople={destination="Personas"},onTechnologies={destination="Tecnologías"},onTags={destination="Etiquetas"},
             onSecurity={destination="Seguridad"},onBackups={destination="Respaldo"},onAppearance={destination="Apariencia"},
-            onQuickCapture={destination="Captura rápida"},onAbout={destination="Acerca de"},onGame={destination="Juego"})}
+            onQuickCapture={destination="Captura rápida"},onAbout={destination="Acerca de"})}
         val primary=listOf("Buscar","Proyectos","Metro").map {compose.onNodeWithText(it).assertIsDisplayed().fetchSemanticsNode().boundsInRoot.top}
         assertEquals(primary.sorted(),primary)
-        val groups=listOf("Seguimiento" to listOf("Favoritos","Avisos","Obligaciones","Calendario"),
+        val groups=listOf("Seguimiento" to listOf("Favoritos","Avisos","Pagos","Calendario"),
             "Recursos" to listOf("Personas","Tecnologías","Etiquetas"),"Ajustes" to listOf("Seguridad","Respaldo","Apariencia"))
         for((section,children) in groups) {
             compose.onNodeWithTag("drawer-section:$section").assert(hasStateDescription("Contraída"))
@@ -76,7 +76,7 @@ class VisualActionsNavigationTest {
             compose.onNodeWithText(section).performScrollTo().performClick()
             children.forEach {compose.onNodeWithText(it).assertDoesNotExist()}
         }
-        for(label in listOf("Buscar","Proyectos","Metro","Captura rápida","Acerca de","Juego")) {
+        for(label in listOf("Buscar","Proyectos","Metro","Captura rápida","Acerca de")) {
             val item=compose.onNodeWithText(label)
             if(runCatching {item.assertIsDisplayed()}.isFailure) item.performScrollTo()
             item.performClick();assertEquals(label,destination)

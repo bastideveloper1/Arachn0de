@@ -3,7 +3,11 @@ package com.r0ybt.arachn0de.access
 import androidx.activity.compose.setContent
 import androidx.activity.ComponentActivity
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.remember
 import androidx.compose.ui.test.*
+import androidx.compose.foundation.layout.requiredWidth
+import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.flow.first
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import com.r0ybt.arachn0de.Arachn0deApplication
 import com.r0ybt.arachn0de.domain.model.NodePurpose
@@ -77,11 +81,31 @@ class ElementAccessUiTest {
         compose.onNodeWithText("Título o descripción").performTextInput("REVISION")
         await("Revisión técnica")
         compose.onNodeWithText("Tarea · Proyecto raíz › Área").assertExists()
+        compose.onNodeWithTag("search-apply").performClick()
         compose.onNodeWithTag("access-result:node:${task.id}").performClick()
         await("Revisión técnica")
         compose.onNodeWithText("Título o descripción").assertDoesNotExist()
         assertNotNull(runBlocking {app.database.nodeDao().getById(task.id)})
         assertEquals(setOf("node:${task.id}"),runBlocking {repo.snapshot().favorites})
+        compose.onNodeWithContentDescription("Volver a búsqueda").performClick()
+        compose.waitUntil(15000) {compose.onAllNodesWithTag("search-unfold").fetchSemanticsNodes().isNotEmpty()}
+        compose.waitUntil(15000) {
+            org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle()
+            androidx.compose.runtime.snapshots.Snapshot.sendApplyNotifications();compose.mainClock.advanceTimeByFrame()
+            runCatching {compose.onNodeWithTag("favorite:node:${task.id}").assertIsEnabled()}.isSuccess
+        }
+        compose.onNodeWithTag("favorite:node:${task.id}").performClick()
+        compose.waitUntil(15000) {runBlocking {"node:${task.id}" !in repo.snapshot().favorites}}
+        compose.onNodeWithTag("search-unfold").assertExists()
+        compose.waitUntil(15000) {
+            org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle()
+            androidx.compose.runtime.snapshots.Snapshot.sendApplyNotifications();compose.mainClock.advanceTimeByFrame()
+            runCatching {compose.onNodeWithTag("favorite:node:${task.id}").assertIsEnabled()}.isSuccess
+        }
+        compose.onNodeWithTag("favorite:node:${task.id}").performClick()
+        compose.waitUntil(15000) {runBlocking {"node:${task.id}" in repo.snapshot().favorites}}
+        compose.onNodeWithTag("search-unfold").performClick()
+        compose.onNodeWithTag("search-query").assertTextContains("REVISION")
     }
     @Test fun rapidCaptureCreatesOnlyOneTaskOnRepeatedSubmission() {
         val p=runBlocking {app.projectRepository.createProject("Destino")}
@@ -93,16 +117,119 @@ class ElementAccessUiTest {
         }}}}
         compose.mainClock.advanceTimeBy(300)
         org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle()
-        compose.onNodeWithText("Crear tarea").assertIsNotEnabled()
+        compose.onNodeWithText("Guardar en Borradores").assertIsNotEnabled()
         compose.onNodeWithText("Título").performTextInput("Captura");compose.mainClock.advanceTimeBy(100)
-        compose.onNodeWithText("Crear tarea").performClick()
+        compose.onNodeWithText("Guardar en Borradores").performClick()
         compose.waitUntil(15000) {org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle();compose.mainClock.advanceTimeByFrame();dismissed}
         assertEquals(1,runBlocking {app.database.backupDao().nodes().size})
         assertEquals("Captura",runBlocking {app.database.backupDao().nodes().single().title})
-        compose.onNodeWithText("Crear tarea").performClick()
+        assertNull(runBlocking {app.database.backupDao().nodes().single().projectId})
+        compose.onNodeWithText("Guardar en Borradores").performClick()
         compose.waitForIdle()
         assertEquals(1,runBlocking {app.database.backupDao().nodes().size})
     }
+    @Test fun draftsDrawerCreatesNoteWithSharedEditorAndCancelMovePreservesIt() {
+        val restoration=androidx.compose.ui.test.junit4.StateRestorationTester(compose)
+        restoration.setContent {Arachn0deTheme {AppRoot(app.projectRepository,app.nodeRepository)}}
+        await("Crear núcleo")
+        compose.onNodeWithContentDescription("Abrir menú").performClick()
+        await("Seguimiento")
+        compose.onNodeWithText("Seguimiento").performClick()
+        await("Borradores")
+        compose.onNodeWithText("Borradores").performScrollTo().performClick()
+        await("No hay borradores")
+        compose.onNodeWithText("Crear borrador").performClick()
+        await("Nuevo elemento")
+        compose.onNodeWithText("Nota",useUnmergedTree=true).performClick()
+        compose.onNodeWithText("Título").performTextInput("Nota sin ubicación")
+        assertTrue(runBlocking {app.database.backupDao().nodes().isEmpty()})
+        restoration.emulateSavedInstanceStateRestore()
+        await("Nota sin ubicación")
+        compose.waitUntil(15000) {
+            org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle()
+            androidx.compose.runtime.snapshots.Snapshot.sendApplyNotifications();compose.mainClock.advanceTimeByFrame()
+            compose.onAllNodesWithText("Crear",useUnmergedTree=true).fetchSemanticsNodes().any {!it.config.contains(androidx.compose.ui.semantics.SemanticsProperties.Disabled)}
+        }
+        compose.onNodeWithText("Crear",useUnmergedTree=true).performClick()
+        compose.waitUntil(15000) {
+            org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle();compose.mainClock.advanceTimeByFrame()
+            runBlocking {app.database.backupDao().nodes().size==1}
+        }
+        await("Nota sin ubicación")
+        val saved=runBlocking {app.database.backupDao().nodes().single()}
+        assertNull(saved.projectId);assertEquals("NOTE",saved.purpose)
+        assertTrue(runBlocking {app.database.backupDao().projects().isEmpty()})
+        compose.onNodeWithText("Mover a…").performClick();await("Buscar destino")
+        compose.onNodeWithText("Cancelar").performClick()
+        assertEquals(saved,runBlocking {app.database.nodeDao().getById(saved.id)})
+        compose.onNodeWithText("Eliminar").performClick();await("¿Eliminar borrador?")
+        compose.onNodeWithText("Cancelar").performClick()
+        assertEquals(saved,runBlocking {app.database.nodeDao().getById(saved.id)})
+    }
+
+    @Test fun dashboardBottomActionsSaveDraftWithoutLocationWithAnExistingCore() {
+        val original=runBlocking {app.projectRepository.createProject("Núcleo original")}
+        compose.setContent {Arachn0deTheme {AppRoot(app.projectRepository,app.nodeRepository)}}
+        await("Crear núcleo")
+        val core=compose.onNodeWithTag("dashboard-create-core").fetchSemanticsNode().boundsInRoot
+        val draft=compose.onNodeWithTag("dashboard-create-draft").fetchSemanticsNode().boundsInRoot
+        val bar=compose.onNodeWithTag("dashboard-bottom-actions").fetchSemanticsNode().boundsInRoot
+        assertEquals(core.width,draft.width,1f);assertEquals(core.top,draft.top,1f)
+        assertTrue(core.height>=48*compose.density.density)
+        assertTrue(core.right<draft.left)
+        val root=compose.onRoot().fetchSemanticsNode().boundsInRoot
+        assertTrue(bar.bottom<=root.bottom)
+        compose.onNodeWithTag("dashboard-create-core").assertIsEnabled()
+        assertEquals(original.name,runBlocking {app.database.backupDao().projects().single().name})
+        compose.onNodeWithTag("dashboard-create-draft").performClick();await("Nuevo elemento")
+        compose.onNodeWithText("Nota",useUnmergedTree=true).performClick()
+        compose.onNodeWithText("Título").performTextInput("Borrador desde Núcleos")
+        waitEnabled("Crear");compose.onNodeWithText("Crear",useUnmergedTree=true).performClick()
+        compose.waitUntil(15000) {pumpDashboard();runBlocking {app.database.backupDao().nodes().size==1}}
+        val saved=runBlocking {app.database.backupDao().nodes().single()}
+        assertNull(saved.projectId);assertNull(saved.parentId);assertEquals("NOTE",saved.purpose)
+        val project=runBlocking {app.database.backupDao().projects().single()}
+        assertEquals("Núcleo original",project.name)
+        assertTrue(runBlocking {app.nodeRepository.getProjectNodes(project.id).isEmpty()})
+        assertEquals(saved.id,runBlocking {app.nodeRepository.observeDrafts().first().single().id})
+    }
+    @Test fun dashboardActionsRemainBalancedWithLargeTextAndOfficialTheme() {
+        val theme=com.r0ybt.arachn0de.ui.theme.AppearanceTheme.NightBlue
+        compose.setContent {Arachn0deTheme {
+            val density=androidx.compose.ui.platform.LocalDensity.current
+            CompositionLocalProvider(com.r0ybt.arachn0de.ui.theme.LocalAppearancePalette provides theme.palette,
+                androidx.compose.ui.platform.LocalDensity provides androidx.compose.ui.unit.Density(density.density,1.8f)) {
+                androidx.compose.foundation.layout.Box(androidx.compose.ui.Modifier.requiredWidth(280.dp)) {
+                    AppSafeArea(remember {androidx.compose.foundation.layout.WindowInsets(bottom=32)}) {AppRoot(app.projectRepository,app.nodeRepository)}
+                }
+            }
+        }}
+        await("Crear núcleo")
+        val root=compose.onRoot().fetchSemanticsNode().boundsInRoot
+        val bar=compose.onNodeWithTag("dashboard-bottom-actions").fetchSemanticsNode().boundsInRoot
+        assertTrue(bar.bottom<=root.bottom-32+1)
+        val core=compose.onNodeWithTag("dashboard-create-core").fetchSemanticsNode().boundsInRoot
+        val draft=compose.onNodeWithTag("dashboard-create-draft").fetchSemanticsNode().boundsInRoot
+        assertEquals(core.width,draft.width,1f)
+        for((label,bounds) in listOf("Crear núcleo" to core,"Crear borrador" to draft)) {
+            val text=compose.onNodeWithText(label,useUnmergedTree=true)
+            val area=text.fetchSemanticsNode().boundsInRoot
+            assertTrue(area.left>=bounds.left && area.right<=bounds.right)
+            assertTrue(area.top>=bounds.top && area.bottom<=bounds.bottom)
+            val layouts=mutableListOf<androidx.compose.ui.text.TextLayoutResult>()
+            text.performSemanticsAction(androidx.compose.ui.semantics.SemanticsActions.GetTextLayoutResult) {it(layouts)}
+            assertEquals(theme.palette.text,layouts.single().layoutInput.style.color)
+        }
+    }
+    private fun pumpDashboard() {
+        org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle()
+        androidx.compose.runtime.snapshots.Snapshot.sendApplyNotifications();compose.mainClock.advanceTimeByFrame()
+    }
+    private fun waitEnabled(text:String) {compose.waitUntil(15000) {
+        pumpDashboard()
+        compose.onAllNodesWithText(text,useUnmergedTree=true).fetchSemanticsNodes().any {!it.config.contains(androidx.compose.ui.semantics.SemanticsProperties.Disabled)}
+    }}
+
     @Test fun cancellingQuickCaptureNeverCreatesRows() {
         val p=runBlocking {app.projectRepository.createProject("Destino")}
         val repo=AccessRepository(app.database)

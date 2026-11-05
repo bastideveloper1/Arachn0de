@@ -9,8 +9,23 @@ import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface NodeDao {
+    @Query("UPDATE nodes SET taskStateCount=:count,updatedAt=:at WHERE id=:id")
+    suspend fun setTaskStateCount(id:String,count:Int?,at:Long):Int
+
+    @Query("UPDATE nodes SET awaitingVerification=1,updatedAt=:at WHERE id=:id")
+    suspend fun markAwaitingVerification(id:String,at:Long):Int
+
+    @Query("SELECT * FROM nodes WHERE projectId IS NULL ORDER BY updatedAt DESC, id")
+    fun observeDrafts(): Flow<List<NodeEntity>>
+
+    @Query("UPDATE nodes SET projectId=:projectId, parentId=:parentId, position=:position, workState=:workState, updatedAt=:at WHERE id=:id")
+    suspend fun relocate(id:String, projectId:String?, parentId:String?, position:Int, workState:String?, at:Long):Int
+
     @Query("UPDATE nodes SET isPinned=:pinned WHERE id=:id AND purpose='LAYER'")
     suspend fun setPinned(id:String,pinned:Boolean):Int
+
+    @Query("UPDATE nodes SET effort=:effort,updatedAt=:updatedAt WHERE id=:id AND purpose='ACTION'")
+    suspend fun setEffort(id:String,effort:Int,updatedAt:Long):Int
 
     @Query("SELECT * FROM nodes WHERE id IN (:ids)") suspend fun byIds(ids: List<String>): List<NodeEntity>
     @Query("SELECT DISTINCT parentId FROM nodes WHERE parentId IN (:ids)") suspend fun parentsWithChildren(ids: List<String>): List<String>
@@ -18,11 +33,11 @@ interface NodeDao {
     @Query("SELECT * FROM nodes ORDER BY projectId, position, createdAt, id")
     fun observeAllNodes(): Flow<List<NodeEntity>>
 
-    @Query("SELECT * FROM nodes WHERE projectId = :projectId ORDER BY position, createdAt, id")
-    fun observeProjectNodes(projectId: String): Flow<List<NodeEntity>>
+    @Query("SELECT * FROM nodes WHERE projectId IS :projectId ORDER BY position, createdAt, id")
+    fun observeProjectNodes(projectId: String?): Flow<List<NodeEntity>>
 
-    @Query("SELECT * FROM nodes WHERE projectId = :projectId ORDER BY position, createdAt, id")
-    suspend fun getProjectNodes(projectId: String): List<NodeEntity>
+    @Query("SELECT * FROM nodes WHERE projectId IS :projectId ORDER BY position, createdAt, id")
+    suspend fun getProjectNodes(projectId: String?): List<NodeEntity>
 
     @Query("SELECT * FROM nodes WHERE creationGroupId = :groupId ORDER BY projectId, position, createdAt, id")
     suspend fun groupMembers(groupId: String): List<NodeEntity>
@@ -33,14 +48,14 @@ interface NodeDao {
     @Query("SELECT * FROM nodes WHERE id = :id")
     suspend fun getById(id: String): NodeEntity?
 
-    @Query("SELECT EXISTS(SELECT 1 FROM nodes WHERE projectId = :projectId AND parentId = :id)")
-    suspend fun hasChildren(projectId: String, id: String): Boolean
+    @Query("SELECT EXISTS(SELECT 1 FROM nodes WHERE projectId IS :projectId AND parentId = :id)")
+    suspend fun hasChildren(projectId: String?, id: String): Boolean
 
-    @Query("SELECT MAX(position) FROM nodes WHERE projectId = :projectId AND parentId IS :parentId")
-    suspend fun maxPosition(projectId: String, parentId: String?): Int?
+    @Query("SELECT MAX(position) FROM nodes WHERE projectId IS :projectId AND parentId IS :parentId")
+    suspend fun maxPosition(projectId: String?, parentId: String?): Int?
 
-    @Query("SELECT * FROM nodes WHERE projectId = :projectId AND parentId IS :parentId ORDER BY position, createdAt, id")
-    suspend fun getSiblings(projectId: String, parentId: String?): List<NodeEntity>
+    @Query("SELECT * FROM nodes WHERE projectId IS :projectId AND parentId IS :parentId ORDER BY position, createdAt, id")
+    suspend fun getSiblings(projectId: String?, parentId: String?): List<NodeEntity>
 
     @Query("UPDATE nodes SET position = :position, updatedAt = :updatedAt WHERE id = :id")
     suspend fun updateOrder(id: String, position: Int, updatedAt: Long): Int
@@ -67,7 +82,7 @@ interface NodeDao {
     suspend fun move(id: String, parentId: String?, position: Int, updatedAt: Long, workState: String? = null): Int
 
     @Query("""
-        UPDATE nodes SET isCompleted = :completed, updatedAt = :updatedAt
+        UPDATE nodes SET isCompleted = :completed, awaitingVerification = 0, updatedAt = :updatedAt
         WHERE id = :id AND purpose = 'ACTION' AND NOT EXISTS(
             SELECT 1 FROM nodes AS child WHERE child.projectId = nodes.projectId AND child.parentId = nodes.id
         )
@@ -77,7 +92,7 @@ interface NodeDao {
     @Query("UPDATE nodes SET sprintMode = :enabled, updatedAt = :at WHERE id = :id AND purpose = 'LAYER'")
     suspend fun setSprintMode(id: String, enabled: Boolean, at: Long): Int
 
-    @Query("UPDATE nodes SET workState = :state, isCompleted = :completed, updatedAt = :at WHERE id = :id AND purpose = 'ACTION'")
+    @Query("UPDATE nodes SET workState = :state, isCompleted = :completed, awaitingVerification = CASE WHEN :state IS NULL THEN 0 ELSE awaitingVerification END, updatedAt = :at WHERE id = :id AND purpose = 'ACTION'")
     suspend fun setWorkState(id: String, state: String?, completed: Boolean, at: Long): Int
 
     @Query("""

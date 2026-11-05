@@ -39,8 +39,7 @@ import kotlinx.coroutines.launch
                 // AppSafeArea already consumes system/IME insets. Center when there is room and scroll otherwise.
                 Box(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).heightIn(min=maxHeight).padding(20.dp),contentAlignment=Alignment.Center) {
                     Column(Modifier.widthIn(max=420.dp).fillMaxWidth(),verticalArrangement=Arrangement.spacedBy(12.dp),horizontalAlignment=Alignment.CenterHorizontally) {
-                        com.r0ybt.arachn0de.ui.OfficialIcon(com.r0ybt.arachn0de.R.drawable.bw90_brand_logo,"Logo de Arachn0de",size=160.dp,
-                            modifier=Modifier.fillMaxWidth().height(96.dp))
+                        com.r0ybt.arachn0de.ui.AnimatedBrandLogo(Modifier.widthIn(max=184.dp).fillMaxWidth().aspectRatio(480f/498f))
                         if(configured.isFailure) Text("No se pudo recuperar la configuración de seguridad. No se han sustituido los datos existentes.")
                         else {
                             if(!configured.getOrThrow()) Text("Proteger tus datos",style=MaterialTheme.typography.titleMedium)
@@ -159,8 +158,15 @@ import kotlinx.coroutines.launch
         Column(Modifier.fillMaxWidth().padding(horizontal=16.dp).padding(bottom=16.dp).verticalScroll(rememberScrollState()),verticalArrangement=Arrangement.spacedBy(8.dp)) {
             if(configuration=="timeout") {
                 Text("Bloqueo automático",style=MaterialTheme.typography.titleMedium)
+                com.r0ybt.arachn0de.ui.OperationProgress(busy)
+                notice?.let {Text(it,style=MaterialTheme.typography.bodySmall)}
                 for((value,label) in AutoLockPreference.options) {
-                    TextButton(enabled=!busy,onClick={preferences.edit().putLong(AutoLockPreference.KEY,value).apply();timeout=value;configuration=null},modifier=Modifier.fillMaxWidth().heightIn(min=48.dp)) {Text((if(timeout==value) "✓ " else "")+label)}
+                    TextButton(enabled=!busy,onClick={if(!busy) {busy=true;notice=null;scope.launch {
+                        try {kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO+kotlinx.coroutines.NonCancellable) {preferences.edit().putLong(AutoLockPreference.KEY,value).apply()};timeout=value;configuration=null}
+                        catch(c:kotlinx.coroutines.CancellationException) {throw c}
+                        catch(_:Exception) {notice="No se pudo guardar el bloqueo automático."}
+                        finally {busy=false}
+                    }}},modifier=Modifier.fillMaxWidth().heightIn(min=48.dp)) {Text((if(timeout==value) "✓ " else "")+label)}
                 }
             } else if(session.primary) {
                 Text("Capturas de pantalla",style=MaterialTheme.typography.titleMedium)

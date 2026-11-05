@@ -37,8 +37,13 @@ internal class NodeCopyActions(context: Context, private val scope: CoroutineSco
     }
     private fun copyBranch(tree:NodeTreeSnapshot,id:String?,knownProject:Project?,onlyPending:Boolean,descendants:Boolean=true) {
         copyText {check->
+            val nodeProject=id?.let {tree.nodesById[it]?.projectId}
+            if(knownProject==null && nodeProject==null) {
+                val names=imageNames()
+                return@copyText TaskPlainTextRenderer.render(tree,listOf(requireNotNull(id)),emptyMap(),check) {descriptionClipboardText(it,names)}
+            }
             val project=knownProject ?: requireNotNull((appContext as com.r0ybt.arachn0de.Arachn0deApplication)
-                .projectRepository.getProject(tree.nodesById.getValue(requireNotNull(id)).projectId)) {"El Núcleo ya no existe."}
+                .projectRepository.getProject(checkNotNull(nodeProject))) {"El Núcleo ya no existe."}
             val ids=if(descendants) TaskPlainTextRenderer.branch(tree,id,project.id,onlyPending,check) else listOf(requireNotNull(id))
             val names=imageNames()
             if(ids.isEmpty()) "Sin pendientes" else TaskPlainTextRenderer.render(tree,ids,mapOf(project.id to project),check) {descriptionClipboardText(it,names)}

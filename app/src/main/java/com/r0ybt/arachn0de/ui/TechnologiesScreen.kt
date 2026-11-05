@@ -1,5 +1,6 @@
 package com.r0ybt.arachn0de.ui
 
+import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
@@ -22,6 +23,7 @@ import com.r0ybt.arachn0de.ui.theme.Arachn0deColors
 import kotlinx.coroutines.launch
 import java.util.UUID
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun TechnologiesScreen(repository: TechnologyRepository, onBack: () -> Unit) {
     val scope = rememberCoroutineScope()
@@ -52,18 +54,21 @@ internal fun TechnologiesScreen(repository: TechnologyRepository, onBack: () -> 
         }
     }
     BackHandler { if (!busy) { if (editorId != null) discardDraft() else if (deletingId != null) deletingId = null else onBack() } }
-    Surface(Modifier.fillMaxSize(), color = Arachn0deColors.Background) {
-        Column(Modifier.fillMaxSize().padding(14.dp)) {
+    BottomModulesSheet(onDismissRequest={if(!busy && editorId==null && deletingId==null)onBack()},
+        sheetState=rememberModalBottomSheetState(skipPartiallyExpanded=true,confirmValueChange={
+            it!=SheetValue.Hidden || (!busy && editorId==null && deletingId==null)
+        }),containerColor=Arachn0deColors.Panel) {
+        Column(Modifier.fillMaxWidth().padding(horizontal=12.dp,vertical=4.dp)) {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                GlobalChromeActions(enabled=!busy, leading=true)
-                TextButton(enabled = !busy, onClick = onBack) { Text("Volver") }
-                NavigationHeading("Tecnologías",Modifier.weight(1f))
-                GlobalChromeActions(enabled=!busy)
+                Text("Tecnologías",Modifier.weight(1f),style=MaterialTheme.typography.titleMedium)
+                IconButton(enabled=!busy,onClick=onBack,modifier=Modifier.size(48.dp)) {
+                    Icon(androidx.compose.material.icons.Icons.Default.KeyboardArrowDown,"Cerrar tecnologías")
+                }
             }
             Button(enabled = !busy && catalogReady, onClick = { editorId = UUID.randomUUID().toString(); isNew = true; name = ""; icon = null }) { Text("Nueva tecnología") }
             if (catalogFailed) Text("No se pudo cargar el catálogo. Reintentando…")
             if (catalogReady && technologies.isEmpty()) Text("Aún no hay tecnologías.")
-            LazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            LazyColumn(Modifier.weight(1f,fill=false), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 items(technologies, key = { it.id }) { technology ->
                     Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = Arachn0deColors.Surface)) {
                         Row(Modifier.fillMaxWidth().padding(10.dp), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {

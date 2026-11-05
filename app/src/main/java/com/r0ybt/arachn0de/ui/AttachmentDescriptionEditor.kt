@@ -31,7 +31,7 @@ import kotlinx.coroutines.launch
 @Composable
 internal fun AttachmentDescriptionEditor(draft: EditorDraft, enabled: Boolean, project: Boolean = false, focusRequester: androidx.compose.ui.focus.FocusRequester? = null,
     maxLines: Int = Int.MAX_VALUE, tools: (@Composable () -> Unit)? = null,
-    repository: com.r0ybt.arachn0de.data.repository.AttachmentRepository = (LocalContext.current.applicationContext as Arachn0deApplication).attachmentRepository) {
+    repository: com.r0ybt.arachn0de.data.repository.AttachmentRepository = (LocalContext.current.applicationContext as Arachn0deApplication).attachmentRepository, compactCapture:Boolean=false, compactLeading:(@Composable ()->Unit)?=null) {
     val files by remember(repository) { repository.observeFiles() }.collectAsState(emptyList())
     val byId = files.associateBy { it.id }
     var restored by remember(draft.attachmentDraftId) { mutableStateOf(false) }
@@ -56,17 +56,38 @@ internal fun AttachmentDescriptionEditor(draft: EditorDraft, enabled: Boolean, p
     val draftValue = draft.descriptionValue()
     val fieldValue = if (inputValue.text == draftValue.text && inputValue.selection == draftValue.selection) inputValue else draftValue
     var viewingAt by androidx.compose.runtime.saveable.rememberSaveable(draft.attachmentDraftId) { mutableStateOf<Int?>(null) }
+    if(!compactCapture) {
     AttachmentDescriptionField(value = fieldValue, onValueChange = { value ->
-        if (draft.editDescription(value)) inputValue = value
+        if (draft.editDescription(value)) inputValue = draft.descriptionValue().copy(composition=value.composition.takeIf {draft.description==value.text})
         else draft.attachmentError = "Para quitar una imagen, toca su referencia y usa Quitar en el visor."
     }, enabled = enabled && restored && !draft.attachmentBusy,
         focusRequester = focusRequester, maxLines = maxLines, transformation = AttachmentVisualTransformation(byId,com.r0ybt.arachn0de.ui.theme.Arachn0deColors.ImageLink), onReference = { viewingAt = it })
-    tools?.invoke() ?: AttachmentDescriptionTools(draft, enabled, project, repository = repository)
+    } else if(AttachmentReferences.matches(draft.description).any()) FlowRow(horizontalArrangement=Arrangement.spacedBy(6.dp)) {
+        AttachmentReferences.matches(draft.description).forEach {reference->
+            TextButton(enabled=enabled && restored && !draft.attachmentBusy,onClick={viewingAt=reference.range.first}) {
+                Text(AttachmentReferences.label(reference) ?: byId[reference.groupValues[1]]?.originalName ?: "Fotografía",maxLines=2)
+            }
+        }
+    }
+    if(compactCapture) FlowRow(
+        modifier=Modifier.fillMaxWidth(),
+        horizontalArrangement=Arrangement.spacedBy(4.dp),
+        itemVerticalAlignment=Alignment.CenterVertically,
+    ) {
+        compactLeading?.invoke()
+        AttachmentDescriptionTools(draft,enabled,project,repository=repository,imageOnly=true)
+    }
+    else tools?.invoke() ?: AttachmentDescriptionTools(draft,enabled,project,repository=repository)
     var labelAt by remember(draft.attachmentDraftId) { mutableStateOf<Int?>(null) }
     var labelText by remember(draft.attachmentDraftId) { mutableStateOf("") }
     viewingAt?.let { at ->
         AttachmentReferences.matches(draft.description).firstOrNull { it.range.first == at }?.let { reference ->
             AttachmentViewer(reference.groupValues[1], repository,
+                annotationDraftId=draft.attachmentDraftId,onAnnotationSaved={replacement->
+                    val old=reference.groupValues[1]
+                    draft.description=AttachmentReferences.replace(draft.description,old,replacement)
+                    draft.removedAttachmentIds=(draft.removedAttachmentIds+old).distinct()
+                },canAnnotate=enabled && !draft.attachmentBusy,
                 onEditName = if (!AttachmentReferences.isAudio(reference) && enabled && !draft.attachmentBusy) ({ labelAt = at; labelText = AttachmentReferences.label(reference) ?: "" }) else null,
                 onRemove = if (enabled && !draft.attachmentBusy) ({
                     draft.removeImageUse(at); viewingAt = null
@@ -92,7 +113,7 @@ internal fun AttachmentDescriptionEditor(draft: EditorDraft, enabled: Boolean, p
 @Composable
 internal fun AttachmentDescriptionTools(draft: EditorDraft, enabled: Boolean, project: Boolean = false, compact: Boolean = false,
     trailingActions: (@Composable () -> Unit)? = null,
-    repository: com.r0ybt.arachn0de.data.repository.AttachmentRepository = (LocalContext.current.applicationContext as Arachn0deApplication).attachmentRepository) {
+    repository: com.r0ybt.arachn0de.data.repository.AttachmentRepository = (LocalContext.current.applicationContext as Arachn0deApplication).attachmentRepository, imageOnly:Boolean=false) {
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
     val restored = draft.attachmentsLoaded
@@ -103,38 +124,50 @@ internal fun AttachmentDescriptionTools(draft: EditorDraft, enabled: Boolean, pr
             try {
                 for (uri in uris) draft.insertImage(repository.import(uri, draft.attachmentDraftId).id)
             } catch (cancelled: CancellationException) { throw cancelled }
-            catch (_: Exception) { draft.attachmentError = "No se pudo importar una imagen. Usa PNG/JPEG de hasta 20 MiB; las anteriores se conservan." }
+            catch (_: Exception) { draft.attachmentError = "No se pudo importar una imagen. Usa PNG/JPEG/GIF de hasta 20 MiB; las anteriores se conservan." }
             finally { draft.attachmentBusy = false }
         }
     }
-    val audioTools = !project && draft.id!=null && draft.purpose==com.r0ybt.arachn0de.domain.model.NodePurpose.ACTION
+    val audioTools = !imageOnly && !project && draft.id!=null && draft.purpose==com.r0ybt.arachn0de.domain.model.NodePurpose.ACTION
     val supportsMode = project || draft.id != null || (!draft.batchEnabled && draft.recurrenceFrequency == "NONE")
     val actions: @Composable (Modifier) -> Unit = { formatModifier ->
-        DescriptionParser.Format.entries.forEach { format ->
+        if(!imageOnly) DescriptionParser.Format.entries.filter {it!=DescriptionParser.Format.Highlight}.forEach { format ->
             val name = when (format) {
                 DescriptionParser.Format.Bold -> "Negrita"
                 DescriptionParser.Format.Italic -> "Cursiva"
                 DescriptionParser.Format.Underline -> "Subrayado"
+                DescriptionParser.Format.Title -> "Título"
+                DescriptionParser.Format.Code -> "Código"
+                DescriptionParser.Format.Highlight -> error("Legacy format is not editable")
             }
             TextButton(modifier = (if(trailingActions!=null) formatModifier.heightIn(min=48.dp) else Modifier.sizeIn(minWidth = 48.dp, minHeight = 48.dp)).semantics { contentDescription = name },
                 contentPadding=if(trailingActions!=null) PaddingValues(0.dp) else ButtonDefaults.TextButtonContentPadding,
-                enabled = enabled && restored && !draft.attachmentBusy && draft.descriptionSelectionStart != draft.descriptionSelectionEnd,
+                enabled = enabled && restored && !draft.attachmentBusy && (draft.descriptionSelectionStart != draft.descriptionSelectionEnd ||
+                    (format==DescriptionParser.Format.Code && DescriptionParser.formatRanges(draft.description).any {
+                        it.format==format && draft.descriptionSelectionStart in it.start..(it.end+format.marker.length)
+                    })),
                 onClick = {
                     if (!draft.toggleDescriptionFormat(format)) draft.attachmentError = "Selecciona texto o una referencia completa para aplicar formato."
                 }) {
-                Text(when (format) { DescriptionParser.Format.Bold -> "B"; DescriptionParser.Format.Italic -> "I"; DescriptionParser.Format.Underline -> "U" },
+                Text(when (format) { DescriptionParser.Format.Bold -> "B"; DescriptionParser.Format.Italic -> "I"; DescriptionParser.Format.Underline -> "U"; DescriptionParser.Format.Title -> "T⁺"; DescriptionParser.Format.Code -> "</>"; DescriptionParser.Format.Highlight -> error("Legacy format is not editable") },
                     fontWeight = if (format == DescriptionParser.Format.Bold) FontWeight.Bold else null,
                     fontStyle = if (format == DescriptionParser.Format.Italic) FontStyle.Italic else null,
                     textDecoration = if (format == DescriptionParser.Format.Underline) TextDecoration.Underline else null)
             }
         }
-        TextButton(modifier = if(!project) Modifier.sizeIn(minWidth=48.dp,minHeight=48.dp) else if(trailingActions!=null) Modifier.widthIn(min=56.dp).heightIn(min=48.dp) else if(compact) Modifier.sizeIn(minWidth = 48.dp, minHeight = 48.dp) else Modifier,
-            contentPadding=if(trailingActions!=null) PaddingValues(4.dp) else ButtonDefaults.TextButtonContentPadding,
+        if(!imageOnly) listOf(false,true).forEach {alphabetic->
+            TextButton(modifier=Modifier.sizeIn(minWidth=48.dp,minHeight=48.dp).semantics {
+                contentDescription=if(alphabetic) "Lista alfabética" else "Lista numerada"
+            },enabled=enabled && restored && !draft.attachmentBusy,onClick={
+                if(!draft.applyDescriptionList(alphabetic)) draft.attachmentError="No se puede aplicar una lista dentro de un bloque de código."
+            }) {Text(if(alphabetic) "a." else "1.")}
+        }
+        TextButton(modifier = Modifier.sizeIn(minWidth=48.dp,minHeight=48.dp),
+            contentPadding=if(imageOnly)ButtonDefaults.TextButtonContentPadding else PaddingValues(4.dp),
             enabled = enabled && restored && !draft.attachmentBusy && supportsMode,
             onClick = { picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) }) {
-            if(!project) Icon(androidx.compose.material.icons.Icons.Default.Image,if(draft.attachmentBusy) "Importando imágenes" else "Imagen",tint=Arachn0deColors.Accent)
-            else Text(if (draft.attachmentBusy) "Importando imágenes…" else "Imagen", color = Arachn0deColors.Accent,
-                maxLines=if(trailingActions!=null) 1 else Int.MAX_VALUE,overflow=androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+            if(imageOnly) Text("Fotografía",color=Arachn0deColors.Accent)
+            else Icon(androidx.compose.material.icons.Icons.Default.Image,"Insertar imagen",Modifier.size(20.dp),tint=Arachn0deColors.Accent)
         }
         if(audioTools) AudioMicButton(enabled=enabled && restored && !draft.attachmentBusy) {
             (context.applicationContext as Arachn0deApplication).security.current.value?.audio?.startRecording(requireNotNull(draft.id))
@@ -146,7 +179,7 @@ internal fun AttachmentDescriptionTools(draft: EditorDraft, enabled: Boolean, pr
         }
         trailingActions()
     }
-    else if (compact) Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) { actions(Modifier) }
+    else if (compact) Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).testTag("description-tools"), horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) { actions(Modifier) }
     else FlowRow(horizontalArrangement = Arrangement.spacedBy(4.dp)) { actions(Modifier) }
     if (!supportsMode) Text("En lotes o recurrencias, añade las imágenes a cada elemento después de crearlo.", style = MaterialTheme.typography.bodySmall)
 

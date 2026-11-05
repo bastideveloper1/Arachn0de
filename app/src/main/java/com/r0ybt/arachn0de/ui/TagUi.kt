@@ -6,12 +6,14 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -51,12 +53,12 @@ import kotlinx.coroutines.launch
     }
     if(open) TagPanelDialog(onClose={open=false}) {busy->
         TagPanel(TagState(tags),repository,selected,onChange,enabled=enabled,single=single,singleAssignment=singleAssignment,
-            busyState=busy,onClose={open=false})
+            busyState=busy,immediateAssignment=!single,onSelection={ids->onChange(ids);if(!single)open=false},onClose={open=false})
     }
 }
 
 /** The same shell is used for assignment and catalog administration; editors keep their own drafts. */
-@Composable private fun TagPanelDialog(onClose:()->Unit,content:@Composable (MutableState<Boolean>)->Unit) {
+@Composable internal fun TagPanelDialog(onClose:()->Unit,content:@Composable (MutableState<Boolean>)->Unit) {
     val busy=remember {mutableStateOf(false)}
     BottomModulesDialog(onDismissRequest={if(!busy.value) onClose()},
         properties=androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth=false,decorFitsSystemWindows=false)) {
@@ -80,7 +82,7 @@ private enum class TagPanelMode { BROWSE, SEARCH, NEW, EDIT, DELETE }
 /** Only explicit chip/removal actions replace legacy associations; opening and closing never normalize them. */
 @Composable internal fun TagPanel(initial:TagState,repository:TagRepository?,selected:Set<String> = emptySet(),
     onChange:(Set<String>)->Unit={},manage:Boolean=false,enabled:Boolean=true,single:Boolean=false,singleAssignment:Boolean=true,
-    modifier:Modifier=Modifier,busyState:MutableState<Boolean>?=null,onCancel:(()->Unit)?=null,pendingSelection:Boolean=false,doneLabel:String="Listo",onClose:()->Unit) {
+    modifier:Modifier=Modifier,busyState:MutableState<Boolean>?=null,onCancel:(()->Unit)?=null,pendingSelection:Boolean=false,doneLabel:String="Listo",backNavigation:Boolean=false,immediateAssignment:Boolean=false,onSelection:((Set<String>)->Unit)?=null,onClose:()->Unit) {
     val catalog=if(repository!=null) {
         val value by remember(repository) {repository.observe()}.collectAsState(initial=initial)
         value
@@ -139,7 +141,12 @@ private enum class TagPanelMode { BROWSE, SEARCH, NEW, EDIT, DELETE }
         palette.copy(surface=palette.taskPanel,panel=palette.taskPanel)) {
         ModularPanelSurface(modifier.fillMaxWidth().testTag("tag-panel"),shadowElevation=0.dp) {
             ModularPanelLayout(fieldOwnsScroll=true,outlinedBody=false,headerDivider=false,compact=true,
-                header={Text("Etiquetas",style=MaterialTheme.typography.titleMedium)},
+                header={Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically) {
+                    Text("Etiquetas",Modifier.weight(1f),style=MaterialTheme.typography.titleMedium)
+                    IconButton(enabled=ready,onClick=::back,modifier=Modifier.size(48.dp).testTag("tag-close")) {
+                        Icon(Icons.Default.KeyboardArrowDown,"Cerrar etiquetas")
+                    }
+                }},
                 body={
                     if(!manage && singleAssignment && selected.size>1) Text(
                         "Este elemento conserva ${selected.size} etiquetas heredadas. Elige una para reemplazarlas o quítalas explícitamente. Cerrar no cambia las asociaciones.",
@@ -154,13 +161,14 @@ private enum class TagPanelMode { BROWSE, SEARCH, NEW, EDIT, DELETE }
                                 val chosen=if(manage) selection==row.id else row.id in selected
                                 TextButton(onClick={
                                     if(manage) {selection=if(selection==row.id) null else row.id;browse()}
-                                    else {onChange(if(single || singleAssignment) setOf(row.id) else if(chosen) selected-row.id else selected+row.id);browse()}
+                                    else {(onSelection ?: onChange)(if(immediateAssignment && chosen) (selected-row.id) else if(single || singleAssignment) setOf(row.id) else if(chosen) selected-row.id else selected+row.id);browse()}
                                 },enabled=ready && mode in setOf(TagPanelMode.BROWSE,TagPanelMode.SEARCH),
                                     modifier=Modifier.heightIn(min=48.dp).testTag("tag-choice:${row.id}").semantics {this.selected=chosen},
                                     contentPadding=PaddingValues(horizontal=8.dp,vertical=2.dp),
                                     shape=androidx.compose.foundation.shape.RoundedCornerShape(8.dp),
                                     colors=ButtonDefaults.textButtonColors(containerColor=if(chosen) Arachn0deColors.ControlSurface else Arachn0deColors.Surface,
                                         contentColor=if(chosen) Arachn0deColors.TextPrimary else Arachn0deColors.TextSecondary)) {
+                                    if(chosen) {Icon(Icons.Default.Check,null,Modifier.size(16.dp));Spacer(Modifier.width(4.dp))}
                                     Column {Text(row.name)
                                         if(manage) Text("${catalog.usage(row.id)} usos",style=MaterialTheme.typography.labelSmall,color=Arachn0deColors.TextSecondary)
                                     }
@@ -196,13 +204,18 @@ private enum class TagPanelMode { BROWSE, SEARCH, NEW, EDIT, DELETE }
                             }
                             ModularFieldMenu(options,columns=options.size,compact=true)
                             if(manage && tag!=null) PrimaryControlButton(enabled=ready,onClick={selection=null},modifier=Modifier.fillMaxWidth()) {Text("Cancelar selección")}
-                            if(onCancel!=null && selected.isNotEmpty()) TextButton(enabled=ready,onClick={onChange(emptySet())}) {Text("Quitar etiqueta")}
-                            ModularPanelActions(cancel={
+                            if(!immediateAssignment && onCancel!=null && selected.isNotEmpty()) TextButton(enabled=ready,onClick={onChange(emptySet())}) {Text("Quitar etiqueta")}
+                            if(!immediateAssignment) ModularPanelActions(cancel={
                                 if(onCancel!=null && pendingSelection) PrimaryControlButton(enabled=ready,onClick=onCancel) {Text("Cancelar")}
-                                else if(!manage && onCancel==null) PrimaryControlButton(enabled=ready && selected.isNotEmpty(),onClick={onChange(emptySet())}) {
-                                    Text(if(single) "Todas las etiquetas" else if(singleAssignment) "Quitar etiqueta" else "Quitar todas")
+                                else if(!manage && onCancel==null) {
+                                    if(single) TextButton(enabled=ready && selected.isNotEmpty(),onClick={onChange(emptySet())},
+                                        modifier=Modifier.fillMaxWidth().heightIn(min=48.dp).testTag("tag-filter-all"),
+                                        colors=ButtonDefaults.textButtonColors(contentColor=Arachn0deColors.TextPrimary,disabledContentColor=Arachn0deColors.Disabled)) {Text("Todas las etiquetas")}
+                                    else PrimaryControlButton(enabled=ready && selected.isNotEmpty(),onClick={onChange(emptySet())}) {Text(if(singleAssignment) "Quitar etiqueta" else "Quitar todas")}
                                 }
-                            },confirm={PrimaryControlButton(enabled=ready,onClick={focus.clearFocus();keyboard?.hide();onClose()}) {Text(if(manage) "Cerrar" else doneLabel)}})
+                            },confirm={if(backNavigation) IconButton(enabled=ready,onClick={focus.clearFocus();keyboard?.hide();onClose()},modifier=Modifier.fillMaxWidth().heightIn(min=48.dp)) {
+                                LucideIcon(Icons.AutoMirrored.Filled.ArrowBack,"Volver")
+                            } else PrimaryControlButton(enabled=ready,onClick={focus.clearFocus();keyboard?.hide();onClose()}) {Text(if(manage) "Cerrar" else doneLabel)}})
                         }
                     }
                 }})
@@ -212,11 +225,10 @@ private enum class TagPanelMode { BROWSE, SEARCH, NEW, EDIT, DELETE }
 
 @Composable internal fun CardTagBadge(tags:List<Tag>,modifier:Modifier=Modifier) {
     if(tags.isEmpty()) return
-    if(tags.size>1) {TagChips(tags,compact=true);return}
-    Surface(modifier.widthIn(max=96.dp),shape=androidx.compose.foundation.shape.RoundedCornerShape(topStart=0.dp,topEnd=8.dp,bottomEnd=0.dp,bottomStart=6.dp),color=Arachn0deColors.Selection) {
+    Surface(modifier.widthIn(max=96.dp).semantics {contentDescription=tags.joinToString {it.name}},shape=androidx.compose.foundation.shape.RoundedCornerShape(topStart=0.dp,topEnd=8.dp,bottomEnd=0.dp,bottomStart=6.dp),color=Arachn0deColors.Selection) {
         Row(Modifier.padding(horizontal=6.dp,vertical=3.dp),horizontalArrangement=Arrangement.spacedBy(4.dp),verticalAlignment=androidx.compose.ui.Alignment.CenterVertically) {
             LucideIcon(androidx.compose.material.icons.Icons.Default.Label,null,Modifier.size(14.dp),tint=Arachn0deColors.TextPrimary)
-            Text(tags.single().name,fontSize=12.sp,color=Arachn0deColors.TextPrimary,
+            Text(if(tags.size==1)tags.single().name else "${tags.first().name} +${tags.size-1}",fontSize=12.sp,color=Arachn0deColors.TextPrimary,
                 maxLines=1,overflow=androidx.compose.ui.text.style.TextOverflow.Ellipsis)
         }
     }

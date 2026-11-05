@@ -29,7 +29,7 @@ import com.r0ybt.arachn0de.domain.model.Node
 )
 data class NodeEntity(
     @PrimaryKey val id: String,
-    val projectId: String,
+    val projectId: String?,
     val parentId: String?,
     val title: String,
     val description: String,
@@ -47,11 +47,14 @@ data class NodeEntity(
     @ColumnInfo(defaultValue = "0") val sprintMode: Boolean = false,
     val workState: String? = null,
     @ColumnInfo(defaultValue="0") val isPinned:Boolean=false,
+    @ColumnInfo(defaultValue="0") val awaitingVerification:Boolean=false,
+    @ColumnInfo(defaultValue="NULL") val taskStateCount:Int?=null,
+    @ColumnInfo(defaultValue="0") val effort:Int=0,
 )
 
 internal fun NodeEntity.toNode(hasChildren: Boolean) = Node(
     id, projectId, parentId, title, description, isCompleted,
     position, createdAt, updatedAt, hasChildren, startAt, dueAt, com.r0ybt.arachn0de.domain.model.NodePurpose.valueOf(purpose),
     amountMinor?.let { com.r0ybt.arachn0de.domain.model.Obligation(it, checkNotNull(currencyCode)) },
-    com.r0ybt.arachn0de.domain.model.Priority.valueOf(priority), creationGroupId, sprintMode, workState?.let(com.r0ybt.arachn0de.domain.model.WorkState::valueOf),isPinned=isPinned,
+    com.r0ybt.arachn0de.domain.model.Priority.valueOf(priority), creationGroupId, sprintMode, workState?.let(com.r0ybt.arachn0de.domain.model.WorkState::valueOf),isPinned=isPinned,awaitingVerification=awaitingVerification,taskStateCount=taskStateCount,effort=effort,
 )

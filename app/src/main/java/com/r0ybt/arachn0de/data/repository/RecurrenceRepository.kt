@@ -33,6 +33,7 @@ class RecurrenceRepository(
             check(it.copy(nextIndex = 0, status = "ACTIVE") == rule && dao.people(rule.id).toSet() == people && database.tagDao().ruleIds(rule.id).toSet() == tagIds) { "La regla ya existe con otra configuración." }
             return@withTransaction rule.id
         }
+        PaymentCurrencyPolicy.requireNew(rule.amountMinor?.let { Obligation(it, requireNotNull(rule.currencyCode)) })
         dao.insert(rule)
         tags.assignRule(rule.id, tagIds)
         dao.assign(people.map { RecurrencePersonEntity(rule.id, it) })
@@ -45,6 +46,8 @@ class RecurrenceRepository(
         var pending = false
         dao.rules().filter { it.status == "ACTIVE" }.forEach { initial ->
             validate(initial)
+            // Preserve unsupported historical rules and their cursors without blocking CLP rules.
+            if (initial.amountMinor != null && initial.currencyCode != "CLP") return@forEach
             var rule = initial
             if (!destinationExists(rule,allowLegacyAction=true)) {
                 dao.update(rule.copy(status = "PAUSED"))
@@ -129,6 +132,7 @@ class RecurrenceRepository(
             tagIds?.let { tags.validate(it) }
             val old = requireNotNull(dao.get(id))
             require(old.status != "FINISHED") { "La regla finalizada conserva su configuración histórica." }
+            PaymentCurrencyPolicy.requireEdit(old.amountMinor?.let { Obligation(it, requireNotNull(old.currencyCode)) }, obligation)
             val updated = old.copy(projectId = projectId, parentId = parentId, title = title.trim(), description = description,
                 amountMinor = obligation?.amountMinor, currencyCode = obligation?.currencyCode, priority = priority?.name ?: old.priority)
             validate(updated); validateDestination(updated)

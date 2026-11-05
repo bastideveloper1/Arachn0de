@@ -9,12 +9,16 @@ interface PersonDao {
 
     @Query("SELECT * FROM persons ORDER BY name COLLATE NOCASE, id")
     fun observePeople(): Flow<List<PersonEntity>>
+    @Query("SELECT id FROM persons ORDER BY rowid LIMIT 1")
+    suspend fun firstInsertedId():String?
     @Query("SELECT * FROM persons WHERE id = :id")
     suspend fun get(id: String): PersonEntity?
     @Insert suspend fun insert(person: PersonEntity)
     @Query("UPDATE persons SET name = :name, avatarFile = :avatarFile, avatarZoom = :zoom, avatarX = :x, avatarY = :y WHERE id = :id")
     suspend fun update(id: String, name: String, avatarFile: String?, zoom: Float = 1f, x: Float = 0f, y: Float = 0f): Int
-    @Query("DELETE FROM persons WHERE id = :id") suspend fun delete(id: String): Int
+    @Query("UPDATE person_memory_people SET profileName=(SELECT name FROM persons WHERE id=:id) WHERE personId=:id") suspend fun preserveMemoryNames(id:String)
+    @Query("DELETE FROM persons WHERE id = :id") suspend fun deleteRow(id: String): Int
+    @Transaction suspend fun delete(id:String):Int {preserveMemoryNames(id);return deleteRow(id)}
     @Query("SELECT (SELECT COUNT(*) FROM persons WHERE avatarFile = :file) + (SELECT COUNT(*) FROM person_photos WHERE file = :file)") suspend fun avatarReferences(file: String): Int
     @Query("SELECT COUNT(*) FROM nodes WHERE id = :id") suspend fun nodeExists(id: String): Int
     @Query("SELECT personId FROM node_person WHERE nodeId = :nodeId ORDER BY personId")

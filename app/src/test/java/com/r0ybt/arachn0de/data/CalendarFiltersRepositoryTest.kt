@@ -36,7 +36,9 @@ class CalendarFiltersRepositoryTest {
         nodes.recurrence.create(RecurrenceRuleEntity("rule","p",null,"Teléfono","",15000,"CLP",scheduleDay,"MONTHLY",1,null,0,"ACTIVE","UTC",0,null),setOf("roy"))
         repeat(2) { nodes.recurrence.materializeDue() }
         val task=nodes.createNode("p",null,"Normal",dueAt=now,responsibleIds=setOf("roy"))
-        val bill=nodes.createNode("p",null,"USD",dueAt=now,obligation=Obligation(1050,"USD"),responsibleIds=setOf("roy"))
+        val bill=nodes.createNode("p",null,"USD",dueAt=now,responsibleIds=setOf("roy"))
+        // Fixture restored from an installation predating the CLP write policy.
+        db.openHelper.writableDatabase.execSQL("UPDATE nodes SET amountMinor=1050,currencyCode='USD' WHERE id=?",arrayOf(bill.id))
         val criteria=NodeFilter(TemporalRanges.resolve(TimeFilter.THIS_MONTH,now,zone,Locale.FRANCE),"roy",CompletionFilter.PENDING)
         val results=filtered(criteria).tasks
         assertEquals(3,results.size); assertEquals(3,results.map { it.id }.toSet().size)
@@ -58,6 +60,6 @@ class CalendarFiltersRepositoryTest {
         nodes.setCompleted(task.id,false); nodes.updateNodeWithDates(task.id,"Task","",null,now+86400000)
         assertTrue(filtered(criteria).tasks.isEmpty()); assertEquals(1,filtered(criteria.copy(range=null)).tasks.size)
         nodes.deleteNode(task.id); assertTrue(filtered(criteria.copy(range=null)).tasks.isEmpty())
-        assertEquals(39, db.openHelper.readableDatabase.version)
+        assertEquals(50, db.openHelper.readableDatabase.version)
     }
 }

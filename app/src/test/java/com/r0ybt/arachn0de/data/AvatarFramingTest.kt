@@ -121,6 +121,18 @@ class AvatarFramingTest {
         val g = edge.geometry(400f, 200f, 240f)
         assertTrue(g.left <= 0f && g.top <= 0f && g.left + g.width >= 240f && g.top + g.height >= 240f)
     }
+    @Test fun rectangularSurfaceUsesTheSameGestureGeometryAndNeverUncoversEdges() {
+        val original=AvatarFraming(2f,.25f,-.4f)
+        val before=original.geometry(400f,200f,300f,100f)
+        val still=original.transform(400f,200f,300f,0f,0f,1f,120f,40f,100f)
+        assertEquals(original,still)
+        val next=original.transform(400f,200f,300f,0f,0f,1.1f,120f,40f,100f)
+        val after=next.geometry(400f,200f,300f,100f)
+        assertEquals((120-before.left)/before.width,(120-after.left)/after.width,.00001f)
+        assertEquals((40-before.top)/before.height,(40-after.top)/after.height,.00001f)
+        val edge=original.transform(400f,200f,300f,10000f,-10000f,50f,120f,40f,100f).geometry(400f,200f,300f,100f)
+        assertTrue(edge.left<=0&&edge.top<=0&&edge.left+edge.width>=300&&edge.top+edge.height>=100)
+    }
     @Test fun pinchKeepsImagePointUnderCentroidAndGeometryIsDisplayIndependent() {
         val old = AvatarFraming(2f, .1f, .1f); val before = old.geometry(300f, 400f, 240f)
         val next = old.transform(300f, 400f, 240f, 0f, 0f, 1.1f, 80f, 100f); val after = next.geometry(300f, 400f, 240f)

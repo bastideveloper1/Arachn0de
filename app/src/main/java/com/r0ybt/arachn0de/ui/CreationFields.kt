@@ -23,9 +23,9 @@ import com.r0ybt.arachn0de.ui.state.EditorDraft
     }
 }
 @OptIn(ExperimentalLayoutApi::class)
-@Composable internal fun <T> FormChoices(choices: List<Pair<T, String>>, selected: T, enabled: Boolean, onChange: (T) -> Unit) {
-    FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-        choices.forEach { (value, label) -> FilterChip(selected == value, { onChange(value) }, enabled = enabled, label = { Text(label) }) }
+@Composable internal fun <T> FormChoices(choices: List<Pair<T, String>>, selected: T, enabled: Boolean, touchAccessible:Boolean=false,onChange: (T) -> Unit) {
+    FlowRow(modifier=Modifier.padding(horizontal=if(touchAccessible)8.dp else 0.dp),horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        choices.forEach { (value, label) -> FilterChip(selected == value, { onChange(value) }, enabled = enabled, modifier=if(touchAccessible)Modifier.sizeIn(minWidth=48.dp,minHeight=48.dp) else Modifier,label = { Text(label) }) }
     }
 }
 @Composable internal fun CreationBatchFields(draft: EditorDraft, enabled: Boolean) {

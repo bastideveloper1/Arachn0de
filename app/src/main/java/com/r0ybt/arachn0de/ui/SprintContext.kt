@@ -13,7 +13,7 @@ import com.r0ybt.arachn0de.domain.model.Person
 internal fun sprintStateLabel(state:String?)=when(state) {"ACTIVE"->"Activa";"CLOSED"->"Cerrada";else->"Preparada"}
 internal fun sprintCardVisual(id:String,title:String,state:IterationState,stories:Int):ManagementToolVisual {
     val plan=state.records.plans.firstOrNull {it.sprintId==id}
-    return ManagementToolVisual(title,listOf(sprintStateLabel(plan?.state),"$stories historias",listOfNotNull(plan?.startAt?.let {planDate(it)},plan?.endAt?.let {planDate(it)}).joinToString(" → "),state.progress(id)?.let {"${kotlin.math.round(it).toInt()} %"}.orEmpty()).filter {it.isNotBlank()}.joinToString(" · "),Icons.Default.DateRange)
+    return ManagementToolVisual(title,listOf(sprintStateLabel(plan?.state),"$stories historias",listOfNotNull(plan?.startAt?.let {planDate(it)},plan?.endAt?.let {planDate(it)}).joinToString(" → ")).filter {it.isNotBlank()}.joinToString(" · "),Icons.Default.DateRange)
 }
 @Composable internal fun SprintContext(sprint:String,context:String,repository:ManagementRepository,onPlan:()->Unit) {
     val state by remember(repository,context) {repository.iterations.observe(context)}.collectAsState(initial=IterationState())
@@ -32,7 +32,6 @@ internal fun sprintCardVisual(id:String,title:String,state:IterationState,storie
         Text("Historias incorporadas: ${incorporated.size}",style=MaterialTheme.typography.titleMedium)
         incorporated.take(3).forEach {r->state.work.nodes.firstOrNull {it.id==r.storyId}?.let {n->Text("• ${n.title}",maxLines=1,overflow=androidx.compose.ui.text.style.TextOverflow.Ellipsis)}}
         if(incorporated.size>3) Text("Y ${incorporated.size-3} más. Consulta todas en Gestionar historias.")
-        SprintProgressCard(state.progress(sprint))
         Text("Responsables del Sprint",style=MaterialTheme.typography.titleMedium)
         val scoped=state.people.records.nodes.filter {it.contextId==context && it.nodeId==sprint}
         val ids=scoped.map {it.personId}.toSet()+traditional.filter {it.nodeId==sprint}.map {it.id}

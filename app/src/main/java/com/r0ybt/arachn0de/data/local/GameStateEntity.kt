@@ -3,7 +3,7 @@ package com.r0ybt.arachn0de.data.local
 import androidx.room.*
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
-import com.r0ybt.arachn0de.game.GameSessionCodec
+import com.r0ybt.arachn0de.backup.legacy.game.GameSessionCodec
 import kotlinx.coroutines.flow.Flow
 
 /** Singleton with an empty payload as a durable 'no saved game' marker. */

@@ -8,6 +8,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.platform.LocalContext
 import com.r0ybt.arachn0de.domain.model.Node
 import com.r0ybt.arachn0de.domain.model.TaskTemporal
@@ -43,7 +44,7 @@ internal fun TaskDateIndicator(node: Node, now: Long, wrap: Boolean = false) {
     val instant = if (state == TaskTemporalState.SCHEDULED) node.startAt else node.dueAt ?: node.startAt
     val color = when (state) {
         TaskTemporalState.OVERDUE -> Arachn0deColors.Destructive
-        TaskTemporalState.UPCOMING -> com.r0ybt.arachn0de.ui.theme.semanticColor(SemanticColors.Upcoming)
+        TaskTemporalState.UPCOMING -> com.r0ybt.arachn0de.ui.theme.semanticColor(SemanticColors.Upcoming,"warning")
         else -> Arachn0deColors.TextSecondary
     }
     Text("$label · ${formatTaskDate(checkNotNull(instant), compact = true)}", color = color, fontSize = ContentTypography.Metadata, maxLines = if (wrap) Int.MAX_VALUE else 1, overflow = TextOverflow.Ellipsis)
@@ -108,25 +109,34 @@ internal fun TaskDatesEditor(draft: EditorDraft, enabled: Boolean, picker: TaskD
             if(picker.field==null) picker.open(draft,"Vencimiento",draft.dueAt)
         }
     }
-    AdaptiveFormRow((if (includeStart) listOf("Inicio" to draft.startAt, "Vencimiento" to draft.dueAt) else listOf("Vencimiento" to draft.dueAt)).map { (label, value) ->
-        {
-            Column {
+    val dates = if (includeStart) listOf("Inicio" to draft.startAt, "Vencimiento" to draft.dueAt)
+        else listOf("Vencimiento" to draft.dueAt)
+    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        if (progressive) AdaptiveFormRow(dates.map { (label, _) ->
+            {
                 val active = if (label == "Inicio") draft.startEnabled else draft.dueEnabled
-                if (progressive) FormToggle(label, active, enabled) {
+                FormToggle(label, active, enabled) {
                     if (label == "Inicio") draft.startEnabled = it else draft.dueEnabled = it
                     if (!it && picker.field == label) picker.field = null
                 }
-                if (!progressive || active) Row(Modifier.fillMaxWidth()) {
-                    TextButton(enabled = enabled, modifier = Modifier.weight(1f), onClick = {
-                        picker.open(draft,label,value)
-                    }) { Text("$label: ${value?.let(::formatTaskDate) ?: "Sin fecha"}") }
-                    if (value != null) TextButton(enabled = enabled, onClick = {
-                        if (label == "Inicio") { draft.startAt = null; if (progressive) draft.startEnabled = false } else { draft.dueAt = null; if (progressive) draft.dueEnabled = false }
-                    }) { Text("Quitar $label") }
+            }
+        })
+        dates.forEach { (label, value) ->
+            val active = if (label == "Inicio") draft.startEnabled else draft.dueEnabled
+            if (!progressive || active) Column(Modifier.fillMaxWidth().testTag("task-date-section:$label")) {
+                // Dates own the full width; removal must never squeeze the date into a narrow column.
+                TextButton(enabled = enabled, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp), onClick = {
+                    picker.open(draft,label,value)
+                }) {
+                    Text("$label: ${value?.let(::formatTaskDate) ?: "Sin fecha"}",
+                        modifier = Modifier.fillMaxWidth(), textAlign = androidx.compose.ui.text.style.TextAlign.Start)
                 }
+                if (value != null) TextButton(enabled = enabled, modifier = Modifier.heightIn(min = 48.dp), onClick = {
+                    if (label == "Inicio") { draft.startAt = null; if (progressive) draft.startEnabled = false } else { draft.dueAt = null; if (progressive) draft.dueEnabled = false }
+                }) { Text("Quitar $label") }
             }
         }
-    })
+    }
     if (field != null) {
         val initial = Calendar.getInstance().apply { timeInMillis = initialInstant }
         if (!timeStage) {

@@ -29,9 +29,9 @@ class CompactDefaultsUiTest {
         val root=compose.onRoot().fetchSemanticsNode().boundsInRoot
         compose.onNodeWithTag("defaults-choice:Tipo").performScrollTo()
         val type=compose.onNodeWithTag("defaults-choice:Tipo").fetchSemanticsNode().boundsInRoot
-        val payment=compose.onNodeWithTag("defaults-choice:Obligación").fetchSemanticsNode().boundsInRoot
+        val payment=compose.onNodeWithTag("defaults-choice:Pago").fetchSemanticsNode().boundsInRoot
         assertTrue(type.width<root.width*.6f);assertTrue(payment.left>type.left);assertTrue(payment.right<=root.right)
-        listOf("Tipo","Obligación","Moneda","Prioridad","Etiquetas","Responsables","Inicio","Hora de inicio","Vencimiento","Hora de vencimiento").forEach {label->
+        listOf("Tipo","Pago","Moneda","Prioridad","Etiquetas","Responsables","Inicio","Hora de inicio","Vencimiento","Hora de vencimiento").forEach {label->
             val node=compose.onNodeWithTag("defaults-choice:$label").performScrollTo();val bounds=node.fetchSemanticsNode().boundsInRoot
             assertTrue(label,bounds.left>=root.left && bounds.right<=root.right)
         }

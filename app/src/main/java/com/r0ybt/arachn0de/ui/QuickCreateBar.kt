@@ -36,18 +36,19 @@ internal fun QuickCreateBar(draft: EditorDraft, busy: Boolean, onSave: () -> Uni
     val recurrenceValid = !task || draft.recurrenceFrequency == "NONE" ||
         runCatching { draft.recurrenceRule("validation") }.isSuccess
     val financialValid = !task || runCatching { draft.obligation() }.isSuccess
+    val titleFeedback=rememberTitleInput()
     val valid = draft.title.trim().isNotEmpty() && TitleLimits.count(draft.title) <= TitleLimits.NODE && recurrenceValid &&
         (!task || draft.activeStart == null || draft.activeDue == null || draft.activeDue!! >= draft.activeStart!!) &&
         financialValid
     ModularPanelSurface(Modifier.fillMaxWidth().testTag("quick-create")) {
         ModularPanelLayout(header={},body={
             Row(Modifier.fillMaxWidth(), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
-                OutlinedTextField(draft.title, { if(!busy) draft.title = it },
+                OutlinedTextField(draft.title, { if(!busy) titleFeedback.change(draft.title,it,TitleLimits.NODE) {draft.title=it} },
                     placeholder = { Text(if(task) "Nueva tarea…" else "Nueva nota…") },
                     modifier = modularPanelFieldModifier().weight(1f).focusRequester(focus).testTag("quick-create-title"),
                     enabled = !busy, singleLine = false, minLines = 1, maxLines = if(task) Int.MAX_VALUE else 3,
                     isError = TitleLimits.count(draft.title) > TitleLimits.NODE,
-                    supportingText = if(!financialValid) ({ Text("Completa Pago en Formulario completo.") }) else null)
+                    supportingText = { Column {TitleLimitHint(draft.title,TitleLimits.NODE,titleFeedback.blocked);if(!financialValid) Text("Completa Pago en Formulario completo.")} })
 
             }
         },actions={Column {

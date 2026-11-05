@@ -1,9 +1,12 @@
 package com.r0ybt.arachn0de.ui.theme
 
+import kotlinx.coroutines.launch
+
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.*
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.ui.platform.LocalContext
 
 internal fun AppearancePalette.materialColors(): androidx.compose.material3.ColorScheme {
@@ -30,11 +33,24 @@ internal fun AppearancePalette.materialColors(): androidx.compose.material3.Colo
 fun Arachn0deTheme(preferences: AppearancePreferences? = null, locked:Boolean=false, content: @Composable () -> Unit) {
     val context = LocalContext.current.applicationContext
     val privateContext=(context as? com.r0ybt.arachn0de.Arachn0deApplication)?.security?.current?.value?.context ?: context
-    val resolved = if(locked || (context is com.r0ybt.arachn0de.Arachn0deApplication && privateContext===context)) null else preferences ?: remember(privateContext) { AppearancePreferences(privateContext.getSharedPreferences(AppearancePreferences.FILE, android.content.Context.MODE_PRIVATE)) }
-    DisposableEffect(resolved) {
-        val listener=android.content.SharedPreferences.OnSharedPreferenceChangeListener {_,_->resolved?.reload()}
+    val vault=(context as? com.r0ybt.arachn0de.Arachn0deApplication)?.security?.current?.value
+    val resolved = if(locked || (context is com.r0ybt.arachn0de.Arachn0deApplication && privateContext===context)) null else preferences ?: vault?.appearance ?: remember(privateContext) {
+        AppearancePreferences(privateContext.getSharedPreferences(AppearancePreferences.FILE, android.content.Context.MODE_PRIVATE))
+    }
+    val reloadScope=androidx.compose.runtime.rememberCoroutineScope()
+    DisposableEffect(resolved,vault) {
+        val changes=kotlinx.coroutines.channels.Channel<Unit>(kotlinx.coroutines.channels.Channel.CONFLATED)
+        val reload=(vault?.scope ?: reloadScope).launch(kotlinx.coroutines.Dispatchers.IO) {
+            for(change in changes) {
+                try {resolved?.reload()}
+                catch(cancelled:kotlinx.coroutines.CancellationException) {throw cancelled}
+                catch(_:Exception) {if(vault?.access?.caches?.isOpen!=false) android.util.Log.w("Appearance","No se pudo actualizar la apariencia; se conserva el estado anterior.")}
+            }
+        }
+        val listener=android.content.SharedPreferences.OnSharedPreferenceChangeListener {_,_->changes.trySend(Unit);Unit}
         resolved?.observe(listener)
-        onDispose {resolved?.unobserve(listener)}
+        changes.trySend(Unit)
+        onDispose {resolved?.unobserve(listener);changes.close();reload.cancel()}
     }
     val settings = resolved?.settings ?: AppearanceSettings(theme=UnlockAppearanceCache.read(context))
     val activity=LocalContext.current.let {source->generateSequence(source) {(it as? android.content.ContextWrapper)?.baseContext}.filterIsInstance<android.app.Activity>().firstOrNull()}
@@ -46,8 +62,13 @@ fun Arachn0deTheme(preferences: AppearancePreferences? = null, locked:Boolean=fa
             bars.isAppearanceLightNavigationBars=settings.theme.applicationPalette.light
         }
     }
-    CompositionLocalProvider(LocalAppearancePreferences provides resolved, LocalAppearancePalette provides settings.theme.applicationPalette,
+    val palette=settings.palette
+    val imageBitmaps=remember(privateContext,locked) {CardPhotoBitmaps((privateContext as? com.r0ybt.arachn0de.security.VaultContext)?.session?.caches)}
+    DisposableEffect(imageBitmaps) {onDispose {imageBitmaps.dispose()}}
+    CompositionLocalProvider(LocalCardPhotoBitmaps provides imageBitmaps,LocalAppearancePreferences provides resolved, LocalAppearancePalette provides palette,
         LocalContentSizes provides contentSizes(settings.textSize)) {
-        MaterialTheme(colorScheme = settings.theme.applicationPalette.materialColors(), typography = appearanceTypography(settings.textSize), content = content)
+        MaterialTheme(colorScheme = palette.materialColors().copy(background=palette.background), typography = appearanceTypography(settings.textSize)) {
+            content()
+        }
     }
 }

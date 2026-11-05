@@ -261,9 +261,9 @@ class TechnologyUiTest {
     }
     @Test fun navigationMenuOpensLocalTechnologyCatalog() {
         compose.onNodeWithContentDescription("Abrir menú").performClick()
-        compose.onNodeWithText("Recursos").performScrollTo().performClick(); compose.onNodeWithText("Tecnologías").performScrollTo().performClick()
+        compose.onNodeWithText("Organizar").performClick(); compose.onNodeWithText("Tecnologías").performScrollTo().performClick()
         compose.waitUntil(10_000) { compose.onAllNodesWithText("Nueva tecnología").fetchSemanticsNodes().isNotEmpty() }
-        compose.onNodeWithText("Nueva tecnología").assertExists(); compose.onNodeWithText("Volver").performClick()
+        compose.onNodeWithText("Nueva tecnología").assertExists(); compose.onNodeWithContentDescription("Cerrar tecnologías").performClick()
         compose.onNodeWithContentDescription("Abrir menú").assertExists()
     }
 }

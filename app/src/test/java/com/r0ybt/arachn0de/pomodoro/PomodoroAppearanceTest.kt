@@ -49,16 +49,18 @@ class PomodoroAppearanceTest {
         controller.attach(storage);controller.start();controller.pause()
         val session=controller.state.value.session
         var horizontal by mutableStateOf(false)
+        compose.mainClock.autoAdvance=false
         compose.setContent {Arachn0deTheme {
             val data by controller.state.collectAsState()
             Box(Modifier.requiredSize(if(horizontal) 640.dp else 320.dp,if(horizontal) 300.dp else 640.dp)) {
                 PomodoroScreen(controller,data,allowLandscape=false) {}
             }
         }}
+        compose.mainClock.advanceTimeBy(64)
         PomodoroAppearance.entries.forEach {style->
-            compose.onNodeWithTag("pomodoro-settings").performClick()
-            compose.onNodeWithTag("pomodoro-style:${style.name}").performScrollTo().performClick()
-            compose.onNodeWithText("Guardar").performClick()
+            compose.onNodeWithTag("pomodoro-settings").performClick();compose.mainClock.advanceTimeBy(64)
+            compose.onNodeWithTag("pomodoro-style:${style.name}").performScrollTo().performClick();compose.mainClock.advanceTimeBy(64)
+            compose.onNodeWithText("Guardar").performClick();compose.mainClock.advanceTimeBy(64)
             compose.runOnIdle {
                 assertEquals(style,controller.state.value.config.appearance)
                 assertEquals(session,controller.state.value.session)
@@ -68,7 +70,7 @@ class PomodoroAppearanceTest {
                 reopened.attach(null)
             }
             listOf(false,true).forEach {landscape->
-                compose.runOnIdle {horizontal=landscape}
+                compose.runOnIdle {horizontal=landscape};compose.mainClock.advanceTimeBy(64)
                 compose.onNodeWithTag("pomodoro-dial:${style.name}").assertIsDisplayed()
                 val circle=compose.onNodeWithTag("pomodoro-circle").fetchSemanticsNode().boundsInRoot
                 val time=compose.onNodeWithTag("pomodoro-time").fetchSemanticsNode().boundsInRoot

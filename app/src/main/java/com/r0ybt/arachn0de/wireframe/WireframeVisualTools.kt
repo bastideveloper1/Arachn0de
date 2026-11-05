@@ -76,12 +76,7 @@ internal enum class WireVisualTool(val label:String,val hint:String) {
                     onLongPress={help=true},
                     onTap={point->if(tool==WireVisualTool.GUIDES && point.x>=secondaryStart && point.y>=secondaryStart) menu=true else toggle(tool)})
             },contentAlignment=Alignment.Center) {
-                if(tool==WireVisualTool.MAGNET) Canvas(Modifier.size(22.dp)) {
-                    val path=Path().apply {moveTo(size.width*.25f,size.height*.2f);lineTo(size.width*.25f,size.height*.55f);cubicTo(size.width*.25f,size.height*.95f,size.width*.75f,size.height*.95f,size.width*.75f,size.height*.55f);lineTo(size.width*.75f,size.height*.2f)}
-                    drawPath(path,if(active) palette.primary else palette.muted,style=Stroke(3.dp.toPx(),cap=StrokeCap.Square))
-                    drawLine(if(active) palette.primary else palette.muted,Offset(size.width*.12f,size.height*.2f),Offset(size.width*.38f,size.height*.2f),2.dp.toPx())
-                    drawLine(if(active) palette.primary else palette.muted,Offset(size.width*.62f,size.height*.2f),Offset(size.width*.88f,size.height*.2f),2.dp.toPx())
-                } else Icon(when(tool) {WireVisualTool.GUIDES->Icons.Default.GridOn;WireVisualTool.MARGINS->Icons.Default.CropFree;else->Icons.Default.Devices},null,Modifier.size(22.dp),tint=if(active) palette.primary else palette.muted)
+                if(tool==WireVisualTool.MAGNET) com.r0ybt.arachn0de.visual.ToolMagnetIcon(if(active) palette.primary else palette.muted) else Icon(when(tool) {WireVisualTool.GUIDES->Icons.Default.GridOn;WireVisualTool.MARGINS->Icons.Default.CropFree;else->Icons.Default.Devices},null,Modifier.size(22.dp),tint=if(active) palette.primary else palette.muted)
                 if(tool==WireVisualTool.GUIDES) {
                     Box(Modifier.align(Alignment.BottomEnd).size(20.dp).clip(RoundedCornerShape(topStart=8.dp)).background(palette.raised)
                         .testTag("wire-composition-menu")

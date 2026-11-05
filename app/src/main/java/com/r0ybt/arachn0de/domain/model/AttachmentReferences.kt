@@ -39,6 +39,13 @@ object AttachmentReferences {
         return result.toString()
     }
     fun ids(text: String): Set<String> = matches(text).map { it.groupValues[1] }.toSet()
+    fun replace(text:String,oldId:String,newId:String):String {
+        val result=StringBuilder(text)
+        matches(text).filter {it.groupValues[1]==oldId}.toList().asReversed().forEach {
+            result.replace(it.range.first,it.range.last+1,token(newId,label(it)))
+        }
+        return result.toString()
+    }
     fun remove(text: String, id: String): String {
         val result = StringBuilder(text)
         matches(text).filter { it.groupValues[1] == id }.toList().asReversed().forEach { result.delete(it.range.first, it.range.last + 1) }

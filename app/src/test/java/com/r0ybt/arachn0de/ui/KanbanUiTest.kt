@@ -166,7 +166,7 @@ class KanbanUiTest {
                 assertEquals(fixture.second,current.parentId)
                 assertEquals(phase.next() in listOf(WorkState.DONE,WorkState.VALIDATED),current.isCompleted)
                 val state=app.nodeRepository.management.iterations.observe(fixture.first).first()
-                assertEquals(state.progress(fixture.second),com.r0ybt.arachn0de.ui.state.sprintProgressPercentage(app.nodeRepository.getProjectNodes(current.projectId),fixture.second))
+                assertEquals(state.progress(fixture.second),com.r0ybt.arachn0de.ui.state.sprintProgressPercentage(app.nodeRepository.getProjectNodes(checkNotNull(current.projectId)),fixture.second))
             }
         }
         compose.waitUntil(15000) {pump();compose.onAllNodesWithContentDescription("Sprint validado: Legacy task").fetchSemanticsNodes().isNotEmpty()}

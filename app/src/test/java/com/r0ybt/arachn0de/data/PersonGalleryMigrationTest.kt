@@ -51,7 +51,7 @@ class PersonGalleryMigrationTest {
         val before=snapshot(sql);helper.close()
         val db=Arachn0deDatabase.create(context)
         try {
-            assertEquals(37,db.openHelper.writableDatabase.version)
+            assertEquals(50, db.openHelper.writableDatabase.version)
             assertEquals(before,snapshot(db.openHelper.readableDatabase))
             assertEquals(listOf(ManagementContextEntity("stable",false,"HYBRID")),db.managementContextDao().all())
             assertEquals(listOf(ManagementParticipantEntity("stable","person")),db.participationDao().participants())

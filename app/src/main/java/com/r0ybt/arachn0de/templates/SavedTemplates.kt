@@ -74,10 +74,13 @@ internal object SavedTemplateCodec {
         fun readDate(k:String):TemplateDate { val d=o.getJSONObject(k);d.fields("kind","number","minute");val n=d.number("number");val m=d.number("minute");require(n in 0..3650 && m in 0..1439);return TemplateDate(TemplateDateKind.valueOf(d.text("kind")),n.toInt(),m.toInt()) }
         return SavedTaskConfiguration(o.text("title"),o.text("description"),NodePurpose.valueOf(o.text("purpose")),Priority.valueOf(o.text("priority")),if(o.isNull("amount")) null else o.number("amount"),o.nullText("currency"),ids("people"),ids("technologies"),ids("tags"),readDate("start"),readDate("due"),o.nullText("metroCatalog"),o.nullText("metroPlan"),o.nullText("traveler")).also { it.validate() }
     }
-    fun validate(row:SavedTemplateEntity) { require(row.id.isNotBlank() && row.id.length<=256 && row.name.isNotBlank() && row.name.length<=240);decode(row.payload) }
+    fun validate(row:SavedTemplateEntity) {
+        require(row.id.isNotBlank() && row.id.length<=256 && row.name.isNotBlank() && row.name.length<=240)
+        if(StructuralTemplateCodec.isStructural(row.payload)) StructuralTemplateCodec.read(row.payload) else decode(row.payload)
+    }
 }
 internal data class TemplateApplication(val configuration:SavedTaskConfiguration,val warnings:List<String>)
-internal class SavedTemplateRepository(private val db:Arachn0deDatabase) {
+internal class SavedTemplateRepository(internal val db:Arachn0deDatabase) {
     fun observe()=db.savedTemplateDao().observe()
     suspend fun save(row:SavedTemplateEntity,new:Boolean)=withContext(Dispatchers.IO) { SavedTemplateCodec.validate(row);db.withTransaction {
         if(new) db.savedTemplateDao().insert(row) else check(db.savedTemplateDao().update(row)==1)

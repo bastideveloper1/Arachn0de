@@ -42,7 +42,7 @@ internal class CompletedCleanup(private val db:Arachn0deDatabase,private val nod
         val events=db.nodeEventDao().all().filter {it.type=="COMPLETED" || it.type=="REOPENED"}.groupBy {it.nodeId}
         val candidates=mutableListOf<Candidate>();var excluded=0
         for(row in rows) {
-            if(row.id !in scope || row.purpose!="ACTION" || !row.isCompleted || children[row.id].orEmpty().isNotEmpty()) continue
+            if(row.projectId==null || row.id !in scope || row.purpose!="ACTION" || !row.isCompleted || children[row.id].orEmpty().isNotEmpty()) continue
             val history=events[row.id].orEmpty();val event=history.lastOrNull()
             if(days!=null) {
                 if(days==0 || event?.type!="COMPLETED" || event.occurredAt<=0 || event.occurredAt<row.createdAt || event.occurredAt>now ||
@@ -60,7 +60,7 @@ internal class CompletedCleanup(private val db:Arachn0deDatabase,private val nod
             if(preview.days!=null && days()!=preview.days) return@withTransaction 0
             val current=select(preview.project,preview.layer,preview.days,now).candidates.associateBy {it.node.id}
             val safe=preview.candidates.filter {current[it.node.id]==it}
-            safe.groupBy {it.node.projectId}.values.sumOf {group->nodes.deleteSelectedInTransaction(group.first().node.projectId,group.mapTo(hashSetOf()) {it.node.id})}
+            safe.groupBy {it.node.projectId}.values.sumOf {group->nodes.deleteSelectedInTransaction(checkNotNull(group.first().node.projectId),group.mapTo(hashSetOf()) {it.node.id})}
         }
         if(count>0) try {attachments.cleanup()} catch(c:CancellationException) {throw c} catch(_:Exception) {android.util.Log.w("CompletedCleanup","File cleanup deferred")}
         count

@@ -20,7 +20,7 @@ internal class VaultManager(private val base:Context,private val sync:(File)->Un
     private val openEncrypted:(VaultContext,ByteArray)->Arachn0deDatabase={ctx,key->Arachn0deDatabase.create(ctx,key)}) {
     internal var loadInitial:suspend (VaultSession)->List<com.r0ybt.arachn0de.domain.model.Project> = {it.projects.observeProjects().first()}
     private suspend fun prepareInitial(session:VaultSession) {
-        try {session.initialProjects=loadInitial(session);currentCoroutineContext().ensureActive()}
+        try {session.appearance;session.initialProjects=loadInitial(session);currentCoroutineContext().ensureActive()}
         catch(cancelled:CancellationException) {throw cancelled}
         catch(failure:Exception) {throw VaultInitialDataException(failure)}
     }
@@ -44,10 +44,12 @@ internal class VaultManager(private val base:Context,private val sync:(File)->Un
         if(wait!=AutoLockPreference.MANUAL && current.value?.audio?.active!=true) backgroundJob=timerScope.launch { delay(wait);if(current.value?.audio?.active!=true) lock() }
     }
     suspend fun foreground() {
+        val started=com.r0ybt.arachn0de.ui.ResponseTiming.start("foreground_enter")
         backgroundJob?.cancel();backgroundJob=null
         val elapsed=backgroundAt?.let { android.os.SystemClock.elapsedRealtime()-it }
         val wait=timeout()
         if(wait!=AutoLockPreference.MANUAL && current.value?.audio?.active!=true && elapsed!=null && (elapsed<0 || elapsed>=wait)) lock()
+        com.r0ybt.arachn0de.ui.ResponseTiming.end(if(current.value==null) "authorization_locked" else "authorization_valid",started)
         backgroundAt=null;backgrounded.value=false
         current.value?.let {restoreCapturePreference(it)}
     }
@@ -75,13 +77,14 @@ internal class VaultManager(private val base:Context,private val sync:(File)->Un
         val access=SecureFiles.Session(id,root(id),key);SecureFiles.register(access)
         return VaultContext(base,access)
     }
-    private fun open(ctx:VaultContext,key:ByteArray):VaultSession {
+    private suspend fun open(ctx:VaultContext,key:ByteArray):VaultSession {
         val password=databaseKey(key,ctx.session.id)
         var db:Arachn0deDatabase?=null
         try {
             val role=SecureFiles.text(File(ctx.session.root,"identity.enc"));require(role=="primary" || role=="secondary")
             ctx.primary=role=="primary"
             db=openEncrypted(ctx,password);ctx.database=db
+            ctx.preparePreferences()
             db.openHelper.writableDatabase.query("PRAGMA foreign_key_check").use { check(!it.moveToFirst()) }
             return VaultSession(ctx.session,ctx,db,role=="primary")
         } catch(failure:Throwable) { db?.close();ctx.clearMemory();SecureFiles.revoke(ctx.session);throw failure }
@@ -105,7 +108,11 @@ internal class VaultManager(private val base:Context,private val sync:(File)->Un
                 }
                 val (id,key)=match!!
                 val opened=open(context(id,key),key)
-                try { AttachmentRepository.fileOperations.withLock { cleanupOriginals(opened.context) };prepareInitial(opened) } catch(failure:Throwable) { opened.close();throw failure }
+                try {
+                    AttachmentRepository.fileOperations.withLock { cleanupOriginals(opened.context) };prepareInitial(opened)
+                    SecureFiles.activeProfile=id
+                    com.r0ybt.arachn0de.guest.GuestCaptureImporter.importPending(base,opened)
+                } catch(failure:Throwable) {SecureFiles.activeProfile=null;opened.close();throw failure}
                 SecureFiles.activeProfile=id;current.value=opened;failures=0;retryAt=0
                 restoreCapturePreference(opened)
             } finally { match?.second?.fill(0);password.fill('\u0000') }
@@ -148,26 +155,39 @@ internal class VaultManager(private val base:Context,private val sync:(File)->Un
         if(current.value===expected && backgrounded.value && !expected.audio.active) background()
     }
     suspend fun lock()=withContext(Dispatchers.IO+NonCancellable) {
+        // Refuse new deliveries as soon as this request starts, before UI/file waits.
+        SecureFiles.activeProfile=null
         captures.protectBeforeTransition()
         operations.withLock {
             backgroundJob?.cancel();backgroundJob=null
             val session=current.value ?: return@withLock
-            session.audio.lock()
+            var audioFailure:Throwable?=null
+            try {session.audio.lock()} catch(failure:Throwable) {audioFailure=failure}
+            // Local recording finalization still needs its existing encrypted drafts.
+            // Revoke before waiting for local jobs or the file mutex.
+            session.context.queryJob.cancel()
+            session.access.beginClosing()
             current.value=null;savedUi=null;SecureFiles.activeProfile=null
-            base.stopService(android.content.Intent(base,com.r0ybt.arachn0de.metro.MetroTrackingService::class.java))
-            base.getSystemService(android.app.NotificationManager::class.java)?.let { it.cancel(843);it.cancel(844) }
-            base.revokeUriPermission(android.net.Uri.parse("content://${base.packageName}.reports"),android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
-            base.revokeUriPermission(android.net.Uri.parse("content://${base.packageName}.attachments"),android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
-            runCatching {
-                val clipboard=base.getSystemService(android.content.ClipboardManager::class.java)
-                if(clipboard?.primaryClipDescription?.label?.toString()=="Contexto de Arachn0de") {
-                    if(android.os.Build.VERSION.SDK_INT>=28) clipboard.clearPrimaryClip()
-                    else clipboard.setPrimaryClip(android.content.ClipData.newPlainText("",""))
+            try {
+                com.r0ybt.arachn0de.guest.GuestCaptureImporter.returnToPerson.value=null
+                base.stopService(android.content.Intent(base,com.r0ybt.arachn0de.metro.MetroTrackingService::class.java))
+                base.getSystemService(android.app.NotificationManager::class.java)?.let { it.cancel(843);it.cancel(844) }
+                base.revokeUriPermission(android.net.Uri.parse("content://${base.packageName}.reports"),android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                base.revokeUriPermission(android.net.Uri.parse("content://${base.packageName}.attachments"),android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                runCatching {
+                    val clipboard=base.getSystemService(android.content.ClipboardManager::class.java)
+                    if(clipboard?.primaryClipDescription?.label?.toString()=="Contexto de Arachn0de") {
+                        if(android.os.Build.VERSION.SDK_INT>=28) clipboard.clearPrimaryClip()
+                        else clipboard.setPrimaryClip(android.content.ClipData.newPlainText("",""))
+                    }
                 }
-            }
-            session.scope.coroutineContext[Job]?.cancelAndJoin()
-            AttachmentRepository.fileOperations.withLock { session.close() }
+                // UI collectors can outlive the StateFlow emission until recomposition.
+                // Drain their Room work before closing the SQLCipher connection pool.
+                session.context.queryJob.cancelAndJoin()
+                session.scope.coroutineContext[Job]?.cancelAndJoin()
+            } finally {AttachmentRepository.fileOperations.withLock { session.close() }}
             com.r0ybt.arachn0de.metro.MetroNavigation.requests.value=null
+            audioFailure?.let {throw it}
         }
     }
     /** Reuses the current store's password envelope; never unlocks or switches stores. */
@@ -312,7 +332,7 @@ internal class VaultManager(private val base:Context,private val sync:(File)->Un
                 original.openHelper.writableDatabase.query("PRAGMA wal_checkpoint(FULL)").use { check(it.moveToFirst() && it.getInt(0)==0) }
                 original.close();original=null
                 val files=VaultFileMigration.inventory(base.filesDir,setOf("security-v1"))
-                val caches=VaultFileMigration.inventory(base.cacheDir,setOf("updates"))
+                val caches=VaultFileMigration.inventory(base.cacheDir,setOf("updates","antisocial-camera"))
                 val operationContext=currentCoroutineContext()
                 val storeContext=requireNotNull(ctx)
                 val master=requireNotNull(key)

@@ -14,6 +14,8 @@ internal class OperationState(private val scope: CoroutineScope) {
     var error by mutableStateOf<String?>(null)
         private set
 
+    internal fun report(message:String) {error=message}
+
     fun clearError() { error = null }
 
     fun submit(
@@ -33,7 +35,7 @@ internal class OperationState(private val scope: CoroutineScope) {
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (failure: Exception) {
-                error = if(failure is com.r0ybt.arachn0de.data.repository.SprintLinkConflictException) failure.message else failureMessage
+                error = if(failure is com.r0ybt.arachn0de.data.repository.DraftLocationConflictException || failure is com.r0ybt.arachn0de.data.repository.SprintLinkConflictException || failure is com.r0ybt.arachn0de.domain.model.PaymentCurrencyException) failure.message else failureMessage
                 false
             } finally {
                 busy = false

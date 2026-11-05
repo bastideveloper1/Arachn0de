@@ -1,6 +1,7 @@
 package com.r0ybt.arachn0de.backup
 
 import com.r0ybt.arachn0de.data.local.*
+import com.r0ybt.arachn0de.bank.*
 import com.r0ybt.arachn0de.domain.model.Obligation
 import com.r0ybt.arachn0de.domain.model.TaskTemporal
 
@@ -78,11 +79,17 @@ internal data class BackupData(
     val calendarEvents:List<CalendarEventEntity> = emptyList(),
     val calendarEventPeople:List<CalendarEventPersonEntity> = emptyList(),
     val personMemories:List<PersonMemoryEntity> = emptyList(),
+    val personMemoryPeople:List<PersonMemoryPersonEntity> = emptyList(),
     val personMemoryImages:List<PersonMemoryImageEntity> = emptyList(),
+    val personBanners:List<PersonBannerEntity> = emptyList(),
     val personPhotos:List<PersonPhotoEntity> = emptyList(),
     val personBirthdays:List<PersonBirthdayEntity> = emptyList(),
     val personProfiles:List<PersonProfileEntity> = emptyList(),
     val personRelations:List<PersonRelationEntity> = emptyList(),
+    val bankRoots:List<BankRoot> = emptyList(),
+    val bankAccounts:List<BankAccount> = emptyList(),
+    val bankOperations:List<BankOperation> = emptyList(),
+    val bankAllocations:List<BankAllocation> = emptyList(),
 )
 
 internal object BackupLimits {
@@ -94,29 +101,50 @@ internal object BackupLimits {
     const val TOTAL_AVATAR_BYTES = 8 * 1024 * 1024
     const val ATTACHMENT_BYTES = 20L * 1024 * 1024
     const val TOTAL_ATTACHMENT_BYTES = 2L * 1024 * 1024 * 1024
-    val attachmentName = Regex("[a-f0-9-]{36}\\.(png|jpg|aac)")
+    val attachmentName = Regex("[a-f0-9-]{36}\\.(png|jpg|gif|aac)")
     const val RECORDS = 100_000
     val avatarName = Regex("[a-f0-9-]{36}\\.png")
 }
 
 /** Validate before staging or deleting anything; return parent-first order without recursion. */
 internal fun BackupData.validate(): List<NodeEntity> {
+    require(recurrenceRules.none {rule->bankRoots.any {it.id==rule.projectId}}) {"Banca no admite destinos de recurrencias; conserva sus tareas en Núcleos normales."}
+    BankState(bankRoots,bankAccounts,bankOperations,bankAllocations,projects,nodes,persons,assignments,recurrenceOccurrences).validate()
     validatePersonTechnologies(persons.mapTo(hashSetOf()) {it.id},technologies.mapTo(hashSetOf()) {it.id},personTechnologies)
+    validatePersonBanners(persons.mapTo(hashSetOf()) {it.id},attachmentFiles,personBanners)
     validatePersonGallery(persons.mapTo(hashSetOf()) {it.id},personPhotos,personBirthdays)
     require(nodes.none {it.isPinned && it.purpose!="LAYER"}) {"Solo las Capas pueden fijarse."}
     val attachmentTypes=attachmentFiles.associate {it.id to it.mimeType}
     require(personMemoryImages.mapNotNull {it.attachmentId}.all {attachmentTypes[it] in setOf("image/png","image/jpeg")}) {"Una fotografía no puede referenciar un audio."}
     validateCalendarEvents(calendarEvents,calendarEventPeople,persons.mapTo(hashSetOf()) {it.id})
+    validateMemoryPeople(personMemories.mapTo(hashSetOf()) {it.id},persons.mapTo(hashSetOf()) {it.id},personMemoryPeople)
     validatePersonMemories(persons.mapTo(hashSetOf()) {it.id},personMemories,personMemoryImages,attachmentFiles,personPhotos)
     com.r0ybt.arachn0de.domain.model.validatePersonDetails(persons.mapTo(hashSetOf()) {it.id},personProfiles,personRelations)
     require(storeKind in setOf("primary","secondary"))
     storeId?.let { require(java.util.UUID.fromString(it).toString()==it) }
     require(privatePreferences.map { it.name }.toSet().size == privatePreferences.size)
+    var savingsRecords=0
     privatePreferences.forEach { row ->
         require(row.name.matches(Regex("[a-zA-Z0-9_-]+")) && row.name != "vault_meta")
         com.r0ybt.arachn0de.security.EncryptedPreferences.decode(row.payload)
+        if(row.name==com.r0ybt.arachn0de.annotations.AnnotationStylePreferences.NAME)
+            com.r0ybt.arachn0de.annotations.AnnotationStylePreferences.validate(com.r0ybt.arachn0de.security.EncryptedPreferences.decode(row.payload))
+        if(row.name==com.r0ybt.arachn0de.domain.model.ToolGalleryPreference.NAME)
+            com.r0ybt.arachn0de.domain.model.ToolGalleryPreference.validate(com.r0ybt.arachn0de.security.EncryptedPreferences.decode(row.payload))
+        if(row.name==com.r0ybt.arachn0de.domain.model.CalendarPresentationPreference.NAME)
+            com.r0ybt.arachn0de.domain.model.CalendarPresentationPreference.validate(com.r0ybt.arachn0de.security.EncryptedPreferences.decode(row.payload))
+        if(row.name==com.r0ybt.arachn0de.slots.SavingsCodec.NAME) {
+            val state=com.r0ybt.arachn0de.slots.SavingsCodec.decode(row.payload)
+            com.r0ybt.arachn0de.slots.validateSavingsLinks(state,bankAccounts,bankOperations)
+            savingsRecords=state.events.size+state.configs.size
+        }
+        if(row.name==com.r0ybt.arachn0de.backup.legacy.PurchaseCodec.NAME) {
+            val purchaseState=com.r0ybt.arachn0de.backup.legacy.PurchaseCodec.decode(row.payload)
+            require(purchaseState.pending.none {entry->nodes.any {it.id==entry.id}}) {"Una sugerencia de compra ya tiene una tarea confirmada."}
+        }
         if(row.name==com.r0ybt.arachn0de.calendar.CalendarSpecialPreferences.NAME) com.r0ybt.arachn0de.calendar.CalendarSpecialPreferences.validatePayload(row.payload)
         if(row.name==com.r0ybt.arachn0de.pomodoro.PomodoroSoundCodec.NAME) com.r0ybt.arachn0de.pomodoro.PomodoroSoundCodec.validatePayload(row.payload)
+        if(row.name==com.r0ybt.arachn0de.diagrams.DiagramCodec.NAME) com.r0ybt.arachn0de.diagrams.DiagramCodec.validatePayload(row.payload)
         if(row.name==com.r0ybt.arachn0de.wireframe.WireCodec.NAME) com.r0ybt.arachn0de.wireframe.WireCodec.validatePayload(row.payload)
         if(row.name==com.r0ybt.arachn0de.pomodoro.PomodoroCodec.NAME) com.r0ybt.arachn0de.pomodoro.PomodoroCodec.validatePayload(row.payload)
         if(row.name==com.r0ybt.arachn0de.cleanup.CleanupPreference.NAME) com.r0ybt.arachn0de.cleanup.CleanupPreference.decode(row.payload)
@@ -129,9 +157,9 @@ internal fun BackupData.validate(): List<NodeEntity> {
         }
         if(row.name==com.r0ybt.arachn0de.access.AccessCodec.NAME) com.r0ybt.arachn0de.access.AccessCodec.decode(row.payload)
     }
-    gameSession?.let { require(com.r0ybt.arachn0de.game.RaceCodec.validPayload(it)) { "Partida guardada inválida." } }
+    gameSession?.let { require(com.r0ybt.arachn0de.backup.legacy.game.RaceCodec.validPayload(it)) { "Partida guardada inválida." } }
     require(appVersion.isNotBlank() && appVersion.length <= 128 && createdAt >= 0) { "Metadatos de backup inválidos." }
-    require(calendarEvents.size.toLong()+calendarEventPeople.size+personMemories.size.toLong()+personMemoryImages.size+metroLearningEvents.size.toLong() + ganttAnnotations.size.toLong() + sprintStories.size.toLong() + objectiveWork.size + localIdentities.size + managementLayers.size.toLong() + iterationPlans.size.toLong() + iterationCycles.size.toLong() + iterationCommitments.size.toLong() + iterationClosures.size.toLong() + managementParticipants.size.toLong() + participantRoles.size.toLong() + objectiveResponsibilities.size.toLong() + nodeResponsibilities.size.toLong() + managementRoles.size.toLong() + objectiveEpics.size + epicStories.size + storyTasks.size + backlogEntries.size + projectCharters.size + managementObjectives.size + acceptanceCriteria.size + managementContexts.size + sprintLinks.size + privatePreferences.size + savedTemplates.size + projects.size.toLong() + nodes.size + personPhotos.size + personBirthdays.size + personTechnologies.size + personProfiles.size + personRelations.size + persons.size + assignments.size + recurrenceRules.size + recurrenceOccurrences.size + recurrenceAssignments.size + tags.size + nodeTags.size + recurrenceTags.size + nodeEvents.size + creationDefaults.size + defaultsTags.size + defaultsPeople.size + attachmentFiles.size + nodeAttachments.size + projectAttachments.size + technologies.size + nodeTechnologies.size + projectTechnologies.size + projectPhotos.size + conversionRoots.size + conversionPeople.size + conversionTags.size + conversionEvents.size + conversionWorkStates.size + nodeSortPreferences.size + imageFiles.size + metroJourneys.size + (if (metroPreferences == null) 0 else 1) + (if (gameSession == null) 0 else 1) <= BackupLimits.RECORDS) { "Demasiados registros en el backup." }
+    require(bankRoots.size.toLong()+bankAccounts.size+bankOperations.size+bankAllocations.size+personBanners.size.toLong()+personMemoryPeople.size.toLong()+calendarEvents.size.toLong()+calendarEventPeople.size+personMemories.size.toLong()+personMemoryImages.size+metroLearningEvents.size.toLong() + ganttAnnotations.size.toLong() + sprintStories.size.toLong() + objectiveWork.size + localIdentities.size + managementLayers.size.toLong() + iterationPlans.size.toLong() + iterationCycles.size.toLong() + iterationCommitments.size.toLong() + iterationClosures.size.toLong() + managementParticipants.size.toLong() + participantRoles.size.toLong() + objectiveResponsibilities.size.toLong() + nodeResponsibilities.size.toLong() + managementRoles.size.toLong() + objectiveEpics.size + epicStories.size + storyTasks.size + backlogEntries.size + projectCharters.size + managementObjectives.size + acceptanceCriteria.size + managementContexts.size + sprintLinks.size + privatePreferences.size + savingsRecords + savedTemplates.size + projects.size.toLong() + nodes.size + personPhotos.size + personBirthdays.size + personTechnologies.size + personProfiles.size + personRelations.size + persons.size + assignments.size + recurrenceRules.size + recurrenceOccurrences.size + recurrenceAssignments.size + tags.size + nodeTags.size + recurrenceTags.size + nodeEvents.size + creationDefaults.size + defaultsTags.size + defaultsPeople.size + attachmentFiles.size + nodeAttachments.size + projectAttachments.size + technologies.size + nodeTechnologies.size + projectTechnologies.size + projectPhotos.size + conversionRoots.size + conversionPeople.size + conversionTags.size + conversionEvents.size + conversionWorkStates.size + nodeSortPreferences.size + imageFiles.size + metroJourneys.size + (if (metroPreferences == null) 0 else 1) + (if (gameSession == null) 0 else 1) <= BackupLimits.RECORDS) { "Demasiados registros en el backup." }
     fun unique(ids: List<String>): Set<String> {
         require(ids.all { it.isNotBlank() && it.length <= 256 }) { "Identidad inválida." }
         return ids.toSet().also { require(it.size == ids.size) { "Identidades duplicadas." } }
@@ -178,7 +206,11 @@ internal fun BackupData.validate(): List<NodeEntity> {
         require(byId[task.parentId]?.sprintMode!=true) {"La tarea tiene pertenencia directa y vinculada a Sprint."}
     }
     nodes.forEach { node ->
-        require(node.projectId in projectIds) { "Proyecto ausente." }
+        require(node.effort in 0..5) {"Esfuerzo inválido."}
+        require(node.taskStateCount==null || node.taskStateCount in 2..3) {"Cantidad de estados inválida."}
+        require(!node.awaitingVerification || (!node.isCompleted && node.purpose=="ACTION" && node.workState==null && node.projectId!=null && children[node.id].isNullOrEmpty())) {"Estado Por verificar incompatible."}
+        require(node.projectId == null || node.projectId in projectIds) { "Proyecto ausente." }
+        require(node.projectId != null || (node.parentId == null && node.purpose != "LAYER" && node.creationGroupId == null && node.workState == null && !node.sprintMode)) { "Borrador con estructura incompatible." }
         node.parentId?.let { parentId ->
             val parent = requireNotNull(byId[parentId]) { "Padre ausente." }
             require(parent.projectId == node.projectId && parent.id != node.id && parent.purpose == "LAYER" && parent.amountMinor == null) { "Jerarquía inválida." }
@@ -195,9 +227,9 @@ internal fun BackupData.validate(): List<NodeEntity> {
         require(!node.isCompleted || (node.purpose == "ACTION" && children[node.id].isNullOrEmpty())) { "Completado inválido." }
         require(node.purpose == "LAYER" || children[node.id].isNullOrEmpty()) { "Nota con hijos." }
         TaskTemporal.validateDates(node.startAt, node.dueAt)
-        require((node.amountMinor == null) == (node.currencyCode == null)) { "Obligación incompleta." }
+        require((node.amountMinor == null) == (node.currencyCode == null)) { "Pago incompleto." }
         node.amountMinor?.let {
-            require(node.purpose == "ACTION" && children[node.id].isNullOrEmpty()) { "Obligación con hijos." }
+            require(node.purpose == "ACTION" && children[node.id].isNullOrEmpty()) { "Pago con hijos." }
             Obligation(it, requireNotNull(node.currencyCode))
         }
     }
@@ -224,6 +256,7 @@ internal fun BackupData.validate(): List<NodeEntity> {
         require(index < rule.nextIndex && com.r0ybt.arachn0de.domain.model.RecurrenceSchedule.date(rule.startDay, frequency, rule.interval, index) == receipt.day)
         require(rule.endDay == null || receipt.day <= rule.endDay)
         require(receipt.nodeId == java.util.UUID.nameUUIDFromBytes("recurrence:${rule.id}:${receipt.day}".toByteArray(Charsets.UTF_8)).toString())
+        require(byId[receipt.nodeId]?.let {it.projectId!=null} != false) { "Ocurrencia recurrente sin proyecto." }
         // Missing Nodes are intentional deletion receipts, not broken backup references.
     }
     require(recurrenceAssignments.toSet().size == recurrenceAssignments.size && recurrenceAssignments.all { it.ruleId in ruleIds && it.personId in personIds })
@@ -253,7 +286,7 @@ internal fun BackupData.validate(): List<NodeEntity> {
     }
     persons.forEach { com.r0ybt.arachn0de.domain.model.AvatarFraming(it.avatarZoom, it.avatarX, it.avatarY).validate() }
     val names = persons.mapNotNull { it.avatarFile }.toSet()+personPhotos.map {it.file}
-    require(names == imageNames("avatars") && names.all { BackupLimits.avatarName.matches(it) }) { "Referencias de avatar inválidas." }
+    require(names == imageNames("avatars") && names.all { imageNameValid("avatars",it) }) { "Referencias de avatar inválidas." }
     require(avatars.values.sumOf { it.size.toLong() } <= BackupLimits.TOTAL_AVATAR_BYTES) { "Avatares demasiado grandes." }
     avatars.values.forEach { validateAvatar(it) }
     val attachmentIds = unique(attachmentFiles.map { it.id })
@@ -262,16 +295,16 @@ internal fun BackupData.validate(): List<NodeEntity> {
         require(BackupLimits.attachmentName.matches(it.storageName) && java.util.UUID.fromString(it.storageName.substringBefore('.')).toString() == it.storageName.substringBefore('.')) { "Nombre de adjunto inválido." }
         require(java.util.UUID.fromString(it.id).toString() == it.id && it.originalName.isNotBlank() && it.originalName.length <= 4096) { "Metadatos de adjunto inválidos." }
         require(it.lifecycleState == "READY" && it.byteSize in 1..BackupLimits.ATTACHMENT_BYTES && it.createdAt >= 0 && (if(it.mimeType=="audio/aac") it.width==0 && it.height==0 else it.width in 1..32000 && it.height in 1..32000)) { "Metadatos de adjunto inválidos." }
-        require(it.mimeType == when(it.storageName.substringAfterLast('.')) {"aac"->"audio/aac";"png"->"image/png";else->"image/jpeg"}) { "Tipo de adjunto inválido." }
+        require(it.mimeType == when(it.storageName.substringAfterLast('.')) {"aac"->"audio/aac";"png"->"image/png";"gif"->"image/gif";else->"image/jpeg"}) { "Tipo de adjunto inválido." }
         require(if(it.mimeType=="audio/aac") it.durationMs>0 && it.playbackMs in 0..it.durationMs && (it.bookmarkMs==null || it.bookmarkMs in 0..it.durationMs) else it.durationMs==0L && it.playbackMs==0L && it.bookmarkMs==null) {"Estado de audio inválido."}
         require(it.sha256.matches(Regex("[a-f0-9]{64}"))) { "Hash de adjunto inválido." }
     }
     val ordinaryAttachmentIds=(nodeAttachments.map {it.attachmentId}+projectAttachments.map {it.attachmentId}).toSet()
-    val galleryOnly=personMemoryImages.mapNotNull {it.attachmentId}.toSet()-ordinaryAttachmentIds
+    val galleryOnly=(personMemoryImages.mapNotNull {it.attachmentId}+personBanners.map {it.attachmentId}).toSet()-ordinaryAttachmentIds
     require(attachmentFiles.filter {it.id !in galleryOnly}.sumOf { it.byteSize } <= BackupLimits.TOTAL_ATTACHMENT_BYTES) { "Adjuntos demasiado grandes." }
     require(nodeAttachments.toSet().size == nodeAttachments.size && nodeAttachments.all { it.nodeId in nodeIds && it.attachmentId in attachmentIds }) { "Asociación de adjunto inválida." }
     require(projectAttachments.toSet().size == projectAttachments.size && projectAttachments.all { it.projectId in projectIds && it.attachmentId in attachmentIds }) { "Asociación de adjunto inválida." }
-    require((nodeAttachments.map { it.attachmentId } + projectAttachments.map { it.attachmentId } + personMemoryImages.mapNotNull {it.attachmentId}).toSet() == attachmentIds) { "Adjunto sin propietario." }
+    require((nodeAttachments.map { it.attachmentId } + projectAttachments.map { it.attachmentId } + personMemoryImages.mapNotNull {it.attachmentId} + personBanners.map {it.attachmentId}).toSet() == attachmentIds) { "Adjunto sin propietario." }
     val nodeLinks = nodeAttachments.groupBy { it.nodeId }.mapValues { (_, rows) -> rows.mapTo(hashSetOf()) { it.attachmentId } }
     val projectLinks = projectAttachments.groupBy { it.projectId }.mapValues { (_, rows) -> rows.mapTo(hashSetOf()) { it.attachmentId } }
     nodes.forEach { node -> require(com.r0ybt.arachn0de.domain.model.AttachmentReferences.ids(node.description).all { id -> id in nodeLinks[node.id].orEmpty() }) { "Referencia de adjunto rota en tarea: ${node.title}" } }
@@ -302,6 +335,7 @@ internal fun BackupData.validate(): List<NodeEntity> {
     require(conversionRoots.mapNotNull { it.projectId }.distinct().size == conversionRoots.count { it.projectId != null } &&
         conversionRoots.mapNotNull { it.nodeId }.distinct().size == conversionRoots.count { it.nodeId != null }) { "Raíces de conversión duplicadas." }
     conversionRoots.forEach { row ->
+        require(row.effort in 0..5) {"Esfuerzo de conversión inválido."}
         require((row.projectId != null) != (row.nodeId != null)) { "Conversión sin propietario único." }
         require(row.projectIdentity.isNotBlank() && row.projectIdentity.length <= 256 && row.nodeIdentity.isNotBlank() && row.nodeIdentity.length <= 256)
         require(row.projectId == null || row.projectId in projectIds)
@@ -326,18 +360,28 @@ internal fun BackupData.validate(): List<NodeEntity> {
     }
     unique(nodeSortPreferences.map { it.context })
     val sortContexts = projects.mapTo(hashSetOf()) { "${it.id}:project-root" }
-    nodes.forEach { sortContexts.add("${it.projectId}:${it.id}") }
+    sortContexts.add(com.r0ybt.arachn0de.domain.model.SortConfigurationCodec.PROJECTS_CONTEXT)
+    nodes.forEach { sortContexts.add(it.projectId?.let {project->"$project:${it.id}"} ?: "draft:${it.id}") }
     nodeSortPreferences.forEach {
-        require(it.mode in listOf("MANUAL", "DUE_ASC", "DUE_DESC", "DUE_PRIORITY", "PRIORITY", "CREATED_NEWEST", "CREATED_OLDEST", "INHERIT"))
+        val configuration=com.r0ybt.arachn0de.domain.model.SortConfigurationCodec.decode(it.mode,it.layersFirst)
+        if(it.context==com.r0ybt.arachn0de.domain.model.SortConfigurationCodec.PROJECTS_CONTEXT) require(!configuration.inherited) {"El orden de Núcleos no puede heredarse."}
+        if(it.mode.startsWith(com.r0ybt.arachn0de.domain.model.SortConfigurationCodec.PREFIX)) {
+            require(configuration.appliedLayersFirst==it.layersFirst) {"Estado aplicado de ordenación incoherente."}
+            require(!it.context.endsWith(":project-root") || !configuration.inherited) {"Un Núcleo no puede heredar su propio orden."}
+        }
         require(it.context in sortContexts) { "Preferencia de orden sin propietario." }
     }
     require(imageFiles.map { it.key }.distinct().size == imageFiles.size) { "Imagen de manifiesto duplicada." }
     imageFiles.forEach {
-        require(it.directory in setOf("avatars", "technology-icons", "project-photos") && BackupLimits.avatarName.matches(it.name) && java.util.UUID.fromString(it.name.substringBefore('.')).toString() == it.name.substringBefore('.'))
+        require(it.directory in setOf("avatars", "technology-icons", "project-photos", "theme-originals") && imageNameValid(it.directory,it.name) && java.util.UUID.fromString(it.name.substringBefore('.')).toString() == it.name.substringBefore('.'))
         require(it.byteSize in 1..imageByteLimit(it.directory).toLong() && it.sha256.matches(Regex("[a-f0-9]{64}")))
-        val inline = when (it.directory) { "avatars" -> avatars; "technology-icons" -> technologyIcons; else -> projectPhotoImages }
+        val inline = when (it.directory) { "avatars" -> avatars; "technology-icons" -> technologyIcons; "theme-originals" -> emptyMap(); else -> projectPhotoImages }
         require(it.name !in inline) { "Imagen duplicada en JSON y manifiesto." }
     }
+    val originals=com.r0ybt.arachn0de.backup.legacy.themeOriginalReferences(privatePreferences)
+    val originalFiles=imageFiles.filter {it.directory=="theme-originals"}.associateBy {it.name}
+    require(originalFiles.keys==originals.keys) {"Faltan originales de temas o hay archivos sin propietario."}
+    originals.forEach {(name,o)->val file=originalFiles.getValue(name);require(file.byteSize==o.byteSize&&file.sha256==o.sha256) {"Original de tema incompatible."}}
     require(imageFiles.sumOf { it.byteSize } + avatars.values.sumOf { it.size.toLong() } + technologyIcons.values.sumOf { it.size.toLong() } + projectPhotoImages.values.sumOf { it.size.toLong() } <= BackupLimits.TOTAL_STREAMED_IMAGE_BYTES) { "Imágenes por streaming demasiado grandes." }
     unique(managementRoles.map {it.nodeId});unique(backlogEntries.map {it.nodeId})
     com.r0ybt.arachn0de.data.repository.validateCascadeRelations(sprintStories,objectiveWork,localIdentities,nodes,conversionRoots,managementContexts,managementRoles,managementObjectives,persons.mapTo(hashSetOf()) {it.id})
@@ -349,11 +393,16 @@ internal fun BackupData.validate(): List<NodeEntity> {
     return ordered
 }
 
-internal fun imageByteLimit(directory:String)=when(directory) {"avatars"->BackupLimits.PERSON_AVATAR_BYTES;"project-photos"->BackupLimits.PROJECT_PHOTO_BYTES;else->BackupLimits.AVATAR_BYTES}
+internal fun imageNameValid(directory:String,name:String)=if(directory=="theme-originals") (Regex("[a-f0-9-]{36}\\.img").matches(name)&&runCatching {java.util.UUID.fromString(name.substringBefore('.')).toString()==name.substringBefore('.')}.getOrDefault(false)) else if(directory=="avatars") Regex("[a-f0-9-]{36}\\.(png|jpg)").matches(name) else BackupLimits.avatarName.matches(name)
+internal fun imageByteLimit(directory:String)=when(directory) {"theme-originals"->com.r0ybt.arachn0de.backup.legacy.THEME_ORIGINAL_LIMIT;"avatars"->BackupLimits.PERSON_AVATAR_BYTES;"project-photos"->BackupLimits.PROJECT_PHOTO_BYTES;else->BackupLimits.AVATAR_BYTES}
 internal fun validateProjectPhoto(bytes:ByteArray)=validatePng(bytes,BackupLimits.PROJECT_PHOTO_BYTES,2048)
-internal fun validateAvatar(bytes:ByteArray)=validatePng(bytes,BackupLimits.PERSON_AVATAR_BYTES,2048)
+internal fun validateAvatar(bytes:ByteArray) {
+    if(bytes.size>2 && bytes[0]==(-1).toByte() && bytes[1]==(-40).toByte()) {
+        require(com.r0ybt.arachn0de.photos.PrivatePhoto.clean(bytes).bytes.contentEquals(bytes)) {"Fotografía con metadatos no admitidos."}
+    } else validatePng(bytes,BackupLimits.PERSON_AVATAR_BYTES,32000)
+}
 internal fun validateTechnologyIcon(bytes:ByteArray)=validatePng(bytes,BackupLimits.AVATAR_BYTES,512)
-internal fun validatePrivateImage(directory:String,bytes:ByteArray) { when(directory) {"avatars"->validateAvatar(bytes);"project-photos"->validateProjectPhoto(bytes);else->validateTechnologyIcon(bytes)} }
+internal fun validatePrivateImage(directory:String,bytes:ByteArray) { when(directory) {"theme-originals"->com.r0ybt.arachn0de.backup.legacy.validateThemeOriginal(bytes);"avatars"->validateAvatar(bytes);"project-photos"->validateProjectPhoto(bytes);else->validateTechnologyIcon(bytes)} }
 private fun validatePng(bytes: ByteArray,maxBytes:Int,maxDimension:Int) {
     require(bytes.size in 1..maxBytes) { "Avatar demasiado grande o vacío." }
     val signature = byteArrayOf(-119, 80, 78, 71, 13, 10, 26, 10)
@@ -382,6 +431,8 @@ private fun validatePng(bytes: ByteArray,maxBytes:Int,maxDimension:Int) {
     val bounds = android.graphics.BitmapFactory.Options().apply { inJustDecodeBounds = true }
     android.graphics.BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
     require(bounds.outWidth in 1..maxDimension && bounds.outHeight in 1..maxDimension) { "Dimensiones de avatar inválidas." }
-    val image = requireNotNull(android.graphics.BitmapFactory.decodeByteArray(bytes, 0, bytes.size)) { "Avatar dañado." }
+    require(bounds.outWidth.toLong()*bounds.outHeight<=100_000_000)
+    var sample=1;while(maxOf(bounds.outWidth,bounds.outHeight)/sample>2048)sample*=2
+    val image = requireNotNull(android.graphics.BitmapFactory.decodeByteArray(bytes, 0, bytes.size,android.graphics.BitmapFactory.Options().apply {inSampleSize=sample})) { "Avatar dañado." }
     image.recycle()
 }

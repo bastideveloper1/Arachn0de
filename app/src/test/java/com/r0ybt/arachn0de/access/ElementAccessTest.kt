@@ -46,6 +46,14 @@ class ElementAccessTest {
         assertEquals(setOf("project:${project.id}"),repo.snapshot().favorites)
         assertTrue(repo.snapshot().recent.isEmpty())
     }
+    @Test fun explicitFavoriteIntentIsIdempotentAndSurvivesReopen()=runBlocking<Unit> {
+        val project=ProjectRepository(db.projectDao(),db).createProject("Favorito")
+        val key="project:${project.id}"
+        repo.toggle(key,true);repo.toggle(key,true)
+        db.close();open();assertEquals(setOf(key),repo.snapshot().favorites)
+        repo.toggle(key,false);repo.toggle(key,false)
+        db.close();open();assertTrue(repo.snapshot().favorites.isEmpty())
+    }
     private suspend fun nodesSafeMove(id:String,project:String,parent:String) {NodeRepository(db).moveNode(id,parent)}
     @Test fun rapidCaptureRetriesOneIdentityThenAllowsNormalEditingAndBacksUpSettings()=runBlocking<Unit> {
         val project=ProjectRepository(db.projectDao(),db).createProject("P")

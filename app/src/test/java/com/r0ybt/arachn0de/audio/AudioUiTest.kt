@@ -8,6 +8,8 @@ import androidx.compose.material3.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.ui.unit.dp
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalDensity
@@ -109,6 +111,20 @@ class AudioUiTest {
         }
         compose.onNodeWithContentDescription("Cancelar").performClick();assertTrue(cancelled)
     }
+    @Test fun compactAudioUsesNavigationFrameAndKeepsControlsAndSession() {
+        val audio=app.security.current.value!!.audio
+        val initial=AudioState(recording=true,durationMs=2345)
+        audio.state.value=initial
+        var compact by androidx.compose.runtime.mutableStateOf(true)
+        compose.setContent {Arachn0deTheme {AudioBar(compact=compact,onCompactChange={compact=it})}}
+        compose.onNodeWithTag("audio-module-frame").assertHeightIsAtLeast(56.dp)
+        compose.onNodeWithTag("audio-compact-toggle").assertWidthIsAtLeast(48.dp).assertHeightIsAtLeast(48.dp).performClick()
+        compose.runOnIdle {assertFalse(compact);assertEquals(initial,audio.state.value)}
+        compose.onNodeWithContentDescription("Opciones de audio").performScrollTo().performClick()
+        compose.onNodeWithText("Descartar grabación").assertExists()
+        assertEquals(initial,audio.state.value)
+    }
+
     @Test fun compactRecordingBarPersistsAcrossNavigationAndContentRecreationWithoutDuplicateBars() {
         runBlocking {app.projectRepository.createProject("Núcleo de audio")}
         compose.setContent {Arachn0deTheme {AppRoot(app.projectRepository,app.nodeRepository)}}

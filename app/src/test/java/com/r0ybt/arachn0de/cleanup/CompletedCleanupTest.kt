@@ -38,6 +38,26 @@ class CompletedCleanupTest {
     private suspend fun task(title:String="Task",parent:String?=null,project:String="p",complete:Boolean=true):Node {
         val n=nodes.createNode(project,parent,title);if(complete) nodes.setCompleted(n.id,true);return n
     }
+    @Test fun threeStatesCleanupDeletesOnlyCompletedAndRechecksVerificationAtConfirmation()=runBlocking {
+        ProjectRepository(db.projectDao(),db).setVerificationEnabled("p",true)
+        val layer=nodes.createNode("p",null,"Capa",purpose=NodePurpose.LAYER)
+        val pending=nodes.createNode("p",layer.id,"Pendiente")
+        val verify=nodes.createNode("p",layer.id,"Por verificar")
+        val complete=nodes.createNode("p",layer.id,"Completada")
+        val changed=nodes.createNode("p",layer.id,"Cambió después de confirmar")
+        nodes.setTaskStatus(verify.id,TaskStatus.VERIFY)
+        nodes.setTaskStatus(complete.id,TaskStatus.COMPLETED)
+        nodes.setTaskStatus(changed.id,TaskStatus.COMPLETED)
+        val preview=cleanup.preview("p",layer.id)
+        assertEquals(setOf(complete.id,changed.id),preview.candidates.map {it.node.id}.toSet())
+        nodes.setTaskStatus(changed.id,TaskStatus.VERIFY)
+        assertEquals(1,cleanup.clean(preview))
+        assertNull(db.nodeDao().getById(complete.id))
+        assertFalse(db.nodeDao().getById(pending.id)!!.isCompleted)
+        assertTrue(db.nodeDao().getById(verify.id)!!.awaitingVerification)
+        assertTrue(db.nodeDao().getById(changed.id)!!.awaitingVerification)
+        assertNotNull(db.nodeDao().getById(layer.id))
+    }
     @Test fun manualScopePreservesOtherBranchesContainersNotesPendingAndRestricted()=runBlocking {
         val layer=nodes.createNode("p",null,"Layer",purpose=NodePurpose.LAYER)
         val nested=nodes.createNode("p",layer.id,"Nested",purpose=NodePurpose.LAYER)

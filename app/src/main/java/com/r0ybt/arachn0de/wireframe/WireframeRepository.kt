@@ -55,19 +55,4 @@ internal class WireframeRepository(private val preferences:SharedPreferences) {
     }}}
 }
 
-/** Import directly into an encrypted document, with bounded decode and no private temporary file. */
-internal suspend fun importWireImage(context:Context,uri:Uri):String = withContext(Dispatchers.IO) {
-    val bytes=context.contentResolver.openInputStream(uri)!!.use {input->
-        val out=java.io.ByteArrayOutputStream();val block=ByteArray(8192)
-        while(true) {val n=input.read(block);if(n<0) break;require(out.size()+n<=20*1024*1024) {"Máximo 20 MiB por imagen de origen."};out.write(block,0,n)};out.toByteArray()
-    }
-    val bounds=BitmapFactory.Options().apply {inJustDecodeBounds=true}
-    BitmapFactory.decodeByteArray(bytes,0,bytes.size,bounds)
-    require(bounds.outWidth>0 && bounds.outHeight>0 && bounds.outWidth.toLong()*bounds.outHeight<=100_000_000L) {"Imagen no válida o demasiado grande."}
-    var sample=1;while(maxOf(bounds.outWidth,bounds.outHeight)/sample>1024) sample*=2
-    val bitmap=requireNotNull(BitmapFactory.decodeByteArray(bytes,0,bytes.size,BitmapFactory.Options().apply {inSampleSize=sample}))
-    try {
-        val output=java.io.ByteArrayOutputStream();check(bitmap.compress(Bitmap.CompressFormat.PNG,100,output))
-        WireCodec.image(output.toByteArray())
-    } finally {bitmap.recycle()}
-}
+internal suspend fun importWireImage(context:Context,uri:Uri):String = com.r0ybt.arachn0de.visual.importCanvasImage(context,uri)

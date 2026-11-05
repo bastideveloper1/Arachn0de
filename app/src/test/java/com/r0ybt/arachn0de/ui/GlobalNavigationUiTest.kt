@@ -44,7 +44,7 @@ class GlobalNavigationUiTest {
     private fun pump() {org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle();androidx.compose.runtime.snapshots.Snapshot.sendApplyNotifications();compose.mainClock.advanceTimeByFrame()}
     private fun await(text:String)=compose.waitUntil(15000) {pump();compose.onAllNodesWithText(text).fetchSemanticsNodes().isNotEmpty()}
     private fun click(text:String) {
-        val section=when(text) {"Favoritos","Avisos","Calendario","Obligaciones","Recurrencias"->"Seguimiento";"Personas","Tecnologías","Etiquetas"->"Recursos";"Seguridad","Respaldo","Apariencia"->"Ajustes";else->null}
+        val section=when(text) {"Favoritos","Avisos","Calendario","Pagos","Recurrencias"->"Seguimiento";"Personas","Tecnologías","Etiquetas"->"Recursos";"Seguridad","Respaldo","Apariencia"->"Ajustes";else->null}
         if(section!=null && compose.onAllNodesWithText(text).fetchSemanticsNodes().isEmpty()) compose.onNodeWithText(section).performScrollTo().performClick()
         await(text);val node=compose.onNodeWithText(text);if(runCatching {node.assertIsDisplayed()}.isFailure) node.performScrollTo();node.performClick()}
     private fun menu() {compose.onNodeWithContentDescription("Abrir menú").performClick()}
@@ -122,7 +122,7 @@ class GlobalNavigationUiTest {
         }}}
         await("Raíz");menu()
         for(section in listOf("Seguimiento","Recursos","Ajustes")) compose.onNodeWithText(section).performScrollTo().performClick()
-        for(label in listOf("Buscar","Favoritos","Proyectos","Avisos","Calendario","Obligaciones","Personas","Tecnologías","Etiquetas","Metro","Seguridad","Respaldo","Captura rápida","Apariencia","Acerca de","Juego")) compose.onAllNodesWithText(label).assertCountEquals(1)
+        for(label in listOf("Buscar","Favoritos","Proyectos","Avisos","Calendario","Pagos","Personas","Tecnologías","Etiquetas","Metro","Seguridad","Respaldo","Captura rápida","Apariencia","Acerca de")) compose.onAllNodesWithText(label).assertCountEquals(1)
         click("Seguridad");assertEquals(1,settings);compose.onNodeWithTag("navigation-drawer").assertDoesNotExist()
         menu();click("Respaldo");await("Backup y restauración")
         compose.onNodeWithText("Respaldos").assertExists()
@@ -230,16 +230,6 @@ class GlobalNavigationUiTest {
         restoration.emulateSavedInstanceStateRestore();await("Trabajo 035")
         compose.onNodeWithText("Trabajo 035").assertIsDisplayed()
         compose.onNodeWithText("Trabajo 000").assertDoesNotExist()
-    }
-
-    @Test fun experimentalDestinationUsesItsOwnHeaderWithoutAnExtraGlobalBar() {
-        runBlocking {app.projectRepository.createProject("Raíz")}
-        mount();await("Raíz");menu();click("Juego");await("Carrera táctica")
-        compose.onAllNodesWithContentDescription("Abrir menú").assertCountEquals(1)
-        compose.onAllNodesWithContentDescription("Bloquear").assertCountEquals(1)
-        compose.onNodeWithText("Seguridad").assertDoesNotExist()
-        compose.onNodeWithText("Reglas").assertExists()
-        menu();click("Proyectos");await("Raíz")
     }
 
     @Test fun expandedMetroMapKeepsMenuAndLockAccessible() {

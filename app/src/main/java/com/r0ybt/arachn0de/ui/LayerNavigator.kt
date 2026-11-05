@@ -187,6 +187,7 @@ internal fun LayerDestination(
                             Image(
                                 painter = painterResource(id = R.drawable.bw90_layer),
                                 contentDescription = "Capa",
+                                colorFilter = androidx.compose.ui.graphics.ColorFilter.tint(Arachn0deColors.Icon),
                                 contentScale = ContentScale.Fit,
 
                                 modifier = Modifier.size(18.dp),

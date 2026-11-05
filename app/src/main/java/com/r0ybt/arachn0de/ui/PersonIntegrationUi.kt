@@ -33,9 +33,9 @@ import kotlinx.coroutines.launch
 
 internal data class PersonDestination(val personId:String,val projectId:String,val nodeId:String?=null)
 internal val LocalPersonNavigation=staticCompositionLocalOf<((PersonDestination)->Unit)?> {null}
-internal val personKinds=linkedMapOf("ALL" to "Todos los tipos","ACTION" to "Tareas","NOTE" to "Notas","LAYER" to "Capas","SPRINT" to "Sprints","EPIC" to "Épicas","STORY" to "Historias","OBJECTIVE" to "Objetivos")
+internal val personKinds=linkedMapOf("ALL" to "Todos los tipos","ACTION" to "Tareas","NOTE" to "Notas","LAYER" to "Capas")
 internal fun personRole(role:String)=when(role) {"TRADITIONAL"->"Responsable tradicional";"MEMBER"->"Participante";else->ResponsibilityRole.entries.firstOrNull {it.name==role}?.label ?: role}
-internal fun filterPersonWork(rows:List<PersonWorkRow>,kind:String,state:String)=rows.filter {it.kind!="PROJECT" && (kind=="ALL" || it.kind==kind) && when(state) {"PENDING"->it.completed==false;"COMPLETED"->it.completed==true;else->true}}
+internal fun filterPersonWork(rows:List<PersonWorkRow>,kind:String,state:String)=rows.filter {it.kind in setOf("ACTION","NOTE","LAYER") && (kind=="ALL" || it.kind==kind) && when(state) {"PENDING"->it.completed==false;"COMPLETED"->it.completed==true;else->true}}
 
 @Composable internal fun PersonTechnologiesSection(person:String,repository:PersonRepository,openOnEntry:Boolean=false,openRequest:Int=0,panelVisible:Boolean=true,contentModifier:Modifier=Modifier,menuFooter:(@Composable ()->Unit)?=null) {
     val catalog by remember(repository) {repository.observeTechnologyCatalog()}.collectAsState(initial=null)
@@ -61,7 +61,7 @@ internal fun filterPersonWork(rows:List<PersonWorkRow>,kind:String,state:String)
                         Column(Modifier.fillMaxWidth().padding(8.dp),horizontalAlignment=androidx.compose.ui.Alignment.CenterHorizontally,verticalArrangement=Arrangement.spacedBy(4.dp)) {
                             TechnologyIcon(tech,36.dp)
                             Text(tech.name,maxLines=3,overflow=androidx.compose.ui.text.style.TextOverflow.Ellipsis,textAlign=androidx.compose.ui.text.style.TextAlign.Center,style=MaterialTheme.typography.bodySmall)
-                            Text(PersonProficiency.valueOf(assigned.getValue(tech.id).proficiency).label,style=MaterialTheme.typography.labelSmall,
+                            if(assigned.getValue(tech.id).proficiency!="UNEVALUATED") Text(PersonProficiency.valueOf(assigned.getValue(tech.id).proficiency).label,style=MaterialTheme.typography.labelSmall,
                                 textAlign=androidx.compose.ui.text.style.TextAlign.Center)
                         }
                     }

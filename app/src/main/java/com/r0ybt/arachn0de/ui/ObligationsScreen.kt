@@ -25,7 +25,8 @@ internal fun ObligationsScreen(
     tree: NodeTreeSnapshot, projects: List<Project>, people: List<Person>, responsibleByNode: Map<String, List<Person>>,
     loaded: Boolean, now: Long, zoneId: String, onOpen: (Node) -> Unit, onBack: () -> Unit,
 ) {
-    BackHandler(onBack = onBack)
+    val nameSearch=rememberInlineSearch("obligations")
+    BackHandler(enabled=!nameSearch.open,onBack = onBack)
     var completedView by remember { mutableStateOf(false) }
     var selectedMonth by remember { mutableStateOf<CalendarMonth?>(null) }
     var selectedPersonId by remember { mutableStateOf<String?>(null) }
@@ -42,19 +43,21 @@ internal fun ObligationsScreen(
         java.text.SimpleDateFormat("MMMM yyyy", locale).apply {timeZone=TimeZone.getTimeZone("UTC")}
             .format(Date(CalendarDates.labelInstant(it.selecting(1))))
     } ?: "Todos los períodos"
-    val visible = remember(financial, completedView) {
-        financial?.tasks.orEmpty().filter { it.isCompleted == completedView }.sortedWith(
+    val visible = remember(financial, completedView,nameSearch.query) {
+        financial?.tasks.orEmpty().filter { it.isCompleted == completedView && (!nameSearch.active || nameMatches(it.title,nameSearch.query)) }.sortedWith(
             compareBy<Node> { it.dueAt == null }.thenBy { it.dueAt }
                 .thenBy { it.effectivePriority != Priority.HIGH }.thenBy { it.createdAt }.thenBy { it.id })
     }
     val projectById = remember(projects) { projects.associateBy { it.id } }
-    val listState = rememberLazyListState()
+    val originalListState = rememberLazyListState()
+    val searchListState = rememberLazyListState()
+    val listState=if(nameSearch.active)searchListState else originalListState
     Surface(Modifier.fillMaxSize(), color = Arachn0deColors.Background) {
         Column(Modifier.fillMaxSize().padding(14.dp)) {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                 GlobalChromeActions(leading=true)
                 TextButton(onClick = onBack) { Text("Volver") }
-                NavigationHeading("Obligaciones",Modifier.weight(1f))
+                NavigationHeading("Pagos",Modifier.weight(1f))
                 GlobalChromeActions()
             }
             ObligationReportActions(if (ready) financial else null, projects, selectedPerson?.name, locale, completed=completedView)
@@ -71,21 +74,21 @@ internal fun ObligationsScreen(
                         OutlinedButton(onClick={choosePerson=true}) {Text("Persona: ${selectedPerson?.name ?: if(selectedPersonId==null) "Todas" else "Persona eliminada"}")}
                     }
                 }
-                if (!ready) item(key = "loading") { Text("Cargando Obligaciones…") }
+                if (!ready) item(key = "loading") { Text("Cargando Pagos…") }
                 else {
                     item(key = "summary") {
                         Card(Modifier.fillMaxWidth().testTag("financial-summary"), colors = CardDefaults.cardColors(containerColor = Arachn0deColors.ControlSurface)) {
                             Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                                 Text("Total pendiente", style = MaterialTheme.typography.titleSmall)
                                 val totals = financial!!.summary.byCurrency.toSortedMap().filterValues { it.pendingCount > 0 }
-                                if (totals.isEmpty()) Text("Sin obligaciones pendientes", style = MaterialTheme.typography.bodySmall)
+                                if (totals.isEmpty()) Text("Sin pagos pendientes", style = MaterialTheme.typography.bodySmall)
                                 totals.forEach { (currency, amounts) ->
                                     Text(Money.format(amounts.pendingMinor, currency, locale), style = MaterialTheme.typography.bodyMedium)
                                 }
                             }
                         }
                     }
-                    if (visible.isEmpty()) item(key = "empty") { Text(if (completedView) "No hay obligaciones completadas." else "No hay obligaciones pendientes.", color = Arachn0deColors.TextSecondary) }
+                    if (visible.isEmpty()) item(key = "empty") { Text(if (completedView) "No hay pagos completados." else "No hay pagos pendientes.", color = Arachn0deColors.TextSecondary) }
                     items(visible, key = { it.id }, contentType = { "obligation" }) { node ->
                         val project = projectById[node.projectId]
                         val path = remember(financial!!.tree, node.id, project?.name) {
@@ -97,7 +100,7 @@ internal fun ObligationsScreen(
                                 Text(node.title, maxLines = 2, overflow = TextOverflow.Ellipsis)
                                 ObligationIndicator(node)
                                 if (node.effectivePriority == Priority.HIGH) PriorityIndicator(node)
-                                Text(if (node.isCompleted) "Completada" else "Pendiente", fontSize = 12.sp)
+                                Text(node.taskStatus.label, fontSize = 12.sp)
                                 Text(path, fontSize = 12.sp, color = Arachn0deColors.TextSecondary, maxLines = 2, overflow = TextOverflow.Ellipsis)
                                 if (node.dueAt == null) Text("Sin vencimiento", fontSize = 12.sp, color = Arachn0deColors.TextSecondary)
                                 else TaskDateIndicator(node, now)

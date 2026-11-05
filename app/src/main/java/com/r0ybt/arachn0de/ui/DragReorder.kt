@@ -24,10 +24,15 @@ internal class DragReorderState(private val list: LazyListState, private val pre
     private var pending by mutableStateOf(false)
     var groups: Map<Any, List<String>> = emptyMap()
     var busy = false
+    var startAllowed:(androidx.compose.ui.geometry.Offset)->Boolean = {true}
+    var onBlockedDrag:(()->Unit)?=null
+    private var blockedCandidate=false
+    private var blockedReported=false
     var commit: (String, String, Any) -> Unit = { _, _, _ -> }
 
     fun orderFor(completed: Any, persisted: List<String>): List<String> =
         if ((draggedId != null || pending) && group == completed) transientOrder else persisted
+
 
     fun isDragging(id: String) = draggedId == id
 
@@ -48,12 +53,10 @@ internal class DragReorderState(private val list: LazyListState, private val pre
     val gestureModifier: Modifier
         get() = Modifier.pointerInput(this) {
             detectDragGesturesAfterLongPress(
-                onDragStart = { position -> startDrag(position.y) },
+                onDragStart = { position -> if(startAllowed(position))startDrag(position.y) },
                 onDrag = { change, _ ->
-                    if (draggedId != null) {
-                        change.consume()
-                        dragTo(change.position.y)
-                    }
+                    if (draggedId != null) change.consume()
+                    dragTo(change.position.y)
                 },
                 onDragEnd = { finishDrag() },
                 onDragCancel = { if (draggedId != null) cancel() },
@@ -61,6 +64,8 @@ internal class DragReorderState(private val list: LazyListState, private val pre
         }
 
     internal fun startDrag(y: Float) {
+        blockedReported=false
+        blockedCandidate=list.layoutInfo.visibleItemsInfo.any {y>=it.offset && y<it.offset+it.size && it.key.toString().startsWith(prefix)}
         if (!busy && !pending) {
             val item = list.layoutInfo.visibleItemsInfo.firstOrNull {
                 y >= it.offset && y < it.offset + it.size &&
@@ -80,7 +85,12 @@ internal class DragReorderState(private val list: LazyListState, private val pre
     }
 
     internal fun dragTo(y: Float) {
-        if (draggedId == null) return
+        if (draggedId == null) {
+            if(busy && blockedCandidate && !blockedReported) {
+                blockedReported=true;onBlockedDrag?.invoke()
+            }
+            return
+        }
         fingerY = y
         crossNeighbor()
     }
@@ -102,10 +112,8 @@ internal class DragReorderState(private val list: LazyListState, private val pre
             val top = list.layoutInfo.visibleItemsInfo.firstOrNull { it.key == "$prefix$id" }?.offset
             // Read layout in the layer block so scroll changes reconcile in the same frame.
             translationY = if (top != null) fingerY - grabOffsetY - top else 0f
-            shadowElevation = 8.dp.toPx()
         } else {
             translationY = 0f
-            shadowElevation = 0f
         }
     }
 

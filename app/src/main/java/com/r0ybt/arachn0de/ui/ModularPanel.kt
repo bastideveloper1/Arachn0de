@@ -35,7 +35,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.window.DialogProperties
-import com.r0ybt.arachn0de.ui.theme.Arachn0deColors
+import com.r0ybt.arachn0de.ui.theme.*
 
 /** Presentation only. The caller owns drafts, confirmation, cancellation and back navigation. */
 @Composable
@@ -121,7 +121,7 @@ internal fun ModularFieldMenu(options: List<ModularPanelOption>, modifier: Modif
                                 disabledContentColor=Arachn0deColors.Disabled)) {
                             Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically,
                                 horizontalArrangement=Arrangement.spacedBy(8.dp)) {
-                                Icon(option.icon,null,Modifier.size(20.dp).testTag("${option.tag}:icon"))
+                                ExportOptionIcon(option,Modifier.size(20.dp).testTag("${option.tag}:icon"))
                                 Text(option.label,Modifier.weight(1f),style=style)
                             }
                         } else
@@ -133,7 +133,7 @@ internal fun ModularFieldMenu(options: List<ModularPanelOption>, modifier: Modif
                                 contentColor=Arachn0deColors.TextPrimary,disabledContainerColor=Arachn0deColors.Surface,
                                 disabledContentColor=Arachn0deColors.Disabled)) {
                             Column(horizontalAlignment=Alignment.CenterHorizontally,verticalArrangement=Arrangement.spacedBy(6.dp)) {
-                                Icon(option.icon,null,Modifier.size(24.dp).testTag("${option.tag}:icon"))
+                                ExportOptionIcon(option,Modifier.size(24.dp).testTag("${option.tag}:icon"))
                                 Text(option.label,Modifier.fillMaxWidth().height(labelHeight),style=style,textAlign=TextAlign.Center)
                             }
                         }
@@ -197,8 +197,8 @@ internal fun ModularTextFieldsEditor(editorKey:String,title:String,labels:List<S
 }
 
 @Composable
-internal fun ModularTextField(value:String,onChange:(String)->Unit,label:String,enabled:Boolean=true,singleLine:Boolean=false,growVertically:Boolean=false) {
-    OutlinedTextField(value,onChange,label={Text(label)},minLines=if(singleLine || growVertically) 1 else 2,maxLines=if(singleLine) 1 else if(growVertically) Int.MAX_VALUE else 4,singleLine=singleLine,enabled=enabled,
+internal fun ModularTextField(value:String,onChange:(String)->Unit,label:String,enabled:Boolean=true,singleLine:Boolean=false,growVertically:Boolean=false,isError:Boolean=false) {
+    OutlinedTextField(value,onChange,isError=isError,label={Text(label)},minLines=if(singleLine || growVertically) 1 else 2,maxLines=if(singleLine) 1 else if(growVertically) Int.MAX_VALUE else 4,singleLine=singleLine,enabled=enabled,
         modifier=modularPanelFieldModifier(autoFocus=enabled).testTag("modular-text-field"))
 }
 
@@ -230,7 +230,8 @@ internal fun ModularPanelDialog(
     compact: Boolean = false,
     foldLabel: String? = null,
     foldEnabled: Boolean = true,
-    showActions: Boolean = true
+    showActions: Boolean = true,
+    actionsContent: (@Composable () -> Unit)? = null
 ) {
     var folded by rememberSaveable(foldLabel) { mutableStateOf(false) }
     val keyboard=LocalSoftwareKeyboardController.current
@@ -241,7 +242,7 @@ internal fun ModularPanelDialog(
             Surface(color=Arachn0deColors.Panel,modifier=Modifier.fillMaxWidth()) {
                 TextButton(onClick={folded=false},modifier=Modifier.fillMaxWidth().heightIn(min=48.dp)
                     .testTag("modular-reopen:$foldLabel"),colors=ButtonDefaults.textButtonColors(contentColor=Arachn0deColors.TextPrimary)) {
-                    Icon(Icons.Default.KeyboardArrowUp,null,Modifier.size(18.dp))
+                    Icon(androidx.compose.ui.res.painterResource(com.r0ybt.arachn0de.R.drawable.common_control_expandir),null,Modifier.size(18.dp))
                     Spacer(Modifier.width(8.dp));Text(foldLabel,style=MaterialTheme.typography.labelMedium)
                 }
             }
@@ -264,13 +265,13 @@ internal fun ModularPanelDialog(
                                 onVerticalDrag={change,amount->change.consume();distance+=amount})
                         },contentAlignment=Alignment.Center) {
                             IconButton(onClick=fold,enabled=foldEnabled,modifier=Modifier.size(48.dp).testTag("modular-fold:$foldLabel")) {
-                                Icon(Icons.Default.KeyboardArrowDown,"Plegar $foldLabel",Modifier.size(18.dp))
+                                Icon(androidx.compose.ui.res.painterResource(com.r0ybt.arachn0de.R.drawable.common_control_plegar),"Plegar $foldLabel",Modifier.size(18.dp))
                             }
                         }
                     }
                     ProvideTextStyle(if(compact) MaterialTheme.typography.titleMedium else MaterialTheme.typography.titleLarge) {title()}
                 },
-                actions={if(showActions) ModularPanelActions(cancel=dismissButton,confirm=confirmButton)},body={text()})
+                actions={if(showActions) {if(actionsContent!=null) actionsContent() else ModularPanelActions(cancel=dismissButton,confirm=confirmButton)}},body={text()})
         }
     }
     if(inline) {panel();return}
@@ -302,4 +303,11 @@ internal fun modularPanelFieldModifier(autoFocus: Boolean = false): Modifier {
     LaunchedEffect(focused, ime) { if (focused) bring.bringIntoView() }
     return Modifier.fillMaxWidth().focusRequester(focus).bringIntoViewRequester(bring)
         .onFocusChanged { focused = it.isFocused }
+}
+
+/** Only export controls opt in; unrelated field menus keep their original glyphs. */
+@Composable private fun ExportOptionIcon(option:ModularPanelOption,modifier:Modifier) {
+    val resource=if(option.tag.startsWith("share-export-")) exportControlIconResource(option.label) else null
+    if(resource!=null) Icon(androidx.compose.ui.res.painterResource(resource),null,modifier)
+    else Icon(option.icon,null,modifier)
 }

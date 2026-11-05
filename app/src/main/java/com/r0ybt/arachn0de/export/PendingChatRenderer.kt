@@ -54,6 +54,7 @@ object PendingChatRenderer {
                 val details=mutableListOf<String>()
                 if(node.isCompletable) {
                     node.workState?.let {details.add("Estado: ${it.label}")}
+                    if(node.awaitingVerification) details.add("Estado: Por verificar")
                     people[node.id].orEmpty().takeIf {it.isNotEmpty()}?.let {details.add("Responsables: "+it.joinToString(", ") {p->clean(p.name)})}
                     node.dueAt?.let {details.add("Vence: "+DateFormat.getDateInstance(DateFormat.SHORT).format(Date(it)))}
                     if(node.effectivePriority!=Priority.NONE) details.add("Prioridad: "+when(node.effectivePriority) {Priority.HIGH->"Alta";Priority.MEDIUM->"Media";else->"Baja"})
@@ -72,6 +73,7 @@ object PendingChatRenderer {
                 if(node.description.isNotEmpty()) append("$indent  ${descriptionText(node.description)}\n")
                 val details=mutableListOf<String>()
                 node.workState?.let { details.add("Estado: ${it.label}") }
+                if(node.awaitingVerification) details.add("Estado: Por verificar")
                 people[node.id].orEmpty().takeIf { it.isNotEmpty() }?.let { details.add("Responsables: "+it.joinToString(", ") { person -> clean(person.name) }) }
                 node.dueAt?.let { details.add("Vence: "+DateFormat.getDateInstance(DateFormat.SHORT).format(Date(it))) }
                 if(node.effectivePriority!=Priority.NONE) details.add("Prioridad: "+when(node.effectivePriority) { Priority.HIGH->"Alta";Priority.MEDIUM->"Media";else->"Baja" })

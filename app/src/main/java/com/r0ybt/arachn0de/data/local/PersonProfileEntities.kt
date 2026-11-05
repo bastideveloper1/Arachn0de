@@ -19,6 +19,12 @@ data class PersonProfileEntity(@PrimaryKey val personId:String,val alias:String=
 data class PersonRelationEntity(@PrimaryKey val id:String,val sourceId:String,val targetId:String,val category:String,val label:String,val inverseLabel:String,val meaning:String,val mode:String,val relationKey:String)
 
 @Dao interface PersonProfileDao {
+    @Query("SELECT * FROM person_banners") fun observeBanners():Flow<List<PersonBannerEntity>>
+    @Query("SELECT * FROM person_banners") suspend fun banners():List<PersonBannerEntity>
+    @Upsert suspend fun save(banner:PersonBannerEntity)
+    @Query("DELETE FROM person_banners") suspend fun clearBanners()
+    @Query("DELETE FROM person_banners WHERE personId=:id") suspend fun removeBanner(id:String)
+
     @Query("SELECT * FROM person_profiles") fun observeProfiles():Flow<List<PersonProfileEntity>>
     @Query("SELECT * FROM person_relations ORDER BY category,id") fun observeRelations():Flow<List<PersonRelationEntity>>
     @Query("SELECT * FROM person_profiles") suspend fun profiles():List<PersonProfileEntity>

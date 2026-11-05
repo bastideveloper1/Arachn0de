@@ -50,22 +50,22 @@ class ObligationUiTest {
         restoration.setContent { Arachn0deTheme { AppSafeArea { AppRoot(app.projectRepository,app.nodeRepository) { fixed } } } }
         await("Project"); compose.onNodeWithText("Project").performClick(); await("Nuevo elemento")
         compose.onNodeWithText("Nuevo elemento").performClick()
-        input("Título","Bill"); toggle(); click("USD"); input("Monto","0")
+        input("Título","Bill"); toggle(); input("Monto","0")
         compose.onNode(hasText("Guardar") or hasText("Crear")).assertIsNotEnabled()
         click("Responsables (0)"); click("Roy"); click("Scarlett"); compose.onAllNodes(hasText("Guardar") or hasText("Crear")).onLast().performClick()
-        input("Monto","10.50"); restoration.emulateSavedInstanceStateRestore(); await("Monto")
-        compose.onNodeWithText("Monto").performScrollTo().assert(hasText("10.50"))
+        input("Monto","1050"); restoration.emulateSavedInstanceStateRestore(); await("Monto")
+        compose.onNodeWithText("Monto").performScrollTo().assert(hasText("1050"))
         compose.onNode(hasText("Guardar") or hasText("Crear")).performClick()
         compose.waitUntil(10_000) { runBlocking { app.nodeRepository.getProjectNodes(project).size==1 } }
         val node=runBlocking { app.nodeRepository.getProjectNodes(project).single() }
-        assertEquals(Obligation(1050,"USD"),node.obligation)
+        assertEquals(Obligation(1050,"CLP"),node.obligation)
         assertEquals(setOf("r", "s"), runBlocking { app.database.personDao().assignmentIds(node.id).toSet() })
         listTo("Bill"); compose.onNodeWithText("Bill").performClick(); await("CAPA 1")
         compose.onNodeWithText("Nuevo elemento").assertIsNotEnabled(); compose.onNodeWithText("Crear varios").assertDoesNotExist()
         compose.onNodeWithTag("nodes-list").performScrollToNode(hasContentDescription("Opciones del elemento")); compose.onNodeWithContentDescription("Opciones del elemento").performClick(); compose.onNodeWithText("Editar").performClick(); toggle()
         compose.onNode(hasText("Guardar") or hasText("Crear")).performClick(); await("Eliminar datos financieros")
         compose.onNodeWithTag("cancel-remove-obligation").performClick()
-        assertEquals(Obligation(1050,"USD"),runBlocking { app.nodeRepository.getNode(node.id)!!.obligation })
+        assertEquals(Obligation(1050,"CLP"),runBlocking { app.nodeRepository.getNode(node.id)!!.obligation })
         compose.onNode(hasText("Guardar") or hasText("Crear")).performClick()
         compose.onNodeWithText("Eliminar datos y continuar").performClick()
         compose.waitUntil(10_000) { runBlocking { app.nodeRepository.getNode(node.id)!!.obligation==null } }

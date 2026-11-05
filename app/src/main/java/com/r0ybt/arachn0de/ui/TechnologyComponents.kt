@@ -197,7 +197,7 @@ internal fun DraftTechnologies(draft:com.r0ybt.arachn0de.ui.state.EditorDraft,en
     val app=LocalContext.current.applicationContext as? Arachn0deApplication ?: return
     val state by app.technologyRepository.state.collectAsState()
     LaunchedEffect(state.loaded,draft.creationId) {if(state.loaded && !draft.technologiesLoaded) {draft.technologyIds=draft.id?.let {state.forOwner(it,project).map {t->t.id}}.orEmpty();draft.originalTechnologyIds=draft.technologyIds;draft.technologiesLoaded=true}}
-    if(state.loaded) TechnologySelection(state.catalog,draft.technologyIds,enabled,iconOnly=iconOnly,onChange={draft.technologyIds=it})
+    // Load historical assignments for preservation; no longer expose an editor.
 }
 
 /** Decorative preview: the enclosing card owns all taps, including taps on logos. */
@@ -218,7 +218,7 @@ internal fun TechnologyCardPreview(assigned: List<TechnologyEntity>, modifier: M
 internal fun CompactAssignments(ownerId:String,people:List<com.r0ybt.arachn0de.domain.model.Person>,modifier:Modifier=Modifier,project:Boolean=false,cardPreview:Boolean=false,showTechnologies:Boolean=true,fillWidth:Boolean=true,compactSpacing:Boolean=false,showPeople:Boolean=true) {
     val app=LocalContext.current.applicationContext as? Arachn0deApplication
     val state by (app?.technologyRepository?.state ?: kotlinx.coroutines.flow.MutableStateFlow(com.r0ybt.arachn0de.data.repository.TechnologyState())).collectAsState()
-    val technologies=if(showTechnologies) state.forOwner(ownerId,project) else emptyList()
+    val technologies=emptyList<TechnologyEntity>()
     val visiblePeople=if(showPeople) people else emptyList()
     if(technologies.isEmpty() && visiblePeople.isEmpty()) return
     BoxWithConstraints(modifier.then(if(fillWidth) Modifier.fillMaxWidth() else Modifier)) {
@@ -237,10 +237,5 @@ internal fun CompactAssignments(ownerId:String,people:List<com.r0ybt.arachn0de.d
 
 /** The card shows one generic control; the existing selector owns catalog/association UI. */
 @Composable internal fun TechnologyCardButton(ownerId:String) {
-    val app=LocalContext.current.applicationContext as? Arachn0deApplication ?: return
-    val state by app.technologyRepository.state.collectAsState()
-    val hasInformation=state.forOwner(ownerId,false).isNotEmpty()
-    var open by remember(ownerId) {mutableStateOf(false)}
-    CompactCardIconButton(androidx.compose.material.icons.Icons.Default.Code,if(hasInformation) "Tecnologías asociadas" else "Tecnologías",{open=true},Modifier.testTag("card-technology:$ownerId"),tint=if(hasInformation) com.r0ybt.arachn0de.ui.theme.Arachn0deColors.TextPrimary else com.r0ybt.arachn0de.ui.theme.BlackWhite90.Inactive)
-    if(open) EditOwnerTechnologies(ownerId,false) {open=false}
+    // Historical assignments remain stored; the retired feature has no card access.
 }

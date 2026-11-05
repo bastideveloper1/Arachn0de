@@ -19,6 +19,16 @@ import org.robolectric.annotation.Config
 
 @RunWith(RobolectricTestRunner::class) @Config(sdk=[28],application=android.app.Application::class)
 class InitialUnlockDataTest {
+    private fun withUiLoop(block:suspend CoroutineScope.()->Unit)=runBlocking<Unit> {
+        val work=async(Dispatchers.IO) {block()}
+        withTimeout(90000) {
+            while(!work.isCompleted) {
+                org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle()
+                delay(10)
+            }
+            work.await()
+        }
+    }
     private fun base():Pair<Context,File> {
         val app=ApplicationProvider.getApplicationContext<Context>()
         val root=File(app.filesDir,"unlock-data-${UUID.randomUUID()}").apply {mkdirs()}
@@ -39,7 +49,7 @@ class InitialUnlockDataTest {
             File(base.filesDir,"security-v1/index").writeText(JSONArray(listOf(id.toString())).toString())
         } finally {SecureFiles.revoke(access);key.fill(0)}
     }
-    @Test fun firstQueryFinishesBeforeSessionPublicationForPrimaryAndSecondary()=runBlocking<Unit> {
+    @Test fun firstQueryFinishesBeforeSessionPublicationForPrimaryAndSecondary()=withUiLoop {
         val (base,root)=base();seed(base);val manager=manager(base)
         try {
             manager.unlock("primary-fixture".toCharArray())
@@ -60,7 +70,7 @@ class InitialUnlockDataTest {
             }
         } finally {manager.lock();root.deleteRecursively()}
     }
-    @Test fun wrongPasswordAndFailedOrCancelledQueryStayLockedAndCanRetry()=runBlocking<Unit> {
+    @Test fun wrongPasswordAndFailedOrCancelledQueryStayLockedAndCanRetry()=withUiLoop {
         val (base,root)=base();seed(base);val manager=manager(base)
         try {
             var calls=0

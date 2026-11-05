@@ -27,8 +27,8 @@ internal object NodeInvariants {
         db.execSQL(
             """
             CREATE TRIGGER nodes_identity_immutable BEFORE UPDATE OF id, projectId ON nodes
-            WHEN NEW.id != OLD.id OR NEW.projectId != OLD.projectId
-            BEGIN SELECT RAISE(ABORT, 'Node identity and project are immutable'); END
+            WHEN NEW.id != OLD.id
+            BEGIN SELECT RAISE(ABORT, 'Node identity is immutable'); END
             """.trimIndent(),
         )
         db.execSQL(

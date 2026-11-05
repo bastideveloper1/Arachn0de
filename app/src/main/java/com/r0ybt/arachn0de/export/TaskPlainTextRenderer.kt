@@ -28,12 +28,12 @@ internal object TaskPlainTextRenderer {
                 parent=container.parentId
             }
             if(index>0) append("\n\n$SEPARATOR\n\n")
-            append(projects.getValue(node.projectId).name);append("/")
+            append(node.projectId?.let {projects.getValue(it).name} ?: "Borradores");append("/")
             parents.forEach {append(it);append("/")}
             append("\n");append(node.title)
             if(node.purpose==NodePurpose.ACTION) {
                 append("\nEstado: ")
-                append(node.workState?.label ?: if(node.isCompleted) "Completada" else "Pendiente")
+                append(node.workState?.label ?: node.taskStatus.label)
             }
             if(node.description.isNotBlank()) {
                 append("\n│ ");append(descriptionText(node.description))

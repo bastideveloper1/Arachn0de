@@ -43,7 +43,7 @@ class ObligationReportUiTest {
         }
         if (restore == null) compose.setContent(content) else restore.setContent(content)
         compose.waitUntil(10_000) {
-            compose.onAllNodesWithText("Cargando Obligaciones…").fetchSemanticsNodes().isEmpty()
+            compose.onAllNodesWithText("Cargando Pagos…").fetchSemanticsNodes().isEmpty()
         }
     }
     @Test fun emptySelectionDisablesGenerationAndCreatesNoFile() {

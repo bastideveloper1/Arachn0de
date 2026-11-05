@@ -54,8 +54,8 @@ class FinancialRepositoryTest {
         assertEquals(1,financial(person="r").summary.count); assertEquals(1,financial(person="s").summary.count)
         nodes.setCompleted(bill.id,true); assertEquals(FinancialState.COMPLETED,financial().summary.state)
         nodes.setCompleted(bill.id,false); assertEquals(FinancialState.PENDING,financial().summary.state)
-        nodes.updateLeaf(bill.id,"Bill","",null,due,Obligation(1050,"USD"))
-        assertEquals(setOf("USD"),financial().summary.byCurrency.keys)
+        nodes.updateLeaf(bill.id,"Bill","",null,due,Obligation(1050,"CLP"))
+        assertEquals(setOf("CLP"),financial().summary.byCurrency.keys)
         nodes.updateNodeWithDates(bill.id,"Bill","",null,null)
         assertEquals(0,financial(FinancialPeriod.THIS_MONTH).summary.count); assertEquals(1,financial().summary.count)
         nodes.moveNode(bill.id,null)
@@ -70,9 +70,9 @@ class FinancialRepositoryTest {
         nodes.convertPurpose(bill.id,NodePurpose.NOTE,removeObligation=true)
         assertEquals(0,financial().summary.count)
         nodes.convertPurpose(bill.id,NodePurpose.ACTION)
-        nodes.updateLeaf(bill.id,"Bill","",null,due,Obligation(2000,"EUR"))
+        nodes.updateLeaf(bill.id,"Bill","",null,due,Obligation(2000,"CLP"))
         nodes.deleteNode(bill.id); assertEquals(0,financial().summary.count)
-        assertEquals(38, db.openHelper.readableDatabase.version)
+        assertEquals(50, db.openHelper.readableDatabase.version)
     }
     @Test fun batchesUseSameScopeAggregationAndProjectDeletionDoesNotAffectOtherCurrencies() = runBlocking {
         val root=nodes.createNode(p,null,"Root", purpose = com.r0ybt.arachn0de.domain.model.NodePurpose.LAYER)
@@ -86,7 +86,8 @@ class FinancialRepositoryTest {
         assertEquals(1,financial(FinancialPeriod.THIS_MONTH).summary.count)
         assertEquals(1,financial(FinancialPeriod.NEXT_MONTH).summary.count)
         val q=projects.createProject("Other").id
-        nodes.createNode(q,null,"Other",obligation=Obligation(1050,"USD"))
+        val historic=nodes.createNode(q,null,"Other")
+        db.openHelper.writableDatabase.execSQL("UPDATE nodes SET amountMinor=1050,currencyCode='USD' WHERE id=?",arrayOf(historic.id))
         assertEquals(setOf("CLP","USD"),financial().summary.byCurrency.keys)
         projects.deleteProject(p); assertEquals(setOf("USD"),financial().summary.byCurrency.keys)
     }

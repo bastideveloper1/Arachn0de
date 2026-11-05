@@ -42,8 +42,13 @@ internal suspend fun verifyBackupAttachment(row: AttachmentFileEntity, file: Fil
             require(kotlin.math.abs(duration-row.durationMs)<=64) {"Duración de audio inválida."}
             return
         }
+        if(row.mimeType=="image/gif") {
+            val info=SecureFiles.input(file).use {com.r0ybt.arachn0de.media.ContentGif.inspect(it.readBytes())}
+            require(info.width==row.width && info.height==row.height)
+        }
         val bounds = android.graphics.BitmapFactory.Options().apply { inJustDecodeBounds = true }
         SecureFiles.decoded(file, bounds)
+        if(row.mimeType=="image/png") SecureFiles.input(file).use {com.r0ybt.arachn0de.annotations.EditableImagePng.read(it.readBytes())}
         require(bounds.outMimeType == row.mimeType && bounds.outWidth == row.width && bounds.outHeight == row.height) { "Imagen incompatible con sus metadatos." }
     } catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
     catch (failure: Exception) { throw AttachmentBackupException("No se puede incluir o recuperar el adjunto «${row.originalName}»: falta, no es accesible o está dañado.", failure) }

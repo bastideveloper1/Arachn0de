@@ -59,8 +59,10 @@ internal class ProjectNestingRepository(private val database: Arachn0deDatabase,
         } }
     }
     suspend fun move(sourceId: String, targetId: String, parentId: String?): String = atomic { iterationRows ->
+        require(database.bankDao().roots().none {it.id==sourceId || it.id==targetId}) {"Un Núcleo Banca no puede anidarse ni recibir otros Núcleos."}
         require(sourceId != targetId) { "El proyecto no puede convertirse dentro de sí mismo." }
         val source = requireNotNull(projects.getById(sourceId)) { "El proyecto ya no existe." }
+        require(!source.verificationEnabled) {"Resuelve las tareas por verificar y deshabilita ese estado antes de convertir el Núcleo en capa."}
         requireNotNull(projects.getById(targetId)) { "El proyecto de destino ya no existe." }
         val target = nodes.getProjectNodes(targetId).associateBy { it.id }
         var cursor = parentId; val ancestors = hashSetOf<String>()
@@ -82,7 +84,7 @@ internal class ProjectNestingRepository(private val database: Arachn0deDatabase,
         val group = root.creationGroupId?.let { validGroup(it, targetId, original.mapTo(hashSetOf()) { row -> row.id }) }
         val layer = NodeEntity(layerId, targetId, parentId, source.name, source.description, false,
             ((nodes.maxPosition(targetId,parentId) ?: -1).toLong()+1).coerceAtMost(Int.MAX_VALUE.toLong()).toInt(), source.createdAt, source.updatedAt, root.startAt, root.dueAt,
-            purpose = "LAYER", priority = root.priority, creationGroupId = group, sprintMode = root.sprintMode,isPinned=source.isPinned)
+            purpose = "LAYER", priority = root.priority, creationGroupId = group, sprintMode = root.sprintMode,effort=root.effort,isPinned=source.isPinned,taskStateCount=2)
         val effective = CreationDefaultsRepository(database).resolve(sourceId, null)
         val sort = database.nodeSortPreferenceDao().all()
         val bundle = capture(original, sourceId, wholeProject = true)
@@ -118,6 +120,7 @@ internal class ProjectNestingRepository(private val database: Arachn0deDatabase,
         layerId
     }
     suspend fun promote(layerId: String): String = atomic { iterationRows ->
+        require(database.bankDao().accounts().none {it.id==layerId}) {"Una cuenta debe permanecer dentro de su Núcleo Banca."}
         val layer = requireNotNull(nodes.getById(layerId)) { "La capa ya no existe." }
         require(layer.purpose == "LAYER" && layer.amountMinor == null) { "Solo una capa puede convertirse en proyecto." }
         val entire = nodes.getProjectNodes(layer.projectId)
@@ -133,10 +136,10 @@ internal class ProjectNestingRepository(private val database: Arachn0deDatabase,
             layerId, position, layer.position, layer.startAt, layer.dueAt, layer.priority, layer.creationGroupId, layer.sprintMode))
             .copy(projectId = projectId, nodeId = null, projectIdentity = projectId, nodeIdentity = layerId,
                 nodePosition = layer.position, startAt = layer.startAt, dueAt = layer.dueAt,
-                priority = layer.priority, creationGroupId = layer.creationGroupId, sprintMode = layer.sprintMode)
-        val effective = CreationDefaultsRepository(database).resolve(layer.projectId, layerId)
+                priority = layer.priority, creationGroupId = layer.creationGroupId, sprintMode = layer.sprintMode,effort=layer.effort)
+        val effective = CreationDefaultsRepository(database).resolve(checkNotNull(layer.projectId), layerId)
         val sort = database.nodeSortPreferenceDao().all()
-        val bundle = capture(subtree, layer.projectId, wholeProject = false)
+        val bundle = capture(subtree, checkNotNull(layer.projectId), wholeProject = false)
         val photo = database.projectPhotoDao().forNodes(listOf(layerId)).singleOrNull()
         val attachments = database.attachmentDao().forNode(layerId)
         val technologies = database.technologyDao().forNodes(listOf(layerId))
@@ -150,7 +153,7 @@ internal class ProjectNestingRepository(private val database: Arachn0deDatabase,
         val committedPosition=saved?.projectPosition ?: nextProjectPosition()
         database.iterationDao().clear()
         database.sprintLinkDao().all().filter {it.taskId in ids}.forEach {database.sprintLinkDao().delete(it.taskId)}
-        projects.insert(ProjectEntity(projectId, layer.title, layer.description, committedPosition, layer.createdAt, layer.updatedAt,isPinned=layer.isPinned))
+        projects.insert(ProjectEntity(projectId, layer.title, layer.description, committedPosition, layer.createdAt, layer.updatedAt,isPinned=layer.isPinned,verificationEnabled=NodeRepository(database).taskStateCount(layer.id)==3))
         val groups = transfer(bundle, projectId, null, root.id, emptyMap(), excluded = layerId,preserve=protected)
         conversion.save(root.copy(projectPosition=committedPosition,creationGroupId = layer.creationGroupId?.let(groups::getValue)))
         conversion.people(rootPeople.map { ConversionPersonEntity(root.id, it.personId) })
@@ -161,7 +164,7 @@ internal class ProjectNestingRepository(private val database: Arachn0deDatabase,
         database.attachmentDao().attachProject(attachments.map { ProjectAttachmentEntity(projectId, it.attachmentId) })
         photo?.let { database.projectPhotoDao().save(it.copy(projectId = projectId, nodeId = null)) }
         preserveEffectiveDefaults(DefaultsScope.Project(projectId), effective)
-        remapSort(layer.projectId, projectId, subtree, layerId, null, sort)
+        remapSort(checkNotNull(layer.projectId), projectId, subtree, layerId, null, sort)
         projectId
     }
     private data class Bundle(val nodes: List<NodeEntity>, val people: List<NodePersonEntity>, val tags: List<NodeTagEntity>,

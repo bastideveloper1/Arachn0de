@@ -40,7 +40,9 @@ class BottomModulesLayoutTest {
             for(i in 0 until root.childCount) (root.getChildAt(i) as? androidx.compose.ui.platform.AbstractComposeView)?.disposeComposition()
             root.removeAllViews()
         }
-        pump();audio.dispose()
+        pump();val process=Arachn0deApplication::class.java.getDeclaredField("processScope").apply {isAccessible=true}.get(app) as CoroutineScope
+        runBlocking {process.coroutineContext[Job]?.cancelAndJoin()}
+        audio.dispose()
         runBlocking {
             app.security.current.value!!.scope.coroutineContext[Job]?.cancelAndJoin()
             withTimeout(15000) {app.database.getCoroutineScope().coroutineContext[Job]!!.children.toList().joinAll()}
@@ -60,8 +62,51 @@ class BottomModulesLayoutTest {
         assertEquals(a.left,p.left,1f);assertEquals(a.right,p.right,1f)
         assertEquals(compose.density.density,p.top-a.bottom,1f)
         assertTrue(controls.bottom<=a.top+1)
+        compose.onAllNodesWithTag("global-bottom-bar").fetchSemanticsNodes().singleOrNull()?.let {bar->assertTrue(p.bottom<=bar.boundsInRoot.top+1)}
         assertEquals(48*compose.density.density,a.height,1f)
         assertEquals(48*compose.density.density,p.height,1f)
+    }
+    @Test fun specializedToolsHideGlobalBarAndRestoreItOnReturnToCores() {
+        runBlocking {app.projectRepository.createProject("Inicio de navegación")}
+        compose.setContent {Arachn0deTheme {AppRoot(app.projectRepository,app.nodeRepository)}}
+        fun awaitTag(tag:String) {compose.waitUntil(15000) {pump();compose.onAllNodesWithTag(tag).fetchSemanticsNodes().isNotEmpty()}}
+        awaitTag("dashboard-create-core")
+        for((category,entry) in listOf("Herramientas" to "drawer-diagrams","Herramientas" to "drawer-wireframe",
+            "Inicio" to "menu-item:Metro","Inicio" to "drawer-slots","Inicio" to "drawer-antisocial")) {
+            compose.onNodeWithContentDescription("Abrir menú").performClick()
+            compose.onNodeWithText(category).performClick()
+            compose.onNodeWithTag(entry).performScrollTo().performClick()
+            compose.waitUntil(15000) {pump();compose.onAllNodesWithTag("navigation-drawer").fetchSemanticsNodes().isEmpty()}
+            compose.onNodeWithTag("global-bottom-bar").assertDoesNotExist()
+            compose.onNodeWithContentDescription("Abrir menú").assertDoesNotExist()
+            if(entry in setOf("drawer-diagrams","drawer-wireframe")) compose.onNodeWithText("Volver").performClick()
+            else compose.runOnUiThread {compose.activity.onBackPressedDispatcher.onBackPressed()}
+            awaitTag("dashboard-create-core")
+            compose.onNodeWithTag("global-bottom-bar").assertIsDisplayed()
+        }
+    }
+    @Test fun actualDashboardAndCoreShareMeasuredNavigationFrames() {
+        runBlocking {app.projectRepository.createProject("Núcleo de navegación")}
+        compose.setContent {Arachn0deTheme {AppRoot(app.projectRepository,app.nodeRepository)}}
+        compose.waitUntil(15000) {pump();compose.onAllNodesWithTag("dashboard-create-core").fetchSemanticsNodes().isNotEmpty()}
+        compose.onAllNodesWithTag("global-bottom-bar").assertCountEquals(1)
+        compose.onAllNodesWithTag("contextual-bottom-bar").assertCountEquals(1)
+        compose.onNodeWithContentDescription("Filtrar").assertIsEnabled()
+        val dashboard=bounds("contextual-bottom-bar");val global=bounds("global-bottom-bar")
+        assertEquals(dashboard.left,global.left,1f);assertEquals(dashboard.right,global.right,1f)
+        compose.onNodeWithText("Núcleo de navegación").performClick()
+        compose.waitUntil(15000) {pump();compose.onAllNodesWithTag("core-navigation-actions").fetchSemanticsNodes().isNotEmpty()}
+        compose.onAllNodesWithTag("global-bottom-bar").assertCountEquals(1)
+        compose.onAllNodesWithTag("contextual-bottom-bar").assertCountEquals(1)
+        compose.onNodeWithContentDescription("Ordenar").assertIsEnabled()
+        val contextual=bounds("contextual-bottom-bar");val bottom=bounds("global-bottom-bar")
+        assertEquals(contextual.left,bottom.left,1f);assertEquals(contextual.right,bottom.right,1f)
+        assertTrue(contextual.bottom<=bottom.top+1)
+        compose.onNodeWithTag("core-context:Content").performClick()
+        compose.onNodeWithContentDescription("Abrir menú").performClick()
+        compose.onNodeWithTag("navigation-drawer").assertIsDisplayed()
+        compose.onNodeWithTag("drawer-close-bottom").performClick()
+        compose.onNodeWithTag("core-context:Content").assertIsDisplayed()
     }
     @Test fun allVisibilityAndMinimizationCombinationsKeepOrderAndIndependentStateAcrossSectionsAndRestore() {
         val timer=timer()
@@ -73,9 +118,10 @@ class BottomModulesLayoutTest {
         restore.setContent {Arachn0deTheme {
             modules=rememberBottomModulesState()
             val data by timer.state.collectAsState()
-            CompositionLocalProvider(LocalBottomModulesState provides modules,LocalBottomModulesContent provides { _:Boolean ->
+            CompositionLocalProvider(LocalGlobalNavigation provides GlobalNavigation({},true,true),LocalBottomModulesState provides modules,LocalBottomModulesContent provides { _:Boolean ->
                 if(showAudio) AudioBar(compact=modules.audioCompact,onCompactChange={modules.audioCompact=it})
                 if(showTimer) PomodoroBar(timer,data,compact=modules.pomodoroCompact,onCompactChange={modules.pomodoroCompact=it},onExpand={})
+                GlobalBottomBar()
             }) {
                 Box(Modifier.requiredSize(if(wide) 390.dp else 320.dp,if(wide) 320.dp else 700.dp)) {
                     BottomModulesFrame {

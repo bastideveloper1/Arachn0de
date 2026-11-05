@@ -41,8 +41,8 @@ internal class AccessRepository(private val db:Arachn0deDatabase) {
     internal suspend fun cleanReferences() {read()}
     suspend fun snapshot()=withContext(Dispatchers.IO) {db.withTransaction {read()}}
     fun observe()=db.invalidationTracker.createFlow("private_preferences","projects","nodes").map {snapshot()}.distinctUntilChanged()
-    suspend fun toggle(key:String)=withContext(Dispatchers.IO) {db.withTransaction {
-        require(key in valid());val s=read();write(s.copy(favorites=if(key in s.favorites) s.favorites-key else s.favorites+key))
+    suspend fun toggle(key:String,desired:Boolean?=null)=withContext(Dispatchers.IO) {db.withTransaction {
+        require(key in valid());val s=read();write(s.copy(favorites=if(desired ?: (key !in s.favorites)) s.favorites+key else s.favorites-key))
     }}
     suspend fun opened(key:String)=withContext(Dispatchers.IO) {db.withTransaction {
         if(key !in valid()) return@withTransaction
@@ -50,7 +50,8 @@ internal class AccessRepository(private val db:Arachn0deDatabase) {
         val counts=(s.counts+(key to ((s.counts[key] ?: 0)+1).coerceAtMost(1000000))).entries.sortedByDescending {it.value}.take(200).associate {it.toPair()}
         write(s.copy(recent=recent,counts=counts))
     }}
-    suspend fun capture(key:String,title:String,description:String,creationId:String,purpose:com.r0ybt.arachn0de.domain.model.NodePurpose=com.r0ybt.arachn0de.domain.model.NodePurpose.ACTION)=withContext(Dispatchers.IO) {db.withTransaction {
+    suspend fun capture(key:String?,title:String,description:String,creationId:String,purpose:com.r0ybt.arachn0de.domain.model.NodePurpose=com.r0ybt.arachn0de.domain.model.NodePurpose.ACTION)=withContext(Dispatchers.IO) {db.withTransaction {
+        if(key==null) return@withTransaction NodeRepository(db).createNode(null,null,title,description,creationId=creationId,purpose=purpose)
         require(key in valid()) {"El destino ya no existe."}
         val (project,parent)=if(key.startsWith("project:")) key.substringAfter(':') to null else {
             val n=requireNotNull(db.nodeDao().getById(key.substringAfter(':')))

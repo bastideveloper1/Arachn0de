@@ -15,6 +15,7 @@ internal class SprintLinkRepository(private val db:Arachn0deDatabase) {
         for(id in taskIds) {
             val task=requireNotNull(db.nodeDao().getById(id)) {"La tarea ya no existe."}
             requireSprintLink(task.id!=sprint.id && task.purpose=="ACTION" && task.projectId==sprint.projectId) {"Selecciona tareas del mismo proyecto."}
+            requireSprintLink(!task.awaitingVerification) {"Resuelve Por verificar antes de vincular la tarea a un Sprint."}
             val parent=task.parentId?.let {db.nodeDao().getById(it)}
             requireSprintLink(parent?.sprintMode!=true || parent.id==sprintId) {"La tarea ya pertenece directamente a otro Sprint."}
             val previous=db.sprintLinkDao().task(id)

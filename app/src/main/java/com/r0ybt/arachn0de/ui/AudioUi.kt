@@ -6,6 +6,8 @@ import android.content.pm.PackageManager
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
@@ -18,6 +20,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
+import androidx.compose.animation.core.animateFloat
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.Alignment
@@ -67,7 +70,7 @@ internal fun audioTime(ms:Long)="%d:%02d".format(ms/60000,ms/1000%60)
             try {
                 check(app.security.current.value===session)
                 SecureFiles.requireActive(repository.localFile(file))
-                val bytes=com.r0ybt.arachn0de.audio.originalAttachmentBytes(repository,file)
+                val bytes=com.r0ybt.arachn0de.audio.publicAttachmentBytes(repository,file)
                 val reservation=AutoCloseable {bytes.fill(0)}
                 try {session.access.retain(reservation);withContext(Dispatchers.IO) {
                     context.contentResolver.openOutputStream(uri,"wt").use {output->
@@ -139,13 +142,13 @@ internal val LocalAudioFooterVisible=staticCompositionLocalOf {true}
     val files by session.attachments.observeFiles().collectAsState(emptyList())
     val currentFile=files.firstOrNull {it.id==state.fileId}
     var closing by remember {mutableStateOf(false)};var menu by remember {mutableStateOf(false)};var controls by remember {mutableStateOf(false)}
-    if(state.visible) PersistentModuleBoundary("audio-module") { CompositionLocalProvider(LocalContentColor provides Arachn0deColors.TextPrimary) {
-      Row(Modifier.fillMaxWidth().heightIn(min=48.dp)
-          .then(if(state.recording) Modifier.background(com.r0ybt.arachn0de.ui.theme.LocalAppearancePalette.current.taskPanel.copy(alpha=.94f),RoundedCornerShape(8.dp)) else Modifier)
+    if(state.visible) PersistentModuleBoundary("audio-module") { NavigationBarFrame("audio-module-frame") { CompositionLocalProvider(LocalContentColor provides Arachn0deColors.TextPrimary) {
+      BoxWithConstraints(Modifier.fillMaxWidth()) {
+      Row(Modifier.horizontalScroll(rememberScrollState()).width(maxOf(maxWidth,340.dp)).padding(horizontal=4.dp,vertical=4.dp).heightIn(min=48.dp)
           .testTag("audio-bar"),verticalAlignment=Alignment.CenterVertically) {
         IconButton(onClick={onCompactChange(!compact)},modifier=Modifier.size(48.dp).testTag("audio-compact-toggle")
             .semantics {contentDescription=if(compact) "Expandir barra de audio" else "Minimizar barra de audio"}) {
-            if(state.recording) RecordingLevelIcon(state.recordingLevels)
+            if(state.recording) RecordingLevelIcon(state.recordingLevels,state.paused)
             else Icon(Icons.Default.VolumeUp,null,Modifier.size(20.dp),tint=Arachn0deColors.TextSecondary)
         }
         Row(Modifier.weight(1f).heightIn(min=48.dp).clickable(enabled=!state.recording) {controls=true},verticalAlignment=Alignment.CenterVertically) {
@@ -155,7 +158,7 @@ internal val LocalAudioFooterVisible=staticCompositionLocalOf {true}
         IconButton(enabled=audio.canToggle,onClick={scope.launch {audio.toggle()}},modifier=Modifier.size(48.dp)) {Icon(if(state.paused) Icons.Default.PlayArrow else Icons.Default.Pause,if(state.paused) "Continuar" else "Pausar")}
         if(state.recording) IconButton(onClick={scope.launch {audio.finish()}},modifier=Modifier.size(48.dp)) {Icon(Icons.Default.Stop,"Finalizar grabación")}
         else IconButton(onClick={scope.launch {audio.bookmark()}},modifier=Modifier.size(48.dp)) {Icon(if(currentFile?.bookmarkMs==null) Icons.Default.BookmarkBorder else Icons.Default.Bookmark,if(currentFile?.bookmarkMs==null) "Guardar marcador" else "Quitar marcador")}
-        IconButton(onClick={if(state.recording) closing=true else scope.launch {audio.closePlayback()}},modifier=Modifier.size(48.dp)) {Icon(Icons.Default.Close,"Cerrar audio")}
+        IconButton(onClick={if(state.recording) closing=true else scope.launch {audio.closePlayback()}},modifier=Modifier.size(48.dp)) {LucideIcon(Icons.Default.Close,"Cerrar audio",tint=androidx.compose.material3.LocalContentColor.current)}
         Box {
             IconButton(onClick={menu=true},modifier=Modifier.size(48.dp)) {Icon(Icons.Default.MoreHoriz,"Opciones de audio")}
             DropdownMenu(expanded=menu,onDismissRequest={menu=false}) {
@@ -170,20 +173,31 @@ internal val LocalAudioFooterVisible=staticCompositionLocalOf {true}
     }
     }
     }
+    }
+    }
     if(controls) state.fileId?.let {AudioViewer(it,session.attachments,onClose={controls=false})}
     if(closing) AlertDialog(onDismissRequest={closing=false},text={Text("Finaliza y conserva el audio, o descarta la grabación.")},confirmButton={TextButton(onClick={scope.launch {audio.finish();closing=false}}) {Text("Finalizar y conservar")}},dismissButton={TextButton(onClick={scope.launch {audio.finish(discard=true);closing=false}}) {Text("Descartar")}})
     state.error?.let {message->AlertDialog(onDismissRequest={audio.state.value=audio.state.value.copy(error=null)},text={Text(message)},confirmButton={TextButton(onClick={audio.state.value=audio.state.value.copy(error=null)}) {Text("Cerrar")}})}
 }
 
-/** Data-driven movement only: paused/stopped capture produces no animation frames. */
-@Composable private fun RecordingLevelIcon(levels:List<Float>) {
-    Canvas(Modifier.size(20.dp)) {
-        val width=3.dp.toPx()
-        val gap=2.dp.toPx()
-        val left=(size.width-(4*width+3*gap))/2
+/** Live capture keeps a visible pulse even during silence; pause is static and muted. */
+@Composable internal fun RecordingLevelIcon(levels:List<Float>,paused:Boolean) {
+    val pulse=if(paused) 1f else {
+        val transition=androidx.compose.animation.core.rememberInfiniteTransition(label="recording")
+        val alpha by transition.animateFloat(initialValue=.55f,targetValue=1f,
+            animationSpec=androidx.compose.animation.core.infiniteRepeatable(
+                androidx.compose.animation.core.tween(650),androidx.compose.animation.core.RepeatMode.Reverse),label="recording-pulse")
+        alpha
+    }
+    val color=if(paused) Arachn0deColors.TextSecondary else Arachn0deColors.Destructive
+    Canvas(Modifier.size(28.dp).testTag(if(paused) "recording-paused" else "recording-active")
+        .semantics {contentDescription=if(paused) "Grabación en pausa" else "Grabación activa"}) {
+        drawCircle(color.copy(alpha=pulse),radius=3.dp.toPx(),center=Offset(4.dp.toPx(),size.height/2))
+        val width=3.dp.toPx();val gap=1.dp.toPx();val left=10.dp.toPx()
         for(bar in 0 until 4) {
-            val height=3.dp.toPx()+levels[bar]*(size.height-3.dp.toPx())
-            drawRoundRect(Color(0xFFD88C8C),Offset(left+bar*(width+gap),(size.height-height)/2),
+            val level=levels.getOrElse(bar) {0f}.takeIf {it.isFinite()}?.coerceIn(0f,1f) ?: 0f
+            val height=if(paused) 3.dp.toPx() else 6.dp.toPx()+level*(size.height-8.dp.toPx())
+            drawRoundRect(color.copy(alpha=if(paused) .65f else 1f),Offset(left+bar*(width+gap),(size.height-height)/2),
                 Size(width,height),CornerRadius(width/2,width/2))
         }
     }

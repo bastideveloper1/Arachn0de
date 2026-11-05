@@ -42,13 +42,15 @@ class CompletedCleanupUiTest {
         val node=runBlocking {app.nodeRepository.createNode(project.id,null,"Done").also {app.nodeRepository.setCompleted(it.id,true)}}
         compose.setContent {Arachn0deTheme {val open=completedCleanupLauncher(project.id);TextButton(open) {Text("Abrir limpieza")}}}
         compose.onNodeWithText("Abrir limpieza").performClick()
-        await {compose.onAllNodesWithText("1 tareas elegibles",substring=true).fetchSemanticsNodes().isNotEmpty()}
+        await {compose.onAllNodesWithText("Elegibles").fetchSemanticsNodes().isNotEmpty()}
+        compose.onNodeWithText("Eliminación definitiva").assertIsDisplayed()
+        compose.onNodeWithText("1").assertIsDisplayed()
         assertNotNull(runBlocking {app.database.nodeDao().getById(node.id)})
         compose.onNodeWithText("Cancelar").performClick();assertNotNull(runBlocking {app.database.nodeDao().getById(node.id)})
         compose.onNodeWithText("Abrir limpieza").performClick()
         await {runCatching {compose.onNodeWithText("Limpiar",substring=false).assertIsEnabled()}.isSuccess}
         compose.onNodeWithText("Limpiar",substring=false).performClick()
-        await {compose.onAllNodesWithText("Tareas eliminadas: 1.").fetchSemanticsNodes().isNotEmpty()}
+        await {runBlocking {app.database.nodeDao().getById(node.id)==null}}
         assertNull(runBlocking {app.database.nodeDao().getById(node.id)})
     }
     @Test fun automaticActivationAndReductionRequireConfirmationAndNeverDisables() {

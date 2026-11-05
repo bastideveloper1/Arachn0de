@@ -45,16 +45,27 @@ internal fun ProjectIdentityIcon(project: Project, modifier: Modifier = Modifier
     val context = LocalContext.current
     val storageContext=privateStorageContext(context)
     val file = project.photo?.file
-    var displayPixels by remember {mutableIntStateOf(120)}
+    val initialPixels=with(androidx.compose.ui.platform.LocalDensity.current) {48.dp.roundToPx()}
+    var displayPixels by remember {mutableIntStateOf(initialPixels)}
     val decodePixels=(displayPixels*(project.photo?.framing?.zoom ?: 1f)).toInt().coerceIn(96,2048)
-    val bitmap by produceState<Bitmap?>(null, storageContext, file,decodePixels) {
-        value = null
-        value = withContext(Dispatchers.IO) { file?.let { runCatching { AvatarStore(storageContext, "project-photos").readThumbnail(it,decodePixels) }.getOrNull() } }
+    val cache=com.r0ybt.arachn0de.ui.theme.LocalCardPhotoBitmaps.current
+    val photoKey="$file:$decodePixels"
+    val cached=cache?.photo(storageContext,photoKey)
+    val bitmap by produceState<Bitmap?>(cached, storageContext, file,decodePixels,cache) {
+        value=cached
+        if(value==null) {
+            val load:suspend ()->Bitmap?={withContext(Dispatchers.IO) {
+                file?.let {runCatching {
+                    AvatarStore(storageContext, "project-photos").readFramedThumbnail(it,displayPixels,project.photo?.framing?.zoom ?: 1f)
+                }.getOrNull()}
+            }}
+            value=cache?.loadPhoto(storageContext,photoKey,load) ?: if(cache==null)load() else null
+        }
     }
     Box(modifier.then(Modifier.onSizeChanged {displayPixels=maxOf(it.width,it.height)}).clip(ProjectPhotoShape).background(Arachn0deColors.Primary).testTag("project-photo:${project.id}"), contentAlignment = Alignment.Center) {
         bitmap?.let { FramedAvatar(it, project.photo?.framing ?: AvatarFraming(), Modifier.fillMaxSize().semantics {
             contentDescription = "Fotografía de ${project.name}"
-        }, shape = ProjectPhotoShape) } ?: Icon(Icons.Default.AccountTree,"Proyecto sin fotografía",Modifier.padding(6.dp).fillMaxSize(),tint=Arachn0deColors.OnPrimary)
+        }, shape = ProjectPhotoShape, filterQuality=androidx.compose.ui.graphics.FilterQuality.High) } ?: Icon(Icons.Default.AccountTree,"Proyecto sin fotografía",Modifier.padding(6.dp).fillMaxSize(),tint=Arachn0deColors.OnPrimary)
     }
 }
 

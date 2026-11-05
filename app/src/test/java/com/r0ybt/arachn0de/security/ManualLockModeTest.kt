@@ -39,7 +39,46 @@ class ManualLockModeTest {
             File(base.filesDir,"security-v1/index").writeText(JSONArray(listOf(id.toString())).toString())
         } finally {SecureFiles.revoke(access);key.fill(0)}
     }
-    @Test fun manualSessionSurvivesBackgroundButLockAndNewManagerRequireAuthenticationInBothStores()=runBlocking<Unit> {
+    private fun withUiLoop(block:suspend ()->Unit)=runBlocking<Unit> {
+        val work=async(Dispatchers.IO) {block()}
+        withTimeout(90000) {
+            while(!work.isCompleted) {
+                org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle()
+                delay(10)
+            }
+            work.await()
+        }
+    }
+    @Test fun privateCachesFollowManualAndAutomaticLockWithoutChangingStoredData()=withUiLoop {
+        val (base,root)=base();seed(base);val vault=manager(base)
+        try {
+            vault.unlock("primary-fixture".toCharArray())
+            val project=vault.current.value!!.projects.createProject("Cache owner fixture")
+            for(automatic in listOf(false,true)) {
+                val owner=vault.current.value!!
+                val cache=PrivateCache<String,String>(owner.access.caches,8)
+                cache.put("private","current");assertEquals("current",cache.get("private"))
+                val source=File(owner.context.filesDir,"cache-owner-fixture")
+                if(!source.exists())SecureFiles.write(source,"encrypted fixture".toByteArray())
+                val encrypted=source.readBytes()
+                if(automatic) {
+                    owner.context.getSharedPreferences(ScreenCapturePreference.NAME,0).edit().putLong(AutoLockPreference.KEY,0L).commit()
+                    vault.background()
+                    withTimeout(5000) {while(vault.current.value!=null)delay(10)}
+                } else vault.lock()
+                assertNull(vault.current.value);assertNull(cache.get("private"))
+                cache.put("late","old operation");assertNull(cache.get("late"))
+                assertArrayEquals(encrypted,source.readBytes())
+                vault.unlock("primary-fixture".toCharArray())
+                val next=vault.current.value!!
+                assertNotSame(owner.access,next.access)
+                assertEquals(listOf(project.id),next.initialProjects!!.map {it.id})
+                assertEquals("encrypted fixture",SecureFiles.text(File(next.context.filesDir,"cache-owner-fixture")))
+                assertNull(PrivateCache<String,String>(next.access.caches,8).get("private"))
+            }
+        } finally {vault.lock();root.deleteRecursively()}
+    }
+    @Test fun manualSessionSurvivesBackgroundButLockAndNewManagerRequireAuthenticationInBothStores()=withUiLoop {
         val (base,root)=base();seed(base);var vault=manager(base)
         try {
             vault.unlock("primary-fixture".toCharArray())
@@ -50,6 +89,8 @@ class ManualLockModeTest {
             vault.lock()
             for((password,isPrimary) in listOf("primary-fixture" to true,"secondary-fixture" to false)) {
                 vault.unlock(password.toCharArray());val session=vault.current.value!!
+                val privateCache=PrivateCache<String,String>(session.access.caches,8)
+                privateCache.put("identity",if(isPrimary) "primary" else "secondary")
                 val prefs=session.context.getSharedPreferences(ScreenCapturePreference.NAME,0)
                 assertEquals(30000L,AutoLockPreference.read(prefs))
                 assertTrue(prefs.edit().putLong(AutoLockPreference.KEY,AutoLockPreference.MANUAL).commit())
@@ -62,10 +103,13 @@ class ManualLockModeTest {
                 assertEquals(if(isPrimary) listOf(project.id) else emptyList<String>(),session.initialProjects!!.map {it.id})
                 vault.savedUi=mapOf("private" to listOf("draft"))
                 vault.lock();assertNull(vault.current.value);assertNull(vault.savedUi);assertNull(session.initialProjects)
+                assertNull(privateCache.get("identity"))
+                privateCache.put("late","old identity");assertNull(privateCache.get("late"))
                 assertFalse(session.database.isOpen);assertTrue(runCatching {session.projects.observeProjects().first()}.isFailure)
                 vault=manager(base);assertNull(vault.current.value);assertTrue(vault.configured)
                 vault.unlock(password.toCharArray());val reopened=vault.current.value!!
                 assertEquals(isPrimary,reopened.primary)
+                assertNull(PrivateCache<String,String>(reopened.access.caches,8).get("identity"))
                 assertEquals(AutoLockPreference.MANUAL,AutoLockPreference.read(reopened.context.getSharedPreferences(ScreenCapturePreference.NAME,0)))
                 assertNotNull(reopened.initialProjects)
                 vault.lock()

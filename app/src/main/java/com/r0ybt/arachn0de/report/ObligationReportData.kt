@@ -23,7 +23,7 @@ class ObligationReportData private constructor(
         fun from(snapshot: FinancialSnapshot, projects: List<Project>, personName: String?,
             generatedAt: Long, locale: Locale, completed: Boolean? = null): ObligationReportData {
             val tasks=snapshot.tasks.filter {completed==null || it.isCompleted==completed}
-            require(tasks.isNotEmpty()) { "No hay obligaciones para generar este informe." }
+            require(tasks.isNotEmpty()) { "No hay pagos para generar este informe." }
             if (tasks.size > 1000) throw ReportTooLargeException()
             val zone = TimeZone.getTimeZone(snapshot.zoneId)
             val dueFormat = SimpleDateFormat("d MMM yyyy", locale).apply { timeZone = zone }
@@ -47,14 +47,14 @@ class ObligationReportData private constructor(
                 ReportObligation(node.title, Money.format(checkNotNull(node.obligation), locale),
                     node.dueAt?.let { "Vence ${dueFormat.format(Date(it))}" } ?: "Sin vencimiento",
                     projectNames[node.projectId] ?: "Proyecto eliminado",
-                    if (node.isCompleted) "Completada" else "Pendiente",
+                    node.taskStatus.label,
                     snapshot.responsibleByNode[node.id].orEmpty().takeIf { it.isNotEmpty() }
                         ?.joinToString(" · ") { it.name })
             }
             return ObligationReportData(period,
                 if (snapshot.selection.personId == null) null else personName ?: "Persona eliminada",
                 Collections.unmodifiableList(currencies), Collections.unmodifiableList(obligations),
-                "${summary.count} ${if (summary.count == 1) "obligación" else "obligaciones"} · " +
+                "${summary.count} ${if (summary.count == 1) "pago" else "pagos"} · " +
                     "${summary.pendingCount} ${if (summary.pendingCount == 1) "pendiente" else "pendientes"} · " +
                     "${summary.completedCount} ${if (summary.completedCount == 1) "completada" else "completadas"}",
                 generatedAt, generatedFormat.format(Date(generatedAt)), snapshot.zoneId)

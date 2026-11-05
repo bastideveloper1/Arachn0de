@@ -9,6 +9,7 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import com.r0ybt.arachn0de.Arachn0deApplication
 import com.r0ybt.arachn0de.data.local.SavedTemplateEntity
@@ -17,13 +18,6 @@ import com.r0ybt.arachn0de.ui.state.EditorDraft
 import com.r0ybt.arachn0de.ui.state.OperationState
 import com.r0ybt.arachn0de.domain.model.*
 import java.util.*
-
-@Composable
-internal fun SavedTemplatesAccess(draft:EditorDraft,enabled:Boolean) {
-    var open by rememberSaveable(draft.creationId) {mutableStateOf(false)}
-    TextButton(enabled=enabled,onClick={open=true}) {Text("Usar Guardado")}
-    if(open) SavedTemplatesLibrary(draft) {open=false}
-}
 
 @Composable
 internal fun SavedTemplatesLibrary(draft:EditorDraft,onDismiss:()->Unit) {
@@ -37,6 +31,10 @@ internal fun SavedTemplatesLibrary(draft:EditorDraft,onDismiss:()->Unit) {
     var deleting by remember {mutableStateOf<SavedTemplateEntity?>(null)}
     val scope=rememberCoroutineScope();val op=remember(repo,scope){OperationState(scope)}
     fun apply(application:TemplateApplication) {
+        if((application.configuration.amount!=null && application.configuration.currency!="CLP") ||
+            (draft.financialEnabled && draft.currencyCode!="CLP")) {
+            op.report(PaymentCurrencyPolicy.MESSAGE);return
+        }
         draft.removedAttachmentIds=(draft.removedAttachmentIds+AttachmentReferences.ids(draft.description)).distinct()
         val journeyId=draft.metroJourneyId
         val revision=draft.metroJourneyRevision
@@ -56,11 +54,11 @@ internal fun SavedTemplatesLibrary(draft:EditorDraft,onDismiss:()->Unit) {
         }
         draft.technologiesLoaded=true;onDismiss()
     }
-    AlertDialog(onDismissRequest={if(!op.busy) onDismiss()},title={Text("Usar Guardado")},text={Column {
+    AlertDialog(onDismissRequest={if(!op.busy) onDismiss()},modifier=Modifier.testTag("saved-templates-library"),title={Text("Usar Guardado")},text={Column {
         OutlinedTextField(query,{query=it},label={Text("Buscar por nombre")},singleLine=true,modifier=Modifier.fillMaxWidth())
         Text("Rellena el formulario; tú decides cuándo guardar el elemento.",style=MaterialTheme.typography.bodySmall)
         LazyColumn(Modifier.heightIn(max=420.dp)) {
-            items(rows.filter {it.name.contains(query,ignoreCase=true) && SavedTemplateCodec.decode(it.payload).metroPlan==null},key={it.id}) {row->
+            items(rows.filter {!StructuralTemplateCodec.isStructural(it.payload) && it.name.contains(query,ignoreCase=true) && SavedTemplateCodec.decode(it.payload).metroPlan==null},key={it.id}) {row->
                 Column {
                     TextButton(enabled=!op.busy,onClick={var prepared:TemplateApplication?=null;op.submit("No se pudo leer la plantilla.",{prepared=repo.prepare(row);true},{val a=requireNotNull(prepared);if(draft.hasWork || a.warnings.isNotEmpty()) selected=a else apply(a)})}) {Column {Text(row.name);Text(SavedTemplateCodec.decode(row.payload).let { if(it.metroPlan!=null) "Viaje Metro" else if(it.amount!=null) "Pago" else if(it.purpose==NodePurpose.NOTE) "Nota" else "Tarea" },style=MaterialTheme.typography.labelSmall)}}
                     FlowRow {TextButton(enabled=!op.busy,onClick={inspecting=row}) {Text("Consultar")};TextButton(enabled=!op.busy,onClick={editing=row}) {Text("Editar / renombrar")};TextButton(enabled=!op.busy,onClick={deleting=row}) {Text("Eliminar")}}

@@ -10,7 +10,7 @@ fun projectCardAlerts(tree: NodeTreeSnapshot, today: CalendarDay, zone: TimeZone
     val day = TemporalRanges.day(today, zone)
     val result = mutableMapOf<String, ProjectCardAlerts>()
     tree.nodes.forEach { node ->
-        if (!node.isCompletable || node.isCompleted) return@forEach
+        if (node.projectId==null || !node.isCompletable || node.isCompleted) return@forEach
         val high = node.effectivePriority == Priority.HIGH
         val due = node.dueAt?.let { it in day } == true
         val future=node.dueAt?.let {it>=day.endExclusive} == true

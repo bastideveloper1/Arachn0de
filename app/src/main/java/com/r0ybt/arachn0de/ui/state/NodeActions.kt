@@ -7,16 +7,42 @@ import java.util.UUID
 import kotlinx.coroutines.launch
 import androidx.compose.material3.*
 import com.r0ybt.arachn0de.domain.model.CreationUndo
+import com.r0ybt.arachn0de.domain.model.Node
+import com.r0ybt.arachn0de.domain.model.TaskStatus
+
+internal data class TaskViewFeedback(val matches:(Node,Set<String>?,Set<String>?)->Boolean,val showAll:()->Unit,val capturePosition:(Node)->((Node)->Unit))
 
 internal class NodeActions(private val repository: NodeRepository, private val scope: CoroutineScope, private val attachments: com.r0ybt.arachn0de.data.repository.AttachmentRepository? = null) {
     val operation = OperationState(scope)
     val snackbar = SnackbarHostState()
     private var notice: kotlinx.coroutines.Job? = null
+    var taskViewFeedback:TaskViewFeedback?=null
+    private var lastReorderNotice:Long?=null
+    fun blockedReorder() {
+        val at=android.os.SystemClock.elapsedRealtime()
+        if(lastReorderNotice?.let {at-it<3000}==true)return
+        lastReorderNotice=at;feedback("Vuelve a Todas para reordenar")
+    }
+    private fun notice(message:String,label:String,action:()->Unit) {
+        notice?.cancel();snackbar.currentSnackbarData?.dismiss()
+        notice=scope.launch {if(snackbar.showSnackbar(message,label,duration=SnackbarDuration.Short)==SnackbarResult.ActionPerformed) action()}
+    }
+    private fun createdInView(nodes:List<Node>,people:Set<String>?=null,tags:Set<String>?=null):Boolean {
+        val view=taskViewFeedback ?: return false
+        val tasks=nodes.filter {it.isCompletable}
+        if(tasks.any {!view.matches(it,people,tags)}) notice("Tarea creada. No aparece en esta vista","Ver todas",view.showAll)
+        return tasks.isNotEmpty()
+    }
     fun feedback(message: String) {
         notice?.cancel(); snackbar.currentSnackbarData?.dismiss()
         notice = scope.launch { snackbar.showSnackbar(message, duration = SnackbarDuration.Short) }
     }
     private fun showCreated(token: CreationUndo) {
+        taskViewFeedback?.takeIf {token.nodes.any {it.isCompletable}}?.let {view->
+            if(token.nodes.any {it.isCompletable && !view.matches(it,token.people[it.id].orEmpty(),token.tags[it.id].orEmpty())})
+                notice("Tarea creada. No aparece en esta vista","Ver todas",view.showAll)
+            return
+        }
         notice?.cancel(); snackbar.currentSnackbarData?.dismiss()
         notice = scope.launch {
             val result = snackbar.showSnackbar(if(token.nodes.size == 1) "Elemento creado" else "${token.nodes.size} elementos creados", "Deshacer", duration = SnackbarDuration.Short)
@@ -43,8 +69,9 @@ internal class NodeActions(private val repository: NodeRepository, private val s
             draft.description.trim(), draft.removedAttachmentIds.toSet(), ::write)
         true
     }, { onSuccess(); feedback("${members.size} elementos actualizados") })
-    fun save(projectId: String, parentId: String?, id: String?, title: String, description: String, creationId: String = UUID.randomUUID().toString(), startAt: Long? = null, dueAt: Long? = null, editDates: Boolean = true, purpose: com.r0ybt.arachn0de.domain.model.NodePurpose = com.r0ybt.arachn0de.domain.model.NodePurpose.ACTION, obligation: com.r0ybt.arachn0de.domain.model.Obligation? = null, removeObligation: Boolean = false, responsibleIds: Set<String> = emptySet(), tagIds: Set<String> = emptySet(), priority: com.r0ybt.arachn0de.domain.model.Priority = com.r0ybt.arachn0de.domain.model.Priority.NONE, editResponsible: Boolean = false, attachmentDraft: EditorDraft? = null, onSuccess: () -> Unit) {
+    fun save(projectId: String?, parentId: String?, id: String?, title: String, description: String, creationId: String = UUID.randomUUID().toString(), startAt: Long? = null, dueAt: Long? = null, editDates: Boolean = true, purpose: com.r0ybt.arachn0de.domain.model.NodePurpose = com.r0ybt.arachn0de.domain.model.NodePurpose.ACTION, obligation: com.r0ybt.arachn0de.domain.model.Obligation? = null, removeObligation: Boolean = false, responsibleIds: Set<String> = emptySet(), tagIds: Set<String> = emptySet(), priority: com.r0ybt.arachn0de.domain.model.Priority = com.r0ybt.arachn0de.domain.model.Priority.NONE, editResponsible: Boolean = false, attachmentDraft: EditorDraft? = null, onSuccess: () -> Unit) {
         var created: CreationUndo? = null
+        var createdForView:Node?=null
         val audioRequested=attachmentDraft?.audioCreationRequested==true
         val provisionalTitle=attachmentDraft?.audioProvisionalTitle
         attachmentDraft?.audioCreationRequested=false
@@ -60,11 +87,12 @@ internal class NodeActions(private val repository: NodeRepository, private val s
                 attachmentDraft.attachmentDraftId, listOf(id ?: creationId), description, attachmentDraft.removedAttachmentIds.toSet(), ::write)
                 else write(description)
             if (created != null) created = if(audioRequested || attachmentDraft?.templateMetroPlan!=null) null else repository.captureCreation(listOf(creationId))
+            if(result && id==null && taskViewFeedback!=null) createdForView=repository.getNode(creationId)
             result
-        }, { onSuccess(); created?.let { showCreated(it) } })
+        }, { onSuccess(); if(created!=null) showCreated(requireNotNull(created)) else createdForView?.let {createdInView(listOf(it),responsibleIds,tagIds)} })
     }
 
-    fun saveDraft(projectId: String, draft: EditorDraft, editDates: Boolean, onSuccess: () -> Unit) {
+    fun saveDraft(projectId: String?, draft: EditorDraft, editDates: Boolean, onSuccess: () -> Unit) {
         if(draft.id==null && draft.tagIds.size>1) {
             operation.submit("No se pudo guardar el elemento. Tus cambios siguen en el formulario.", {error("Selecciona una etiqueta o ninguna antes de crear el elemento.")})
             return
@@ -74,9 +102,9 @@ internal class NodeActions(private val repository: NodeRepository, private val s
             draft.id == null && draft.batchEnabled && draft.purpose != com.r0ybt.arachn0de.domain.model.NodePurpose.LAYER -> {
                 val batch = draft.batchDraft()
                 val specs = com.r0ybt.arachn0de.domain.model.NodeBatchGenerator.generate(batch.parameters(), java.util.TimeZone.getDefault())
-                createBatch(projectId, batch, specs, batch.responsibleIds.toSet(), onSuccess)
+                createBatch(requireNotNull(projectId), batch, specs, batch.responsibleIds.toSet(), onSuccess)
             }
-            draft.id == null && draft.recurrenceFrequency != "NONE" && draft.purpose == com.r0ybt.arachn0de.domain.model.NodePurpose.ACTION -> createRecurrence(projectId, draft, onSuccess)
+            draft.id == null && draft.recurrenceFrequency != "NONE" && draft.purpose == com.r0ybt.arachn0de.domain.model.NodePurpose.ACTION -> createRecurrence(requireNotNull(projectId), draft, onSuccess)
             else -> save(projectId, draft.parentId, draft.id, draft.title.trim(), draft.description.trim(), draft.creationId,
                 draft.activeStart, draft.activeDue, editDates, draft.purpose, draft.obligation(), draft.financialRemovalConfirmed,
                 draft.responsibleIds.toSet(), draft.tagIds.toSet(), draft.priority, editResponsible = true, attachmentDraft = draft, onSuccess = onSuccess)
@@ -101,12 +129,16 @@ internal class NodeActions(private val repository: NodeRepository, private val s
         attachments?.discardDraft(draft.attachmentDraftId); true
     }, onSuccess)
 
-    fun createRecurrence(projectId: String, draft: EditorDraft, onSuccess: () -> Unit) =
+    fun createRecurrence(projectId: String, draft: EditorDraft, onSuccess: () -> Unit) {
+        var created=emptyList<Node>()
         operation.submit("No se pudo guardar la recurrencia. Revisa fechas, destino y responsables.", {
-            repository.recurrence.create(requireNotNull(draft.recurrenceRule(projectId)), draft.responsibleIds.toSet(), draft.tagIds.toSet())
-            while (repository.recurrence.materializeDue()) kotlinx.coroutines.yield()
+            val before=if(taskViewFeedback!=null)repository.getProjectNodes(projectId).mapTo(hashSetOf()) {it.id} else emptySet()
+            repository.recurrence.create(requireNotNull(draft.recurrenceRule(projectId)),draft.responsibleIds.toSet(),draft.tagIds.toSet())
+            while(repository.recurrence.materializeDue()) kotlinx.coroutines.yield()
+            if(taskViewFeedback!=null) created=repository.getProjectNodes(projectId).filter {it.id !in before}
             true
-        }, onSuccess)
+        },{onSuccess();if(created.isNotEmpty())createdInView(created,draft.responsibleIds.toSet(),draft.tagIds.toSet())})
+    }
 
     fun createBatch(projectId: String, draft: NodeBatchDraft, specs: List<GeneratedNodeSpec>, responsibleIds: Set<String>, onSuccess: () -> Unit) {
         var created: CreationUndo? = null
@@ -125,6 +157,8 @@ internal class NodeActions(private val repository: NodeRepository, private val s
         operation.submit("No se pudo eliminar el elemento. Puedes reintentar.", {
             repository.deleteNode(id)
         }, onSuccess)
+
+    fun moveToDrafts(id:String,onSuccess:()->Unit) = operation.submit("Solo se pueden trasladar notas y tareas independientes. Retira primero sus relaciones de Sprint, planificación, recurrencia o grupo; el contenido se conserva.", {repository.relocateNode(id,null)},onSuccess)
 
     fun move(id: String, parentId: String?, onSuccess: () -> Unit) =
         operation.submit("No se pudo mover el elemento. Puedes reintentar.", {
@@ -168,6 +202,36 @@ internal class NodeActions(private val repository: NodeRepository, private val s
     fun confirmWorkState(id: String) = operation.submit("No se pudo confirmar el estado. Puedes reintentar.", {
         repository.confirmWorkState(id)
     })
+
+    fun cycleTaskStatus(id:String)=changeTaskStatus(id,null) {}
+    fun setTaskStatus(id:String,status:TaskStatus,onSuccess:()->Unit={})=changeTaskStatus(id,status,onSuccess)
+    private fun changeTaskStatus(id:String,status:TaskStatus?,onSuccess:()->Unit) {
+        var before:Node?=null;var after:Node?=null;var restorePosition:((Node)->Unit)?=null
+        val view=taskViewFeedback
+        if(view==null) {
+            operation.submit("No se pudo cambiar el estado.",{if(status==null)repository.cycleTaskStatus(id) else repository.setTaskStatus(id,status)},onSuccess)
+            return
+        }
+        operation.submit("No se pudo cambiar el estado.",{
+            before=repository.getNode(id)
+            before?.let {restorePosition=view?.capturePosition?.invoke(it)}
+            val saved=if(status==null)repository.cycleTaskStatus(id) else repository.setTaskStatus(id,status)
+            after=repository.getNode(id);saved
+        },{
+            onSuccess()
+            val old=before;val changed=after
+            if(view!=null && old!=null && changed!=null && view.matches(old,null,null) && !view.matches(changed,null,null)) {
+                notice("La tarea ya no pertenece a esta vista","Deshacer") {
+                    var restored:Node?=null
+                    operation.submit("No se pudo deshacer: la tarea o su configuración cambiaron.",{
+                        val saved=repository.restoreTaskStatus(changed,old.taskStatus)
+                        if(saved)restored=repository.getNode(changed.id)
+                        saved
+                    },{restored?.let {restorePosition?.invoke(it)}})
+                }
+            }
+        })
+    }
 
     fun setCompleted(id: String, completed: Boolean) = operation.submit("No se pudo cambiar el completado. Puedes reintentar.", {
         repository.setCompleted(id, completed)

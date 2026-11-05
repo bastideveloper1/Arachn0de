@@ -2,6 +2,8 @@ package com.r0ybt.arachn0de.ui
 
 import com.r0ybt.arachn0de.ui.theme.BashColors
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.ui.semantics.semantics
@@ -11,6 +13,8 @@ import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.compositeOver
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -86,23 +90,29 @@ internal fun compactCardFacts(nodes:List<Node>,people:Map<String,List<Person>>,t
     return result
 }
 
+/** Presentation-only split; existing detail totals and stored statuses remain untouched. */
+internal fun previewTaskStates(facts:CompactCardFacts,nodes:Map<String,Node>,count:Int):Pair<Set<String>,Set<String>> {
+    val tasks=facts.tasks.mapNotNull(nodes::get).filter {it.isCompletable}
+    return tasks.filter {if(count==3)it.taskStatus==TaskStatus.PENDING else !it.isCompleted}.mapTo(hashSetOf()) {it.id} to
+        tasks.filter {it.taskStatus==TaskStatus.VERIFY}.mapTo(hashSetOf()) {it.id}
+}
+
 internal enum class IndicatorTone { PEOPLE, CONTENT, ALERT }
 internal data class CardIndicator(val name:String,val icon:ImageVector,val label:String,val tone:IndicatorTone,val ids:Set<String> = emptySet())
 internal fun cardIndicators(f:CompactCardFacts):List<CardIndicator> = buildList {
     if(f.people.isNotEmpty()) add(CardIndicator("people",if(f.people.size==1) Icons.Default.Person else Icons.Default.Groups,"Personas",IndicatorTone.PEOPLE,f.people))
-    if(f.technologies.isNotEmpty()) add(CardIndicator("technologies",Icons.Default.Build,"Tecnologías",IndicatorTone.CONTENT,f.technologies))
     if(f.notes.isNotEmpty()) add(CardIndicator("notes",Icons.Default.Description,"Notas",IndicatorTone.CONTENT,f.notes))
-    if(f.tasks.isNotEmpty()) add(CardIndicator("tasks",Icons.Default.Checklist,"Tareas",IndicatorTone.CONTENT,f.tasks))
     if(f.files.isNotEmpty()) add(CardIndicator("files",Icons.Default.AttachFile,"Archivos en el contenido",IndicatorTone.CONTENT,f.files))
+    if(f.tasks.isNotEmpty()) add(CardIndicator("tasks",Icons.Default.Checklist,"Tareas",IndicatorTone.CONTENT,f.tasks))
     if(f.due) add(CardIndicator("due",Icons.Default.DateRange,if(f.deadlines.isEmpty()) "Vencimiento" else "Vencimiento próximo o vencido",if(f.deadlines.isEmpty()) IndicatorTone.CONTENT else IndicatorTone.ALERT,if(f.deadlines.isEmpty()) f.dueNodes else f.deadlines))
     if(f.today) add(CardIndicator("today",Icons.Default.HourglassBottom,"Pendientes para hoy",IndicatorTone.ALERT,f.todayNodes))
-    if(f.high) add(CardIndicator("high",Icons.Default.LocalFireDepartment,"Prioritario",IndicatorTone.ALERT,f.priorities))
+    if(f.high) add(CardIndicator("high",Icons.Default.Flag,"Prioritario",IndicatorTone.ALERT,f.priorities))
 }
 internal val optionalAssociationIndicator=CardIndicator("associations",Icons.Default.Link,"Asociaciones opcionales",IndicatorTone.CONTENT)
 
 @Composable internal fun indicatorColor(tone:IndicatorTone):Color = Arachn0deColors.TextPrimary
 
-internal data class IndicatorDirectory(val nodes:Map<String,Node> = emptyMap(),val people:Map<String,Person> = emptyMap(),val technologies:Map<String,com.r0ybt.arachn0de.data.local.TechnologyEntity> = emptyMap(),val journeyNodes:Map<String,String> = emptyMap())
+internal data class IndicatorDirectory(val nodes:Map<String,Node> = emptyMap(),val people:Map<String,Person> = emptyMap(),val technologies:Map<String,com.r0ybt.arachn0de.data.local.TechnologyEntity> = emptyMap(),val journeyNodes:Map<String,String> = emptyMap(),val projects:Map<String,Project> = emptyMap())
 internal fun indicatorOrigin(key:String,node:Node,nodes:Map<String,Node>):String {
     if(key=="node:${node.id}") return "Propio"
     if(key=="project:${node.projectId}") return "Descendiente"
@@ -117,63 +127,75 @@ internal fun indicatorOrigin(key:String,node:Node,nodes:Map<String,Node>):String
 internal val LocalIndicatorDirectory=staticCompositionLocalOf {IndicatorDirectory()}
 
 /** Preview is one informational row. Only the full detail owns touch targets. */
-@Composable internal fun CompactCardIndicators(key:String,fallback:CompactCardFacts=CompactCardFacts(),modifier:Modifier=Modifier,showTechnologies:Boolean=true,hasOwnNotes:Boolean=false) {
+@Composable internal fun CompactCardIndicators(key:String,fallback:CompactCardFacts=CompactCardFacts(),modifier:Modifier=Modifier,showTechnologies:Boolean=true,hasOwnNotes:Boolean=false,onRecurrence:(()->Unit)?=null,taskStateCount:Int?=null,showContainedTasks:Boolean=LocalIndicatorDirectory.current.nodes[key.removePrefix("node:")]?.isStructural ?: true,effort:Int?=null,ownPriority:Boolean=false) {
     val original=LocalCompactCardFacts.current[key] ?: fallback
-    val facts=original.copy(notes=original.notes+if(hasOwnNotes) setOf(key) else emptySet())
-    val active=cardIndicators(facts)
-    // Keep the original four slots first, then reserve the formerly conditional slots.
+    val facts=original.copy(notes=original.notes+if(hasOwnNotes) setOf(key) else emptySet(),
+        high=original.high || ownPriority,priorities=original.priorities+if(ownPriority)setOf(key) else emptySet())
+    val taskStates=taskStateCount?.let {previewTaskStates(facts,LocalIndicatorDirectory.current.nodes,it)}
+    val active=cardIndicators(if(taskStates==null)facts else facts.copy(tasks=taskStates.first))+
+        if(taskStates?.second?.isNotEmpty()==true) listOf(CardIndicator("verify",Icons.Default.Visibility,"Por verificar",IndicatorTone.CONTENT,taskStates.second)) else emptyList()
+    // Keep inactive slots visible, with attachments before pending/verification indicators.
     val baseline=listOf(
         CardIndicator("people",Icons.Default.Groups,"Personas",IndicatorTone.PEOPLE),
-        CardIndicator("technologies",Icons.Default.Code,"Tecnologías",IndicatorTone.CONTENT),
         CardIndicator("notes",Icons.Default.Description,"Notas",IndicatorTone.CONTENT),
         CardIndicator("due",Icons.Default.Event,"Vencimiento",IndicatorTone.CONTENT),
-        CardIndicator("tasks",Icons.Default.Checklist,"Tareas",IndicatorTone.CONTENT),
         CardIndicator("files",Icons.Default.AttachFile,"Archivos en el contenido",IndicatorTone.CONTENT),
+        CardIndicator("tasks",Icons.Default.Checklist,"Tareas",IndicatorTone.CONTENT),
         CardIndicator("today",Icons.Default.HourglassBottom,"Pendientes para hoy",IndicatorTone.ALERT),
-        CardIndicator("high",Icons.Default.LocalFireDepartment,"Prioritario",IndicatorTone.ALERT))
-    val signals=baseline.map {inactive->active.firstOrNull {it.name==inactive.name} ?: inactive}
-        .filter {showTechnologies || it.name!="technologies"}
+        CardIndicator("high",Icons.Default.Flag,"Prioritario",IndicatorTone.ALERT))
+    val previewBaseline=if(taskStateCount==3)baseline.flatMap {if(it.name=="tasks")listOf(it,CardIndicator("verify",Icons.Default.Visibility,"Por verificar",IndicatorTone.CONTENT)) else listOf(it)} else baseline
+    val signals=(previewBaseline+if(onRecurrence!=null)listOf(CardIndicator("recurrence",Icons.Default.Refresh,"Recurrente",IndicatorTone.CONTENT)) else emptyList()).map {inactive->active.firstOrNull {it.name==inactive.name} ?: inactive}
+        .filter {it.name!="technologies"}
+        .filter {showContainedTasks || it.name !in setOf("tasks","verify")}
     BoxWithConstraints(modifier.testTag("card-indicators:$key")) {
-        val density=androidx.compose.ui.platform.LocalDensity.current
-        val (gap,iconSize)=with(density) {
-            val gapPx=((constraints.maxWidth-16.dp.toPx()*signals.size)/(signals.size-1))
-                .coerceIn(2.dp.toPx(),6.dp.toPx()).toInt()
-            val iconPx=((constraints.maxWidth-gapPx*(signals.size-1)).toFloat()/signals.size)
-                .coerceIn(12.dp.toPx(),16.dp.toPx()).toInt()
-            gapPx.toDp() to iconPx.toDp()
-        }
-        // Only exceptionally narrow cards need scrolling; never hide indicators behind a count.
-        Row(Modifier.horizontalScroll(rememberScrollState()),horizontalArrangement=Arrangement.spacedBy(gap),verticalAlignment=Alignment.CenterVertically) {
+        // Informational glyphs stay uniform and grouped; only the recurrence action owns a touch target.
+        val iconSize=16.dp
+        Row(Modifier.horizontalScroll(rememberScrollState()),horizontalArrangement=Arrangement.spacedBy(2.dp),verticalAlignment=Alignment.CenterVertically) {
+            FavoriteCardIndicator(key)
+            if(effort!=null) TaskEffortMini(key.removePrefix("node:"),effort)
             signals.forEach {signal->
-                val present=active.any {it.name==signal.name}
+                val present=signal.name=="recurrence" || active.any {it.name==signal.name}
                 val iconModifier=Modifier.size(iconSize).testTag("card-signal:$key:${signal.name}")
                     .then(if(signal.name=="notes") Modifier else Modifier.semantics {stateDescription=if(present) "Configurado" else "Sin datos"})
-                val tint=cardIndicatorColor(signal.name,present)
+                val tint=if(signal.name=="recurrence") Arachn0deColors.Icon else cardIndicatorColor(signal.name,present)
                 if(signal.name=="notes") NoteContentIcon(present,signal.label,iconModifier,tint)
-                else LucideIcon(signal.icon,signal.label,iconModifier,tint=tint)
+                else if(signal.name=="verify") Icon(Icons.Default.Visibility,signal.label,iconModifier,tint=tint)
+                // Compose expands the clickable glyph's touch bounds to the platform minimum
+                // without adding an otherwise empty 48dp row to the card.
+                else LucideIcon(signal.icon,signal.label,iconModifier.then(
+                    if(signal.name=="recurrence" && onRecurrence!=null) Modifier.clickable(onClickLabel="Abrir recurrencia",onClick=onRecurrence)
+                    else Modifier),tint=tint)
             }
         }
     }
 }
 
-@Composable internal fun CardIndicatorDetail(key:String,onOpenNode:(String)->Unit,modifier:Modifier=Modifier,onOpenPeople:(()->Unit)?=null,onOpenTechnologies:(()->Unit)?=null,managementContext:String?=null,participationRepository:com.r0ybt.arachn0de.data.repository.ParticipationRepository?=null,showPeople:Boolean=true,fillWidth:Boolean=true) {
+@Composable internal fun CardIndicatorDetail(key:String,onOpenNode:(String)->Unit,modifier:Modifier=Modifier,onOpenPeople:(()->Unit)?=null,onOpenTechnologies:(()->Unit)?=null,managementContext:String?=null,participationRepository:com.r0ybt.arachn0de.data.repository.ParticipationRepository?=null,showPeople:Boolean=true,fillWidth:Boolean=true,taskCounts:InteriorTaskCounts?=null,verificationEnabled:Boolean=false) {
     val participation=if(managementContext!=null && participationRepository!=null) {
         val value by remember(managementContext,participationRepository) {participationRepository.observe(managementContext)}.collectAsState(initial=com.r0ybt.arachn0de.data.repository.ParticipationState())
         value
     } else null
     val members=participation?.records?.participants.orEmpty().filter {it.contextId==managementContext}.mapTo(hashSetOf()) {it.personId}
-    val facts=(LocalCompactCardFacts.current[key] ?: CompactCardFacts()).let {it.copy(people=it.people+members)}
+    val facts=(LocalCompactCardFacts.current[key] ?: CompactCardFacts()).let {original->
+        val scoped=taskCounts?.let {original.copy(tasks=it.pending,priorities=it.highPriority,high=it.highPriority.isNotEmpty())} ?: original
+        scoped.copy(people=scoped.people+members)
+    }
     val activeSignals=cardIndicators(facts).filter {showPeople || it.name!="people"}
-    val signals=if(key.startsWith("project:") && activeSignals.none {it.name=="technologies"})
-        activeSignals+CardIndicator("technologies",Icons.Default.Code,"Tecnologías",IndicatorTone.CONTENT) else activeSignals
+        .filter {taskCounts==null || it.name!="tasks"}
+    val signals=activeSignals.filter {it.name!="technologies"}
     val directory=LocalIndicatorDirectory.current
     var selected by remember(key) {mutableStateOf<CardIndicator?>(null)}
     var technology by remember(key) {mutableStateOf<com.r0ybt.arachn0de.data.local.TechnologyEntity?>(null)}
     var person by remember(key) {mutableStateOf<String?>(null)}
     var responsibilityPerson by remember(key) {mutableStateOf<String?>(null)}
-    if(signals.isEmpty()) return
+    if(signals.isEmpty() && taskCounts==null) return
     FlowRow(modifier.then(if(fillWidth) Modifier.fillMaxWidth() else Modifier).testTag("detail-indicators:$key"),horizontalArrangement=Arrangement.spacedBy(4.dp),verticalArrangement=Arrangement.spacedBy(0.dp),itemVerticalAlignment=Alignment.CenterVertically) {
-        signals.forEach {signal->CompactCardIconButton(signal.icon,signal.label,{selected=signal},Modifier.testTag("detail-signal:$key:${signal.name}"),enabled=signal in activeSignals,tint=if(signal in activeSignals) indicatorColor(signal.tone) else BlackWhite90.Inactive)}
+        if(taskCounts!=null) InteriorTaskStateIndicators(taskCounts,verificationEnabled,key)
+        signals.forEach {signal->
+            val button:@Composable ()->Unit={CompactCardIconButton(signal.icon,signal.label,{selected=signal},Modifier.testTag("detail-signal:$key:${signal.name}"),enabled=signal in activeSignals,tint=if(signal in activeSignals) indicatorColor(signal.tone) else BlackWhite90.Inactive)}
+            val count=when(signal.name) {"tasks"->taskCounts?.pending?.size;"high"->taskCounts?.highPriority?.size;else->null}
+            if(count==null)button() else InteriorIndicatorCount(count,if(signal.name=="tasks")"tareas sin completar" else "tareas de prioridad alta sin completar","detail-count:$key:${signal.name}",button)
+        }
 
     }
     selected?.let {signal->
@@ -215,18 +237,34 @@ internal val LocalIndicatorDirectory=staticCompositionLocalOf {IndicatorDirector
     technology?.let {row->AlertDialog(onDismissRequest={technology=null},title={Text(row.name)},text={Column {Text("Tecnología del catálogo asociada a este contenido.");TechnologyIcon(row)}},confirmButton={TextButton(onClick={technology=null}) {Text("Cerrar")}})}
 }
 
-/** Only the lower card preview uses these overrides; activation and detail controls stay unchanged. */
-@Composable internal fun cardIndicatorColor(name:String,active:Boolean):Color =
-    if(!active) (if(LocalBashPresentation.current) BashColors.Muted else BlackWhite90.Inactive) else com.r0ybt.arachn0de.ui.theme.LocalAppearancePreferences.current
+internal val LocalIndicatorBackground=staticCompositionLocalOf<Color?> {null}
+
+/** Presentation only: preserve the chosen tint whenever its rendered contrast is sufficient. */
+internal fun contrastingIndicator(color:Color,background:Color,active:Boolean):Color {
+    fun ratio(value:Color)=androidx.core.graphics.ColorUtils.calculateContrast(value.compositeOver(background).toArgb(),background.toArgb())
+    if(ratio(color)>=3.0)return color
+    val light=background.luminance()<.18f
+    val target=if(active) {if(light)Color.White else Color.Black} else {if(light)Color(0xffaaaaaa) else Color(0xff555555)}
+    if(!active || maxOf(color.red,color.green,color.blue)-minOf(color.red,color.green,color.blue)<.08f)return target
+    var low=0f;var high=1f
+    repeat(10) {val mid=(low+high)/2;if(ratio(androidx.compose.ui.graphics.lerp(color,target,mid))>=3.0)high=mid else low=mid}
+    return androidx.compose.ui.graphics.lerp(color,target,high)
+}
+
+@Composable internal fun cardIndicatorColor(name:String,active:Boolean):Color {
+    val chosen=if(!active) (if(LocalBashPresentation.current) BashColors.Muted else BlackWhite90.Inactive) else com.r0ybt.arachn0de.ui.theme.LocalAppearancePreferences.current
         ?.settings?.indicatorColors?.get(name)?.color ?: Arachn0deColors.TextPrimary
+    return contrastingIndicator(chosen,(LocalIndicatorBackground.current ?: Arachn0deColors.Surface).compositeOver(Arachn0deColors.Background.copy(alpha=1f)),active)
+}
 
 internal val customizableCardIndicators=listOf(
     CardIndicator("people",Icons.Default.Groups,"Personas",IndicatorTone.PEOPLE),
-    CardIndicator("technologies",Icons.Default.Build,"Tecnologías",IndicatorTone.CONTENT),
     CardIndicator("notes",Icons.Default.Description,"Notas",IndicatorTone.CONTENT),
     CardIndicator("tasks",Icons.Default.Checklist,"Tareas",IndicatorTone.CONTENT),
     CardIndicator("files",Icons.Default.AttachFile,"Archivos en el contenido",IndicatorTone.CONTENT),
     CardIndicator("due",Icons.Default.DateRange,"Vencimiento",IndicatorTone.CONTENT),
     CardIndicator("today",Icons.Default.HourglassBottom,"Pendientes para hoy",IndicatorTone.ALERT),
-    CardIndicator("high",Icons.Default.LocalFireDepartment,"Prioritario",IndicatorTone.ALERT),
+    CardIndicator("high",Icons.Default.Flag,"Prioritario",IndicatorTone.ALERT),
+    CardIndicator("verify",Icons.Default.Visibility,"Por verificar",IndicatorTone.CONTENT),
+    CardIndicator("birthday",Icons.Default.Cake,"Cumpleaños",IndicatorTone.CONTENT),
 )

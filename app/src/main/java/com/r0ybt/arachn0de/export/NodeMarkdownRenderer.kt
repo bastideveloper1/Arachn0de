@@ -24,7 +24,7 @@ object NodeMarkdownRenderer {
                     else -> "- **$title**"
                 }
             }
-            val workflow = entry.workState?.let { " · ${it.label}" } ?: if (entry.sprintMode) " · Modo Sprint" else ""
+            val workflow = entry.workState?.let { " · ${it.label}" } ?: if(entry.awaitingVerification) " · Por verificar" else if (entry.sprintMode) " · Modo Sprint" else ""
             append("$indent$prefix$workflow$level\n")
             if (entry.description.isNotBlank()) {
                 append("\n")

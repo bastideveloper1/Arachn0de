@@ -43,17 +43,17 @@ class NodeMoveUiTest {
         compose.waitForIdle()
         compose.onNodeWithTag("nodes-list").performScrollToIndex(0)
         compose.waitUntil(10_000) { compose.onAllNodesWithText("CAPA 1").fetchSemanticsNodes().isNotEmpty() }
-        compose.onNodeWithTag("nodes-list").performScrollToNode(hasContentDescription("Opciones del elemento"))
-        compose.onNodeWithContentDescription("Opciones del elemento").performClick()
-        compose.onNodeWithText("Mover a…").performClick()
+        compose.onNodeWithTag("core-context:Options").performClick()
+        compose.onNodeWithText("Mover a…").performScrollTo().performClick()
     }
 
     @Test fun movingOpenLayerExcludesSubtreeAndKeepsCurrentNodeWithNewAncestors() {
         openSource()
-        compose.onNodeWithTag("navigator-node:$source").assertDoesNotExist()
-        compose.onNodeWithTag("navigator-node:$child").assertDoesNotExist()
+        compose.onNodeWithTag("destination:node:$source").assertDoesNotExist()
+        compose.onNodeWithTag("destination:node:$child").assertDoesNotExist()
         compose.onNodeWithTag("navigator-home").assertDoesNotExist()
-        compose.onNodeWithTag("navigator-node:$target").performClick()
+        compose.onNodeWithTag("destination:node:$target").performClick()
+        compose.onNodeWithTag("destination-confirm").performClick()
         compose.waitUntil(10_000) { runBlocking { app.nodeRepository.getNode(source)?.parentId == target } }
         compose.waitForIdle()
         compose.onNodeWithTag("nodes-list").performScrollToNode(hasText("Child"))
@@ -71,7 +71,9 @@ class NodeMoveUiTest {
         compose.onNodeWithTag("nodes-list").performScrollToNode(hasText("Child"))
         compose.onNodeWithContentDescription("Más opciones").performClick()
         compose.onNode(hasText("Mover a…") and hasAnyAncestor(isDialog())).performClick()
-        compose.onNodeWithTag("navigator-project").performClick()
+        compose.onNodeWithText("Núcleos").performClick()
+        compose.onNodeWithTag("destination:project:$project").performClick()
+        compose.onNodeWithTag("destination-confirm").performClick()
         compose.waitUntil(10_000) { runBlocking { app.nodeRepository.getNode(child)?.parentId == null } }
         check(runBlocking { app.nodeRepository.getNode(source)!!.isStructural && !app.nodeRepository.getNode(source)!!.hasChildren })
         check(runBlocking { app.nodeRepository.getNode(child)!!.title == "Child" })
@@ -80,13 +82,14 @@ class NodeMoveUiTest {
     @Test fun failedMoveKeepsDestinationPickerAndCanRetry() {
         openSource()
         app.database.openHelper.writableDatabase.execSQL("CREATE TRIGGER fail_move BEFORE UPDATE OF parentId ON nodes BEGIN SELECT RAISE(ABORT,'injected'); END")
-        compose.onNodeWithTag("navigator-node:$target").performClick()
+        compose.onNodeWithTag("destination:node:$target").performClick()
+        compose.onNodeWithTag("destination-confirm").performClick()
         compose.waitUntil(10_000) { compose.onAllNodesWithText("Entendido").fetchSemanticsNodes().isNotEmpty() }
         compose.onNodeWithText("Entendido").performClick()
-        compose.onNodeWithTag("navigator-node:$target").assertExists()
+        compose.onNodeWithTag("destination-confirm").assertExists()
         check(runBlocking { app.nodeRepository.getNode(source)!!.parentId == null })
         app.database.openHelper.writableDatabase.execSQL("DROP TRIGGER fail_move")
-        compose.onNodeWithTag("navigator-node:$target").performClick()
+        compose.onNodeWithTag("destination-confirm").performClick()
         compose.waitUntil(10_000) { runBlocking { app.nodeRepository.getNode(source)?.parentId == target } }
     }
 }

@@ -15,8 +15,9 @@ import com.r0ybt.arachn0de.R
 import com.r0ybt.arachn0de.ui.theme.Arachn0deColors
 
 /** Official vendored SVG geometry; unknown small actions keep their readable labels. */
-@Composable internal fun LucideIcon(imageVector:ImageVector,contentDescription:String?,modifier:Modifier=Modifier,tint:Color=Arachn0deColors.TextPrimary) {
-    val resource=if(contentDescription?.startsWith("Vencimiento")==true) R.drawable.lucide_calendar_clock else when(imageVector.name.substringAfterLast('.')) {
+@Composable internal fun LucideIcon(imageVector:ImageVector,contentDescription:String?,modifier:Modifier=Modifier,tint:Color=Arachn0deColors.Icon) {
+    val commonResource=commonControlIconResource(contentDescription)
+    val resource=commonResource ?: if(contentDescription?.startsWith("Vencimiento")==true) R.drawable.lucide_calendar_clock else when(imageVector.name.substringAfterLast('.')) {
         "Search"->R.drawable.lucide_search
         "Star"->R.drawable.lucide_star_selected
         "StarBorder"->R.drawable.lucide_star
@@ -31,12 +32,15 @@ import com.r0ybt.arachn0de.ui.theme.Arachn0deColors
         "MoreVert"->R.drawable.lucide_ellipsis_vertical
         "Menu"->R.drawable.lucide_menu
         "ArrowBack"->R.drawable.lucide_arrow_left
-        "FilterList","FilterAlt","Sort"->R.drawable.lucide_list_filter
+        "SwapVert"->R.drawable.lucide_arrow_down_up
+        "FilterAlt"->R.drawable.lucide_funnel
+        "LockOpen"->R.drawable.lucide_lock
+        "FilterList","Sort"->R.drawable.lucide_list_filter
         "People","Groups","Group"->R.drawable.lucide_users
         "Person"->R.drawable.lucide_user
         "Checklist"->R.drawable.lucide_list_checks
         "HourglassBottom"->R.drawable.lucide_hourglass
-        "LocalFireDepartment"->R.drawable.lucide_flag
+        "LocalFireDepartment","Flag"->R.drawable.lucide_flag
         "Code","Build"->R.drawable.lucide_code_xml
         "Label","LocalOffer"->R.drawable.lucide_tag
         "Close"->R.drawable.lucide_x
@@ -48,12 +52,12 @@ import com.r0ybt.arachn0de.ui.theme.Arachn0deColors
         "Palette"->R.drawable.lucide_palette
         else->null
     }
-    if(resource!=null) Icon(painterResource(resource),contentDescription,modifier.then(if(imageVector.name.substringAfterLast('.')=="ExpandLess") Modifier.rotate(180f) else Modifier),tint=tint)
+    if(resource!=null) Icon(painterResource(resource),contentDescription,modifier.then(if(commonResource==null && imageVector.name.substringAfterLast('.')=="ExpandLess") Modifier.rotate(180f) else Modifier),tint=tint)
     else if(contentDescription!=null) Text(contentDescription,modifier,color=tint,style=MaterialTheme.typography.labelSmall)
 }
 
 /** The same note outline, with an inner mark only when there is content. */
-@Composable internal fun NoteContentIcon(hasContent:Boolean,contentDescription:String?,modifier:Modifier=Modifier,tint:Color=Arachn0deColors.TextPrimary) {
+@Composable internal fun NoteContentIcon(hasContent:Boolean,contentDescription:String?,modifier:Modifier=Modifier,tint:Color=Arachn0deColors.Icon) {
     Icon(painterResource(if(hasContent) R.drawable.lucide_sticky_note_marked else R.drawable.lucide_sticky_note),contentDescription,
         modifier.then(Modifier.semantics {stateDescription=if(hasContent) "Con contenido" else "Sin contenido"}),tint=tint)
 }

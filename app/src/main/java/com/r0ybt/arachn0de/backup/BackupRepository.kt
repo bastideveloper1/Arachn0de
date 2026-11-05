@@ -1,4 +1,5 @@
 package com.r0ybt.arachn0de.backup
+import com.r0ybt.arachn0de.data.local.ensurePrincipalProfile
 import com.r0ybt.arachn0de.data.local.AttachmentStore
 import com.r0ybt.arachn0de.data.local.ImageFileLifecycle
 
@@ -25,6 +26,7 @@ internal class BackupRepository(
     private val technologyIcons: BackupAvatarFiles = BackupAvatarFiles(context.applicationContext, "technology-icons", "technology-icon-journal", avatars.syncDirectory),
     private val projectPhotos: BackupAvatarFiles = BackupAvatarFiles(context.applicationContext, "project-photos", "project-photo-journal", avatars.syncDirectory),
 ) {
+    private val themeOriginalFiles=BackupAvatarFiles(context.applicationContext,"theme-originals","theme-original-restore-journal",avatars.syncDirectory)
     private val galleryAttachmentStore=AttachmentStore(context.applicationContext,avatars.syncDirectory)
     private val galleryAvatarLifecycle=ImageFileLifecycle(context.applicationContext,"avatars",avatars.syncDirectory)
     private val vaultContext=context as? com.r0ybt.arachn0de.security.VaultContext
@@ -46,6 +48,8 @@ internal class BackupRepository(
     }
 
     private suspend fun snapshotLocked(streamImages: Boolean = false): BackupData = database.withTransaction {
+        ensurePrincipalProfile(database)
+        vaultContext?.let {com.r0ybt.arachn0de.guest.GuestCaptureQueue(it.baseContext).requireSettled(it.session.id.toString())}
         com.r0ybt.arachn0de.sharing.SharedCaptureQueue.requireSettled(database)
         com.r0ybt.arachn0de.audio.AudioDraftStore.requireSettled(context,database)
         val dao = database.backupDao()
@@ -71,6 +75,13 @@ internal class BackupRepository(
                 require(totalBytes <= BackupLimits.TOTAL_AVATAR_BYTES) { "El snapshot en memoria supera 8 MiB; usa la exportación por streaming." }
             }
         }
+        val themeOriginals=com.r0ybt.arachn0de.backup.legacy.themeOriginalReferences(listOfNotNull(database.privatePreferenceDao().get(com.r0ybt.arachn0de.ui.theme.AppearancePreferences.FILE)))
+        themeOriginals.forEach {(name,original)->
+            com.r0ybt.arachn0de.backup.legacy.verifyThemeOriginal(original,themeOriginalFiles.read(name))
+            val file=themeOriginalFiles.file(name);val row=inspectImage("theme-originals",name,file)
+            totalBytes+=row.byteSize;require(totalBytes<=BackupLimits.TOTAL_STREAMED_IMAGE_BYTES)
+            imageFiles.add(row);imageContents[row.key]=file
+        }
         val gallery=database.personGalleryDao().photos()
         val images = (people.mapNotNull { it.avatarFile }.toSet()+gallery.map {it.file}).mapNotNull { name -> image("avatars", avatars, name)?.let { name to it } }.toMap()
         val technologies = database.technologyDao().catalog()
@@ -80,7 +91,7 @@ internal class BackupRepository(
         val attachmentDao = database.attachmentDao()
         val nodeAttachments = attachmentDao.nodeAttachments()
         val projectAttachments = attachmentDao.projectAttachments()
-        val ids = (nodeAttachments.map { it.attachmentId } + projectAttachments.map { it.attachmentId } + database.personMemoryDao().images().mapNotNull {it.attachmentId}).toSet()
+        val ids = (nodeAttachments.map { it.attachmentId } + projectAttachments.map { it.attachmentId } + database.personMemoryDao().images().mapNotNull {it.attachmentId} + database.personProfileDao().banners().map {it.attachmentId}).toSet()
         // Editor reservations and DELETE_PENDING rows are not confirmed user data.
         val files = attachmentDao.files().filter { it.id in ids }
         val contents = files.associate { it.storageName to attachments.file(it.storageName) }
@@ -90,7 +101,7 @@ internal class BackupRepository(
             conversionRoots = database.conversionDao().roots(), conversionPeople = database.conversionDao().people(),
             conversionTags = database.conversionDao().tags(), conversionEvents = database.conversionDao().events(),
             conversionWorkStates = database.conversionDao().workStates(), nodeSortPreferences = database.nodeSortPreferenceDao().all(),
-            calendarEvents=database.calendarEventDao().all(),calendarEventPeople=database.calendarEventDao().people(),personMemories=database.personMemoryDao().memories(),personMemoryImages=database.personMemoryDao().images(),personPhotos=gallery,personBirthdays=database.personGalleryDao().birthdays(), personTechnologies=database.personIntegrationDao().technologies(), personProfiles=database.personProfileDao().profiles(),personRelations=database.personProfileDao().relations(), imageFiles = imageFiles, imageContents = imageContents, storeId=vaultContext?.session?.id?.toString(),storeKind=if(vaultContext?.primary==false) "secondary" else "primary", privatePreferences = database.privatePreferenceDao().all(), savedTemplates = database.savedTemplateDao().all(), metroPreferences = database.metroDao().preferences()?.payload, metroLearningEvents = database.metroLearningDao().events(), metroJourneys = database.metroDao().journeys(), iterationPlans=database.iterationDao().plans(),iterationCycles=database.iterationDao().cycles(),iterationCommitments=database.iterationDao().commitments(),iterationClosures=database.iterationDao().closures(),managementParticipants=database.participationDao().participants(),participantRoles=database.participationDao().roles(),objectiveResponsibilities=database.participationDao().objectives(),nodeResponsibilities=database.participationDao().nodes(),managementRoles=database.backlogDao().roles(),objectiveEpics=database.backlogDao().objectiveEpics(),epicStories=database.backlogDao().epicStories(),storyTasks=database.backlogDao().storyTasks(),backlogEntries=database.backlogDao().entries(),projectCharters=database.planningDao().charters(), managementObjectives=database.planningDao().objectives(), acceptanceCriteria=database.planningDao().criteria(), sprintStories=database.cascadeRelationDao().stories(),objectiveWork=database.cascadeRelationDao().objectives(),localIdentities=database.cascadeRelationDao().identities(),managementLayers=database.managementLayerDao().all(), ganttAnnotations=database.ganttAnnotationDao().all(), managementContexts=database.managementContextDao().all(), sprintLinks=database.sprintLinkDao().all(), gameSession = database.gameStateDao().get()?.payload?.takeIf { it.isNotEmpty() }).also { it.validate() }
+            bankRoots=database.bankDao().roots(),bankAccounts=database.bankDao().accounts(),bankOperations=database.bankDao().operations(),bankAllocations=database.bankDao().allocations(),calendarEvents=database.calendarEventDao().all(),calendarEventPeople=database.calendarEventDao().people(),personMemories=database.personMemoryDao().memories(),personMemoryPeople=database.personMemoryDao().people(),personMemoryImages=database.personMemoryDao().images(),personBanners=database.personProfileDao().banners(),personPhotos=gallery,personBirthdays=database.personGalleryDao().birthdays(), personTechnologies=database.personIntegrationDao().technologies(), personProfiles=database.personProfileDao().profiles(),personRelations=database.personProfileDao().relations(), imageFiles = imageFiles, imageContents = imageContents, storeId=vaultContext?.session?.id?.toString(),storeKind=if(vaultContext?.primary==false) "secondary" else "primary", privatePreferences = com.r0ybt.arachn0de.backup.legacy.LegacyPurchaseArchive.merge(database.privatePreferenceDao().all(),vaultContext?.let { com.r0ybt.arachn0de.backup.legacy.LegacyPurchaseInbox(it.baseContext).read() },vaultContext?.session?.id?.toString(),nodes.mapTo(hashSetOf()) {it.id}), savedTemplates = database.savedTemplateDao().all(), metroPreferences = database.metroDao().preferences()?.payload, metroLearningEvents = database.metroLearningDao().events(), metroJourneys = database.metroDao().journeys(), iterationPlans=database.iterationDao().plans(),iterationCycles=database.iterationDao().cycles(),iterationCommitments=database.iterationDao().commitments(),iterationClosures=database.iterationDao().closures(),managementParticipants=database.participationDao().participants(),participantRoles=database.participationDao().roles(),objectiveResponsibilities=database.participationDao().objectives(),nodeResponsibilities=database.participationDao().nodes(),managementRoles=database.backlogDao().roles(),objectiveEpics=database.backlogDao().objectiveEpics(),epicStories=database.backlogDao().epicStories(),storyTasks=database.backlogDao().storyTasks(),backlogEntries=database.backlogDao().entries(),projectCharters=database.planningDao().charters(), managementObjectives=database.planningDao().objectives(), acceptanceCriteria=database.planningDao().criteria(), sprintStories=database.cascadeRelationDao().stories(),objectiveWork=database.cascadeRelationDao().objectives(),localIdentities=database.cascadeRelationDao().identities(),managementLayers=database.managementLayerDao().all(), ganttAnnotations=database.ganttAnnotationDao().all(), managementContexts=database.managementContextDao().all(), sprintLinks=database.sprintLinkDao().all(), gameSession = database.gameStateDao().get()?.payload?.takeIf { it.isNotEmpty() }).also { it.validate() }
     }
 
     suspend fun writeSnapshot(output: java.io.OutputStream) = withContext(Dispatchers.IO) {
@@ -108,7 +119,15 @@ internal class BackupRepository(
             try {
                 SecureFiles.output(temporary).use { output ->
                     if(password==null) BackupContainer.writeBackup(data, output)
-                    else com.r0ybt.arachn0de.security.EncryptedBackup.output(output,password).use { BackupContainer.writeBackup(data,it) }
+                    else {
+                        // The outer use owns fsync/close. Finalizing the portable cipher must
+                        // not close that durable stream twice (a closed fd cannot be synced).
+                        val borrowed=object:java.io.FilterOutputStream(output) {
+                            override fun write(bytes:ByteArray,offset:Int,length:Int) {out.write(bytes,offset,length)}
+                            override fun close() {flush()}
+                        }
+                        com.r0ybt.arachn0de.security.EncryptedBackup.output(borrowed,password).use { BackupContainer.writeBackup(data,it) }
+                    }
                     if(password==null) output.flush()
                 }
                 if(password!=null) SecureFiles.input(temporary).use { raw ->
@@ -147,6 +166,7 @@ internal class BackupRepository(
 
     /** A failure/cancellation before commit rolls back Room and removes only new unreferenced files. */
     suspend fun restore(data: BackupData):Unit = withContext(Dispatchers.IO) {
+        vaultContext?.let {com.r0ybt.arachn0de.guest.GuestCaptureQueue(it.baseContext).requireSettled(it.session.id.toString())}
         withFiles {
             com.r0ybt.arachn0de.sharing.SharedCaptureQueue.requireSettled(database)
         com.r0ybt.arachn0de.audio.AudioDraftStore.requireSettled(context,database)
@@ -160,12 +180,17 @@ internal class BackupRepository(
             data.attachmentFiles.forEach { verifyBackupAttachment(it, data.attachmentContents.getValue(it.storageName)) }
             require(data.imageContents.keys == data.imageFiles.mapTo(hashSetOf()) { it.key }) { "Faltan imágenes del manifiesto." }
             data.imageFiles.forEach { verifyImage(it, data.imageContents.getValue(it.key)) }
+            com.r0ybt.arachn0de.backup.legacy.themeOriginalReferences(data.privatePreferences).forEach {(name,o)->com.r0ybt.arachn0de.backup.legacy.verifyThemeOriginal(o,data.imageBytes("theme-originals",name))}
             recoverFiles() // Complete cleanup from a previous interrupted operation before replacing its journal.
             val photoNames = data.imageNames("project-photos").associateWith { "${UUID.randomUUID()}.png" }
             val iconNames = data.imageNames("technology-icons").associateWith { "${UUID.randomUUID()}.png" }
-            val names = data.imageNames("avatars").associateWith { "${UUID.randomUUID()}.png" }
+            val names = data.imageNames("avatars").associateWith { "${UUID.randomUUID()}.${it.substringAfterLast('.')}" }
+            val themeNames=data.imageNames("theme-originals").associateWith {"${UUID.randomUUID()}.img"}
             val attachmentNames = data.attachmentFiles.associate { it.storageName to "${UUID.randomUUID()}.${it.storageName.substringAfterLast('.')}" }
             try {
+                themeOriginalFiles.record(themeNames.values.toSet())
+                data.imageNames("theme-originals").forEach {name->currentCoroutineContext().ensureActive();themeOriginalFiles.write(themeNames.getValue(name),data.imageBytes("theme-originals",name))}
+                themeOriginalFiles.finishStaging()
                 projectPhotos.record(photoNames.values.toSet())
                 data.imageNames("project-photos").forEach { name ->
                     currentCoroutineContext().ensureActive()
@@ -188,13 +213,22 @@ internal class BackupRepository(
                 }
                 avatars.finishStaging()
                 database.withTransaction {
+                    database.bankDao().clearAllocations();database.bankDao().clearOperations();database.bankDao().clearAccounts();database.bankDao().clearRoots()
                     val previousMetroRevision = database.metroDao().journeys().maxOfOrNull { it.revision } ?: 0
                     database.cascadeRelationDao().clearStories();database.cascadeRelationDao().clearObjectives();database.cascadeRelationDao().clearIdentity()
                     database.ganttAnnotationDao().clear()
                     database.managementLayerDao().clear()
                     database.iterationDao().clear()
+                    themeOriginalFiles.record(com.r0ybt.arachn0de.backup.legacy.themeOriginalReferences(listOfNotNull(database.privatePreferenceDao().get(com.r0ybt.arachn0de.ui.theme.AppearancePreferences.FILE))).keys+themeNames.values)
+                    // Device-local security decisions are never imported, even from an authenticated
+                    // backup. Capture the receiving state inside this same replacement transaction.
+                    val localSecurity=database.privatePreferenceDao().get(com.r0ybt.arachn0de.security.ScreenCapturePreference.NAME)
                     database.privatePreferenceDao().clear()
-                    data.privatePreferences.forEach { database.privatePreferenceDao().save(it) }
+                    localSecurity?.let {database.privatePreferenceDao().save(it)}
+                    data.privatePreferences.filterNot {it.name==com.r0ybt.arachn0de.security.ScreenCapturePreference.NAME}.forEach { original ->
+                        val row=if(original.name==com.r0ybt.arachn0de.backup.legacy.PurchaseCodec.NAME && vaultContext!=null) original.copy(payload=com.r0ybt.arachn0de.backup.legacy.PurchaseCodec.encode(com.r0ybt.arachn0de.backup.legacy.PurchaseCodec.decode(original.payload).copy(vault=vaultContext.session.id.toString()))) else original
+                        database.privatePreferenceDao().save(com.r0ybt.arachn0de.backup.legacy.remapThemeOriginals(row,themeNames))
+                    }
                     database.savedTemplateDao().clear()
                     database.metroLearningDao().clearEvents(); database.metroLearningDao().clearClock()
                     database.metroDao().clearJourneys(); database.metroDao().clearPreferences()
@@ -218,6 +252,7 @@ internal class BackupRepository(
                     technologyDao.clear()
                     database.calendarEventDao().clear()
                     database.personMemoryDao().clear()
+                    database.personProfileDao().clearBanners()
                     attachmentDao.clearNodes(); attachmentDao.clearProjects(); attachmentDao.clearFiles()
                     database.sprintLinkDao().clear()
                     dao.deleteAssignments()
@@ -234,8 +269,10 @@ internal class BackupRepository(
                     ordered.forEach { database.nodeDao().insert(it) }
                     data.projectPhotos.forEach { photoDao.save(it.copy(file = photoNames.getValue(it.file))) }
                     data.attachmentFiles.forEach { attachmentDao.insert(it.copy(storageName = attachmentNames.getValue(it.storageName))) }
+                    data.personBanners.forEach {database.personProfileDao().save(it)}
                     data.personMemories.forEach {database.personMemoryDao().save(it)}
                     database.personMemoryDao().images(data.personMemoryImages)
+                    database.personMemoryDao().people(data.personMemoryPeople)
                     attachmentDao.attachNode(data.nodeAttachments)
                     attachmentDao.attachProject(data.projectAttachments)
                     data.technologies.forEach { technologyDao.insert(it.copy(iconFile = it.iconFile?.let(iconNames::getValue))) }
@@ -263,6 +300,7 @@ internal class BackupRepository(
                     data.sprintStories.forEach {database.cascadeRelationDao().insert(it)}
                     data.objectiveWork.forEach {database.cascadeRelationDao().insert(it)}
                     data.localIdentities.forEach {database.cascadeRelationDao().save(it)}
+                    ensurePrincipalProfile(database)
                     data.acceptanceCriteria.forEach {database.planningDao().save(it)}
                     data.managementRoles.forEach {database.backlogDao().save(it)}
                     data.objectiveEpics.forEach {database.backlogDao().insert(it)}
@@ -289,6 +327,7 @@ internal class BackupRepository(
                         database.metroDao().save(row.copy(payload=com.r0ybt.arachn0de.metro.MetroCodec.journey(restored),revision=Math.addExact(maxOf(previousMetroRevision,row.revision),1)))
                     }
                     data.metroLearningEvents.forEach {database.metroLearningDao().insert(it)}
+                    database.bankDao().insertRoots(data.bankRoots);database.bankDao().insertAccounts(data.bankAccounts);database.bankDao().insertOperations(data.bankOperations);database.bankDao().insertAllocations(data.bankAllocations)
                     val gameRevision = database.gameStateDao().get()?.revision ?: 0
                     database.gameStateDao().save(GameStateEntity(payload = data.gameSession ?: "", revision = Math.addExact(gameRevision, 1)))
                     currentCoroutineContext().ensureActive()
@@ -324,6 +363,12 @@ internal class BackupRepository(
     }
 
     private suspend fun recoverFiles() {
+        val originalNames=themeOriginalFiles.recorded()
+        database.withTransaction {
+            val references=com.r0ybt.arachn0de.backup.legacy.themeOriginalReferences(listOfNotNull(database.privatePreferenceDao().get(com.r0ybt.arachn0de.ui.theme.AppearancePreferences.FILE))).keys
+            originalNames.filterNot {it in references}.forEach {themeOriginalFiles.delete(it)}
+        }
+        themeOriginalFiles.clearJournal()
         val names = avatars.recorded()
         database.withTransaction {
             names.forEach { if (database.personDao().avatarReferences(it) == 0) {if(galleryAvatarLifecycle.reserved(it)) galleryAvatarLifecycle.queue(it) else avatars.delete(it)} }
@@ -348,10 +393,10 @@ internal class BackupRepository(
         directory.listFiles().orEmpty().filter { it.isFile && controlled(it,directory) && BackupLimits.attachmentName.matches(it.name) }.forEach { it.delete() }
         val images=File(directory,"images")
         if(images.isDirectory && controlled(images,directory)) {
-            for(area in listOf("avatars","technology-icons","project-photos")) {
+            for(area in listOf("avatars","technology-icons","project-photos","theme-originals")) {
                 val folder=File(images,area)
                 if(folder.isDirectory && controlled(folder,images)) {
-                    folder.listFiles().orEmpty().filter {it.isFile && controlled(it,folder) && BackupLimits.avatarName.matches(it.name)}.forEach {it.delete()}
+                    folder.listFiles().orEmpty().filter {it.isFile && controlled(it,folder) && imageNameValid(area,it.name)}.forEach {it.delete()}
                     folder.delete() // Only succeeds after known files are gone; unknown files survive.
                 }
             }

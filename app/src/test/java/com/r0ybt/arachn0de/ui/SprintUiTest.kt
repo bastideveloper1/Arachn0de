@@ -43,9 +43,12 @@ class SprintUiTest {
     }
     private fun scroll(text:String) { compose.onNodeWithTag("nodes-list").performScrollToNode(hasText(text)) }
     private fun modeMenu(text:String) {
-        compose.onNodeWithTag("nodes-list").performScrollToNode(hasContentDescription("Opciones del elemento"))
-        compose.onNodeWithContentDescription("Opciones del elemento").performClick()
-        compose.onNodeWithText(text).performScrollTo().performClick()
+        if(compose.onAllNodesWithTag("context-action:$text").fetchSemanticsNodes().isEmpty()) {
+            if(compose.onAllNodesWithTag("core-context:Options").fetchSemanticsNodes().isNotEmpty()) {
+                compose.onNodeWithTag("core-context:Options").performClick()
+            } else compose.onNodeWithContentDescription("Opciones del elemento").performClick()
+        }
+        compose.onNodeWithTag("context-action:$text").performScrollTo().performClick()
     }
     @Test fun activationConfirmationCancellationAndDeactivationReturnToNormal() {
         open()

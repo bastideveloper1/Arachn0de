@@ -25,10 +25,10 @@ internal fun AttentionIndicator(summary: AttentionSummary?) {
     if (summary == null || summary.level == AttentionLevel.NONE) return
     val counts = buildList {
         if (summary.overdue > 0) add("${summary.overdue} ${if (summary.overdue == 1) "vencida" else "vencidas"}")
-        if (summary.priorityOnly > 0) add("${summary.priorityOnly} ${if (summary.priorityOnly == 1) "de prioridad alta" else "de prioridad alta"}")
         if (summary.upcoming > 0) add("${summary.upcoming} ${if (summary.upcoming == 1) "próxima" else "próximas"}")
     }.joinToString(" · ")
-    Text("Contiene $counts", color = if (summary.level == AttentionLevel.OVERDUE) Arachn0deColors.Destructive else com.r0ybt.arachn0de.ui.theme.semanticColor(SemanticColors.Attention),
+    if (counts.isEmpty()) return
+    Text("Contiene $counts", color = if (summary.level == AttentionLevel.OVERDUE) Arachn0deColors.Destructive else com.r0ybt.arachn0de.ui.theme.semanticColor(SemanticColors.Attention,"warning"),
         fontSize = 12.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
 }
 
@@ -43,7 +43,8 @@ internal fun AttentionScreen(
     tagState: TagState = TagState(),
     people: List<Person> = emptyList(),
 ) {
-    BackHandler(onBack = onBack)
+    val nameSearch=rememberInlineSearch("attention")
+    BackHandler(enabled=!nameSearch.open,onBack = onBack)
     val projectById = remember(projects) { projects.associateBy { it.id } }
     val filters = rememberSaveable(saver = ScopeFilters.Saver) { ScopeFilters() }
     val filter = NodeFilter(TemporalRanges.resolve(filters.time, attention?.now ?: 0L, attention?.zone ?: java.util.TimeZone.getDefault(), java.util.Locale.getDefault()), filters.person, filters.completion, filters.tag, filters.priority)
@@ -56,10 +57,12 @@ internal fun AttentionScreen(
         value = Triple(source, filter, selected)
     }
     val ready = loaded && attention != null && selection?.first === attention && selection?.second == filter
-    val tasks = if (ready) selection?.third.orEmpty() else emptyList()
+    val tasks = (if (ready) selection?.third.orEmpty() else emptyList()).filter {!nameSearch.active || nameMatches(it.title,nameSearch.query)}
     if (filters.open) ScopeFiltersDialog(filters, people, tagState.tags)
     val groups = remember(tasks, attention) { tasks.groupBy { attention!!.reasonsByNodeId.getValue(it.id).first() } }
-    val listState = rememberLazyListState()
+    val originalListState = rememberLazyListState()
+    val searchListState = rememberLazyListState()
+    val listState=if(nameSearch.active)searchListState else originalListState
     Surface(Modifier.fillMaxSize(), color = Arachn0deColors.Background) {
         Column(Modifier.fillMaxSize().padding(14.dp)) {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
@@ -76,9 +79,9 @@ internal fun AttentionScreen(
                 item(key = "reason:${reason.name}") { Text(when (reason) {
                     AttentionReason.OVERDUE -> "Atrasadas"; AttentionReason.DUE_TODAY -> "Vencen hoy"; AttentionReason.UPCOMING -> "Próximas"
                     AttentionReason.HIGH_PRIORITY -> "Prioritario"; AttentionReason.MEDIUM_PRIORITY -> "No prioritario"
-                }, color = com.r0ybt.arachn0de.ui.theme.semanticColor(SemanticColors.Attention)) }
+                }, color = com.r0ybt.arachn0de.ui.theme.semanticColor(SemanticColors.Attention,"warning")) }
                 items(nodes, key = { it.id }) { node ->
-                    val project = projectById.getValue(node.projectId)
+                    val project = projectById.getValue(checkNotNull(node.projectId))
                     val path = remember(attention!!.tree, node.id, project.name) {
                         (listOf(project.name) + attention.pathTo(node.id).dropLast(1).map { it.title }).joinToString(" › ")
                     }
@@ -88,7 +91,7 @@ internal fun AttentionScreen(
                             Text(node.title, maxLines = 2, overflow = TextOverflow.Ellipsis)
                             Text(path, color = Arachn0deColors.TextSecondary, fontSize = 12.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
                             Text(attention.reasonsByNodeId.getValue(node.id).joinToString(" · ", transform = ::attentionReasonLabel),
-                                color = com.r0ybt.arachn0de.ui.theme.semanticColor(SemanticColors.Attention), modifier = Modifier.testTag("attention-reasons:${node.id}"))
+                                color = com.r0ybt.arachn0de.ui.theme.semanticColor(SemanticColors.Attention,"warning"), modifier = Modifier.testTag("attention-reasons:${node.id}"))
                             if (node.effectivePriority == Priority.LOW) PriorityIndicator(node)
                             TagChips(tagState.forNode(node.id))
                             ObligationIndicator(node)

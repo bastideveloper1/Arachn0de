@@ -10,7 +10,7 @@ import androidx.core.content.ContextCompat
 import com.r0ybt.arachn0de.R
 import java.io.OutputStream
 
-internal val WireIcons=mapOf("menu" to R.drawable.lucide_menu,"settings" to R.drawable.lucide_settings,"search" to R.drawable.lucide_search,"trash" to R.drawable.lucide_trash,"plus" to R.drawable.lucide_plus,"image" to R.drawable.lucide_image,"user" to R.drawable.lucide_user,"check" to R.drawable.lucide_check,"star" to R.drawable.lucide_star,"arrow_left" to R.drawable.lucide_arrow_left)
+internal val WireIcons=mapOf("apple" to R.drawable.lucide_apple,"arrow_left" to R.drawable.lucide_arrow_left,"arrow_left_right" to R.drawable.lucide_arrow_left_right,"bell" to R.drawable.lucide_bell,"bookmark" to R.drawable.lucide_bookmark,"calendar_clock" to R.drawable.lucide_calendar_clock,"calendar_days" to R.drawable.lucide_calendar_days,"check" to R.drawable.lucide_check,"chevron_down" to R.drawable.lucide_chevron_down,"chevron_right" to R.drawable.lucide_chevron_right,"clock" to R.drawable.lucide_clock,"code_xml" to R.drawable.lucide_code_xml,"copy" to R.drawable.lucide_copy,"database" to R.drawable.lucide_database,"ellipsis_vertical" to R.drawable.lucide_ellipsis_vertical,"flag" to R.drawable.lucide_flag,"folder_input" to R.drawable.lucide_folder_input,"hourglass" to R.drawable.lucide_hourglass,"image" to R.drawable.lucide_image,"info" to R.drawable.lucide_info,"layers" to R.drawable.lucide_layers,"list_checks" to R.drawable.lucide_list_checks,"list_filter" to R.drawable.lucide_list_filter,"lock" to R.drawable.lucide_lock,"menu" to R.drawable.lucide_menu,"navigation" to R.drawable.lucide_navigation,"network" to R.drawable.lucide_network,"palette" to R.drawable.lucide_palette,"paperclip" to R.drawable.lucide_paperclip,"pencil" to R.drawable.lucide_pencil,"plus" to R.drawable.lucide_plus,"receipt" to R.drawable.lucide_receipt,"repeat" to R.drawable.lucide_repeat,"search" to R.drawable.lucide_search,"settings" to R.drawable.lucide_settings,"share_2" to R.drawable.lucide_share_2,"shield" to R.drawable.lucide_shield,"star" to R.drawable.lucide_star,"star_selected" to R.drawable.lucide_star_selected,"sticky_note" to R.drawable.lucide_sticky_note,"sticky_note_marked" to R.drawable.lucide_sticky_note_marked,"tag" to R.drawable.lucide_tag,"trash" to R.drawable.lucide_trash,"user" to R.drawable.lucide_user,"users" to R.drawable.lucide_users,"x" to R.drawable.lucide_x)
 
 /** Native rendering is shared by the canvas, thumbnails and full-resolution PNG. Editor aids live outside it. */
 internal class WireframeRenderer(private val context:Context,assets:Map<String,String>):java.io.Closeable {
@@ -23,7 +23,7 @@ internal class WireframeRenderer(private val context:Context,assets:Map<String,S
             val left=e.x*width;val top=e.y*height;val w=e.w*width;val h=e.h*height
             canvas.saveLayerAlpha(left,top,left+w,top+h,(e.opacity*255).toInt())
             canvas.translate(left,top);canvas.clipRect(0f,0f,w,h)
-            if(e.template!=null && !e.template.startsWith("shape_") && e.kind!=WireKind.IMAGE) {drawTemplate(canvas,e,w,h);canvas.restore();return@forEach}
+            if(e.template!=null && !e.template.startsWith("shape_") && e.kind!=WireKind.IMAGE) {drawTemplate(canvas,e,w,h,width,height);canvas.restore();return@forEach}
             paint.shader=null;paint.style=Paint.Style.FILL;paint.color=e.fill.toInt();paint.strokeWidth=e.border
             val round=when(e.kind) {WireKind.ROUND_RECT,WireKind.ROUND_BUTTON,WireKind.CARD,WireKind.DIALOG->e.radius;else->0f}
             fun shape() {when(e.kind) {
@@ -49,9 +49,10 @@ internal class WireframeRenderer(private val context:Context,assets:Map<String,S
                 };paint.style=Paint.Style.FILL
             }
             if(e.kind.iconCapable) {
-                val side=if(e.kind==WireKind.ICON) minOf(w,h) else minOf(h*.6f,64f)
+                val contentW=e.contentW?.times(width) ?: w;val contentH=e.contentH?.times(height) ?: h
+                val side=if(e.kind==WireKind.ICON) minOf(contentW,contentH) else minOf(contentH*.6f,64f)
                 val x=if(e.kind in setOf(WireKind.ICON,WireKind.ICON_BUTTON)) (w-side)/2 else 12f
-                ContextCompat.getDrawable(context,WireIcons.getValue(e.icon))?.mutate()?.let {icon->icon.setTint(e.ink.toInt());icon.setBounds(x.toInt(),((h-side)/2).toInt(),(x+side).toInt(),((h+side)/2).toInt());icon.draw(canvas)}
+                ContextCompat.getDrawable(context,WireIcons.getValue(e.icons[0] ?: e.icon))?.mutate()?.let {icon->icon.setTint(e.ink.toInt());icon.setBounds(x.toInt(),((h-side)/2).toInt(),(x+side).toInt(),((h+side)/2).toInt());icon.draw(canvas)}
             }
             if(e.kind.textCapable) {
                 val pad=if(e.kind.textOnly) 0f else 12f
@@ -63,9 +64,11 @@ internal class WireframeRenderer(private val context:Context,assets:Map<String,S
             canvas.restore()
         };canvas.restore()
     }
-    private fun drawTemplate(c:Canvas,e:WireElement,w:Float,h:Float) {
+    private fun drawTemplate(c:Canvas,e:WireElement,w:Float,h:Float,documentW:Float,documentH:Float) {
         val id=e.template!!
-        val unit=minOf(w/400f,h/112f).coerceIn(.35f,1.5f)
+        val unit=e.contentUnit ?: minOf(w/400f,h/112f).coerceIn(.35f,1.5f)
+        val layoutW=e.contentW?.times(documentW) ?: w
+        var iconSlot=0
         val pad=16f*unit
         fun rect(x:Float,y:Float,r:Float,b:Float,color:Long=e.fill,radius:Float=0f,stroke:Boolean=false) {
             paint.shader=null;paint.style=if(stroke) Paint.Style.STROKE else Paint.Style.FILL;paint.strokeWidth=2.5f*unit;paint.color=color.toInt()
@@ -73,7 +76,8 @@ internal class WireframeRenderer(private val context:Context,assets:Map<String,S
         }
         fun line(x:Float,y:Float,r:Float,b:Float,color:Long=e.ink) {paint.color=color.toInt();paint.strokeWidth=3f*unit;c.drawLine(x,y,r,b,paint)}
         fun circle(x:Float,y:Float,r:Float,color:Long=e.ink) {paint.style=Paint.Style.FILL;paint.color=color.toInt();c.drawCircle(x,y,r.coerceAtLeast(0f),paint)}
-        fun icon(key:String,x:Float,y:Float,side:Float=32f*unit) {
+        fun icon(default:String,x:Float,y:Float,side:Float=32f*unit) {
+            val key=e.icons[iconSlot++] ?: default
             if(key in setOf("eye","calendar","clock","warning","info")) {
                 c.save();c.translate(x,y);c.scale(side/32f,side/32f)
                 paint.color=e.ink.toInt();paint.style=Paint.Style.STROKE;paint.strokeWidth=2f
@@ -115,8 +119,8 @@ internal class WireframeRenderer(private val context:Context,assets:Map<String,S
             }
             "Navbar"->{rect(0f,0f,w,h);when(id) {
                 "side","dropdown"->{if(id=="side") {icon("user",pad,pad,56*unit);text("Mi espacio",y=90*unit)};val start=if(id=="side") 170*unit else 10f;e.text.split('\n').take(6).forEachIndexed {i,t->icon(if(i==2) "settings" else "menu",pad,start+i*70*unit);text(t,x=60*unit,y=start+i*70*unit)}}
-                "bottom","bottom_labels","tabs"->{e.text.split('\n').take(3).forEachIndexed {i,t->val x=w*i/3; if(id=="tabs") text(t,x=x,y=h*.3f,width=w/3,center=true) else {icon(listOf("menu","search","user")[i],x+w/6-16*unit,h*.2f);if(id=="bottom_labels") text(t,x=x,y=h*.6f,width=w/3,size=24*unit,center=true)}};line(0f,h-4,w/3,h-4)}
-                "toolbar"->{listOf("plus","image","trash","settings").forEachIndexed {i,k->icon(k,w*(i+.5f)/4-16*unit,h/2-16*unit)}}
+                "bottom","bottom_labels","tabs"->{e.text.split('\n').take(3).forEachIndexed {i,t->val x=layoutW*i/3; if(id=="tabs") text(t,x=x,y=h*.3f,width=w/3,center=true) else {icon(listOf("menu","search","user")[i],x+layoutW/6-16*unit,h*.2f);if(id=="bottom_labels") text(t,x=x,y=h*.6f,width=layoutW/3,size=24*unit,center=true)}};line(0f,h-4,w/3,h-4)}
+                "toolbar"->{listOf("plus","image","trash","settings").forEachIndexed {i,k->icon(k,layoutW*(i+.5f)/4-16*unit,h/2-16*unit)}}
                 "desktop"->{text(e.text.substringBefore('\n'),y=h/3,width=w*.4f);text(e.text.substringAfter('\n',""),x=w*.4f,y=h/3,width=w*.6f)}
                 else->{if(id!="top") icon(if(id=="back") "arrow_left" else "menu",pad,h/2-16*unit);text(x=if(id=="top") pad else 64*unit,y=h/3)}}}
             "Selección"->{when {
@@ -153,14 +157,14 @@ internal class WireframeRenderer(private val context:Context,assets:Map<String,S
             }
         }
     }
-    fun bitmap(document:WireDocument,width:Int=document.format.width,signature:Boolean=false):Bitmap {
+    fun bitmap(document:WireDocument,width:Int=document.format.width,signature:Boolean=false,markers:Boolean=false):Bitmap {
         val scale=width.toFloat()/document.format.width
         val height=(document.format.height*scale).toInt();val margin=if(signature) (48*scale).toInt().coerceAtLeast(1) else 0
         val bitmap=Bitmap.createBitmap(width,height+margin,Bitmap.Config.ARGB_8888)
-        val canvas=Canvas(bitmap);canvas.save();canvas.scale(scale,scale);draw(canvas,document);canvas.restore()
+        val canvas=Canvas(bitmap);canvas.save();canvas.scale(scale,scale);draw(canvas,document);if(markers) wireDrawMarkers(canvas,document);canvas.restore()
         if(signature) {paint.color=Color.LTGRAY;canvas.drawRect(0f,height.toFloat(),width.toFloat(),(height+margin).toFloat(),paint);paint.color=Color.DKGRAY;paint.textSize=24*scale;canvas.drawText("Arachn0de · Wireframe",16*scale,height+32*scale,paint)}
         return bitmap
     }
-    fun png(document:WireDocument,signature:Boolean,output:OutputStream) {val bitmap=bitmap(document,signature=signature);try {check(bitmap.compress(Bitmap.CompressFormat.PNG,100,output)) {"No se pudo exportar el PNG."}} finally {bitmap.recycle()}}
+    fun png(document:WireDocument,signature:Boolean,output:OutputStream,markers:Boolean=false) {val bitmap=bitmap(document,signature=signature,markers=markers);try {check(bitmap.compress(Bitmap.CompressFormat.PNG,100,output)) {"No se pudo exportar el PNG."}} finally {bitmap.recycle()}}
     override fun close() {images.clear()}
 }

@@ -1,4 +1,210 @@
+# Preferencias del editor de imágenes
+
+El namespace opcional `image_annotation_style` reutiliza `privatePreferences`
+(tipos de JSON >=18): `color` es un entero de la paleta existente y `width` un
+float de uno de los grosores existentes (.003, .006 o .014). Se rechazan claves,
+tipos y valores desconocidos antes de restaurar. Sin la fila o sin una clave se
+usa el valor histórico correspondiente: rojo `0xffe53935` y grosor .006.
+
+La fila pertenece al almacén privado, se incluye íntegramente en el snapshot y
+se restaura mediante las transacciones actuales. No hay archivos nuevos ni rutas
+del dispositivo; no cambian Room, JSON, contenedor ni cifrado. Los lectores
+históricos transportan esta fila como preferencias privadas genéricas y los
+respaldos antiguos siguen siendo legibles. La lupa y el gesto activo son estado
+temporal excluido del respaldo y de los píxeles exportados. Contrato y pruebas
+en `docs/IMAGE_EDITOR_GROUP_4.md`.
+
+# Datos v59: preferencia de posición de Favoritos
+
+Sin cambiar Room ni el contenedor, `node_sort_preferences.mode` conserva `SORT1:`
+y admite un campo opcional `favorites`, con valores estrictos `NONE`, `FIRST` o
+`LAST`. Su ausencia significa `NONE`; el escritor lo omite en ese caso. Los
+criterios, sus direcciones, herencia y los campos de Capas primero se conservan.
+Los payloads anteriores de siete u ocho criterios se leen sin reescribirlos.
+
+La lista general de Núcleos usa una fila en la misma tabla con contexto reservado
+`@projects`, sin propietario jerárquico y sin herencia. Esta clave no contiene
+el separador de los contextos `proyecto:elemento` y no colisiona con ellos.
+No se añaden preferencias paralelas, columnas, archivos ni migraciones.
+
+El escritor emite JSON 59 cuando existe ese contexto o el campo `favorites`.
+El lector admite v1–59 y rechaza ambos elementos en formatos anteriores a v59.
+Se validan enum, campos, contexto e independencia de la herencia antes de
+reemplazar datos. Exportación y restauración transaccionales incluyen las filas
+mediante el snapshot existente; un fallo conserva los datos confirmados.
+Los respaldos nuevos requieren un lector v59; las versiones anteriores de la
+aplicación los rechazan en lugar de perder silenciosamente la preferencia.
+No cambia la versión de la app ni el cifrado. Pruebas dirigidas y alcance en
+`docs/SORT_FILTER_GROUP_2.md`.
+
+# Retirada de Skins personalizadas — compatibilidad sin cambio de formato
+
+El Grupo 4 retira el sistema visual activo, editor, importación e intercambio de
+Skins. Los apartados históricos siguientes describen los formatos que el lector
+sigue admitiendo; no indican que esas funciones permanezcan disponibles.
+
+Las claves `custom_themes`, `custom_theme` y `theme_favorites`, sus previews inline
+y los originales cifrados `theme-originals` se conservan como datos históricos.
+El lector de `backup/legacy` valida los schemas 1–4 y remapea referencias al
+restaurar con el protocolo transaccional existente. Los originales y adjuntos
+normales siguen incluyendo sus bytes y validaciones de integridad. No se cambia
+Room, la selección de versión JSON ni el contenedor de backup.
+
+La apariencia activa no interpreta ni aplica esos payloads. Si existe una Skin
+activa histórica, usa el tema oficial Charcoal; elegir un tema oficial elimina
+solo la selección histórica, conservando biblioteca, originales y preferencias
+normales. Las reservas y los archivos antiguos no se borran ni caducan por esta
+retirada. No se reactivan editores o decodificadores visuales al restaurar.
+
+## Imagen independiente de Núcleos Banco
+
+La clave opcional `bank` en `CustomTheme.images` usa el mismo `ThemeImage`,
+validación de hash, bytes de vista previa y originales cifrados que las demás
+superficies. El editor incluye una vista previa Banco. Sin `bank` se utiliza
+`core`, manteniendo el aspecto de temas anteriores. No cambia Room ni el
+contenedor de backup: biblioteca, intercambio y restauración recorren el mapa
+completo, incluidos bytes y originales; eliminación, reemplazo, reservas y
+limpieza siguen el mecanismo común existente. Se conserva el formato de temas.
+
+# Skins con originales — JSON 41 / Room 48
+
+El contenedor v2 y ANBACK01 se conservan. JSON 41 se emite cuando el manifiesto
+incluye `theme-originals`. Los lectores admiten 1–41; los respaldos anteriores
+sin originales continúan inicializando ese conjunto vacío.
+
+Las preferencias de Apariencia contienen ThemeImage schema 3 con metadatos
+opcionales: name (UUID.img relativo), sha256, byteSize, width, height, mime y
+orientation EXIF (1–8). Los schemas 1/2 continúan admitidos. El PNG normalizado
+histórico permanece dentro del tema como preview; el original completo se incluye
+una sola vez por nombre en imageFiles/imageContents, junto a sus bytes por streaming.
+No se guarda una URI ni una ruta absoluta. El MIME real se verifica con el decoder.
+
+Cada fuente conserva sus bytes exactos, con límite 20 MiB y 100 MP; el límite
+acumulado de imágenes por streaming sigue en 1 GiB y el JSON en 16 MiB. Se valida
+igualdad exacta de referencias/manifiesto, tamaños, SHA-256, dimensiones, MIME y
+orientación antes de sustituir datos. No se acepta un respaldo sin sus originales.
+La restauración prepara fuentes cifradas con nombres nuevos y reescribe las
+referencias en la misma transacción de preferencias. El journal protege archivos
+viejos/nuevos; un fallo revierte Room y elimina solo staging sin referencias/reservas.
+La limpieza de inspecciones reconoce únicamente UUID.img del directorio propio.
+
+Las reservas de editores y diarios de liberación/restauración son estado operativo
+local y quedan fuera del backup. No caducan por tiempo. Finalizar un editor libera
+sus reservas mediante registro durable; el archivo solo se retira después del
+commit y de comprobar todas las referencias y reservas compartidas. Un editor
+interrumpido antes de finalizar puede conservar su reserva para evitar pérdida.
+
+Intercambio individual: se mantiene JSON. Sin originales se exporta el tema
+histórico directamente; con ellos se usa kind `arachn0de-theme-with-originals`,
+schema 1, `theme` (JSON del tema como cadena) y `originals` (name/data base64).
+El importador comprueba el conjunto exacto y publica fuentes cifradas con nombres
+nuevos antes del commit. Los errores o cancelación liberan únicamente el staging
+propio; la biblioteca anterior se conserva. Los límites son 20 MiB por fuente,
+150 MiB para el documento de intercambio y el presupuesto previo para metadatos.
+
 # Respaldo offline de Arachn0de
+
+## Banco/Pago — JSON 58 / Room 55
+
+JSON 58 se emite cuando una operación no tiene `contextAccountId` o una asignación
+no tiene responsable/pagador identificado. Los campos siguen presentes con null
+explícito: `bank_operations.contextAccountId` solo para DIRECT;
+`bank_allocations.personId/personName` y `sourcePersonId/sourcePersonName` como
+parejas opcionales. PAYMENT conserva cuenta válida y pagador derivado del titular.
+Los lectores 1–57 mantienen sus campos obligatorios anteriores, sin reinterpretar
+referencias históricas. Los DIRECT antiguos conservan sus cuentas de contexto.
+Se mantiene el resto del JSON, el contenedor cifrado y la versión de aplicación.
+Snapshot y restauración usan las mismas cuatro colecciones financieras y la misma
+transacción. Se validan relaciones, nombres emparejados, sumas, saldos y pendientes
+antes de reemplazar. No hay archivos nuevos ni cambios en su liberación.
+
+Room 54→55 copia exactamente las operaciones y asignaciones a staging transaccional,
+reconstruye sus tablas/FKs/índices y restaura filas y triggers. Desvincula temporalmente
+solo las autorreferencias de la tabla que se sustituye, después de copiar sus valores;
+los repone sin cambios y compara ambas direcciones con EXCEPT y `foreign_key_check`.
+Un fallo revierte también esquema, versión e historial. Las monedas y estados
+históricos no se convierten ni se corrigen al migrar o restaurar.
+Pruebas y comprobación SQLCipher pendiente: `docs/BANK_PAYMENT_IMPLEMENTATION.md`.
+
+La restricción de nuevas operaciones a CLP no cambia el formato ni las versiones
+del backup. Los lectores, snapshots y restauraciones siguen conservando importes,
+unidades menores y códigos de moneda históricos, incluidas tarjetas, reglas,
+valores iniciales y plantillas. La restauración no pasa por las restricciones de
+creación de nuevos pagos y no convierte ni elimina monedas anteriores.
+
+## Plantillas estructurales — payload saved_templates v2
+
+La tabla y el campo de backup `savedTemplates` no cambian. Sus payloads v1 siguen
+leyéndose; v2 conserva un árbol ordenado por padres anteriores, propiedades
+reutilizables, etiquetas por nombre, valores iniciales locales, fotografías con
+encuadre y bytes completos de adjuntos en base64. No contiene rutas ni referencias
+persistentes al elemento original. El validador comprueba límites, relaciones,
+marcadores, integridad de recursos y tipos antes de restaurar. Límites: 8 MiB por
+payload y 4096 elementos/recursos, además de los límites globales existentes.
+
+Room, SQLCipher, JSON exterior y contenedor no cambian. Esta versión lee v1 y v2;
+versiones antiguas que solo conocen v1 rechazan respaldos con plantillas v2.
+Tecnologías y gestión/Sprint/Gantt/Kanban se retiran de la interfaz conservando
+sus registros y lectores históricos. No se eliminan ni convierten sus datos.
+
+Las plantillas cifradas no mantienen archivos externos: sus bytes son parte del
+registro. El diario privado `template-insertions/<uuid>.pending` es estado
+operativo regenerable excluido del backup; recupera reservas de inserciones
+interrumpidas bajo el mecanismo común, sin caducarlas por antigüedad. Las
+instancias usan los almacenes, cifrado, reservas y diarios existentes. Véase
+`docs/SIMPLIFICATION_STRUCTURAL_TEMPLATES_BLOCK_6.md` para las reglas de copia,
+exclusión de datos personales/operativos y validación.
+
+## Retirada de temas del catálogo — sin cambio de formato
+
+DarkGrey, BlackAndWhite y Graphite conservan sus identificadores y paletas internos
+para leer preferencias y skins históricas. Ya no son opciones del catálogo.
+Al leer o recargar `appearance_preferences`, un `theme` con esos nombres se
+reemplaza mediante commit por `Arachn0de` (Charcoal), conservando las demás claves.
+El mismo criterio se aplica a la caché regenerable de desbloqueo al resolverla.
+No se modifica `custom_themes`, su campo `base`, `custom_theme` activo ni imágenes:
+una skin personalizada sigue heredando exactamente su paleta histórica.
+Los lectores y validadores de backup mantienen esos nombres; no cambia Room,
+JSON ni el contenedor. La normalización se realiza después de restaurar, al leer
+las preferencias, sin reescribir archivos históricos.
+
+Validación dirigida: seis pruebas satisfactorias de catálogo/UI, predeterminado,
+persistencia de temas disponibles, migración tras restauración/recarga, skins
+históricas con bytes de imagen y respaldo cifrado real. Este último conserva una
+skin basada en Graphite con sus cinco imágenes, rechaza imágenes corruptas antes
+de reemplazar datos y restaura preferencias históricas de los tres temas retirados.
+Sin migración Room, nueva versión de formato ni APK oficial.
+
+## Personas en publicaciones — JSON 40 / Room 48
+
+Room 47→48 añade únicamente `person_memories.peopleVisible` (booleano, default
+true) y la tabla `person_memory_people`. Cada asociación guarda ID propio,
+`memoryId`, `personId` opcional, `label` textual original, `profileName` de respaldo
+y posición. La publicación elimina sus asociaciones por CASCADE; eliminar el
+perfil pone su FK a NULL. El borrado oficial captura antes el nombre actual en la
+misma transacción, sin borrar asociaciones de publicaciones de otros perfiles.
+
+JSON 40 incorpora `personMemoryPeople` y `peopleVisible` en `personMemories`.
+Se emite si existen asociaciones o alguna publicación oculta Personas; los demás
+casos conservan la selección histórica de versión. El lector admite 1–40; fuentes
+1–39 inicializan asociaciones vacías y visibilidad true (sin personas que mostrar).
+No cambian el contenedor v2, ANBACK01, contraseñas ni versiones de la aplicación.
+
+Snapshot, estimación de bytes, límites globales, exportación y restauración incluyen
+las asociaciones y la visibilidad, incluso cuando están ocultas. Se validan IDs
+únicos, propietarios, perfiles, nombres no vacíos, posiciones y ausencia de perfiles
+duplicados antes de reemplazar datos. Máximo 200 asociaciones por publicación;
+los nombres históricos de perfiles se conservan completos bajo los límites globales
+de metadatos. Las referencias libres nuevas/editadas evitan duplicados normalizando
+espacios, Unicode NFC y mayúsculas. Dos perfiles distintos con igual nombre siguen
+siendo personas distintas; al eliminarlos no se fusionan ni pierden sus asociaciones.
+
+Las asociaciones se restauran después de publicaciones y perfiles, en la misma
+transacción. Los lectores antiguos rechazan JSON 40. Los nuevos datos residen solo
+en la base cifrada; no añaden archivos ni preferencias externas. El respaldo conserva
+la información oculta porque es una copia privada completa. Descargar la fotografía
+no incorpora listas de personas, estén visibles u ocultas. No hay exportador de
+publicación con personas ni marcadores visuales en este bloque.
 
 ## Datos personales de Personas — JSON 39 / Room 47
 
@@ -29,7 +235,7 @@ relaciones, fotografías y asignaciones, y añade únicamente tres columnas de t
 a `person_profiles`. Datos personales permanece dentro de la base cifrada de su
 bóveda; no se copia a preferencias externas, índices públicos ni servicios.
 
-La extensión sigue siendo `.arachnode`. El esquema actual es Room **47**, con la cadena histórica completa de migraciones. Las secciones siguientes conservan la documentación de los formatos anteriores. No cambia el protocolo de firma.
+La extensión sigue siendo `.arachnode`. El esquema actual es Room **48**, con la cadena histórica completa de migraciones. Las secciones siguientes conservan la documentación de los formatos anteriores. No cambia el protocolo de firma.
 
 ## Seguridad local: formato actual
 
@@ -1095,14 +1301,14 @@ y tipo de almacén de los respaldos cifrados existentes.
 
 ## Colores de indicadores (preferencia visual por bóveda)
 
-Dentro del namespace existente `appearance_preferences` se admiten ocho claves
+Dentro del namespace existente `appearance_preferences` se admiten quince claves
 opcionales `indicator_color_<id>`, para people, technologies, notes, tasks, files,
-due, today y high. Sus valores son strings tipados: WHITE, GREY, RED, ORANGE,
-YELLOW, GREEN, BLUE o VIOLET. Se valida tanto la identidad como el valor antes de
+due, today, high, verify, birthday y effort_1 a effort_5. Sus valores son strings tipados: WHITE, GREY, RED, ORANGE,
+YELLOW, GREEN, BLUE, VIOLET o LILAC. Se valida tanto la identidad como el valor antes de
 restaurar; colores o identificadores desconocidos en este prefijo se rechazan.
 
 Las claves viajan en privatePreferences del snapshot transaccional y el respaldo
-cifrado existentes. No cambia Room 45, JSON hasta 37 ni el contenedor: son valores
+cifrado existentes. No cambia el esquema Room, la versión JSON ni el contenedor: son valores
 opcionales del mecanismo de preferencias vigente desde JSON 18. Los respaldos
 anteriores sin estas claves conservan el aspecto original del tema; restaurar un
 backup histórico sin preferencias elimina las elecciones anteriores como parte
@@ -1372,3 +1578,830 @@ Guardar y respaldar transporta el documento íntegro mediante `wireframe_library
 con las validaciones, límites y restauración transaccional existentes. Se conserva
 la lectura de dibujos v1/v2 y de backups históricos sin biblioteca. No cambia el
 formato del backup ni las reglas de liberación de archivos.
+
+### Wireframe 3: contenido de tamaño fijo, iconos y anotaciones
+
+El documento usa versión 3 cuando existen anotaciones, sustituciones de iconos o
+redimensionamiento por bordes. Conserva los campos v2 y añade a cada elemento:
+`contentUnit`, `contentW`, `contentH` (los tres null o números positivos finitos
+hasta 64; dimensiones de referencia normalizadas) e `icons` (mapa de índices de
+posición canónicos a claves de recursos Lucide locales). Los índices deben existir
+en el componente actual. Sin estas prestaciones se sigue emitiendo v1/v2.
+
+La raíz añade `annotations`: hasta 128 registros ordenados con UUID único, `x`,
+`y` finitos (entre 0 y 1 sin vínculo o entre -1 y 1 con vínculo), `title` de hasta 200 caracteres, `text` de hasta 16000 y `elementId`
+nullable. Sin elemento la posición es relativa al lienzo; con elemento, son desplazamientos respecto a su origen, normalizados al lienzo. El propietario debe existir en el mismo documento. No son elementos,
+imágenes ni entidades externas. Su número se deriva del orden; no se persiste otra
+numeración. Al retirar un elemento desde el editor se preservan sus anotaciones
+como posiciones independientes, con la operación completa disponible para deshacer.
+
+Todo se transporta dentro del namespace cifrado `wireframe_library` mediante el
+snapshot y restauración atómicos existentes. No cambia Room ni el contenedor del
+backup. Siguen vigentes los límites globales documentales/de biblioteca; el rechazo
+por tamaño o integridad preserva los datos anteriores. Se leen documentos v1/v2 y
+backups históricos sin el namespace. Referencias de anotación, índices de iconos,
+claves, tipos o versiones desconocidos se rechazan antes de reemplazar datos.
+Las aplicaciones anteriores que no conocen v3 lo rechazan explícitamente.
+
+Las exportaciones PNG son documentos externos elegidos por el usuario y no forman
+parte del backup: diseño, marcadores y hojas se regeneran íntegramente desde los
+datos cifrados. La visibilidad de marcadores y las URI transitorias para compartir
+son estado de sesión. No hay archivos privados nuevos ni nuevos ciclos de limpieza
+interna. La salida normal permanece libre de marcadores incluso si están visibles
+en el editor.
+
+### PNG editables de anotaciones (`arNd`, versión 1)
+
+Sin cambio de versión Room ni JSON: son adjuntos `image/png` convencionales en
+`attachmentFiles` y sus asociaciones existentes. El contenedor incluye todos sus
+bytes cifrados, incluido el chunk privado ancillary `arNd` anterior a IEND. No se
+serializan rutas del dispositivo ni IDs de otros archivos.
+
+Payload del chunk (enteros de 32 bits big endian): versión 1, longitud de la fuente,
+bytes fuente PNG/JPEG originales, y JSON UTF-8 de marcas hasta el final del payload.
+Cada marca conserva UUID, herramienta, lista de puntos normalizados, color ARGB,
+grosor relativo al lado menor y texto. La numeración de marcadores se deriva de su
+orden, sin una segunda lista susceptible de desincronizarse. La fuente no puede
+contener otro chunk editable; reeditar conserva siempre la primera fuente.
+
+Importación y validación previa de backup/restauración verifican tamaño y SHA-256
+existentes, límites de chunks, CRC del chunk privado, versión, unicidad de UUID,
+coordenadas finitas en 0..1, grosor permitido, textos y límites de marcas/puntos/JSON,
+y validez de la fuente mediante dimensiones y decodificación muestreada. Un chunk
+privado inválido aborta la operación antes de reemplazar datos. Las imágenes sin
+este chunk siguen el formato histórico; no requieren migración. Restaurar conserva
+IDs lógicos y escribe nuevos storageName mediante el staging y diario actuales.
+Las reservas de editores sin confirmar continúan excluidas del backup oficial.
+
+La fuente está dentro de los bytes de la copia: se restaura incluso si el adjunto
+original ya se eliminó. La última referencia de una copia libera un solo archivo,
+incluidos sus datos editables y su fuente, con la misma limpieza durable que los
+adjuntos anteriores. Las exportaciones y el compartidor público eliminan `arNd`;
+no sustituyen un backup y esos PNG públicos no permiten recuperar marcas editables.
+
+## Biblioteca Diagramas — namespace v1
+
+`diagram_library` reutiliza `privatePreferences`: sin nueva tabla, migración Room,
+versión de aplicación ni cambio de contenedor. Los lectores históricos siguen
+aceptados. En bóvedas protegidas se cifra por SQLCipher y el backup portable usa
+ANBACK01 con la contraseña del respaldo, como los otros namespaces.
+
+El mapa contiene `doc_UUID` con JSON documental versión 1 y `asset_SHA256` con PNG
+base64 canónico. Los documentos incluyen nombre, fondo ARGB, nodos con geometría
+normalizada, texto, colores/borde y recurso opcional; conexiones con UUID, IDs de
+extremos, ruta, puntos intermedios, flechas, color/grosor/etiqueta y configuración
+completa de flujo (objeto, imagen opcional, dirección, velocidad, repetición, cantidad
+y tamaño). No hay rutas absolutas. Recursos compartidos se incluyen una sola vez,
+con todos sus bytes y SHA-256; se validan PNG, límites y decodificación antes de usar.
+
+Snapshot/exportación incluyen el mapa completo, incluso iconos de biblioteca todavía
+no usados por ningún diagrama. Son recursos confirmados de la colección personal,
+no archivos huérfanos. Borrar un documento no implica borrar iconos. Eliminar un icono
+requiere ausencia de referencias confirmadas; cancelar una edición no elimina recursos
+compartidos. Todo reemplazo/eliminación es una transacción de preferencias cifradas,
+sin operaciones de archivos que necesiten recuperación ni limpieza por antigüedad.
+
+Restauración valida previamente namespace, hashes, identidades, dimensiones finitas,
+límites, extremos de conexiones y referencias a recursos, incluidas imágenes animadas.
+Un recurso ausente o dañado aborta sin sustituir datos. Las versiones/documentos no
+admitidos fallan explícitamente. Se conservan UUID y hashes al restaurar; las fuentes
+anteriores sin `diagram_library` siguen siendo válidas y dejan una biblioteca vacía.
+Los borradores de edición no confirmados son estado de instancia, no datos del backup.
+
+Límites del namespace y del documento: ver ARCHITECTURE.md, sección Diagramas. Se
+mantienen además los límites globales del respaldo: nunca se truncan datos para que
+quepan. Las miniaturas y las geometrías son regenerables en memoria y no se exportan.
+El PNG público no contiene recursos editables ni configuración de animación; no
+sustituye al respaldo completo y no constituye una exportación animada.
+
+### Diagramas v1: cámara opcional y exportaciones públicas
+
+Los documentos v1 admiten `camera: null` o `{cx,cy,scale}`: números finitos, cx/cy
+entre −1 y 2, scale entre 0,01 y 8 (dp por píxel lógico). Ausencia del campo en
+fuentes históricas equivale a null/encuadre inicial. Cámara confirmada, nodos,
+conexiones, flujos y PNG se exportan/restauran juntos en `diagram_library`, sin rutas
+ni cambios de Room48/JSON40. La restauración valida cámara antes de sustituir datos;
+la prueba de backup cifrado incluye una cámara no predeterminada y conserva recursos
+compartidos, IDs y animaciones. No se aumenta ningún límite del namespace.
+
+Los GIF/MP4/PNG compartidos son salidas públicas elegidas por el usuario, no fuentes
+editables ni sustitutos del backup. Su diario `files/diagram-export-journal` contiene
+solo metadatos operativos cifrados de exportación/limpieza, nunca bytes necesarios
+para reconstruir un documento; se excluye del backup, igual que permisos SAF y las
+opciones de exportación no confirmadas. No hay cachés de fotogramas ni videos privados.
+Cancelación/fallo retira solo la salida de su operación; el diario durable permite
+reintentar tras rechazo del proveedor o interrupción al volver a abrir Diagramas.
+Las salidas completadas no se eliminan en la recuperación. No caducan pendientes.
+El PNG conserva su exportación estática anterior; GIF/MP4 son derivados animados con
+las restricciones de paleta, transparencia y codec documentadas en DIAGRAMAS.md.
+
+### Diagramas v1: fondo de imagen y estilos de trazo compatibles
+
+Campos opcionales añadidos al JSON documental incluido como texto de `doc_UUID`:
+
+- Raíz `backgroundAsset`: SHA-256 de PNG de biblioteca o null; ausencia equivale null.
+- Raíz `backgroundFit`: FIT/FILL; ausencia equivale FIT.
+- Cada conexión `strokeStyle`: SOLID/DASHED/DOTTED; ausencia equivale SOLID.
+
+Enums presentes inválidos se rechazan, sin interpretarlos como defaults. El recurso
+de fondo entra en el conjunto de referencias del documento: su PNG canónico, SHA-256
+y todos sus bytes deben existir en `asset_SHA256`. Se comparte sin duplicación con
+nodos/partículas; cuenta dentro de los límites actuales. No hay rutas de dispositivo.
+La prueba de backup/restauración cifrados incluye fondo FILL, trazo discontinuo,
+cámara, imágenes en nodos/flujos, múltiples referencias y rollback por corrupción.
+Leer un documento histórico conserva posiciones y aplica únicamente los defaults.
+
+Cambiar/quitar la referencia de fondo es una modificación documental; el PNG sigue
+siendo recurso confirmado de la colección personal hasta retirarlo explícitamente,
+si no tiene referencias confirmadas. Se mantienen transacción/mutex y recuperación
+previos. No se añaden archivos privados, tablas ni migraciones. Exportaciones
+PNG/GIF/MP4 usan el mismo renderer para fondo y estilo. Números, cuadrícula, guías,
+selección múltiple, modos de preview y rutas de panel son estado de interfaz de
+instancia, sin datos confirmados nuevos; no se serializan en el backup. No cambia
+el contenedor ni la compatibilidad global hasta JSON40/Room48.
+
+### Diagramas v1: página, diseño, recorridos y colores favoritos
+
+Extensiones opcionales compatibles, sin cambiar Room48/JSON40:
+
+- Raíz `page`: format FREE/SQUARE/STORY/PORTRAIT/WIDE, width/height lógicos. Ausencia:
+  FREE 1600×1000. Lados 320..4096, producto ≤8.000.000 y proporción fija validada.
+- Raíz `playback`: mode OFF/SEGMENT/SEQUENTIAL/SIMULTANEOUS, route (UUID de conexiones
+  contiguas sin repeticiones, ≤192), loop. Ausencia: SIMULTANEOUS, [], true.
+- Raíz `backgroundGradient` y nodo `gradient`: null o colors (2..8 ARGB), angle 0..360.
+  Ausencia: null; no sustituye los colores históricos guardados.
+- Nodo `borderColor`, `radius`, `font`, `lockAspect`, `centeredResize`, `resizeContent`.
+  Ausentes: borde=ink histórico, radio20, fuente48, proporción=true para IMAGE,
+  centrado=false, CONTAINER. Nuevos documentos serializan sus defaults nuevos.
+- Flujo `particleStyle` NORMAL/LUMINOUS/PULSE, `particleColor`, `haloColor`, `glow`,
+  `imageHalo`. Ausentes: NORMAL, null, null, 0.6, false. Color null conserva la
+  convención histórica de esfera ámbar/punto con color de conexión. Glow 0..1.
+- Clave de biblioteca `favorite_colors`: JSONArray textual de hasta 32 enteros ARGB
+  únicos. Ausencia: lista vacía. Comparte snapshot, cifrado y restauración íntegra
+  de `diagram_library`; admite como máximo 81 claves (32 docs+48 PNG+favoritos).
+
+Enums/tipos presentes inválidos, recorrido roto, referencias faltantes y degradados
+inválidos abortan antes de sustituir datos. No se serializan rutas absolutas ni se
+omiten bytes de recursos. La prueba cifrada incluye estos campos, colores favoritos,
+PNG compartidos y rollback; backups anteriores sin namespace siguen siendo válidos.
+Opciones de exportación, selección temporal de color/degradado, indicadores de borde
+y dirección de duplicación de interfaz no son datos documentales confirmados.
+
+## Temas personalizados — claves opcionales de Apariencia (Room 48 / JSON 40)
+
+Dentro del namespace existente `appearance_preferences`, el payload de
+privatePreferences puede incluir tres Strings opcionales:
+
+- `custom_themes`: array JSON de temas portables esquema 1, máximo 16/4 MiB.
+- `custom_theme`: UUID de un tema de esa biblioteca; nunca una referencia huérfana.
+- `theme_favorites`: array de hasta 32 enteros ARGB únicos.
+
+Cada tema contiene únicamente kind/schema/id/name/description/base/colors/paints/
+header. Header incorpora bytes PNG base64 completos y SHA-256, más modo y encuadre;
+no serializa rutas. Los paints contienen un sólido o un degradado lineal/radial/
+angular con 2–8 puntos ordenados, ángulo e intensidad. El codec es estricto y
+comparte validación entre importación, persistencia y restauración. Recursos
+corruptos, versiones desconocidas, activos inexistentes o bibliotecas excesivas
+fallan antes de reemplazar datos; se conserva el estado previo. Siguen aplicándose
+los límites globales del backup y no se omiten recursos para hacer caber un archivo.
+
+No cambia el esquema Room ni la versión máxima JSON 40: son extensiones opcionales
+del payload ya soportado de preferencias privadas. Respaldos históricos sin esas
+claves restauran biblioteca/favoritos vacíos y tema oficial conforme al lector
+anterior. La exportación cifrada oficial incluye todos los bytes inline; el JSON
+portable compartido por SAF es independiente, legible y no contiene otras
+preferencias ni claves. Documentación completa: TEMAS.md.
+
+La imagen pertenece al valor confirmado de su tema: reemplazo/eliminación se
+confirma atómicamente, duplicación conserva una copia y cancelación solo descarta
+memoria. No hay archivos privados compartidos ni tareas de borrado de imágenes.
+El borrador temporal retenido en ViewModel, miniaturas y el diario cifrado
+`theme-export-journal` son estado operativo excluido del respaldo. El diario solo
+recupera exportaciones SAF parciales propias; nunca elimina archivos ya confirmados.
+
+Validación dirigida: CustomThemeTest comprueba el archivo cifrado oficial y su
+restauración completa de PNG, hash, modo/encuadre, colores, degradado multipunto,
+base activa y favoritos; inyecta fallo de escritura y corrupción antes de reemplazo,
+y restaura preferencias históricas sin las claves nuevas. La batería final completa
+incluye estos casos y termina **178/178** sin fallos. Detalle en TEMAS.md.
+
+
+## Informes PDF / Word derivados
+
+Los informes no introducen datos confirmados ni cambian Room 48, el contenedor
+v2 o la compatibilidad JSON 1–40. La fuente sigue siendo el snapshot y adjuntos
+originales del backup oficial; generar un informe no modifica ni elimina ninguno.
+Opciones, contenido preparado e imágenes normalizadas viven en memoria.
+
+Las salidas SAF confirmadas son documentos públicos del usuario, independientes
+del respaldo privado. El diario cifrado `document-export-journal` es estado
+operativo excluido: registra exclusivamente salidas parciales propias, conserva
+fallos de borrado y recupera al reabrir la exportación, sin borrar documentos
+confirmados ni aplicar caducidad. Se reutilizan el bloqueo común y las reservas
+del diario existente. Pruebas de lectura sin mutación, cancelación, fallo de
+escritura y recuperación se detallan en EXPORTACION_DOCUMENTOS.md.
+
+
+## Temas simplificados — extensión portable 2
+
+Dentro de las mismas preferencias cifradas de Apariencia, temas con imágenes de
+superficies o muestra seleccionada usan esquema portable 2. Añade `images`, mapa
+opcional por destino drawer/core/layer/task/note, y `swatch` (una de diez muestras
+o null). Cada imagen contiene PNG base64 completo, sha256 y zoom/x/y. Los temas
+antiguos esquema 1 conservan valores y siguen siendo legibles sin conversión.
+No cambian Room 48, JSON máximo 40 ni el contenedor v2. Los lectores antiguos de
+temas rechazan esquema 2; no ignoran imágenes silenciosamente.
+
+Se reutilizan snapshot, exportación, validación y restauración de preferencias:
+los cinco recursos completos y encuadres se recuperan, sin rutas absolutas. Hash,
+PNG, destino o encuadre inválidos abortan antes del reemplazo. Límites existentes:
+2 MiB por tema, 4 MiB por biblioteca y límites globales de backup. La importación
+de fondos reduce copias a 768 px/96 KiB; no altera los originales locales.
+
+Reemplazo/eliminación del valor confirmado es atómico; las copias de temas
+mantienen sus bytes independientes. Cancelación solo libera borrador en memoria.
+No hay archivos privados nuevos ni barrido de originales. Borradores y bitmaps
+regenerables se excluyen; los bytes PNG confirmados siempre se incluyen. Detalle
+vigente y validación dirigida en TEMAS.md.
+
+
+## Diagramas: caras opcionales de conexiones
+
+El documento de `diagram_library` admite versiones 1 y 2. Las conexiones añaden
+únicamente fromAnchor/toAnchor opcionales con TOP/BOTTOM/LEFT/RIGHT; ausencia o
+null conserva anclaje automático. El escritor omite campos ausentes y mantiene
+versión 1 cuando no hay anclajes; usa 2 si existen, para que lectores anteriores
+no descarten las caras silenciosamente. El codec exige enums válidos y relaciones
+existentes antes de reemplazar datos. El snapshot y respaldo cifrado ya existentes
+conservan ambos extremos y sus estilos. No cambia Room 48, JSON máximo 40 ni el
+contenedor. No se añaden archivos o recursos; los bytes de imágenes existentes
+siguen incluidos y no cambia su ciclo de liberación. Guías, imán y cuadrícula son
+estado temporal del editor, no nuevas preferencias confirmadas. Ver DIAGRAMAS.md.
+
+
+## Diagramas: usabilidad y tabla ERD
+
+Mover, Redimensionar, Conectar, Elementos, Opciones y Eliminar usan seis iconos
+fijos de 48 dp en la barra inferior. Conectar activa el modo sin abrir panel;
+Opciones ofrece etiquetas de texto y mantiene la lista existente de conexiones
+del documento. Historial contenía solo Rehacer, ahora accesible directamente allí.
+Vista previa en vivo queda en las acciones superiores. El candado reutiliza
+GlobalChromeActions a la derecha de la cabecera de biblioteca y editor.
+El primer Guardar solicita nombre; Guardar actualiza el documento, Guardar copia
+crea un UUID distinto y Exportar documento produce PNG/GIF/MP4 mediante SAF.
+El nombre sigue siendo editable posteriormente. Puntos de recorrido conserva
+los mismos puntos intermedios, trayectorias y extremos reasignables.
+
+El nodo TABLE añade una lista fields: id UUID, name (hasta 100 caracteres), type
+opcional (hasta 64), pk y fk booleanos estrictos. Máximo 32 campos por tabla;
+encabezado en text (hasta 100). Las marcas son visuales y no introducen relaciones
+SQL: las conexiones siguen referenciando el UUID del nodo. Los campos pertenecen
+al nodo; borrar/reemplazar la tabla los elimina en la misma transacción. Duplicar
+conserva una copia independiente de sus valores. No se crean archivos ni recursos.
+
+El codec escribe versión documental 3 solo cuando hay tablas, y mantiene 1/2 para
+los documentos anteriores. Lee 1/2/3, valida IDs, tipos, límites y relaciones antes
+de confirmar o restaurar. Los nodos históricos conservan fields vacío y su
+representación. No cambian Room 48, JSON global 40 ni el contenedor de backup.
+Los campos confirmados viajan íntegros en diagram_library, dentro del snapshot
+cifrado y la restauración transaccional existentes. Una carga inválida se rechaza
+sin sustituir el estado anterior. Sin rutas absolutas ni nuevos ciclos de archivos.
+
+El renderer compartido representa encabezado, campos, tipos y marcas PK/FK en
+edición y en exportación PNG/GIF/fotogramas MP4. Ajusta el texto a las filas de la
+tabla; los gestos y anclajes existentes mueven/redimensionan/conectan el nodo.
+Las ediciones no guardadas siguen siendo estado temporal de instancia; cancelar
+el nombre del primer guardado no confirma un documento.
+
+## Borradores — JSON 42 / Room 49
+
+Se emite JSON 42 cuando al menos un registro de `nodes` tiene `projectId: null`.
+Sin borradores se conserva la selección histórica de versión. Los lectores admiten
+JSON 1–42; 1–41 siguen exigiendo projectId String. En 42 es String o null explícito,
+sin usar una cadena vacía, ID reservado ni ruta como sustituto de la ausencia.
+Los lectores anteriores rechazan 42 en lugar de descartar contenido.
+
+Un nodo sin proyecto debe ser ACTION o NOTE, sin parentId, creationGroupId,
+sprintMode ni workState. Conserva título, descripción, identidad, timestamps,
+fechas, prioridad y datos financieros compatibles, así como relaciones por nodeId.
+Se validan antes de reemplazar datos las referencias, los tipos, la ausencia de
+jerarquía y las invariantes anteriores. No cambian el contenedor v2, ANBACK01,
+la extensión, los límites, el cifrado ni las versiones de distribución.
+
+Snapshot y restauración incluyen las mismas tablas nodes, node_person, node_tag,
+node_events, node_technologies y node_attachments. Los bytes completos de imágenes
+y audio se incluyen por los manifiestos y streaming existentes, con hashes,
+tamaños y metadatos de audio. No se serializan rutas absolutas. La preparación
+durable, rollback, diario de restauración y liberación posterior al commit siguen
+siendo los existentes. Un backup histórico sin estos nodos restaura Borradores vacío.
+
+Mover no cambia relaciones de adjuntos ni genera archivos nuevos. Eliminar un
+borrador usa la liberación normal: no borra bytes todavía compartidos ni reservados,
+y las limpiezas fallidas se reintentan con el diario previo. Formularios sin confirmar,
+reservas y diarios operativos continúan excluidos del contenido confirmado del backup.
+
+Las preferencias de orden históricas de una hoja se conservan al trasladarla:
+`projectId:nodeId` pasa a `draft:nodeId` y vuelve al contexto del proyecto al organizarla.
+El namespace no representa un contenedor ni se muestra como jerarquía. El validador
+solo admite esa clave para el borrador correspondiente y su eliminación retira la
+preferencia en la misma transacción. Las ocurrencias recurrentes son recibos sin FK
+al nodo; se comprueban explícitamente y no pueden quedar sin proyecto.
+
+Las reservas compartidas del editor protegen también los nombres originales AAC
+cuando una restauración prepara archivos nuevos. Son registros operativos del
+mismo staging existente, sin caducidad; no añaden entradas al backup y no sustituyen
+los bytes obligatorios de adjuntos confirmados. Se liberan después del commit de
+su propio editor o al descartar explícitamente su entrada.
+
+## Selector de estados — JSON 43 / Room 50
+
+Room 49→50 añade `projects.verificationEnabled` y `nodes.awaitingVerification`,
+booleanos NOT NULL DEFAULT 0. Es una migración aditiva: preserva registros,
+fases Sprint, adjuntos y relaciones. JSON 43 añade esos campos; lectores 1–42
+inicializan ambos a false. Se emite 43 si hay opción habilitada, tareas por
+verificar o la preferencia global de orientación; los demás casos mantienen la
+selección histórica de versión. El lector admite 1–43; el contenedor sigue en v2.
+
+«Por verificar» exige ACTION hoja, proyecto real con la opción habilitada,
+`isCompleted=false` y ausencia de fase Sprint. Se valida antes de reemplazar
+Room y mediante triggers. La desactivación con tareas en ese estado se rechaza.
+La orientación vive en las preferencias cifradas existentes `appearance_preferences`,
+clave `status_selector_direction`, valores VERTICAL/HORIZONTAL; ausencia=VERTICAL.
+Forma parte del snapshot/restauración transaccional y se valida su enumeración.
+No se añaden archivos ni exclusiones al backup. Detalles y pruebas en
+SELECTOR_ESTADOS.md.
+
+## Skins: ajuste de previews al guardar (sin cambio de formato)
+
+Se conservan schemas de tema 1–3 y el manifiesto de originales existente. Si
+un guardado necesita ajustar su presupuesto, un PNG inline histórico puede
+conservarse como original cifrado de bytes idénticos antes de reducir su preview.
+La nueva referencia utiliza ThemeImage schema 3 y se respalda/restaura con el
+protocolo ya establecido: bytes completos, SHA-256, dimensiones, MIME, EXIF,
+staging durable, validación previa y transacción de preferencias. No se alteran
+otros temas ni sus archivos. Las reservas del editor se liberan después del
+commit o cancelación y no se eliminan archivos con referencias o reservas.
+
+Las preferencias grandes se leen por bloques de bytes en la misma transacción;
+se reconstruye exactamente el payload antes de decodificar UTF-8. No cambia el
+JSON del respaldo, Room ni la representación persistida de private_preferences.
+Se verificó restauración cifrada de las previews ajustadas y sus originales,
+además de compatibilidad histórica, cancelación y referencias compartidas.
+
+## Estados heredados — JSON 44 / Room 51
+
+Room 50→51 añade `nodes.taskStateCount`, INTEGER nullable: NULL hereda, 2 y 3
+son excepciones explícitas. No reescribe tareas ni estados, ni modifica adjuntos.
+El Núcleo reutiliza `verificationEnabled` (false=2, true=3); las opciones previas
+se conservan, y sin configuración previa hay 2 estados. La excepción más cercana
+entre tarea y ancestros prevalece. Borradores mantienen 2 estados; Sprint conserva
+sus cinco fases y restricciones independientes.
+
+Los estados siguen siendo `isCompleted` y `awaitingVerification`. La migración y
+la restauración no los convierten. Los triggers exigen hoja ACTION, proyecto real,
+sin fase Sprint y sin completado simultáneo para Por verificar; se permite
+restaurar ese estado histórico en modo 2. El repositorio solo permite entrar
+nuevamente en Por verificar cuando el modo efectivo es 3. No puede recibir hijos.
+
+JSON 44 añade taskStateCount a cada nodo y se emite con excepciones o estados
+Por verificar conservados en núcleos configurados a 2. El lector admite 1–44;
+los formatos anteriores inicializan la excepción a NULL y conservan su validación
+histórica. Valores distintos de NULL/2/3 se rechazan antes de sustituir datos.
+El snapshot, restauración transaccional, backup cifrado y validación incluyen
+la columna; no hay archivos nuevos de usuario ni exclusiones del backup.
+
+### Cambio confirmado de 3 a 2 estados
+
+Las acciones de configuración previsualizan el modo efectivo antes/después de cada
+hoja normal. Solo convierten Por verificar → Pendiente cuando el modo pasa de 3 a 2,
+respetando las excepciones. Si hay conversiones, se confirma el número antes de
+escribir. Configuración, estados e historial REOPENED se guardan en una transacción;
+cancelación, alcance cambiado o error conservan los datos anteriores. Volver a 3 no
+recupera estados previos. Las APIs sin confirmación rechazan conversiones pendientes.
+Room 51, JSON 44 y el cifrado no cambian: se reutilizan los campos y eventos existentes.
+La carga y restauración históricas no convierten datos; solo una acción confirmada
+puede hacerlo. Se verifican rollback, reapertura y backup/restauración cifrados.
+
+## Exportación parcial de elementos — contenedor JSON 1
+
+Compartir y exportar produce JSON con kind arachn0de-element-export,
+schemaVersion 1, partial true, root (projectId, nodeId, descendants),
+referencePolicy, records, attachmentPaths e imagePaths. records usa el
+serializador y dataVersion existentes del backup, conservando IDs y referencias.
+Las referencias fuera de los registros exportados son externas: no se renumeran
+ni se sustituyen por datos inventados. Las definiciones compartidas de recurrencia,
+responsables, etiquetas, tecnologías y planificación referenciadas son dependencias;
+no se incluyen tareas hermanas ni preferencias privadas/globales.
+
+No es un respaldo completo y no se admite en Restaurar backup. No introduce
+importación parcial, sincronización, migraciones ni una nueva versión del backup.
+La validación del backup completo permanece obligatoria y sin cambios; el emisor
+parcial toma filas confirmadas de Room y comprueba alcance y archivos por separado.
+
+Sin archivos asociados se guarda .json o .md. Con archivos se genera ZIP con
+element.json o contenido.md y files/attachments/<id>.<ext> y/o
+files/<directorio>/<nombre-relativo>. Se conserva el manifiesto original de
+adjuntos/imágenes y se comprueban tamaño y SHA-256 durante la escritura. Markdown
+sustituye los marcadores de adjuntos por enlaces relativos, conserva listas/bloques
+de código, utiliza encabezados por profundidad e indica niveles superiores a seis.
+
+Solo se exportan archivos mediante selección explícita de carpeta Android; los
+archivos externos son texto/medios sin cifrar y el panel lo advierte. Generación
+offline, en IO, bajo el bloqueo compartido de archivos. No hay caché nueva ni
+copia privada del contenido: se escribe directamente al destino SAF. El diario
+cifrado existente de documentos admite md/json/zip, revierte parciales ante fallos
+y permite reintentar la limpieza al reabrir el panel. Los archivos completados
+pertenecen al usuario. Límites: 5000 elementos, presupuesto de metadatos del backup
+y 256 MiB de archivos por exportación, con rechazo explícito sin truncar.
+
+## Banners personales — JSON 45 / Room 52
+
+`personBanners` contiene `personId`, `attachmentId`, `zoom`, `x`, `y`. Se emite
+JSON 45 cuando existen banners o encuadres de galería; lectores 1–44 inicializan
+los banners vacíos y encuadres de galería 1/0/0.
+Cada propietario debe existir; la referencia debe apuntar a un adjunto READY PNG/JPEG.
+Los bytes originales y su SHA-256 usan el mismo contenedor de adjuntos; no se
+serializan rutas ni se recortan originales. La restauración valida primero e inserta
+adjuntos antes de banners dentro de la transacción de reemplazo. El borrado de un
+perfil elimina su banner; quitar/reemplazar un banner libera solo la referencia,
+conservando imágenes usadas por galerías, elementos o reservas de editores.
+
+Capturas de invitado: cola operativa cifrada AES-GCM en `noBackupFilesDir`, clave
+independiente en Android Keystore, sin contraseñas ni claves de bóveda. No es dato
+confirmado del perfil hasta importarse. Una captura aceptada pendiente impide
+respaldar/restaurar ese almacén para evitar omisiones y destinos ambiguos. Tras
+importarse, original y entrada de galería forman parte del respaldo habitual.
+No hay caducidad automática de capturas aceptadas; fallos de autenticación,
+importación o integridad conservan los archivos cifrados. La cola no es portable
+entre instalaciones: depende del Keystore local. Captura de invitado permanece
+**deshabilitada** hasta verificar aislamiento y ciclo de vida en Android.
+
+JSON 45 añade zoom/x/y a personMemoryImages; se validan con AvatarFraming. Room
+51→52 añade esas columnas con valores por defecto 1/0/0 sin reescribir archivos.
+
+## Sonido de tareas — CustomTheme 4 / JSON de backup 46
+
+Apariencia añade `task_completion_sound` booleano, default true en datos anteriores.
+La skin con audio emite schema 4, campo `completionSound` con el contenedor de audio
+Pomodoro (bytes completos base64 y SHA-256). Máximo 512 KiB, duración real 1–3000 ms,
+MP3/OGG/WAV; se valida antes de importar o restaurar. Sin audio se conserva el schema
+histórico 1/2/3. El intercambio individual y la biblioteca conservan el audio junto con
+las imágenes y originales existentes, sin guardar URI ni rutas absolutas.
+
+El backup emite JSON 46 solo cuando existe la nueva preferencia o alguna skin con
+sonido. Se mantienen Room 52, ANBACK01 y contenedor v2; lectores anteriores rechazan
+46. Los lectores actuales admiten versiones anteriores e inicializan sonido activado
+con tin universal. Las preferencias ya participan del snapshot y de la restauración
+atómica; corrupción o fallo de restauración conserva la biblioteca y configuración
+anteriores. No se añaden archivos sujetos a limpieza ni se modifica el cifrado.
+
+### Cumpleaños con año opcional (JSON 47)
+
+`personBirthdays[].date` conserva `AAAA-MM-DD` para fechas completas y permite
+`--MM-DD` (ISO MonthDay) cuando no se conoce el año. No almacena años ficticios;
+la ausencia de cumpleaños sigue representada por ausencia del registro.
+Día y mes se validan estrictamente, incluido `--02-29`; una fecha completa exige
+un año 1–9999 y un día válido para ese año. Los borradores incompletos nunca se
+confirman. Se emite JSON 47 únicamente cuando existe un cumpleaños sin año;
+las fechas completas mantienen el versionado anterior. El lector acepta 1–47.
+No cambian Room, el contenedor cifrado ni las relaciones. Snapshot/restauración
+conservan literalmente ambos formatos; un respaldo inválido se rechaza antes
+de reemplazar registros.
+
+### Originales de avatar Antisocial — JSON 48
+
+El namespace avatars admite UUID.jpg además de UUID.png. Los nuevos JPEG están
+limpios y solo pueden conservar orientación mínima reconstruida; PNG admite
+resolución completa hasta 32000 por lado/100 MP. Se mantienen 20 MiB por avatar,
+8 MiB en snapshots inline y 1 GiB acumulado de imágenes por streaming. La UI
+normal de exportación usa streaming; se conserva el contenedor v2, sus hashes y
+la validación antes del reemplazo. El nombre interno restaurado mantiene su
+extensión; contenido, referencias de Persona y fotos legadas se restauran juntos.
+Los originales de publicaciones ya utilizan los adjuntos existentes (bytes y hash
+incluidos), sin nuevo namespace. El lector acepta JSON 1–48 y conserva los PNG
+anteriores sin modificarlos. JSON 48 solo se emite cuando un avatar necesita las
+nuevas capacidades; los demás respaldos conservan su versionado anterior.
+Los temporales de cámara y sus leases nunca forman parte del respaldo.
+
+Validado: backup/restauración inline y por streaming de un avatar JPEG limpio
+cifrado de 3072 px, preservando extensión/bytes; lectura de avatar PNG histórico;
+backup v2 de publicaciones JPEG con restauración de originales y referencias
+compartidas. Los casos de corrupción/CRC, cancelación y limpieza tras fallo de
+escritura están cubiertos por la prueba focalizada de fotografías.
+
+### Principal automático de Antisocial (sin nuevo formato)
+
+Se reutiliza localIdentities con slot SELF. El snapshot transaccional asegura su
+existencia cuando hay Personas; la restauración respeta la identidad respaldada.
+Si un respaldo antiguo no incluye SELF, se utiliza el primer perfil insertado
+al restaurarlo. No se conoce su fecha original de creación: esos respaldos
+ordenaban por ID. La decisión se persiste y los respaldos siguientes la conservan.
+No se eliminan columnas ni se omiten valores históricos de personProfiles por
+haberse retirado sus controles. El formato vigente y sus lectores no cambian.
+
+## Banca — Room 53 / JSON 49
+
+Migración aditiva 52→53: `bank_roots`, `bank_accounts`, `bank_operations`, `bank_allocations`. No transforma importes, responsables, estados ni recurrencias existentes. Se instalan protecciones contra pérdida de historial financiero y reducción de obligaciones por debajo de pagos vigentes.
+
+Cuando hay Núcleos Banca se emite JSON 49 con arrays `bankRoots`, `bankAccounts`, `bankOperations`, `bankAllocations`. El lector mantiene las versiones anteriores (1–48) con listas financieras vacías. Se conservan IDs, vínculos con cuentas/tareas/ocurrencias, importes enteros, fecha de operación, anulación, corrección y nombres históricos de las asignaciones. No se serializan rutas ni se crean archivos financieros: todo vive en Room bajo el cifrado de la bóveda existente. El contenedor cifrado externo no cambia.
+
+Se validan tipos estrictos, identidades únicas, cuentas y sus propietarios, Núcleos/Capas, referencias a tareas y ocurrencias, suma de asignaciones, importes positivos, tipos de operación, saldo no negativo y pendiente no negativo antes de sustituir datos. Las cuatro listas cuentan en el límite de registros y se aplica el límite global de 16 MiB de metadatos. La restauración limpia primero el registro financiero dentro de la transacción, restaura las entidades originales y finalmente reinserta el registro financiero. Ante fallo revierte todo; un backup antiguo reemplaza Banca con sus listas vacías como el resto de datos ausentes de versiones históricas.
+
+El límite del objeto raíz del lector pasa de 76 a 80 campos, exactamente los cuatro arrays nuevos. No cambia el límite de 32 campos por registro, profundidad, tamaño, tipos estrictos ni la comprobación exacta de campos conocidos. Las referencias financieras utilizan claves foráneas; la relación cuenta→Capa se comprueba al commit para poder crear ambas atómicamente. Se rechazan ciclos y dobles sustituciones en las correcciones.
+
+Validación final: migración 52→53 preservando filas, exportación/lectura/restauración de JSON 49 con pagos recurrentes, lectura histórica sin Banca y rechazo de importes incoherentes antes de reemplazar datos, aprobadas en `BankIntegrationTest`. La prueba de backup respeta los IDs deterministas originales de las ocurrencias. El flujo de ingreso/cancelación/anulación mediante los paneles existentes aprobó en `BankUiTest`. No se modificaron el contenedor cifrado, la versión de aplicación ni las claves.
+
+Jerarquía plana de Banca: una cuenta solo es válida con su nodo `LAYER` en `rootId` y `parentId=null`; todos los nodos del Núcleo Banca deben corresponder a cuentas. Esta validación existente se conserva antes del reemplazo transaccional. La integración visual y los nuevos guardas no cambian JSON 49 ni Room 53 y no reparan automáticamente cuentas históricas incompatibles.
+
+Simplificación de pagos: sin cambios de formato ni migración. Ingreso, Retiro y Pago son denominaciones automáticas del campo `concept` existente cuando el editor recibe un nombre vacío. Las cuatro tablas, IDs, asignaciones, referencias y transferencias históricas continúan exportándose/restaurándose con la validación de JSON 49. La selección y la confirmación en pantalla son borradores temporales; no se añaden preferencias ni archivos persistentes.
+
+## Detector opcional de compras CMR (en preparación; emisor no autorizado todavía)
+
+Room continúa en 53. JSON 50 se emite cuando existe la preferencia `purchase_detection`; el resto de los respaldos conserva la selección de formato histórica. Los lectores aceptan 1–50. La preferencia contiene una cadena `state` tipada mediante `EncryptedPreferences`: versión interna 1, activación, identidad de bóveda, sugerencias pendientes (UUID, hash de entrega, comercio, CLP entero positivo y recepción), hashes de deduplicación y descartes operativos. Su estructura y límites se validan antes de sustituir datos. Los formatos anteriores carecen de preferencia y dejan el detector desactivado.
+
+Las sugerencias incorporadas a la bóveda están en `private_preferences`, bajo SQLCipher, y participan del snapshot y restauración transaccionales existentes. No se añaden tablas financieras ni cambios de esquema. El editor no crea pagos hasta confirmar; creación de tarea y retirada de sugerencia comparten transacción. Los importes detectados son pendientes, nunca movimientos bancarios.
+
+La entrada recibida con la bóveda bloqueada reside temporalmente en `noBackupFilesDir/purchase-input/inbox`, cifrada AES-GCM mediante AndroidKeyStore y reemplazada con `DurableVaultFile`. No contiene credenciales ni claves de bóveda ni texto completo de notificaciones. Al abrir la bóveda principal se incorpora idempotentemente a Room antes de retirar las entradas del archivo cifrado. No se elimina físicamente un archivo por cada sugerencia: el estado se reemplaza de forma durable; sus diarios se recuperan con el mecanismo común. No se barren directorios. Antes de respaldar o restaurar se comprueba que la entrada temporal de esa bóveda esté incorporada, incluidos descartes: si no lo está, la operación falla explícitamente y pide abrir Arachn0de. La cola temporal y su clave de dispositivo no se exportan; las sugerencias ya incorporadas y sus datos completos sí. No se expiran sugerencias pendientes; se limitan a 100 y los hashes no pendientes a una ventana de 48 horas y 2.000 registros. Al alcanzar límites se rechazan nuevas entradas sin borrar pendientes.
+
+La lista de emisores y certificados autorizados permanece vacía hasta verificar una notificación real y su firma. `cl.android` es candidato identificado en Google Play, no un emisor autorizado por esta implementación. Nunca se acepta contenido de otros paquetes por coincidencia textual. La autorización Android y el consentimiento local no se restauran como permisos del sistema: se muestra su estado real y no se procesa sin ambos.
+
+
+## Retirada de detección CMR — compatibilidad histórica
+
+La integración activa se ha retirado: no existe listener Android, controles, permisos de acceso a notificaciones ajenas ni creación desde sugerencias. Room permanece en 53 y los lectores JSON 1–50 se conservan. `purchase_detection` se mantiene únicamente como dato histórico cifrado: se valida, exporta y restaura sin activarlo ni generar tareas u operaciones. La identidad de bóveda se adapta al restaurar como antes.
+
+`backup/legacy` contiene exclusivamente el modelo/codec histórico y la lectura del antiguo archivo cifrado. Si existe `noBackupFilesDir/purchase-input/inbox`, el snapshot incorpora sus registros de la misma bóveda a la preferencia del backup, sin escribir Room ni alterar el archivo de origen. Omite entradas cuyo ID ya tenga tarea confirmada y conserva el control de duplicados. Un archivo corrupto o ilegible hace fallar el respaldo explícitamente; nunca se descarta silenciosamente. No se generan entradas ni claves nuevas.
+
+No hay limpieza automática de estos archivos históricos ni de las preferencias: se conservan para evitar pérdida de información. Su lectura recupera únicamente el diario durable asociado, bajo el bloqueo común de archivos. No se recorren ni borran otros directorios. El payload incorporado al backup contiene los datos completos necesarios, no rutas locales ni claves de dispositivo. Las tareas y movimientos previamente creados son datos normales y permanecen intactos.
+
+
+## Traslados mediante explorador jerárquico
+
+Sin cambio de versión de respaldo ni nuevas entidades. El traslado entre Núcleos conserva IDs de nodos, adjuntos, personas, etiquetas, eventos y relaciones históricas. Se actualizan la ubicación y las claves de configuración/orden dependientes del Núcleo en una transacción; las reglas recurrentes internas conservan su identidad y cambian de proyecto junto con su contenedor. La validación de backup permanece vigente. No se copian ni borran bytes de adjuntos. Las relaciones de contexto incompatibles bloquean el traslado antes del commit; un fallo revierte la operación completa.
+
+
+## Tragaperras Ahorro — JSON 51 / Room 53
+
+La preferencia cifrada `slot_savings` activa JSON 51; los lectores aceptan 1–51 y los formatos anteriores sin esta preferencia mantienen Ahorro sin configurar. No cambia ANBACK01 ni el contenedor. Se exportan íntegramente todas las versiones de configuración usadas, asociaciones Banco/cuenta, libro de eventos, resultados y giro pendiente de presentación. No hay rutas locales ni archivos del módulo. Todos los movimientos físicos permanecen en bank_operations y se verifican por ID, cuenta, tipo, cantidad y concepto; una anulación histórica no se descarta y provoca bloqueo de conciliación al usar la máquina.
+
+Se validan UUID, tipos enteros, límites, versiones, tabla, RTP exacto, porcentajes, asignaciones de créditos por compra, resultado/premio, cobertura antes de cada giro, decisiones únicas de premios, fondos no negativos e invariante de fondos contra entradas/salidas. Configuración nueva no revaloriza compras anteriores. El reparto arrastra el resto del acumulador ponderado entre compras y versiones. Eventos y versiones cuentan en el presupuesto de registros. El snapshot y la restauración transaccional existentes conservan los datos previos ante cualquier fallo; no se requieren tablas o migraciones nuevas.
+
+
+## Eliminación confirmada de cuentas Banco
+
+Sin cambio de Room ni del formato. La cuenta, sus operaciones/correcciones y asignaciones se eliminan en una transacción solo tras confirmación explícita. Se preservan tareas/personas y Banco; pagos pendientes se recalculan. Ahorro asociado exclusivamente a esa cuenta se elimina con advertencia expresa; no se mutilan libros compartidos entre cuentas. La eliminación conserva las protecciones contra saldo negativo y confirma que los vínculos restantes son restaurables. Backups anteriores siguen admitidos; los posteriores no incluyen referencias eliminadas. Round-trip posterior y rollback ante fallo comprobados. No se crean archivos; las referencias de la Capa se liberan mediante el flujo existente y la limpieza posterior al commit.
+
+## Saldo de la cuenta vinculada a Ahorro — JSON 52
+
+La cuenta seleccionada representa la caja de la máquina. El saldo bancario ya existente, descontados todos los fondos previamente atribuidos (protegido + libre + premios reservados), se incorpora en unidades enteras de 1.000 CLP mediante eventos `ASSIGN`. No son ingresos/egresos bancarios, compras de créditos, recargas físicas ni ahorro generado. Los pesos que no completen 1.000 quedan fuera de la cobertura de premios. El capital asignado se reconstruye del libro y se incluye en el invariante: fondos = compras + recargas + capital asignado − retiros.
+
+SavingsCodec schema 2 añade el tipo ASSIGN y conserva la lectura del schema 1 sin él. Backup JSON 52 contiene íntegros estos eventos y conserva lectores 1–51. No cambian Room 53, ANBACK01, tablas, archivos ni cifrado. Los vínculos de movimientos físicos continúan validándose como antes; ASSIGN no inventa un movimiento bancario adicional. La asignación se realiza transaccionalmente al vincular/leer el estado y solo por el exceso de saldo aún no atribuido; repetir, reabrir o restaurar no duplica capital. No se añade durante un giro pendiente ni si hay vínculos rotos/solvencia insuficiente. Los retiros ajenos siguen bloqueando ante falta de respaldo: nunca consumen automáticamente ahorro protegido ni reservas de premios.
+
+## Tragaperras selvática — JSON 53 / codec Ahorro 3
+
+Ampliación mínima para los ocho símbolos e importes autorizados del cartel. SavingsCodec 3 admite tablas/resultados de siete u ocho símbolos y conserva lectores de schemas 1/2; estos últimos siguen limitados a siete. Se mantiene el orden original y los valores de todas las configuraciones históricas y sus créditos. Los conceptos de premios antiguos se validan con los nombres originales; los nuevos, con la tabla selvática. JSON 53 conserva lectura de 1–52. Room sigue en 53 sin cambios de esquema ni migraciones. Los 31 PNG son recursos inmutables incluidos en la aplicación, no archivos privados referenciados en respaldos. No se añaden rutas de dispositivo al formato. Detalles y validación en docs/JUNGLE_SLOTS.md.
+
+Validación del formato selvático: round-trip con créditos históricos y nuevos, retirada de máscara con concepto correcto y recuperación de datos previo a restauración corrupta, dentro de 40 métodos focalizados aprobados. Sin nueva migración Room ni archivos privados.
+
+## Paquetes de cinco tiradas — JSON 54 / codec Ahorro 4
+
+Aprobación explícita: 1.000 CLP por cinco tiradas y RTP exactamente 30 %, con premios intactos. Cada configuración guarda `pack` y `denominator`: las nuevas usan 5 / 50.000; los codecs 1–3 se decodifican explícitamente como 1 / 10.000, preservando precio, créditos y probabilidades de cada compra histórica. El precio guardado sigue siendo entero en unidades de 1.000 CLP; `pack` determina cuántos créditos compra ese paquete. El coste estadístico de cada giro se deriva en pesos enteros (200 para el paquete nuevo); no crea un movimiento bancario por giro.
+
+JSON 54 conserva lectores 1–53 y schemas anteriores de la preferencia. Sin cambios de tablas, Room 53, SQLCipher, ANBACK01 ni archivos. Depósito/creación de configuración futura/créditos son una única transacción; retirada consume una reserva y registra un egreso una sola vez. Cerrar un panel no resuelve premios. KEEP histórico continúa siendo válido/restaurable, aunque la interfaz actual ofrece únicamente RETIRAR. No se reescriben automáticamente compras o cantidades históricas. Detalles y resultados en docs/JUNGLE_UX_CORRECTIONS.md.
+
+## Contenido enriquecido y GIF — JSON 55 / Room sin cambios
+
+Cuando existe un GIF o un nuevo formato en una descripción de Núcleo, Capa,
+Tarea, Nota o recurrencia, el escritor selecciona JSON 55. El lector admite
+1–55; no cambia el contenedor ni hay columnas nuevas. Los formatos anteriores
+siguen guardándose y leyéndose como antes. Las extensiones portátiles usan
+pares del marcador reservado `[[arachnode:highlight]]`,
+`[[arachnode:title]]` o `[[arachnode:code]]` dentro de la descripción. No se
+serializan posiciones externas que puedan desfasarse al insertar texto.
+Código conserva espacios, tabulaciones y saltos; los demás marcadores son
+literales dentro de código, salvo el destacado por palabra. Los marcadores
+sin pareja son literales. No se reescriben descripciones históricas al abrirlas.
+
+Los adjuntos añaden `image/gif` / extensión interna UUID.gif a los PNG/JPEG/AAC
+existentes. Se conservan los bytes originales, MIME, dimensiones, tamaño y
+SHA-256, cifrados por SecureFiles. Límite general de 20 MiB y límites de GIF
+2048×2048, 1000 fotogramas, estructura completa y trailer final válidos. El
+respaldo transporta todos los bytes, no un fotograma ni una ruta absoluta;
+verifica estructura, dimensiones/hash/tamaño antes de sustituir datos. La
+restauración usa el staging, diario durable, mutex y transacción existentes.
+
+Reservas, referencias compartidas, cancelación y DELETE_PENDING mantienen el
+ciclo de vida de AttachmentRepository. El último vínculo confirmado se libera
+antes de eliminar físicamente; un fallo se reintenta con la limpieza habitual.
+La reproducción solo conserva datos decodificados en memoria durante el visor;
+no crea caché persistente ni archivos descifrados. No hay archivos nuevos que
+excluir del backup. Antisocial y fotografías de otros módulos conservan sus
+reglas actuales; esta ampliación corresponde al botón Imagen de Contenido.
+
+Exportación individual y paquetes Markdown/JSON incluyen el GIF original.
+PDF/DOCX incorporan una representación PNG estática; no sustituyen ni eliminan
+el archivo original, que permanece exportable y recuperable mediante backup.
+Los tres formatos de texto se representan en el visor, editor y documentos;
+Markdown usa HTML semántico para las extensiones de formato.
+
+## Seguridad Fase A — sin cambio de formato
+
+Backups privados, ANBACK01, versiones JSON y Room no cambian. Los originales,
+metadatos y bloques editables `arNd` siguen incluidos íntegramente en el backup.
+La política de saneamiento se aplica exclusivamente a copias públicas; no interviene
+en snapshot, contenedor, restauración de adjuntos ni edición privada.
+
+`security_preferences` permanece legible, validado y exportado en formatos históricos.
+Al restaurar se conserva el namespace local del receptor dentro de la transacción;
+se ignora el del archivo, incluso si el backup es cifrado. Si no existe configuración
+local no se crea una autorización importada: se usan los defaults seguros existentes.
+Cancelar, fallar validación o revertir la transacción conserva la política anterior.
+Esta exclusión local deliberada impide que un backup transporte permisos de captura
+o sustituya la decisión de bloqueo del dispositivo receptor.
+
+Markdown/JSON y temas son documentos públicos independientes del backup: contienen
+copias saneadas y sus tamaños/hashes recalculados. No modifican hashes privados ni
+referencias. La Fase A.1 añade únicamente el staging regenerable descrito abajo.
+
+
+## Seguridad Fase A.1 — derivados públicos excluidos
+
+Se conservan ANBACK01, versiones JSON/Room, campos y todos los bytes originales,
+incluidos WebP animado, APNG, EXIF, ICC y arNd privados. No se serializan rutas
+absolutas. El intercambio público de temas conserva su esquema y registra MIME,
+tamaño, hash y orientación de la copia realmente emitida. Los temas históricos
+con orientación 1 en PNG/WebP siguen recuperándose con su apariencia almacenada.
+
+`cache/public-exports-v1` contiene solo derivados cifrados regenerables y reservas
+UUID `.lease`, excluidos deliberadamente del backup. No contiene originales ni
+únicos datos del usuario; recuperar una exportación consiste en volver a generarla
+desde las fuentes confirmadas. Su clave efímera no se persiste ni exporta. Límite
+512 MiB, eliminación al cerrar/cancelar/fallar, reintento durable tras fallos de
+limpieza y reinicio, reservas activas sin caducidad, nombres/directorios controlados
+y bloqueo común. No se barre el resto del almacenamiento privado. Las pruebas
+focalizadas cubren fuentes intactas, referencias concurrentes, reemplazo,
+cancelación, borrado fallido y recuperación; las de backup cubren round-trip de
+las fuentes originales independientemente de sus copias públicas saneadas.
+
+## SEG-05 — tarjetas compartidas
+
+No cambia el formato ni se añaden datos persistentes. Las entregas usan una
+instantánea autenticada y acotada en RAM; se borra al completar, cancelar, fallar
+o quedar inactiva. No genera archivos descifrados ni un nuevo staging. La caché
+regenerable `card-shares` conserva su cifrado, exclusión del backup, marcas durables
+de borrado y recuperación. El archivo solo se necesita durante la preparación,
+bajo el bloqueo común; su entrega posterior no conserva referencias al archivo.
+
+## Fase C — captura de cámara, sin cambio de formato
+
+El JPEG de cámara y su reserva durable en cache/antisocial-camera son estado
+operativo no confirmado. Se excluyen del snapshot lógico, de Android backup y
+también del inventario de caché de la migración inicial. Excluir no elimina archivos.
+Al devolver una captura se importa a un adjunto cifrado reservado antes de mostrar
+su confirmación; solo una verificación completa permite retirar el JPEG. Las
+reservas sin confirmar no se exportan. Confirmar y guardar una fotografía reutiliza
+las relaciones y los bytes completos de adjuntos/avatares ya incluidos en backups.
+La restauración y la liberación de referencias compartidas siguen el contrato actual.
+
+Una solicitud pendiente de cámara no caduca por proceso ni por edad; errores y
+cancelaciones usan estados durables y recuperación del almacén correspondiente.
+No se añaden datos confirmados, tablas, algoritmos ni versiones de contenedor/JSON.
+Tampoco se eliminan copias históricas de migración: no hay evidencia suficiente
+para considerar prescindible cada original archivado. El checkpoint Pomodoro 1–3
+y la política de reenvoltura de claves permanecen sin cambios. Véase
+`docs/SECURITY_PHASE_C.md` para inventario, riesgo residual y alcance de pruebas.
+
+## Guardar con descendientes — sin cambio de formato
+
+La exportación PNG múltiple es de lectura: no introduce tablas, preferencias,
+relaciones ni datos confirmados nuevos en la aplicación. Se mantienen completos
+los bytes y referencias de las fuentes en los backups existentes. Los PNG finales
+son documentos individuales en la carpeta SAF elegida por el usuario y no se
+incorporan al snapshot privado. El staging cifrado public-exports-v1 y el diario
+operativo cifrado card-image-export-journal se excluyen del backup: son recursos
+regenerables de exportación, con limpieza/reintento después de fallos y sin
+caducidad de reservas activas. No se serializan rutas de dispositivo en el backup.
+No cambian el contenedor, JSON, cifrado ni compatibilidad histórica. Véase
+`docs/GUARDAR_CON_DESCENDIENTES.md`.
+
+## Datos v56: configuración jerárquica de ordenación
+
+Se mantiene Room 53 y el contenedor existente. Cuando hay preferencias nuevas,
+el JSON usa versión 56; los lectores conservan v1–v55. No se añaden archivos.
+`nodeSortPreferences.mode` admite `SORT1:` seguido de un objeto validado con
+`manual`, `inherit`, `layers`, `appliedLayers`, `legacyLayers` y `rules`. `rules` contiene exactamente
+una entrada por criterio (STATE, PRIORITY, DUE, CREATED, PERSON, NAME, TAG), en su
+jerarquía, con booleanos `on` y `reverse`. Se rechazan campos desconocidos, claves
+repetidas, criterios ausentes y payloads superiores a 4096 caracteres antes de
+restaurar. `layersFirst` de la fila representa la presentación ya aplicada;
+`layers` conserva la elección guardada hasta pulsar Aplicar. Las posiciones siguen
+siendo `nodes.position`, capturadas y restauradas transaccionalmente como antes.
+
+Los modos antiguos se interpretan sin reescribir datos al leer: DUE_ASC/DUE_DESC
+se convierten a DUE con su dirección; CREATED_NEWEST/CREATED_OLDEST a CREATED;
+DUE_PRIORITY a DUE → PRIORITY; PRIORITY conserva su desempate histórico por DUE.
+MANUAL e INHERIT permanecen disponibles. Los cambios nuevos se codifican al
+editar o aplicar. Una Capa heredada conserva la referencia al Núcleo, no una copia
+congelada de sus criterios. Los respaldos v55 o anteriores no aceptan SORT1.
+
+`legacyLayers` conserva únicamente excepciones históricas de Capas primero de
+filas INHERIT antiguas. Volver a heredar explícitamente elimina esa excepción y
+utiliza todos los ajustes vigentes del Núcleo. No añade controles nuevos.
+
+## Datos v57: esfuerzo manual y ordenación por esfuerzo
+
+Room 54 añade `nodes.effort` y `conversion_roots.effort`, INTEGER NOT NULL DEFAULT 0,
+con rango 0–5 validado. Los registros históricos reciben 0. El valor de conversión
+es latente: evita perder esfuerzo al convertir una antigua Tarea a Capa/Núcleo y
+regresar a Capa; no cambia las restricciones de conversión ni añade esfuerzo visible a estos tipos. No hay archivos nuevos.
+
+Se emite JSON 57 cuando hay esfuerzo distinto de cero o preferencias SORT1 con
+los ocho criterios, incluido EFFORT. En v57 ambos tipos de registro incluyen
+`effort` obligatorio, entero estricto 0–5. Los JSON 1–56 conservan su forma anterior
+y se restauran con 0. Un SORT1 de siete criterios sigue admitiéndose sin reescritura,
+con EFFORT añadido desactivado en memoria; ocho criterios requieren JSON 57.
+Se rechazan criterios duplicados/ausentes, rangos inválidos y números fraccionarios
+antes de sustituir datos. Se mantienen el contenedor y cifrado existentes, la
+restauración transaccional, posiciones, herencia y demás campos intactos.
+
+### Catálogo institucional monocromático
+
+DarkGrey, PureBlack, BlackAndWhite y Graphite amplían los valores del tema ya
+serializado en las preferencias y temas personalizados. No cambian claves,
+columnas ni formato JSON. Se conserva la lectura de valores históricos; las
+nuevas selecciones recorren el mismo payload de preferencias de respaldo y su
+validación. Los logotipos y el GIF institucional son recursos del APK, no datos
+locales del usuario; se recuperan desde el paquete, sin rutas del dispositivo.
+
+La paleta de indicadores conserva sus identificadores anteriores y añade `LILAC` (lila). Se guarda por nombre en las mismas preferencias de apariencia incluidas en el backup; no cambia el formato ni el esquema. Los colores cromáticos se representan ahora con tonos intensos.
+
+## Preferencia visual del calendario contextual
+
+El namespace opcional `calendar_presentation` en `privatePreferences` conserva
+`collapsed` como booleano. Se exporta y restaura por el mecanismo cifrado de
+preferencias existente; se valida su tipo antes de reemplazar datos. Sin la clave
+(respaldos históricos), el calendario comienza expandido. No cambian Room, JSON,
+archivos ni el contenedor. No se guardan fechas, eventos ni filtros nuevos.
+
+## Presentación de galerías de herramientas visuales
+
+El namespace opcional `visual_gallery_preferences` en `privatePreferences` guarda
+los booleanos `wireframe` y `diagrams`: true = cuadrícula, false = lista. Las
+claves ausentes en respaldos anteriores equivalen a cuadrícula. Se valida su tipo
+antes de reemplazar datos. Se reutilizan el snapshot y la restauración cifrada de
+preferencias; no cambian Room, JSON ni los documentos. Las miniaturas son caché
+regenerable en RAM (6 MiB, dos generadores concurrentes), sin archivos nuevos ni
+bytes que incorporar a un backup. Los documentos y sus recursos existentes siguen
+siendo la fuente íntegra de esas vistas previas.
+
+## Bloque 2: guardado de anotaciones planas
+
+Sin cambio de Room, JSON ni contenedor. Guardar desde el anotador básico produce
+un adjunto PNG convencional con las marcas incorporadas en los píxeles; se
+respaldan sus bytes completos, metadatos y referencias mediante el flujo existente.
+Se mantienen los lectores/validadores históricos de `arNd` v1 y su recuperación.
+Las reservas de reemplazo/borrador y la limpieza pendiente siguen siendo estado
+operativo excluido del backup; no se añaden rutas absolutas ni archivos auxiliares.
+Se verifica rollback, reservas compartidas, cancelación exterior, limpieza fallida
+y recuperación desde un backup después de eliminar los archivos confirmados.
+
+
+## Grupo 5A — Juego retirado, datos históricos conservados
+
+Se retiran los accesos, pantallas, motores y recursos estáticos exclusivos de
+Juego/Carrera táctica. Tragaperras sigue siendo una herramienta independiente y
+no cambia. Los apartados históricos del Juego describen formatos compatibles,
+no una funcionalidad activa.
+
+`game_state`, la preferencia histórica `experimental_game/session` y el campo
+`gameSession` siguen el protocolo existente. `backup/legacy/game` conserva solo
+modelos, codecs, topología canónica y validación/normalización requeridos por
+partidas v1–v4 y por la migración 22→23. No carga imágenes ni reanuda partidas.
+No se elimina ningún dato privado ni se cambia Room, el formato JSON, el
+contenedor, las transacciones o la política de rechazo de datos corruptos.
+Los recursos empaquetados retirados no son archivos personales del backup.
+Inventario, medidas y validación: `docs/PERFORMANCE_GROUP_5A.md`.
+
+
+## Grupo 6 — reservas del lector de miniaturas
+
+`ProjectThumbnailCache` usa la reserva durable existente de ImageFileLifecycle
+para proteger el original mientras lee/decodifica/genera fuera del mutex común.
+El mutex común solo cubre adquisición, metadatos y liberación; la liberación se
+completa en contexto no cancelable. El mutex propio serializa los lectores de
+miniaturas y protege derivados/partes frente a su poda. La poda de lecturas se
+amortiza a un minuto; tras generar se fuerza para conservar el límite de 64 MiB.
+
+El propietario operativo `project-thumbnail-reader` identifica exclusivamente
+estas lecturas. Al adquirir el mutex propio, sin otro lector activo, la siguiente
+lectura recupera las reservas que dejó su predecesora interrumpida. No caducan
+por antigüedad ni se liberan reservas de editores, backup u otros propietarios.
+Si no hay otra lectura, una reserva pendiente conserva el original. No se borra
+ningún original en recuperación: la limpieza normal sigue verificando referencias
+y reservas bajo el bloqueo común, después del commit.
+
+No se añaden datos confirmados ni se cambia Room o el formato de backups. Los
+marcadores conservan el formato y la exclusión operacional existentes; derivados
+cifrados y partes de `cache/project-thumbnails` siguen siendo regenerables y
+excluidos del backup. No se cambian bytes originales, cifrado, firmas o versiones.
+Medidas y pruebas específicas: `PERFORMANCE_GROUP_6.md`.

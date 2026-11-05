@@ -26,13 +26,15 @@ import com.r0ybt.arachn0de.ui.theme.Arachn0deColors
 import com.r0ybt.arachn0de.ui.theme.ContentTypography
 
 @Composable
-internal fun DetailScopeTitle(title: String, onEdit: (() -> Unit)? = null) {
+internal fun DetailScopeTitle(title: String, compact:Boolean=false, level:Int?=null, layer:Boolean=false, onEdit: (() -> Unit)? = null) {
     val bashCursor=rememberBashTextCursor()
     var firstLineCenter by remember { mutableFloatStateOf(0f) }
-    Row(Modifier.fillMaxWidth().padding(top=6.dp).heightIn(min=48.dp),
+    Row(Modifier.fillMaxWidth().padding(top=0.dp).heightIn(min=48.dp),
         verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(6.dp)) {
-        PropertyIdentityIcon(modifier=Modifier.size(16.dp).alignBy {it.measuredHeight/2})
-        Text(if(LocalBashPresentation.current) "title=$title" else title, modifier = Modifier.weight(1f).testTag("detail-scope-title").then(bashCursor.modifier).heightIn(min=48.dp)
+        if(layer) OfficialIcon(com.r0ybt.arachn0de.R.drawable.bw90_layer,"Capa",size=16.dp,
+            modifier=Modifier.size(16.dp).alignBy {it.measuredHeight/2})
+        else PropertyIdentityIcon(modifier=Modifier.size(16.dp).alignBy {it.measuredHeight/2})
+        Text(if(LocalBashPresentation.current) "title=$title" else title, modifier = Modifier.weight(1f).testTag("detail-scope-title").then(bashCursor.modifier).heightIn(min=if(compact)0.dp else 48.dp)
             .alignBy {if(firstLineCenter>0f) firstLineCenter.roundToInt() else it[FirstBaseline]}
             .then(if (onEdit != null) Modifier.clickable(onClickLabel = "Editar título", onClick = onEdit) else Modifier),
         onTextLayout={layout->bashCursor.layout=layout;firstLineCenter=(layout.getLineTop(0)+layout.getLineBottom(0))/2f},

@@ -32,20 +32,6 @@ class SavedTemplatesUiTest {
         app.savedTemplateRepository.save(SavedTemplateEntity("other","Mantenimiento",SavedTemplateCodec.encode(SavedTaskConfiguration("Revisar máquina"))),true)
     }
     private fun await(text:String) {compose.waitUntil(10000) {compose.onAllNodesWithText(text).fetchSemanticsNodes().isNotEmpty()}}
-    @Test fun accessAppearsAboveDescriptionAndSelectionOnlyFillsDraft() {
-        seed();val draft=EditorDraft(null,null,"","")
-        compose.runOnUiThread {compose.activity.setContent {Arachn0deTheme {NodeDialog(draft,false,{}, {_,_->})}}}
-        compose.onNodeWithText("Usar Guardado").assertIsDisplayed()
-        val access=compose.onNodeWithText("Usar Guardado").fetchSemanticsNode().boundsInRoot
-        val description=compose.onNodeWithText("Descripción").fetchSemanticsNode().boundsInRoot
-        assertTrue(access.top<description.top)
-        compose.onNodeWithText("Usar Guardado").performClick();await("Pago habitual")
-        compose.onNodeWithText("Pago habitual").performClick()
-        compose.waitUntil(10000) {draft.title=="Pagar cuenta"}
-        compose.onNodeWithText("Título").assertExists();assertEquals("Texto reusable",draft.description);assertEquals(Priority.HIGH,draft.priority);assertNotNull(draft.dueAt)
-        assertTrue(runBlocking {app.database.backupDao().nodes().isEmpty()})
-        compose.onNodeWithText("Título").performTextReplacement("Título propio");assertEquals("Título propio",draft.title)
-    }
     @Test fun applyingDuringEditingKeepsNodeAndLinkedTripIdentity() {
         seed()
         val draft=EditorDraft("node","parent","Original","").apply {
@@ -60,16 +46,6 @@ class SavedTemplatesUiTest {
         assertEquals("node",draft.id);assertEquals("parent",draft.parentId)
         assertEquals("existing-trip",draft.metroJourneyId);assertEquals(7L,draft.metroJourneyRevision)
         assertEquals("original-plan",draft.templateMetroPlan)
-    }
-    @Test fun editingAccessRemainsVisibleAndConsultationDoesNotApply() {
-        seed();val draft=EditorDraft("node",null,"Original","")
-        compose.runOnUiThread {compose.activity.setContent {Arachn0deTheme {NodeDialog(draft,false,{}, {_,_->})}}}
-        compose.onNodeWithText("Usar Guardado").assertIsDisplayed().performClick()
-        await("Pago habitual")
-        compose.onAllNodesWithText("Consultar").onFirst().performClick()
-        compose.onNodeWithText("Contenido de la plantilla").assertExists()
-        assertEquals("Original",draft.title)
-        assertEquals("node",draft.id)
     }
     @Test fun populatedDraftRequiresConfirmationAndCancellationPreservesEveryField() {
         seed();val draft=EditorDraft(null,null,"Original","Mis datos").apply {responsibleIds=listOf("keep")}

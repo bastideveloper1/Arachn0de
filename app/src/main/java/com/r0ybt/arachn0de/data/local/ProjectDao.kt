@@ -9,6 +9,9 @@ import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface ProjectDao {
+    @Query("UPDATE projects SET verificationEnabled=:enabled,updatedAt=:at WHERE id=:id")
+    suspend fun setVerificationEnabled(id:String,enabled:Boolean,at:Long):Int
+
     @Query("SELECT projects.*, p.id AS photo_id, p.projectId AS photo_projectId, p.nodeId AS photo_nodeId, p.file AS photo_file, p.photoZoom AS photo_photoZoom, p.photoX AS photo_photoX, p.photoY AS photo_photoY FROM projects LEFT JOIN project_photos p ON p.projectId = projects.id ORDER BY projects.isPinned DESC, projects.position, projects.createdAt, projects.id")
     fun observeWithPhotos(): Flow<List<ProjectWithPhoto>>
 

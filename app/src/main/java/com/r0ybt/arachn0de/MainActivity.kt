@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.LocalSaveableStateRegistry
 import androidx.compose.runtime.saveable.SaveableStateRegistry
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.semantics.clearAndSetSemantics
@@ -84,7 +85,11 @@ class MainActivity:ComponentActivity() {
     }
     override fun onResume() {
         super.onResume()
-        lifecycleScope.launch { (application as Arachn0deApplication).security.foreground() }
+        val started=com.r0ybt.arachn0de.ui.ResponseTiming.start("activity_resume")
+        lifecycleScope.launch {
+            (application as Arachn0deApplication).security.foreground()
+            com.r0ybt.arachn0de.ui.ResponseTiming.end("foreground_complete",started)
+        }
     }
     override fun onDestroy() {
         (application as Arachn0deApplication).security.captures.detach(window,closingSession=!isChangingConfigurations)
@@ -99,6 +104,7 @@ class MainActivity:ComponentActivity() {
     }
     override fun onCreate(savedInstanceState:Bundle?) {
         super.onCreate(savedInstanceState)
+        com.r0ybt.arachn0de.ui.ResponseTiming.start(if(savedInstanceState==null) "activity_create" else "activity_recreate")
         (application as Arachn0deApplication).security.captures.attach(window)
         enableEdgeToEdge(statusBarStyle=SystemBarStyle.dark(Color.TRANSPARENT),navigationBarStyle=SystemBarStyle.dark(Color.TRANSPARENT))
         if(intent.getBooleanExtra("pomodoro",false)) {com.r0ybt.arachn0de.pomodoro.PomodoroNavigation.requested.value=true;intent.removeExtra("pomodoro")}
@@ -118,11 +124,19 @@ class MainActivity:ComponentActivity() {
         setContent {
             val session by app.security.current.collectAsState()
             val backgrounded by app.security.backgrounded.collectAsState()
+            LaunchedEffect(session,backgrounded) {
+                com.r0ybt.arachn0de.ui.ResponseTiming.start(if(backgrounded) "privacy_covered" else if(session==null) "session_locked" else "authorized_content")
+                if(session!=null && !backgrounded) withFrameNanos {com.r0ybt.arachn0de.ui.ResponseTiming.start("authorized_frame_callback")}
+            }
             val visible=session
-            Arachn0deTheme(locked=visible==null || backgrounded) {
+            // Keep the authenticated composition/theme alive behind the opaque cover.
+            // Backgrounding is not a session lock and must not discard skin caches.
+            Arachn0deTheme(locked=visible==null) {
+                Box(Modifier.fillMaxSize()) {
                 AppSafeArea {
                     if(visible==null) UnlockScreen(app.security)
                     else key(visible.access.id) {
+                        com.r0ybt.arachn0de.guest.GuestCaptureRecovery(visible)
                         val initialProjects=remember(visible) {visible.initialProjects.also {visible.initialProjects=null}}
                         // Private editor/navigation state remains in live memory only. It is never
                         // handed to Android's persistent saved-instance-state Bundle while locked.
@@ -152,15 +166,17 @@ class MainActivity:ComponentActivity() {
                                         Box(Modifier.weight(1f)) {AppRoot(visible.projects,visible.nodes,initialProjects=initialProjects)}
                                     }
                                 }
-                                // Keep editors/reservations during the configured grace period.
-                                // The opaque overlay prevents access until foreground verifies time.
-                                if(backgrounded) androidx.compose.material3.Surface(Modifier.fillMaxSize().then(
-                                    Modifier.pointerInput(Unit) {awaitPointerEventScope {while(true) {awaitPointerEvent().changes.forEach {it.consume()}}}})) {
-                                    Box(contentAlignment=androidx.compose.ui.Alignment.Center) {androidx.compose.material3.Text("Arachn0de")}
-                                }
+
                             }
                         }
                     }
+                }
+                                // Keep editors/reservations during the configured grace period.
+                                // The opaque overlay prevents access until foreground verifies time.
+                                if(backgrounded) androidx.compose.material3.Surface(color=androidx.compose.ui.graphics.Color(0xFF202020),modifier=Modifier.fillMaxSize().testTag("privacy-cover").then(
+                                    Modifier.pointerInput(Unit) {awaitPointerEventScope {while(true) {awaitPointerEvent().changes.forEach {it.consume()}}}})) {
+                                    Box(contentAlignment=androidx.compose.ui.Alignment.Center) {androidx.compose.material3.Text("Arachn0de",color=androidx.compose.ui.graphics.Color.White)}
+                                }
                 }
             }
         }

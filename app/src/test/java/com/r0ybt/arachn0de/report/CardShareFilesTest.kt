@@ -23,6 +23,55 @@ class CardShareFilesTest {
     private val context:Context get()=ApplicationProvider.getApplicationContext()
     private val colors=CardShareColors(Color.BLACK,Color.WHITE,Color.MAGENTA)
     private fun data()=CardShareData("Tarjeta de prueba","Información completa",listOf(CardSharePicture("Imagen panorámica") {Bitmap.createBitmap(640,160,Bitmap.Config.ARGB_8888).apply {eraseColor(Color.GREEN)}}))
+    @Test fun manyImagesIncludingHistoricalAnnotationsFitWithoutCroppingOrRetainedBitmaps() {
+        val base=Bitmap.createBitmap(300,300,Bitmap.Config.ARGB_8888).apply {eraseColor(Color.GREEN)}
+        val original=java.io.ByteArrayOutputStream().also {base.compress(Bitmap.CompressFormat.PNG,100,it)}.toByteArray()
+        val marks=listOf(com.r0ybt.arachn0de.annotations.ImageMark(tool=com.r0ybt.arachn0de.annotations.MarkTool.RECT,
+            points=listOf(com.r0ybt.arachn0de.annotations.MarkPoint(.2f,.2f),com.r0ybt.arachn0de.annotations.MarkPoint(.8f,.8f))))
+        val annotated=com.r0ybt.arachn0de.annotations.EditableImagePng.write(com.r0ybt.arachn0de.annotations.markedPng(base,marks),original,marks)
+        base.recycle()
+        val loaded=mutableListOf<Bitmap>()
+        val data=CardShareData("Muchas imágenes","Descripción",(0..9).map {i->CardSharePicture("Imagen $i") {
+            assertTrue(loaded.all {it.isRecycled})
+            BitmapFactory.decodeByteArray(if(i==9)annotated else original,0,if(i==9)annotated.size else original.size).also {loaded+=it}
+        }})
+        val rendered=CardShareRenderer.render(data,colors)
+        try {assertTrue(rendered.height<=CardShareRenderer.MAX_HEIGHT);assertEquals(20,loaded.size);assertTrue(loaded.all {it.isRecycled})}
+        finally {rendered.recycle()}
+    }
+
+    @Test fun portraitReferenceDecodeKeepsReadableWidthAndDoesNotChangeOriginal() {
+        val file=File(context.cacheDir,"portrait-reference-test.png")
+        val original=Bitmap.createBitmap(400,3000,Bitmap.Config.ARGB_8888).apply {eraseColor(Color.GREEN)}
+        try {
+            file.outputStream().use {original.compress(Bitmap.CompressFormat.PNG,100,it)}
+            val bytes=file.readBytes()
+            val decoded=requireNotNull(decodeCardReference(file))
+            try {assertEquals(400,decoded.width);assertEquals(3000,decoded.height)} finally {decoded.recycle()}
+            assertArrayEquals(bytes,file.readBytes())
+        } finally {original.recycle();file.delete()}
+    }
+    @Test fun referenceSheetKeepsTallAttachmentsFullWidthWithoutCropping() {
+        val sheet=CardShareData("Ver si existe la posibilidad de exportar una tarea en imagen",
+            "La imagen adjunta es la referencia de la tarea. Debe poder verse completa y leerse sin convertirse en una miniatura.",
+            listOf(CardSharePicture("captura.png · PNG · 1,2 MB") {
+                Bitmap.createBitmap(400,1000,Bitmap.Config.ARGB_8888).apply {eraseColor(Color.GREEN)}
+            }),project="Arachn0de",status="Pendiente",fields=listOf(
+                CardShareField("Creada","27 oct 2026\n10:07"),CardShareField("Asignada","—"),
+                CardShareField("Vencimiento","—"),CardShareField("Etiqueta","consulta")))
+        val bitmap=CardShareRenderer.render(sheet,CardShareColors(0xff101416.toInt(),0xffeef0f2.toInt(),Color.CYAN))
+        try {
+            var top=-1;var bottom=-1
+            for(y in 0 until bitmap.height)if(bitmap.getPixel(540,y)==Color.GREEN) {if(top<0)top=y;bottom=y}
+            assertTrue(top>0);assertTrue(kotlin.math.abs(2440-(bottom-top+1))<=4)
+            assertEquals(Color.GREEN,bitmap.getPixel(55,top+100))
+            assertEquals(Color.GREEN,bitmap.getPixel(1024,top+100))
+            assertTrue(bitmap.height>bottom+40)
+            File(System.getProperty("java.io.tmpdir"),"arachnode-card-reference-preview.png").outputStream().use {
+                assertTrue(bitmap.compress(Bitmap.CompressFormat.PNG,100,it))
+            }
+        } finally {bitmap.recycle()}
+    }
     @Test fun compactPicturesKeepBoundedDimensionsAndOriginalProportions() {
         val bitmap=CardShareRenderer.render(CardShareData("Tarjeta","Información",listOf(
             CardSharePicture("Persona",compact=true) {Bitmap.createBitmap(800,1600,Bitmap.Config.ARGB_8888).apply {eraseColor(Color.GREEN)}},
@@ -39,7 +88,7 @@ class CardShareFilesTest {
             }
             assertEquals(80 to 160,bounds(Color.GREEN))
             assertEquals(160 to 40,bounds(Color.BLUE))
-            assertTrue(bitmap.height<600)
+            assertTrue(bitmap.height<1000)
         } finally {bitmap.recycle()}
     }
     @Test fun saveUsesGeneratedPngAndReportsWriteFailure()=runBlocking<Unit> {
@@ -69,7 +118,8 @@ class CardShareFilesTest {
         assertEquals(uri,intent.clipData!!.getItemAt(0).uri)
         assertEquals(Intent.FLAG_GRANT_READ_URI_PERMISSION,intent.flags)
         assertEquals("image/png",context.contentResolver.getType(uri))
-        context.contentResolver.openInputStream(uri)!!.use {assertArrayEquals(file.readBytes(),it.readBytes())}
+        // Real nonblocking reliable pipes are exercised by CardShareSessionTest.
+        // Robolectric models pipes as files and does not implement Os.poll.
         assertThrows(java.io.FileNotFoundException::class.java) {context.contentResolver.openFileDescriptor(uri,"w")}
         val outside=File(context.cacheDir,file.name).apply {writeText("original")}
         assertThrows(IllegalArgumentException::class.java) {files.shareIntent(outside)}

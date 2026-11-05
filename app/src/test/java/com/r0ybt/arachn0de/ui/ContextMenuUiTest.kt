@@ -27,6 +27,111 @@ import org.robolectric.annotation.Config
 @Config(application=com.r0ybt.arachn0de.security.LegacyUiTestApplication::class,sdk=[28],qualifiers="w360dp-h800dp")
 class ContextMenuUiTest {
     @get:Rule val compose=createAndroidComposeRule<ComponentActivity>()
+    @Test fun elementConversionsStayInPanelAndBackNeverExecutesThem() {
+        var drafts=0;var notes=0
+        mount {ContextActionMenu("Tarea",{},inline=true,showCancel=false,groupConversions=true) {
+            action("Editar",Icons.Default.Edit,{})
+            action("Convertir en nota",Icons.Default.Description,{notes++})
+            action("Mover a Borradores",Icons.Default.Description,{drafts++})
+        }}
+        await("Convertir en...")
+        compose.onNodeWithText("Convertir en nota").assertDoesNotExist()
+        compose.onNodeWithTag("context-action:Convertir en...").performClick()
+        compose.onNodeWithText("Convertir en Borrador").assertExists()
+        compose.onNodeWithText("Editar").assertDoesNotExist()
+        compose.onNodeWithTag("context-action:← Atrás").performClick()
+        assertEquals(0,drafts);assertEquals(0,notes)
+        compose.onNodeWithText("Editar").assertExists()
+        compose.onNodeWithTag("context-action:Convertir en...").performClick()
+        compose.onNodeWithText("Convertir en Borrador").performClick()
+        assertEquals(1,drafts);assertEquals(0,notes)
+    }
+    @Test fun repeatedExportNavigationEntersOnceAndCanReopen() {
+        mount {ContextActionMenu("Opciones",{},inline=true,showCancel=false) {
+            items+=ContextAction("Exportar o compartir",Icons.Default.Share,{},children=listOf(
+                ContextAction("Guardar imagen",Icons.Default.Image,{})))
+        }}
+        repeat(2) {
+            val click=action("Exportar o compartir").fetchSemanticsNode().config[androidx.compose.ui.semantics.SemanticsActions.OnClick].action!!
+            compose.runOnIdle {repeat(8) {click()}}
+            action("Guardar imagen").assertIsDisplayed()
+            compose.onNodeWithContentDescription("Volver").performClick()
+            action("Exportar o compartir").assertIsDisplayed()
+        }
+    }
+    @Test fun exportScopeUsesSamePanelAndSingleActionRunsDirectly() {
+        var single=0;var branch=0;var shared=0
+        mount {ContextActionMenu("Opciones",{},inline=true,showCancel=false) {
+            items+=ContextAction("Guardar imagen",Icons.Default.Image,{},children=listOf(
+                ContextAction("Solo elemento",Icons.Default.Image,{single++}),
+                ContextAction("Con descendientes",Icons.Default.Collections,{branch++})))
+            action("Compartir imagen",Icons.Default.Share,{shared++})
+        }}
+        await("Guardar imagen")
+        compose.onNodeWithText("Compartir imagen").performClick();assertEquals(1,shared)
+        compose.onNodeWithText("Guardar imagen").performClick()
+        compose.onNodeWithText("Solo elemento").assertExists()
+        compose.onNodeWithText("Con descendientes").performClick();assertEquals(1,branch);assertEquals(0,single)
+        compose.onNodeWithTag("context-action:← Atrás").performClick()
+        compose.onNodeWithText("Guardar imagen").performClick()
+        compose.onNodeWithText("Solo elemento").performClick();assertEquals(1,single)
+    }
+    @Test fun nestedExportGroupKeepsRootCompactAndReturnsOneLevel() {
+        var pdf=0;var word=0
+        mount {ContextActionMenu("Opciones",{},inline=true,showCancel=false) {
+            action("Editar",Icons.Default.Edit,{})
+            items+=ContextAction("Exportar o compartir",Icons.Default.Share,{},children=listOf(
+                ContextAction("PDF / Word",Icons.Default.Description,{},children=listOf(
+                    ContextAction("PDF",Icons.Default.Description,{pdf++}),
+                    ContextAction("Word / DOCX",Icons.Default.Description,{word++}))),
+                ContextAction("Compartir imagen",Icons.Default.Share,{})))
+        }}
+        await("Exportar o compartir")
+        compose.onNodeWithText("PDF / Word").assertDoesNotExist()
+        compose.onNodeWithText("Exportar o compartir").performClick()
+        compose.onNodeWithText("Editar").assertDoesNotExist()
+        compose.onNodeWithText("PDF / Word").performClick()
+        compose.onNodeWithText("PDF").assertExists()
+        val panel=compose.onNode(SemanticsMatcher.expectValue(androidx.compose.ui.semantics.SemanticsProperties.PaneTitle,"PDF / Word"),useUnmergedTree=true).fetchSemanticsNode().boundsInRoot
+        val backCell=compose.onNodeWithTag("context-action:← Atrás").fetchSemanticsNode().boundsInRoot
+        assertEquals(action("PDF").fetchSemanticsNode().boundsInRoot.left,backCell.left,1f)
+        compose.onNodeWithText("Word / DOCX").performClick();assertEquals(1,word);assertEquals(0,pdf)
+        compose.onNodeWithText("← Atrás").assertDoesNotExist()
+        compose.onNodeWithContentDescription("Volver").performClick()
+        compose.onNodeWithTag("context-action:PDF / Word").assertExists()
+        compose.onNodeWithText("Editar").assertDoesNotExist()
+        compose.onNodeWithContentDescription("Volver").performClick()
+        compose.onNodeWithText("Editar").assertExists()
+        assertEquals(1,word);assertEquals(0,pdf)
+    }
+    @Test fun exportBackFollowsContentAndPanelShrinksForShortMenus() {
+        val failures=mutableListOf<String>()
+        for(inlineMenu in listOf(true,false)) {
+            var shortHeight=0f
+            for(extra in listOf(0,5)) {
+                mount {Box(Modifier.fillMaxWidth().height(500.dp)) {
+                    ContextActionMenu("Opciones",{},inline=inlineMenu,showCancel=false,bottomAligned=!inlineMenu) {
+                        items+=ContextAction("Exportar o compartir",Icons.Default.Share,{},children=
+                            (0 until extra).map {ContextAction("Opción $it",Icons.Default.Description,{})}+
+                                ContextAction("Guardar imagen",Icons.Default.Image,{}))
+                    }
+                }}
+                await("Exportar o compartir")
+                compose.onNodeWithText("Exportar o compartir").performClick()
+                val last=action("Guardar imagen").fetchSemanticsNode().boundsInRoot
+                val back=action("← Atrás").fetchSemanticsNode().boundsInRoot
+                val panel=compose.onNode(SemanticsMatcher.expectValue(androidx.compose.ui.semantics.SemanticsProperties.PaneTitle,"Exportar o compartir"),useUnmergedTree=true).fetchSemanticsNode().boundsInRoot
+                val gap=back.top-last.bottom
+                val density=compose.density.density
+                if(kotlin.math.abs(if(extra%2==0) back.top-last.top else gap-4*density)>1f)failures+="inline=$inlineMenu opciones=${extra+1}: separación=$gap, panel=$panel, última=$last, volver=$back"
+                if(panel.bottom-back.bottom<6*density-1f)failures+="Falta margen inferior: $back / $panel"
+                if(back.width>panel.width*.6f)failures+="Volver ocupa más de una celda: $back / $panel"
+                if(extra==0)shortHeight=panel.height else if(panel.height<=shortHeight)failures+="La altura no se adapta: inline=$inlineMenu corta=$shortHeight larga=${panel.height}"
+                compose.onNodeWithContentDescription("Volver").assertIsDisplayed().performClick()
+            }
+        }
+        assertTrue(failures.joinToString("\n"),failures.isEmpty())
+    }
     private val app get()=compose.activity.application as Arachn0deApplication
     private fun pump() {org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle();androidx.compose.runtime.snapshots.Snapshot.sendApplyNotifications();compose.mainClock.advanceTimeByFrame()}
     private fun await(text:String)=compose.waitUntil(15000) {pump();compose.onAllNodesWithText(text).fetchSemanticsNodes().isNotEmpty()}
@@ -69,13 +174,13 @@ class ContextMenuUiTest {
         for(node in nodes) {
             compose.runOnIdle {chosen=node}
             open()
-            if(node.isStructural) action("Editar tecnologías").assertExists() else {
-                action("Editar tecnologías").assertDoesNotExist()
+            if(node.isStructural) action("Tecnologías").assertExists() else {
+                action("Tecnologías").assertDoesNotExist()
                 compose.onNodeWithTag("card-technology:${node.id}").assertExists()
             }
             action("Metro / modo Viaje").assertDoesNotExist();action("Convertir en viaje").assertDoesNotExist()
-            action("Editar").assertExists();action("Responsables").assertExists()
-            if(node.isStructural) {action("Subir").assertDoesNotExist();action("Bajar").assertDoesNotExist()}
+            action("Editar").assertExists();action("Cancelar").assertDoesNotExist();action("Responsables").assertExists()
+            action("Subir").assertDoesNotExist();action("Bajar").assertDoesNotExist()
             action("Copiar este elemento").performClick();assertEquals("copy:false",selected)
             open();action("Mover a…").performClick();assertEquals("move",selected)
             open();action("Eliminar").assert(hasStateDescription("Acción destructiva")).performClick();assertEquals("delete",selected)
@@ -84,14 +189,14 @@ class ContextMenuUiTest {
             if(node.isStructural) {
                 open();action("Copiar texto con descendientes").performClick();assertEquals("copy:true",selected)
                 compose.runOnIdle {drag=false}
-                open();action("Subir").performScrollTo().performClick();assertEquals("up",selected)
-                open();action("Bajar").performScrollTo().performClick();assertEquals("down",selected)
+                open();action("Subir").assertDoesNotExist();action("Bajar").assertDoesNotExist()
+                compose.runOnIdle {compose.activity.onBackPressedDispatcher.onBackPressed()}
             }
         }
         compose.runOnIdle {drag=true;interactionMode=androidx.compose.ui.input.InputMode.Keyboard}
-        open();action("Subir").assertExists();action("Bajar").assertExists();action("Cancelar").performClick()
+        open();action("Subir").assertDoesNotExist();action("Bajar").assertDoesNotExist();compose.runOnIdle {compose.activity.onBackPressedDispatcher.onBackPressed()}
         compose.runOnIdle {interactionMode=androidx.compose.ui.input.InputMode.Touch;accessibility.setTouchExplorationEnabled(true)}
-        open();action("Subir").assertExists();action("Bajar").assertExists();action("Cancelar").performClick()
+        open();action("Subir").assertDoesNotExist();action("Bajar").assertDoesNotExist();compose.runOnIdle {compose.activity.onBackPressedDispatcher.onBackPressed()}
         compose.runOnIdle {accessibility.setTouchExplorationEnabled(false);canCopy=false}
         open();action("Copiar este elemento").assertIsNotEnabled();action("Copiar texto con descendientes").assertIsNotEnabled()
     }
@@ -134,10 +239,10 @@ class ContextMenuUiTest {
         val layer=runBlocking {app.nodeRepository.createNode(project.id,null,"Capa",purpose=NodePurpose.LAYER)}
         mount {AppRoot(app.projectRepository,app.nodeRepository)}
         await("Proyecto");compose.onNodeWithText("Proyecto").performClick();await("Capa")
-        compose.onNodeWithTag("node-options:${layer.id}").performClick();action("Cancelar").performClick()
+        compose.onNodeWithTag("node-options:${layer.id}").performClick();compose.runOnIdle {compose.activity.onBackPressedDispatcher.onBackPressed()}
         compose.onNode(hasText("Capa") and hasClickAction()).performClick()
         compose.onNodeWithContentDescription("Opciones del elemento").performClick();action("Editar").assertDoesNotExist()
-        action("Cancelar").performClick()
+        compose.runOnIdle {compose.activity.onBackPressedDispatcher.onBackPressed()}
         compose.onNode(hasText("Capa") and hasClickAction()).performClick();await("Título")
         compose.onNodeWithText("Descripción").assertExists();compose.onNodeWithText("Guardar").assertExists()
         compose.onNodeWithText("Cancelar").performClick()
@@ -198,7 +303,20 @@ class ContextMenuUiTest {
         mount {ProjectDialog(draft,false,{}, {title,description->
             runBlocking {app.projectRepository.updateProject(project.id,title,description)};saved=true
         })}
-        await("Nombre")
+        val changes=java.util.IdentityHashMap<Any,Pair<Int,String>>()
+        val observer=androidx.compose.runtime.snapshots.Snapshot.registerApplyObserver {objects,_->synchronized(changes) {
+            objects.forEach {obj->
+                val value=(obj as? State<*>)?.value
+                val detail=if(value is Number || value is Boolean || value is androidx.compose.ui.unit.Dp || value is androidx.compose.ui.graphics.Color || value is androidx.compose.ui.text.TextLayoutResult) value.toString().take(180) else value?.javaClass?.name.orEmpty()
+                changes[obj]=((changes[obj]?.first ?: 0)+1) to detail
+            }
+        }}
+        try {await("Nombre")} finally {
+            observer.dispose()
+            println("PROJECT_IDLE_RECOMPOSERS "+Recomposer.runningRecomposers.value.map {it.hasPendingWork})
+            println("PROJECT_IDLE_READINESS properties=${draft.projectPropertiesLoaded} attachments=${draft.attachmentsLoaded} technologies=${draft.technologiesLoaded}")
+            synchronized(changes) {changes.entries.sortedByDescending {it.value.first}.take(18).forEach {println("PROJECT_IDLE_STATE ${it.key.javaClass.name} ${it.value}")}}
+        }
         val title="W".repeat(60)
         compose.onNodeWithText("Nombre").performTextReplacement(title)
         val layouts=mutableListOf<androidx.compose.ui.text.TextLayoutResult>()

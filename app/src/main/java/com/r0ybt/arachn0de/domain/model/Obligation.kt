@@ -14,6 +14,21 @@ data class Obligation(val amountMinor: Long, val currencyCode: String) {
     }
 }
 
+class PaymentCurrencyException : IllegalArgumentException(PaymentCurrencyPolicy.MESSAGE)
+
+/** Write policy only: historical values remain valid for reading and restoring backups. */
+object PaymentCurrencyPolicy {
+    const val MESSAGE = "Los nuevos pagos solo admiten CLP. El importe histórico en otra moneda se conserva y no puede modificarse ni convertirse."
+    fun requireNew(obligation: Obligation?) {
+        if (obligation != null && obligation.currencyCode != "CLP") throw PaymentCurrencyException()
+    }
+    fun requireEdit(previous: Obligation?, next: Obligation?) {
+        if (previous != null && previous.currencyCode != "CLP") {
+            if (next != previous) throw PaymentCurrencyException()
+        } else requireNew(next)
+    }
+}
+
 /** Exact money boundary. No floating point, exchange rates or cross-currency arithmetic. */
 object Money {
     fun currency(code: String): Currency {

@@ -35,19 +35,23 @@ class ReportFileProvider:FileProvider() {
     }
     private fun cardPipe(uri:Uri,mode:String):ParcelFileDescriptor {
         if(mode!="r") throw FileNotFoundException("Solo lectura.")
+        // Reject a closing/locked session before waiting for any file operation.
         try {cardFile(uri)} catch(_:Exception) {throw FileNotFoundException("Imagen no disponible.")}
-        val pipe=ParcelFileDescriptor.createReliablePipe()
-        Thread({
-            try {kotlinx.coroutines.runBlocking {
-                com.r0ybt.arachn0de.data.repository.AttachmentRepository.fileOperations.withLock {
-                    val target=cardFile(uri)
-                    SecureFiles.input(target).use {input->val buffer=ByteArray(32768);while(input.read(buffer)>=0) {}}
-                    ParcelFileDescriptor.AutoCloseOutputStream(pipe[1]).use {output->SecureFiles.input(target).use {it.copyTo(output)}}
+        val delivery=try {kotlinx.coroutines.runBlocking {
+            com.r0ybt.arachn0de.data.repository.AttachmentRepository.fileOperations.withLock {
+                val target=cardFile(uri)
+                val owner=if(protectedUri(uri)) {
+                    val app=requireNotNull(context).applicationContext as com.r0ybt.arachn0de.Arachn0deApplication
+                    requireNotNull(app.security.current.value).access.also {check(it.id.toString()==uri.pathSegments[1])}
+                } else null
+                CardShareDelivery.prepare(target,owner) {
+                    if(owner!=null) {owner.checkOpen();check(SecureFiles.activeProfile==owner.id)} else requireLegacyAllowed()
                 }
-            }} catch(_:Exception) {runCatching {pipe[1].closeWithError("Imagen no disponible.")}}
-        },"private-card-share").apply {isDaemon=true;start()}
-        return pipe[0]
+            }
+        }} catch(_:Exception) {throw FileNotFoundException("Imagen no disponible.")}
+        return try {delivery.start()} catch(_:Exception) {delivery.close();throw FileNotFoundException("Imagen no disponible.")}
     }
+
     private fun protectedUri(uri:Uri)=uri.pathSegments.firstOrNull()=="v1"
     private fun file(uri:Uri):File {
         val parts=uri.pathSegments;require(parts.size==3 && parts[0]=="v1")

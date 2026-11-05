@@ -1,10 +1,13 @@
 package com.r0ybt.arachn0de.ui
 
+
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
@@ -69,13 +72,16 @@ private val LocalBashBase=staticCompositionLocalOf<BashBase?> {null}
 @Composable internal fun GeneralCard(modifier:Modifier=Modifier,shape:Shape=CardDefaults.shape,
     colors:CardColors=CardDefaults.cardColors(),elevation:CardElevation=CardDefaults.cardElevation(),
     border:BorderStroke?=null,bashEntry:Boolean=false,onClick:(()->Unit)?=null,enabled:Boolean=true,content:@Composable ColumnScope.()->Unit) {
+    val decoratedContent:@Composable ColumnScope.()->Unit = {
+        CompositionLocalProvider(LocalIndicatorBackground provides colors.containerColor) {content()}
+    }
     if(LocalBashPresentation.current) {
         Column(modifier.then(if(onClick!=null) Modifier.clickable(enabled=enabled,onClick=onClick) else Modifier)) {
-            content()
+            decoratedContent()
             if(bashEntry) BashAsciiSeparator()
         }
-    } else if(onClick!=null) Card(onClick=onClick,enabled=enabled,modifier=modifier,shape=shape,colors=colors,elevation=elevation,border=border,content=content)
-    else Card(modifier=modifier,shape=shape,colors=colors,elevation=elevation,border=border,content=content)
+    } else if(onClick!=null) Card(onClick=onClick,enabled=enabled,modifier=modifier,shape=shape,colors=colors,elevation=elevation,border=border,content=decoratedContent)
+    else Card(modifier=modifier,shape=shape,colors=colors,elevation=elevation,border=border,content=decoratedContent)
 }
 
 internal fun bashFileName(title:String,purpose:NodePurpose) = title + when(purpose) {
@@ -83,9 +89,9 @@ internal fun bashFileName(title:String,purpose:NodePurpose) = title + when(purpo
     NodePurpose.NOTE -> ".note"
     else -> ".task"
 }
-internal fun bashListing(title:String,directory:Boolean):AnnotatedString = buildAnnotatedString {
+internal fun bashListing(title:String,directory:Boolean,color:Color?=null):AnnotatedString = buildAnnotatedString {
     append(if(directory) "drwx------ " else "-rw------- ")
-    withStyle(SpanStyle(color=if(directory) BashColors.Electric else BashColors.Terminal)) {append(title)}
+    withStyle(SpanStyle(color=color ?: if(directory) BashColors.Electric else BashColors.Terminal)) {append(title)}
 }
 
 /** Paths are display strings only; ancestry comes from the existing parent IDs. */

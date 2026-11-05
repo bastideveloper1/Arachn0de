@@ -68,7 +68,12 @@ class PersonMemoryTest {
         assertNotNull(db.personDao().get("person")!!.avatarFile)
         assertTrue(File(context.filesDir,"avatars/${db.personDao().get("person")!!.avatarFile}").exists())
         val old=BackupFixture.empty().copy(persons=listOf(PersonEntity("old","Anterior",legacy)),personPhotos=listOf(PersonPhotoEntity("photo","old",legacy,0)),avatars=mapOf(legacy to source().readBytes()))
-        val adapted=BackupJson.decode(BackupJson.encode(old))
+        // Exercise a real pre-publication format, rather than an empty current publication list.
+        val historical=org.json.JSONObject(BackupJson.encode(old).toString(Charsets.UTF_8)).apply {
+            put("dataVersion",31)
+            listOf("personMemories","personMemoryImages","calendarEvents","calendarEventPeople").forEach {remove(it)}
+        }
+        val adapted=BackupJson.decode(historical.toString().toByteArray())
         assertNull(adapted.personMemories.single().date)
         assertEquals("",adapted.personMemories.single().description)
         assertEquals("photo",adapted.personMemoryImages.single().legacyPhotoId)

@@ -1,6 +1,7 @@
 package com.r0ybt.arachn0de.metro
 
 import androidx.compose.animation.core.animateFloat
+import com.r0ybt.arachn0de.ui.GeneralCard
 import com.r0ybt.arachn0de.ui.ContextActionMenu
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Add
@@ -125,10 +126,11 @@ internal fun MetroScreen(nodes: List<Node>, projects: List<Project>, nodeId: Str
     var candidateOld by remember { mutableStateOf<MetroRoute?>(null) }
     var now by remember { mutableStateOf(metroTime(context)) }
     val lifecycle=LocalLifecycleOwner.current.lifecycle
-    LaunchedEffect(lifecycle,page,pick,tapped) {
+    val movingJourney=snapshot?.journeys.orEmpty().any {it.data.active?.let {s->s.pausedAt==null}==true}
+    LaunchedEffect(lifecycle,page,pick,tapped,movingJourney) {
         lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) {
             now=metroTime(context)
-            if(page=="Seguimiento" && pick==null && tapped==null) while(isActive) {delay(1000);now=metroTime(context)}
+            if(page=="Seguimiento" && pick==null && tapped==null && movingJourney) while(isActive) {delay(1000);now=metroTime(context)}
             else if(page in setOf("Planificar","Recorrido")) while(isActive) {delay(30_000);now=metroTime(context)}
         }
     }
@@ -269,7 +271,7 @@ internal fun MetroScreen(nodes: List<Node>, projects: List<Project>, nodeId: Str
         when(page) {
             "Aprendizaje" -> Box(Modifier.weight(1f)) {MetroStatisticsScreen(onBack={if(contextMenu) contextMenu=false else page="Inicio"},showHeader=false)}
             "Inicio" -> LazyColumn(Modifier.weight(1f),verticalArrangement=Arrangement.spacedBy(10.dp),contentPadding=PaddingValues(vertical=8.dp)) {
-                item { Card(Modifier.fillMaxWidth()) { Column(Modifier.padding(14.dp),verticalArrangement=Arrangement.spacedBy(8.dp)) {
+                item { GeneralCard(Modifier.fillMaxWidth()) { Column(Modifier.padding(14.dp),verticalArrangement=Arrangement.spacedBy(8.dp)) {
                     Text("Tu próximo recorrido",style=MaterialTheme.typography.titleLarge)
                     Text("Planifica y sigue un viaje sin conexión. Posición estimada por tiempo, sin GPS.",style=MaterialTheme.typography.bodyMedium)
                     Button(onClick={page="Planificar"},modifier=Modifier.fillMaxWidth()) {Text("Planificar viaje")}
@@ -494,7 +496,7 @@ internal fun MetroScreen(nodes: List<Node>, projects: List<Project>, nodeId: Str
                 items(state.journeys.sortedWith(compareBy<MetroJourney> {it.data.active==null}.thenBy {it.row.id}),key={it.row.id}) {journey->
                     val route=journey.data.active?.route ?: estimatePlan(journey.data.plan)
                     val routeNet=MetroCatalogRevision.forRoute(net,route.networkVersion)
-                    Card(Modifier.fillMaxWidth().testTag("metro-trip:${journey.row.id}").clickable {selectedId=journey.row.id;detailOptions=false;page=if(journey.data.active!=null) "Seguimiento" else "Recorrido"},colors=CardDefaults.cardColors(containerColor=MaterialTheme.colorScheme.surface,contentColor=MaterialTheme.colorScheme.onSurface)) {
+                    GeneralCard(Modifier.fillMaxWidth().testTag("metro-trip:${journey.row.id}").clickable {selectedId=journey.row.id;detailOptions=false;page=if(journey.data.active!=null) "Seguimiento" else "Recorrido"},colors=CardDefaults.cardColors(containerColor=MaterialTheme.colorScheme.surface,contentColor=MaterialTheme.colorScheme.onSurface)) {
                         Row(Modifier.padding(horizontal=12.dp,vertical=8.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(10.dp)) {
                             Icon(Icons.Default.DirectionsSubway,"Metro",tint=MaterialTheme.colorScheme.primary)
                             Column(Modifier.weight(1f)) {

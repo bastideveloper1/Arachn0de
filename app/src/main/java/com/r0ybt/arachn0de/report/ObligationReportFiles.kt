@@ -90,7 +90,7 @@ class ObligationReportFiles(private val context: Context) {
         return Intent(Intent.ACTION_SEND).apply {
             type = MIME
             putExtra(Intent.EXTRA_STREAM, uri)
-            clipData = ClipData.newRawUri("Informe de Obligaciones", uri)
+            clipData = ClipData.newRawUri("Informe de Pagos", uri)
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
         }
     }

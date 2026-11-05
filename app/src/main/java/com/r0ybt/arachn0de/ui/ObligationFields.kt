@@ -19,34 +19,43 @@ import java.util.Locale
 
 @Composable
 internal fun ObligationFields(draft: EditorDraft, enabled: Boolean, showToggle: Boolean = true) {
+    val historical=draft.currencyCode!="CLP"
     if (showToggle) Row {
         Checkbox(draft.financialEnabled, onCheckedChange = {
             draft.financialEnabled = it; draft.financialRemovalConfirmed = false
-        }, enabled = enabled, modifier = Modifier.testTag("obligation-enabled").semantics { contentDescription = "Obligación" })
-        Text("Obligación", Modifier.padding(top = 12.dp))
+        }, enabled = enabled && !(historical && draft.id!=null), modifier = Modifier.testTag("obligation-enabled").semantics { contentDescription = "Pago" })
+        Text("Pago", Modifier.padding(top = 12.dp))
     }
     if (draft.financialEnabled) {
         val result = remember(draft.amountText, draft.currencyCode, draft.moneyLocaleTag) { runCatching { draft.obligation() } }
         OutlinedTextField(draft.amountText, { draft.amountText = it }, label = { Text("Monto") },
-            supportingText = { Text("${Money.fractionDigits(draft.currencyCode)} decimales · ${Locale.forLanguageTag(draft.moneyLocaleTag).displayName}") },
-            isError = result.isFailure, singleLine = true, enabled = enabled,
+            supportingText = { Text("${draft.currencyCode} · ${Money.fractionDigits(draft.currencyCode)} decimales · ${Locale.forLanguageTag(draft.moneyLocaleTag).displayName}") },
+            isError = result.isFailure, singleLine = true, enabled = enabled && !historical,
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), modifier = Modifier.fillMaxWidth())
-        @OptIn(ExperimentalLayoutApi::class)
-        FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            (listOf("CLP", "USD", "EUR") + draft.currencyCode).distinct().forEach { code ->
-                FilterChip(draft.currencyCode == code, onClick = { draft.currencyCode = code }, enabled = enabled, label = { Text(code) })
-            }
-        }
+        if(historical)Text(PaymentCurrencyPolicy.MESSAGE,color=Arachn0deColors.TextSecondary)
         if (result.isFailure) Text(result.exceptionOrNull()?.message ?: "Revisa el monto.", color = Arachn0deColors.Destructive, fontSize = 12.sp)
     }
 }
 
 @Composable
-internal fun ObligationIndicator(node: Node) {
+internal fun ObligationIndicator(node: Node,compactSummary:Boolean=true) {
     if (!node.isCompletable) return
     val obligation = node.obligation ?: return
     val locale = LocalConfiguration.current.locales[0]
-    Text(Money.format(obligation, locale), color = Arachn0deColors.PathHighlight, fontSize = 12.sp)
+    val paid=LocalBankPaid.current[node.id] ?: 0L
+    val remainder=(obligation.amountMinor-paid).coerceAtLeast(0)
+    val extra=if(paid>0) {
+        " · Abonado Banca: "+Money.format(java.math.BigInteger.valueOf(paid),obligation.currencyCode,locale)+
+            (if(node.isCompleted && remainder>0) " · Resto completado manualmente, sin movimiento Banca" else " · Pendiente: "+Money.format(java.math.BigInteger.valueOf(remainder),obligation.currencyCode,locale))
+    } else if(node.isCompleted) " · Completada sin movimiento Banca" else ""
+    val summary=if(compactSummary && paid>0) {
+        when {
+            !node.isCompleted && remainder>0 -> "Pendiente: "+Money.format(java.math.BigInteger.valueOf(remainder),obligation.currencyCode,locale)
+            remainder==0L -> Money.format(obligation,locale)+" · Pagada"
+            else -> Money.format(obligation,locale)+" · Completada"
+        }
+    } else Money.format(obligation, locale)+extra
+    Text(summary, color = Arachn0deColors.PathHighlight, fontSize = 12.sp)
 }
 
 @Composable

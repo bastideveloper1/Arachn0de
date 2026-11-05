@@ -14,9 +14,10 @@ data class ProjectEntity(
     val createdAt: Long,
     val updatedAt: Long,
     @ColumnInfo(defaultValue="0") val isPinned:Boolean=false,
+    @ColumnInfo(defaultValue="0") val verificationEnabled:Boolean=false,
 ) {
     constructor(id: String, name: String, description: String, createdAt: Long, updatedAt: Long) :
         this(id, name, description, 0, createdAt, updatedAt)
 }
 
-internal fun ProjectEntity.toProject() = Project(id, name, description, position, createdAt, updatedAt,isPinned=isPinned)
+internal fun ProjectEntity.toProject() = Project(id, name, description, position, createdAt, updatedAt,isPinned=isPinned,verificationEnabled=verificationEnabled)

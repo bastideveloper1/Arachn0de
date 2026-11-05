@@ -14,20 +14,14 @@ plugins {
     alias(libs.plugins.androidx.room)
 }
 
-// Values come from external settings or Android Studio's signed-APK wizard, never source files.
+// Official signing is enabled only by the interactive packaging helper.
 val releaseCredentialNames = listOf(
     "ARACHNODE_KEYSTORE_PATH", "ARACHNODE_KEYSTORE_PASSWORD",
     "ARACHNODE_KEY_ALIAS", "ARACHNODE_KEY_PASSWORD",
 )
-val studioSigningProperties = mapOf(
-    "ARACHNODE_KEYSTORE_PATH" to "android.injected.signing.store.file",
-    "ARACHNODE_KEYSTORE_PASSWORD" to "android.injected.signing.store.password",
-    "ARACHNODE_KEY_ALIAS" to "android.injected.signing.key.alias",
-    "ARACHNODE_KEY_PASSWORD" to "android.injected.signing.key.password",
-)
+val interactiveSigning = providers.environmentVariable("ARACHNODE_INTERACTIVE_SIGNING").orNull == "1"
 val releaseCredentials = releaseCredentialNames.associateWith { name ->
-    providers.gradleProperty(studioSigningProperties.getValue(name))
-        .orElse(providers.environmentVariable(name)).orElse(providers.gradleProperty(name)).orNull
+    if (interactiveSigning) providers.environmentVariable(name).orNull else null
 }
 
 abstract class ValidateReleaseSigning : DefaultTask() {
@@ -72,8 +66,8 @@ android {
         applicationId = "com.r0ybt.arachn0de"
         minSdk = 24
         targetSdk = 36
-        versionCode = 20
-        versionName = "0.6.0"
+        versionCode = 44
+        versionName = "0.29.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }

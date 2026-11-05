@@ -42,7 +42,7 @@ class PersonPersonalDataTest {
         sql.execSQL("INSERT INTO node_person VALUES ('t','a')");helper.close()
         val db=Arachn0deDatabase.create(context)
         try {
-            assertEquals(47,db.openHelper.writableDatabase.version)
+            assertEquals(50, db.openHelper.writableDatabase.version)
             assertEquals("Luna",db.personDao().get("a")!!.name)
             assertEquals("Nombre sin apodo",db.personDao().get("b")!!.name)
             assertEquals("Sin ficha",db.personDao().get("c")!!.name)

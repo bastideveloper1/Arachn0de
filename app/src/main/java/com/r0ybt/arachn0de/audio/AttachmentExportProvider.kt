@@ -16,6 +16,7 @@ class AttachmentExportProvider:ContentProvider() {
     override fun onCreate()=true
     private fun session(uri:Uri):VaultSession {
         val session=(context!!.applicationContext as Arachn0deApplication).security.current.value ?: error("Almacén bloqueado.")
+        session.access.checkOpen();check(SecureFiles.activeProfile==session.access.id)
         require(uri.pathSegments.size==2 && uri.pathSegments[0]==session.access.id.toString())
         return session
     }
@@ -23,12 +24,16 @@ class AttachmentExportProvider:ContentProvider() {
     override fun getType(uri:Uri)=row(uri).mimeType
     override fun query(uri:Uri,projection:Array<out String>?,selection:String?,selectionArgs:Array<out String>?,sortOrder:String?):Cursor {
         val row=row(uri);val columns=(projection ?: arrayOf(OpenableColumns.DISPLAY_NAME,OpenableColumns.SIZE)).filter {it==OpenableColumns.DISPLAY_NAME || it==OpenableColumns.SIZE}
-        return MatrixCursor(columns.toTypedArray()).apply {addRow(columns.map<String,Any> {if(it==OpenableColumns.DISPLAY_NAME) row.originalName else row.byteSize}.toTypedArray())}
+        val publicSize=if(OpenableColumns.SIZE in columns && row.mimeType.startsWith("image/")) runBlocking(Dispatchers.IO) {
+            val bytes=publicAttachmentBytes(session(uri).attachments,row)
+            try {bytes.size.toLong()} finally {bytes.fill(0)}
+        } else row.byteSize
+        return MatrixCursor(columns.toTypedArray()).apply {addRow(columns.map<String,Any> {if(it==OpenableColumns.DISPLAY_NAME) row.originalName else publicSize}.toTypedArray())}
     }
     override fun openFile(uri:Uri,mode:String):ParcelFileDescriptor {
         require(mode=="r");val owner=session(uri);val row=row(uri)
         SecureFiles.requireActive(owner.attachments.localFile(row))
-        val bytes=runBlocking(Dispatchers.IO) {originalAttachmentBytes(owner.attachments,row)}
+        val bytes=runBlocking(Dispatchers.IO) {publicAttachmentBytes(owner.attachments,row)}
         val pipe=ParcelFileDescriptor.createReliablePipe()
         val reservation=AutoCloseable {bytes.fill(0);runCatching {pipe[1].closeWithError("Almacén bloqueado.")}}
         try {owner.access.retain(reservation)} catch(e:Exception) {bytes.fill(0);pipe.forEach {runCatching {it.close()}};throw e}

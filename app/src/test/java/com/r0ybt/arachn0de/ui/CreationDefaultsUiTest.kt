@@ -87,7 +87,7 @@ class CreationDefaultsUiTest {
 
     @Test fun globalSettingsPersistAndUnsavedSettingsSurviveActivityRecreation() {
         runBlocking { app.nodeRepository.creationDefaults.save(DefaultsScope.Global,CreationDefaults(obligation=DefaultValue.Own(true),priority=DefaultValue.Own(Priority.HIGH),start=DefaultValue.Own(DefaultDate(DefaultDateKind.TOMORROW)),due=DefaultValue.Own(DefaultDate(DefaultDateKind.TODAY)))) }
-        open();settings();choose("Moneda","USD");choose("Tipo","Nota")
+        open();settings();compose.onNodeWithTag("defaults-choice:Moneda").assertDoesNotExist();choose("Tipo","Nota")
         recreateHost();await("Guardar valores predeterminados")
         compose.onNodeWithTag("defaults-choice:Tipo").performScrollTo().assert(hasText("Aquí · Nota"))
         save();assertEquals(NodePurpose.NOTE,runBlocking { app.nodeRepository.creationDefaults.configuration(DefaultsScope.Global).effective.purpose })
@@ -100,18 +100,18 @@ class CreationDefaultsUiTest {
         runBlocking { app.nodeRepository.creationDefaults.save(DefaultsScope.Global,CreationDefaults(currency=DefaultValue.Own("USD"),priority=DefaultValue.Own(Priority.MEDIUM))) }
         open();compose.onNodeWithTag("nodes-list").performScrollToNode(hasText("Cuentas"));compose.onNode(hasText("Cuentas") and hasAnyAncestor(hasTestTag("nodes-list"))).performClick();compose.onNodeWithTag("nodes-list").performScrollToIndex(0)
         compose.onNodeWithContentDescription("Opciones del elemento").performScrollTo().performClick();compose.onNodeWithText("Valores predeterminados").performScrollTo().performClick();await("Guardar valores predeterminados")
-        compose.onNodeWithTag("defaults-choice:Moneda").performScrollTo().assert(hasText("Heredar · USD"))
-        choose("Moneda","CLP")
+        compose.onNodeWithTag("defaults-choice:Moneda").assertDoesNotExist()
+        choose("Prioridad","Prioritario")
         compose.runOnUiThread {
             val dialog=org.robolectric.shadows.ShadowDialog.getLatestDialog() as androidx.activity.OnBackPressedDispatcherOwner
             dialog.onBackPressedDispatcher.onBackPressed()
         }
         compose.onNodeWithText("¿Descartar cambios de configuración?").assertExists()
         compose.onNodeWithText("Seguir editando").performClick();save()
-        val effective=runBlocking { app.nodeRepository.creationDefaults.resolve(project.id,layer.id) };assertEquals("CLP",effective.currency);assertEquals(Priority.MEDIUM,effective.priority)
+        val effective=runBlocking { app.nodeRepository.creationDefaults.resolve(project.id,layer.id) };assertEquals("USD",effective.currency);assertEquals(Priority.HIGH,effective.priority)
         compose.onNodeWithContentDescription("Opciones del elemento").performScrollTo().performClick();compose.onNodeWithText("Valores predeterminados").performScrollTo().performClick();await("Guardar valores predeterminados")
         compose.onNodeWithText("Restablecer herencia").performScrollTo().performClick();compose.onNodeWithText("Cancelar").performClick()
-        assertEquals("CLP",runBlocking { app.nodeRepository.creationDefaults.resolve(project.id,layer.id).currency })
+        assertEquals("USD",runBlocking { app.nodeRepository.creationDefaults.resolve(project.id,layer.id).currency })
         compose.onNodeWithText("Restablecer herencia").performScrollTo().performClick();compose.onNodeWithText("Restablecer").performClick();await("Configuración guardada");compose.onNodeWithText("Volver").performClick();await("Nuevo elemento")
         assertEquals("USD",runBlocking { app.nodeRepository.creationDefaults.resolve(project.id,layer.id).currency })
     }

@@ -89,7 +89,7 @@ internal class AudioDraftStore(private val context:Context,private val db:Arachn
                 val node=requireNotNull(db.nodeDao().getById(owner))
                 dao.attachNode(listOf(NodeAttachmentEntity(owner,id)))
                 val description=if(id in AttachmentReferences.ids(node.description)) node.description else node.description+"\n"+AttachmentReferences.audioToken(id)
-                check(db.nodeDao().updateContent(owner,node.title,description,node.updatedAt)==1)
+                check(db.nodeDao().updateContent(owner,node.title,description,if(node.projectId==null) System.currentTimeMillis() else node.updatedAt)==1)
                 dao.recordingState(id,"COMMITTED")
             }
             // Physical cleanup failure cannot resurrect an explicitly removed, committed audio.

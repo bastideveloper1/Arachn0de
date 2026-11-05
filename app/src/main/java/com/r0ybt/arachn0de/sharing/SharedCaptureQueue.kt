@@ -73,7 +73,7 @@ internal class SharedCaptureQueue(private val db:Arachn0deDatabase,internal val 
         attachments.discardDraft(id)
         db.withTransaction {remove(id)}
     }
-    suspend fun save(id:String,destination:String,title:String,description:String,removed:Set<String>)=withContext(Dispatchers.IO) {
+    suspend fun save(id:String,destination:String?,title:String,description:String,removed:Set<String>)=withContext(Dispatchers.IO) {
         attachments.saveNodeDraft(id,listOf(id),description,removed) {effective->
             val row=requireNotNull(entries().firstOrNull {it.id==id && it.phase=="READY"}) {"La captura ya fue procesada."}
             AccessRepository(db).capture(destination,title,effective,id,

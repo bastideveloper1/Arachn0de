@@ -12,11 +12,10 @@ internal class PersonActions(private val repository: PersonRepository, scope: Co
         operation.submit("No se pudo eliminar la Persona. Puedes reintentar.", { repository.delete(id) }, onSuccess)
     fun assign(nodeId: String, ids: Set<String>, onSuccess: () -> Unit) =
         operation.submit("No se pudieron guardar los responsables. Puedes reintentar.", { repository.setResponsiblePeople(nodeId, ids) }, onSuccess)
-    fun import(uri: Uri, onSuccess: (String) -> Unit) {
+    fun import(uri: Uri, onFinished:()->Unit = {}, sourceFile:java.io.File?=null, onResult:((Boolean)->Unit)?=null, onSuccess: (String) -> Unit) {
         var file: String? = null
         operation.submit("No se pudo importar la imagen. Selecciona otra imagen (máximo 20 MB).", {
-            file = repository.importAvatar(uri)
-            true
+            try {file = repository.importAvatar(uri,sourceFile);onResult?.invoke(true);true} catch(failure:Throwable) {onResult?.invoke(false);throw failure} finally {onFinished()}
         }, { onSuccess(checkNotNull(file)) })
     }
 }

@@ -1,4 +1,6 @@
 package com.r0ybt.arachn0de.ui
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
 
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.CalendarMonth
@@ -46,6 +48,7 @@ internal fun PeopleScreen(repository: PersonRepository, initialPersonId:String?=
     var peopleReady by remember {mutableStateOf(false)}
     LaunchedEffect(repository, load.attempt) { load.collect(repository.observePeople()) { people = it;peopleReady=true } }
     var detailId by rememberSaveable { mutableStateOf(initialPersonId) }
+    val favorites by remember(repository) {repository.observeFavorites()}.collectAsState(initial=null)
     val profiles by remember(repository) {repository.observeProfiles()}.collectAsState(initial=null)
     val technologies by remember(repository) {repository.observeTechnologyCatalog()}.collectAsState(emptyList())
     val personTechnologies by remember(repository) {repository.observePersonTechnologies()}.collectAsState(emptyList())
@@ -58,6 +61,7 @@ internal fun PeopleScreen(repository: PersonRepository, initialPersonId:String?=
     val birthdays by remember(repository) {repository.observeBirthdays()}.collectAsState(initial=null as List<com.r0ybt.arachn0de.data.local.PersonBirthdayEntity>?)
     val identityRows by remember(repository) {repository.observeSelf().map {listOfNotNull(it)}}.collectAsState(initial=null)
     var entryResolved by rememberSaveable {mutableStateOf(initialPersonId!=null)}
+    LaunchedEffect(repository) {repository.ensurePrincipal()}
     var resolvedPrincipal by rememberSaveable {mutableStateOf<String?>(null)}
     LaunchedEffect(identityRows,peopleReady,people,entryResolved) {
         if(initialPersonId==null && identityRows!=null && peopleReady) {
@@ -67,9 +71,6 @@ internal fun PeopleScreen(repository: PersonRepository, initialPersonId:String?=
             }
         }
     }
-    var ownInitialized by rememberSaveable {mutableStateOf(false)}
-    var ownPerson by rememberSaveable {mutableStateOf(false)}
-    var initialOwnPerson by rememberSaveable {mutableStateOf(false)}
     var isNew by rememberSaveable { mutableStateOf(false) }
     var profileValues by rememberSaveable {mutableStateOf(List(9) {""})}
     var initialProfileValues by rememberSaveable {mutableStateOf(List(9) {""})}
@@ -97,11 +98,18 @@ internal fun PeopleScreen(repository: PersonRepository, initialPersonId:String?=
         val pending = pendingPhoto; pendingPhoto = null
         scope.launch { repository.discardAvatar(file, owner); repository.discardAvatar(pending, owner) }
     }
+    val camera=rememberPrivatePhotoCamera(!busy && editorId!=null,{actions.operation.report(it)}) {photo,done->
+        val owner=editorId
+        if(owner==null) done(false) else actions.import(android.net.Uri.EMPTY,onResult=done,sourceFile=photo.file) {imported->
+            if(editorId==owner) {val old=avatar;avatar=imported;zoom=1f;frameX=0f;frameY=0f;scope.launch {repository.discardAvatar(old,owner)}}
+            else scope.launch {repository.discardAvatar(imported,owner)}
+        }
+    }
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
         pickerOpen=false
         val owner=editorId
         if (uri != null && owner != null) actions.import(uri) { imported ->
-            if(editorId==owner && !cropOpen && pendingPhoto==null) {pendingPhoto=imported;cropOpen=true}
+            if(editorId==owner && !cropOpen && pendingPhoto==null) {val old=avatar;avatar=imported;zoom=1f;frameX=0f;frameY=0f;scope.launch {repository.discardAvatar(old,owner)}}
             else scope.launch {repository.discardAvatar(imported,owner)}
         }
     }
@@ -112,22 +120,17 @@ internal fun PeopleScreen(repository: PersonRepository, initialPersonId:String?=
         catch(e:Exception) {pickerOpen=false;throw e}
     }
     fun openCrop() {if(!busy && !pickerOpen && !cropOpen && avatar!=null) cropOpen=true}
-    fun changed()=profileValues!=initialProfileValues || birthday!=initialBirthday || ownPerson!=initialOwnPerson ||
+    fun changed()=profileValues!=initialProfileValues || birthday!=initialBirthday ||
         listOf(name,avatar,zoom.toString(),frameX.toString(),frameY.toString())!=initialIdentity
     fun cancelEditor() {if(changed()) confirmDiscard=true else discardDraft()}
     BackHandler { if (!busy) { if (editorId != null) cancelEditor() else if (deletingId != null) deletingId = null else onBack() } }
     fun edit(person:Person) {
         if(editorId!=null || profiles==null || birthdays==null || identityRows==null) return
-        detailId=person.id;detailSection="General";detailRequest++
+        detailId=person.id;detailSection="Información";detailRequest++
     }
-    fun newPerson() {editorId=UUID.randomUUID().toString();isNew=true;ownInitialized=true;ownPerson=false;initialOwnPerson=false;name="";avatar=null;zoom=1f;frameX=0f;frameY=0f;profileValues=List(9) {""};initialProfileValues=profileValues;birthday="";initialBirthday="";initialIdentity=listOf(name,avatar,zoom.toString(),frameX.toString(),frameY.toString())}
-    LaunchedEffect(editorId,identityRows) {
-        if(editorId!=null && !ownInitialized && identityRows!=null) {
-            ownPerson=identityRows!!.firstOrNull()?.personId==editorId;initialOwnPerson=ownPerson;ownInitialized=true
-        }
-    }
+    fun newPerson() {editorId=UUID.randomUUID().toString();isNew=true;name="";avatar=null;zoom=1f;frameX=0f;frameY=0f;profileValues=List(9) {""};initialProfileValues=profileValues;birthday="";initialBirthday="";initialIdentity=listOf(name,avatar,zoom.toString(),frameX.toString(),frameY.toString())}
     if(detailId!=null) Surface(Modifier.fillMaxSize(),color=Arachn0deColors.Background) {
-        key(detailId,detailRequest) {PersonDetailView(detailId!!,people,repository,::edit,detailSection,onNewPerson=::newPerson,onDeletePerson={deletingId=it.id}) {if(initialPersonId!=null || detailId==identityRows?.firstOrNull()?.personId) onBack() else detailId=null}}
+        key(detailId,detailRequest) {PersonDetailView(detailId!!,people,repository,::edit,detailSection,onNewPerson=::newPerson,onDeletePerson={if(it.id!=identityRows?.firstOrNull()?.personId) deletingId=it.id}) {if(initialPersonId!=null || detailId==identityRows?.firstOrNull()?.personId) onBack() else detailId=null}}
     } else if(!entryResolved) Surface(Modifier.fillMaxSize(),color=Arachn0deColors.Background) {Text("Cargando perfil principal…")}
     else Surface(Modifier.fillMaxSize(), color = Arachn0deColors.Background) {
         Column(Modifier.fillMaxSize().padding(14.dp)) {
@@ -141,7 +144,7 @@ internal fun PeopleScreen(repository: PersonRepository, initialPersonId:String?=
                 FilterChip(category.isEmpty(),{category=""},label={Text("Todas")})
                 PersonCategory.entries.filter {c->relations.any {it.category==c.name}}.forEach {c->FilterChip(category==c.name,{category=c.name},label={Text(c.label)})}
             }
-            val filtered=people.filter {p->(p.name.contains(search.trim(),true) || profiles.orEmpty().firstOrNull {it.personId==p.id}?.alias?.contains(search.trim(),true)==true) && (category.isEmpty() || relations.any {it.category==category && (it.sourceId==p.id || it.targetId==p.id)})}
+            val filtered=people.filter {p->personVisibleName(p,profiles.orEmpty().firstOrNull {it.personId==p.id}).contains(search.trim(),true) && (category.isEmpty() || relations.any {it.category==category && (it.sourceId==p.id || it.targetId==p.id)})}
             if(filtered.isEmpty()) Text(if(people.isEmpty()) "Aún no hay Personas. Crea la primera con Nueva Persona." else "No hay coincidencias.")
             val technologyIdsByPerson=remember(personTechnologies) {personTechnologies.groupBy {it.personId}}
             val birthdayByPerson=remember(birthdays) {birthdays.orEmpty().associateBy {it.personId}}
@@ -150,40 +153,53 @@ internal fun PeopleScreen(repository: PersonRepository, initialPersonId:String?=
             val locale=androidx.compose.ui.platform.LocalConfiguration.current.locales[0]
             LazyColumn(Modifier.weight(1f).fillMaxWidth().testTag("people-list"),verticalArrangement=Arrangement.spacedBy(8.dp)) {
                 items(filtered,key={it.id}) {person->
+                    val visibleName=personVisibleName(person,profiles.orEmpty().firstOrNull {it.personId==person.id})
                     var menu by remember {mutableStateOf(false)}
-                    val birth=birthdayByPerson[person.id]?.date?.let {runCatching {java.time.LocalDate.parse(it)}.getOrNull()}
+                    val birth=birthdayByPerson[person.id]?.date?.let {runCatching {com.r0ybt.arachn0de.data.local.PersonBirthDate.parse(it)}.getOrNull()}
                     val assignedIds=technologyIdsByPerson[person.id].orEmpty().map {it.technologyId}.toSet()
-                    val assigned=technologies.filter {it.id in assignedIds}.take(3)
-                    Card(Modifier.fillMaxWidth().testTag("person-card:${person.id}").clickable {detailId=person.id;detailSection=initialSection},
+                    val assigned=emptyList<com.r0ybt.arachn0de.data.local.TechnologyEntity>()
+                    GeneralCard(Modifier.fillMaxWidth().testTag("person-card:${person.id}").clickable {detailId=person.id;detailSection=initialSection},
                         shape=androidx.compose.foundation.shape.RoundedCornerShape(8.dp),colors=CardDefaults.cardColors(containerColor=Arachn0deColors.Surface)) {
                         Row(Modifier.fillMaxWidth().padding(10.dp),verticalAlignment=androidx.compose.ui.Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(12.dp)) {
-                            PersonPhoto(person,Modifier.size(64.dp).clip(androidx.compose.foundation.shape.RoundedCornerShape(6.dp)),framed=true)
+                            PersonPhoto(person.copy(name=visibleName),Modifier.size(64.dp).clip(androidx.compose.foundation.shape.RoundedCornerShape(6.dp)),framed=true)
                             Column(Modifier.weight(1f),verticalArrangement=Arrangement.spacedBy(4.dp)) {
                                 Row(verticalAlignment=androidx.compose.ui.Alignment.CenterVertically) {
-                                    Text(person.name,Modifier.weight(1f).testTag("person-name:${person.id}"),maxLines=1,overflow=androidx.compose.ui.text.style.TextOverflow.Ellipsis,style=MaterialTheme.typography.titleSmall)
-                                    if(birth!=null && birth.monthValue==today.monthValue && birth.dayOfMonth==today.dayOfMonth)
+                                    Text(personVisibleName(person,profiles.orEmpty().firstOrNull {it.personId==person.id}),Modifier.weight(1f).testTag("person-name:${person.id}"),maxLines=1,overflow=androidx.compose.ui.text.style.TextOverflow.Ellipsis,style=MaterialTheme.typography.titleSmall)
+                                    if(birth!=null && birth.day.monthValue==today.monthValue && birth.day.dayOfMonth==today.dayOfMonth)
                                         Icon(androidx.compose.material.icons.Icons.Default.Cake,"Cumpleaños hoy",Modifier.size(18.dp),tint=androidx.compose.ui.graphics.Color(0xFFD39BAE))
                                 }
                                 if(birth!=null) Row(verticalAlignment=androidx.compose.ui.Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(4.dp)) {
                                     LucideIcon(androidx.compose.material.icons.Icons.Default.CalendarMonth,null,Modifier.size(14.dp),tint=Arachn0deColors.TextSecondary)
-                                    Text(birth.format(java.time.format.DateTimeFormatter.ofLocalizedDate(java.time.format.FormatStyle.MEDIUM).withLocale(locale)),style=MaterialTheme.typography.bodySmall,color=Arachn0deColors.TextSecondary,maxLines=1)
+                                    Text(birth.format(locale),style=MaterialTheme.typography.bodySmall,color=Arachn0deColors.TextSecondary,maxLines=1)
                                 }
                                 if(assigned.isNotEmpty()) Row(horizontalArrangement=Arrangement.spacedBy(4.dp)) {assigned.forEach {TechnologyIcon(it,24.dp)}}
                             }
+                            PersonFavoriteButton(person.id,favorites,repository)
                             Box {
-                                IconButton(enabled=!busy,onClick={menu=true},modifier=Modifier.size(48.dp).testTag("person-options:${person.id}")) {LucideIcon(androidx.compose.material.icons.Icons.Default.MoreVert,"Opciones de ${person.name}")}
-                                if(menu) ContextActionMenu(person.name,{menu=false}) {
+                                IconButton(enabled=!busy,onClick={menu=true},modifier=Modifier.size(48.dp).testTag("person-options:${person.id}")) {LucideIcon(androidx.compose.material.icons.Icons.Default.MoreVert,"Opciones de $visibleName")}
+                                if(menu) ContextActionMenu(personVisibleName(person,profiles.orEmpty().firstOrNull {it.personId==person.id}),{menu=false}) {
                                     action("Información general",androidx.compose.material.icons.Icons.Default.Edit,{menu=false;edit(person)},enabled=!busy && profiles!=null && birthdays!=null && identityRows!=null)
-                                    action("Eliminar perfil",androidx.compose.material.icons.Icons.Default.Delete,{menu=false;deletingId=person.id},enabled=!busy,destructive=true)
+                                    if(person.id!=identityRows?.firstOrNull()?.personId) action("Eliminar perfil",androidx.compose.material.icons.Icons.Default.Delete,{menu=false;deletingId=person.id},enabled=!busy,destructive=true)
                                 }
                             }
                         }
                     }
                 }
             }
-            Row(Modifier.fillMaxWidth().padding(top=8.dp),horizontalArrangement=Arrangement.spacedBy(8.dp),verticalAlignment=androidx.compose.ui.Alignment.CenterVertically) {
-                OutlinedTextField(search,{search=it},label={Text("Buscar Personas")},singleLine=true,modifier=Modifier.weight(1f))
-                Button(enabled=!busy,onClick=::newPerson) {Text("Nueva Persona")}
+            BoxWithConstraints(Modifier.fillMaxWidth()) {
+                val menuFits=maxWidth>=360.dp*androidx.compose.ui.platform.LocalDensity.current.fontScale
+                ContextualBottomPanel {
+                AlternatingBottomBar {
+                    Row(Modifier.fillMaxWidth().padding(top=8.dp).testTag("people-navigation-actions"),horizontalArrangement=Arrangement.spacedBy(8.dp),verticalAlignment=androidx.compose.ui.Alignment.CenterVertically) {
+                        OutlinedTextField(search,{search=it},label={Text("Buscar Personas")},singleLine=true,modifier=Modifier.weight(1f))
+                        Box(Modifier.weight(1f)) {
+                            CompactBarActions(listOf(BottomBarAction("Nueva Persona",Icons.Default.Add,!busy,run=::newPerson)),iconAbove=false,style=MaterialTheme.typography.labelLarge) {a->
+                                Button(enabled=a.enabled,onClick=a.run,modifier=Modifier.weight(1f).heightIn(min=48.dp)) {Text(a.label)}
+                            }
+                        }
+                    }
+                }
+                }
             }
         }
     }
@@ -197,7 +213,8 @@ internal fun PeopleScreen(repository: PersonRepository, initialPersonId:String?=
                             Row(Modifier.fillMaxWidth(),verticalAlignment=androidx.compose.ui.Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(12.dp)) {
                                 PersonPhoto(Person(id,name.ifBlank {"?"},avatar,zoom,frameX,frameY),Modifier.size(80.dp).clip(androidx.compose.foundation.shape.RoundedCornerShape(8.dp)).clickable(enabled=!busy && !pickerOpen && !cropOpen,onClickLabel="Cambiar fotografía") {pickPhoto()},framed=true)
                                 Column(Modifier.weight(1f)) {
-                                    TextButton(enabled=!busy && !pickerOpen && !cropOpen,onClick={pickPhoto()}) {Text("Cambiar fotografía")}
+                                    TextButton(enabled=!busy && !pickerOpen && !cropOpen,onClick={pickPhoto()}) {Text("Galería")}
+                                    TextButton(enabled=!busy && !pickerOpen && !cropOpen,onClick=camera) {Text("Cámara")}
                                     if(avatar!=null) TextButton(enabled=!busy && !pickerOpen && !cropOpen,onClick={openCrop()}) {Text("Ajustar encuadre")}
                                     if(avatar!=null) TextButton(enabled=!busy,onClick={
                                         val old=avatar;val owner=editorId;avatar=null;zoom=1f;frameX=0f;frameY=0f
@@ -205,9 +222,9 @@ internal fun PeopleScreen(repository: PersonRepository, initialPersonId:String?=
                                     }) {Text("Quitar avatar")}
                                 }
                             }
-                            OutlinedTextField(name,{name=it},label={Text("Apodo")},modifier=Modifier.fillMaxWidth(),enabled=!busy,singleLine=true)
-                            listOf("Apodo","Biografía","Teléfonos","Correos","Direcciones","Enlaces").forEachIndexed {index,label->
-                                if(index==0) return@forEachIndexed
+                            OutlinedTextField(name,{name=it},label={Text("Nombre")},modifier=Modifier.fillMaxWidth(),enabled=!busy,singleLine=true)
+                            listOf("Nombre","Biografía","Teléfono","Correo electrónico","","Enlaces").forEachIndexed {index,label->
+                                if(index==0 || index==4) return@forEachIndexed
                                 OutlinedTextField(profileValues[index],{value->
                                     if(value.length<=if(index==1) maxOf(150,initialProfileValues[1].length) else 16000)
                                         profileValues=profileValues.toMutableList().also {it[index]=value}
@@ -216,24 +233,14 @@ internal fun PeopleScreen(repository: PersonRepository, initialPersonId:String?=
                                     supportingText=if(index==1) {{Text("${profileValues[1].length}/150")}} else null)
                                 if(index==1) {Text("Fecha de nacimiento",style=MaterialTheme.typography.labelLarge);BirthdayField(birthday,{birthday=it},enabled=!busy)}
                             }
-                            Text("Datos personales",style=MaterialTheme.typography.titleSmall)
-                            listOf("Nombre","Apellidos","DNI / RUT").forEachIndexed {offset,label->
-                                val index=offset+6
-                                OutlinedTextField(profileValues.getOrElse(index) {""},{value->if(value.length<=maxOf(16000,initialProfileValues.getOrElse(index) {""}.length))
-                                    profileValues=profileValues.toMutableList().also {while(it.size<9) it.add("");it[index]=value}},
-                                    label={Text(label)},modifier=Modifier.fillMaxWidth(),enabled=!busy,singleLine=true)
-                            }
-                            Row(Modifier.fillMaxWidth().heightIn(min=48.dp).clickable(enabled=!busy && ownInitialized) {ownPerson=!ownPerson},verticalAlignment=androidx.compose.ui.Alignment.CenterVertically) {
-                                Checkbox(ownPerson,null,enabled=!busy && ownInitialized);Text("Soy yo")
-                            }
                         }
                         Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.End) {
                             TextButton(enabled=!busy,onClick={cancelEditor()}) {Text("Cancelar")}
-                            TextButton(enabled=!busy && ownInitialized && profiles!=null && birthdays!=null && identityRows!=null && name.isNotBlank() && (profileValues[1].length<=150 || profileValues[1]==initialProfileValues[1]),onClick={
+                            TextButton(enabled=!busy && profiles!=null && birthdays!=null && identityRows!=null && name.isNotBlank() && com.r0ybt.arachn0de.data.local.PersonBirthDate.valid(birthday) && (profileValues[1].length<=150 || profileValues[1]==initialProfileValues[1]),onClick={
                                 val original=profiles.orEmpty().firstOrNull {it.personId==id} ?: PersonProfileEntity(id)
-                                val updated=original.copy(alias=name.trim(),description=profileValues[1],phones=profileValues[2],emails=profileValues[3],addresses=profileValues[4],links=profileValues[5],givenName=profileValues.getOrElse(6) {""},familyName=profileValues.getOrElse(7) {""},documentId=profileValues.getOrElse(8) {""})
+                                val updated=original.copy(givenName=name.trim(),description=profileValues[1],phones=profileValues[2],emails=profileValues[3],links=profileValues[5])
                                 actions.save(id,name,avatar,isNew,framing(),birthday=if(birthday!=initialBirthday) birthday else null,
-                                    identity=if(ownPerson!=initialOwnPerson) ownPerson else null,profile=updated) {editorId=null;scope.launch {repository.discardAvatar(avatar,id)}}
+                                    profile=updated) {editorId=null;scope.launch {repository.discardAvatar(avatar,id)}}
                             }) {Text("Guardar")}
                         }
                     }

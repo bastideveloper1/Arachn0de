@@ -13,6 +13,8 @@ import androidx.compose.ui.unit.dp
 import com.r0ybt.arachn0de.Arachn0deApplication
 import com.r0ybt.arachn0de.ui.theme.*
 import org.junit.Assert.*
+import org.junit.After
+import kotlinx.coroutines.cancelAndJoin
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -23,6 +25,14 @@ import org.robolectric.annotation.Config
 @Config(application=com.r0ybt.arachn0de.security.LegacyUiTestApplication::class,sdk = [28])
 class AppearanceUiTest {
     @get:Rule val compose = createAndroidComposeRule<ComponentActivity>()
+    @After fun closeApplicationWorkers() {
+        compose.runOnUiThread {
+            val root=compose.activity.findViewById<android.view.ViewGroup>(android.R.id.content)
+            for(i in 0 until root.childCount)(root.getChildAt(i) as? androidx.compose.ui.platform.AbstractComposeView)?.disposeComposition()
+            root.removeAllViews()
+        }
+        stopAppearanceTestApplication(compose.activity.application as Arachn0deApplication)
+    }
     private fun preferences() = AppearancePreferences(compose.activity.getSharedPreferences("appearance_ui_test", 0).apply { edit().clear().commit() })
     private fun titleLayout(): androidx.compose.ui.text.TextLayoutResult {
         val layouts = mutableListOf<androidx.compose.ui.text.TextLayoutResult>()
@@ -32,18 +42,21 @@ class AppearanceUiTest {
     @Test fun previewRespondsToAllThemesAndSizesWithoutDatabaseWrites() {
         val prefs = preferences()
         val app=compose.activity.application as Arachn0deApplication
+        // The authenticated application initializes Pomodoro independently in its process scope.
+        compose.waitUntil(10000) {kotlinx.coroutines.runBlocking {app.database.privatePreferenceDao().get(com.r0ybt.arachn0de.pomodoro.PomodoroCodec.NAME)!=null}}
         val before=kotlinx.coroutines.runBlocking {app.backupRepository.snapshot().copy(createdAt=0)}
         var observed: androidx.compose.ui.graphics.Color? = null
         compose.setContent { Arachn0deTheme(prefs) {
             observed = Arachn0deColors.PathHighlight
             AppearanceScreen({})
         } }
-        AppearanceTheme.entries.forEach { theme ->
+        selectableAppearanceThemes.forEach { theme ->
             compose.onNodeWithTag("appearance-theme:${theme.name}").performScrollTo().performClick().assertIsSelected()
             compose.runOnIdle { assertEquals(theme.palette.secondary, observed) }
             compose.onNodeWithTag("appearance-preview").performScrollTo()
             assertEquals(theme.palette.secondary, titleLayout().layoutInput.style.color)
         }
+        retiredAppearanceThemes.forEach {compose.onNodeWithTag("appearance-theme:${it.name}").assertDoesNotExist()}
         AppearanceTextSize.entries.forEach { size ->
             compose.onNodeWithTag("appearance-size:${size.name}").performScrollTo().performClick().assertIsSelected()
             compose.onNodeWithTag("appearance-preview").performScrollTo()
@@ -79,13 +92,13 @@ class AppearanceUiTest {
         compose.waitUntil(10000) { compose.onAllNodesWithContentDescription("Abrir menú").fetchSemanticsNodes().isNotEmpty() }
         compose.onNodeWithContentDescription("Abrir menú").performClick()
         compose.onNodeWithText("Configuración").assertDoesNotExist()
-        compose.onNodeWithText("Ajustes").performScrollTo().performClick(); compose.onNodeWithText("Apariencia").performScrollTo().performClick()
+        compose.onNodeWithText("Personalización").performScrollTo().performClick(); compose.onNodeWithText("Apariencia").performScrollTo().performClick()
         compose.onNodeWithTag("appearance-theme:DeepMoss").performScrollTo().performClick()
         compose.onNodeWithTag("appearance-size:Medium").performScrollTo().performClick()
         compose.onNodeWithText("Apariencia").performScrollTo()
         compose.onNodeWithContentDescription("Volver").performClick()
         compose.onNodeWithContentDescription("Abrir menú").performClick()
-        compose.onNodeWithText("Ajustes").performScrollTo().performClick(); compose.onNodeWithText("Apariencia").performScrollTo().performClick()
+        compose.onNodeWithText("Personalización").performScrollTo().performClick(); compose.onNodeWithText("Apariencia").performScrollTo().performClick()
         compose.onNodeWithTag("appearance-theme:DeepMoss").assertIsSelected()
         compose.onNodeWithTag("appearance-size:Medium").performScrollTo().assertIsSelected()
     }
@@ -102,10 +115,13 @@ class AppearanceUiTest {
             dueAt = 1L, priority = com.r0ybt.arachn0de.domain.model.Priority.HIGH,
             sprintMode = true, workState = com.r0ybt.arachn0de.domain.model.WorkState.DOING)
         compose.setContent { Arachn0deTheme(prefs) {
-            Box(Modifier.requiredSize(320.dp, 480.dp)) {
+            androidx.compose.foundation.layout.Column(Modifier.requiredSize(320.dp, 480.dp)) {
                 NodeCard(task, null, false, true, {}, {}, {}, false, false, { _, done -> done() }, {},
                     now = 100000L, responsiblePeople = listOf(com.r0ybt.arachn0de.domain.model.Person("alex", "Alex")),
-                    tags = listOf(com.r0ybt.arachn0de.domain.model.Tag("tag", "Desktop", "desktop")))
+                    tags = listOf(com.r0ybt.arachn0de.domain.model.Tag("tag", "Desktop", "desktop"),com.r0ybt.arachn0de.domain.model.Tag("mobile", "Móvil", "movil")))
+                // Current compact cards use icons; these same details use the shared renderers.
+                TaskDateIndicator(task,100000L)
+                AttachmentText(task.description)
             }
         } }
         fun layout(text: String, substring: Boolean = false): androidx.compose.ui.text.TextLayoutResult {
@@ -113,22 +129,32 @@ class AppearanceUiTest {
             compose.onNodeWithText(text, substring = substring, useUnmergedTree = true).performSemanticsAction(androidx.compose.ui.semantics.SemanticsActions.GetTextLayoutResult) { it(layouts) }
             return layouts.single()
         }
-        AppearanceTheme.entries.forEach { theme -> AppearanceTextSize.entries.forEach { size ->
+        selectableAppearanceThemes.forEach { theme -> AppearanceTextSize.entries.forEach { size ->
             compose.runOnIdle { prefs.setTheme(theme); prefs.setTextSize(size) }
             val title = layout("Revisar UI")
             assertEquals(theme.palette.secondary, title.layoutInput.style.color)
             assertEquals(contentSizes(size).cardTitle.toFloat(), title.layoutInput.style.fontSize.value, .01f)
-            assertEquals(SemanticColors.HighPriority, layout("Prioridad alta").layoutInput.style.color)
-            assertEquals(SemanticColors.Error, layout("Vencida ·", true).layoutInput.style.color)
-            assertEquals(SemanticColors.SprintText, layout("Haciendo").layoutInput.style.color)
+            compose.onNodeWithTag("card-signal:node:demo:high",useUnmergedTree=true).assert(androidx.compose.ui.test.SemanticsMatcher.expectValue(androidx.compose.ui.semantics.SemanticsProperties.StateDescription,"Configurado"))
+            assertEquals(if(theme.palette.light)theme.palette.text else SemanticColors.Error, layout("Vencida ·", true).layoutInput.style.color)
+            assertEquals(if(theme.palette.light)theme.palette.text else SemanticColors.SprintText, layout("Haciendo").layoutInput.style.color)
             val body = layout("Antes detalle después Imagen no disponible")
             assertTrue(body.layoutInput.text.spanStyles.any { it.item.fontWeight == androidx.compose.ui.text.font.FontWeight.Bold })
             val link = body.layoutInput.text.getLinkAnnotations(0, body.layoutInput.text.length).single().item
-            assertEquals(SemanticColors.ImageLink, link.styles!!.style!!.color)
+            assertEquals(if(theme.palette.light)theme.palette.primary else SemanticColors.ImageLink, link.styles!!.style!!.color)
             compose.onNodeWithText("Desktop").assertExists()
-            compose.onNodeWithContentDescription("Alex").assertExists()
+            compose.onNodeWithTag("card-signal:node:demo:people",useUnmergedTree=true).assert(androidx.compose.ui.test.SemanticsMatcher.expectValue(androidx.compose.ui.semantics.SemanticsProperties.StateDescription,"Configurado"))
             compose.onAllNodesWithText("arachnode:image", substring = true).assertCountEquals(0)
         } }
         assertEquals(com.r0ybt.arachn0de.domain.model.WorkState.DOING, task.workState)
     }
+}
+
+/** Stop fixture writers before closing Room, so failures do not escape into the next test. */
+internal fun stopAppearanceTestApplication(app:Arachn0deApplication) {
+    val process=Arachn0deApplication::class.java.getDeclaredField("processScope").apply {isAccessible=true}.get(app) as kotlinx.coroutines.CoroutineScope
+    kotlinx.coroutines.runBlocking {
+        process.coroutineContext[kotlinx.coroutines.Job]?.cancelAndJoin()
+        app.security.current.value?.scope?.coroutineContext?.get(kotlinx.coroutines.Job)?.cancelAndJoin()
+    }
+    app.database.close()
 }

@@ -36,7 +36,7 @@ class SprintLinksMigrationTest {
         val before=snapshot(sql);helper.close()
         val db=Arachn0deDatabase.create(context)
         try {
-            assertEquals(37,db.openHelper.writableDatabase.version)
+            assertEquals(50, db.openHelper.writableDatabase.version)
             assertEquals(before,snapshot(db.openHelper.readableDatabase))
             assertTrue(db.sprintLinkDao().all().isEmpty())
             db.openHelper.readableDatabase.query("PRAGMA foreign_key_check").use {assertFalse(it.moveToFirst())}

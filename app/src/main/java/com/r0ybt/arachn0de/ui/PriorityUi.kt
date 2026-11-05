@@ -1,5 +1,9 @@
 package com.r0ybt.arachn0de.ui
 
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Flag
+import androidx.compose.foundation.layout.size
+import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.layout.Box
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -23,7 +27,7 @@ internal fun priorityLabel(priority: Priority): String = if(priority==Priority.H
     }
 }
 @Composable internal fun PriorityIndicator(node: Node) {
-    if(node.effectivePriority==Priority.HIGH) Text("Prioritario",color=com.r0ybt.arachn0de.ui.theme.semanticColor(SemanticColors.HighPriority),fontSize=ContentTypography.Metadata)
+    if(node.effectivePriority==Priority.HIGH) LucideIcon(Icons.Default.Flag,"Prioritario",Modifier.size(16.dp),tint=cardIndicatorColor("high",true))
 }
 internal fun attentionReasonLabel(reason: AttentionReason): String = when (reason) {
     AttentionReason.OVERDUE -> "Atrasada"; AttentionReason.DUE_TODAY -> "Vence hoy"; AttentionReason.UPCOMING -> "Vence pronto"

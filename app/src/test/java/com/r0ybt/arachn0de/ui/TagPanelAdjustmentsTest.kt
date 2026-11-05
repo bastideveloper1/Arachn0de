@@ -28,6 +28,23 @@ import org.robolectric.annotation.GraphicsMode
 class TagPanelAdjustmentsTest {
     @get:Rule val compose=createAndroidComposeRule<ComponentActivity>()
 
+    @Test fun allTagsUsesOneThemedControlAndKeepsClearSelectionAcrossPalettes() {
+        val context=androidx.test.core.app.ApplicationProvider.getApplicationContext<Application>()
+        val preferences=com.r0ybt.arachn0de.ui.theme.AppearancePreferences(context.getSharedPreferences("tag-filter-${java.util.UUID.randomUUID()}",0))
+        var selected by mutableStateOf(setOf("a"))
+        compose.setContent {Arachn0deTheme(preferences) {Box(Modifier.width(320.dp)) {
+            TagPanel(TagState(listOf(Tag("a","Consulta","consulta"))),null,selected=selected,onChange={selected=it},single=true,onClose={})
+        }}}
+        for(theme in com.r0ybt.arachn0de.ui.theme.AppearanceTheme.entries.filter {it.palette.light || it.name in setOf("Arachn0de","Dark","GreenBash")}) {
+            compose.runOnIdle {preferences.setTheme(theme);selected=setOf("a")}
+            compose.onNodeWithTag("tag-filter-all").assertIsDisplayed().assertIsEnabled()
+            val bounds=compose.onNodeWithTag("tag-filter-all").fetchSemanticsNode().boundsInRoot
+            assertTrue(bounds.height>=48*compose.density.density-1)
+            compose.onNodeWithTag("tag-filter-all").performClick()
+            compose.runOnIdle {assertTrue(selected.isEmpty())}
+            compose.onNodeWithTag("tag-filter-all").assertIsNotEnabled()
+        }
+    }
     @Test fun shortCatalogWrapsContentAndLongCatalogScrollsAboveFooter() {
         var tags by mutableStateOf(listOf(Tag("a","Uno","uno"),Tag("b","Dos","dos")))
         compose.setContent {Arachn0deTheme {Box(Modifier.width(320.dp).heightIn(max=500.dp)) {
@@ -44,6 +61,20 @@ class TagPanelAdjustmentsTest {
         assertTrue(compose.onNodeWithTag("tag-panel").fetchSemanticsNode().boundsInRoot.height<=500*compose.density.density)
     }
 
+    @Test fun assignmentChipsHaveCompactCloseAndKeepSelectionOnReopen() {
+        var selected by mutableStateOf(emptySet<String>())
+        compose.setContent {Arachn0deTheme {Box(Modifier.width(320.dp)) {
+            TagSelector(listOf(Tag("a","Consulta","consulta")),selected,{selected=it})
+        }}}
+        compose.onNodeWithText("Etiquetas: Ninguna").performClick()
+        compose.onNodeWithText("Cancelar").assertDoesNotExist()
+        compose.onNodeWithTag("tag-choice:a").performClick()
+        compose.onNodeWithTag("tag-panel").assertDoesNotExist()
+        compose.onNodeWithText("Etiquetas: Consulta").performClick()
+        compose.onNodeWithTag("tag-choice:a").assertIsSelected().performClick()
+        compose.runOnIdle {assertTrue(selected.isEmpty())}
+        compose.onNodeWithTag("tag-panel").assertDoesNotExist()
+    }
     @Test fun draftFooterOnlyOffersSaveForChangedSelection() {
         val original=setOf("a","b")
         var selected by mutableStateOf(original)
@@ -65,17 +96,32 @@ class TagPanelAdjustmentsTest {
     }
 
     @Test fun technologiesOnlyRemainsInContentAndOtherOptionsStayAvailable() {
-        var context by mutableStateOf(CoreBottomContext.Options)
+        var context by mutableStateOf<CoreBottomContext?>(CoreBottomContext.Options)
         var edited=false
         compose.setContent {Arachn0deTheme {CoreBottomModule(context,{context=it},400.dp,
             contextActions={
-                action("Editar tecnologías",Icons.Default.Code,{edited=true})
+                action("Tecnologías",Icons.Default.Code,{edited=true})
                 action("Otra opción",Icons.Default.Info,{})
             },creationActions={})}}
-        compose.onNodeWithText("Editar tecnologías").assertDoesNotExist()
+        compose.onNodeWithText("Tecnologías").assertDoesNotExist()
         compose.onNodeWithText("Otra opción").assertIsDisplayed()
         compose.runOnIdle {context=CoreBottomContext.Content}
-        compose.onNodeWithText("Editar tecnologías").assertIsDisplayed().performClick()
+        compose.onNodeWithText("Tecnologías").assertIsDisplayed().performClick()
         compose.runOnIdle {assertTrue(edited)}
     }
+    @Test fun multipleSelectionCanReopenAndAddAnotherTagWithoutReplacingTheFirst() {
+        var selected by mutableStateOf(emptySet<String>())
+        compose.setContent {Arachn0deTheme {TagSelector(listOf(Tag("a","Uno","uno"),Tag("b","Dos","dos")),selected,{selected=it},singleAssignment=false)}}
+        compose.onNodeWithText("Etiquetas: Ninguna").performClick()
+        compose.onNodeWithTag("tag-choice:a").performClick()
+        compose.onNodeWithTag("tag-panel").assertDoesNotExist()
+        compose.onNodeWithText("Etiquetas: Uno").performClick()
+        compose.onNodeWithTag("tag-choice:b").performClick()
+        compose.runOnIdle {assertEquals(setOf("a","b"),selected)}
+        compose.onNodeWithTag("tag-panel").assertDoesNotExist()
+        compose.onNodeWithText("Etiquetas: Uno, Dos").performClick()
+        compose.onNodeWithTag("tag-choice:a").performClick()
+        compose.runOnIdle {assertEquals(setOf("b"),selected)}
+    }
+
 }

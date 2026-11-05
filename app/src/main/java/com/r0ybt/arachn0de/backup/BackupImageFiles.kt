@@ -34,10 +34,10 @@ internal suspend fun copyImage(row: BackupImageFile, input: InputStream, output:
     require(digest.digest().joinToString("") { "%02x".format(it) } == row.sha256) { "Fotografía dañada." }
 }
 internal fun BackupData.imageNames(directory: String): Set<String> =
-    (when (directory) { "avatars" -> avatars; "technology-icons" -> technologyIcons; else -> projectPhotoImages }).keys +
+    (when (directory) { "avatars" -> avatars; "technology-icons" -> technologyIcons; "theme-originals" -> emptyMap(); else -> projectPhotoImages }).keys +
         imageFiles.filter { it.directory == directory }.map { it.name }
 internal fun BackupData.imageBytes(directory: String, name: String): ByteArray {
-    val inline = when (directory) { "avatars" -> avatars; "technology-icons" -> technologyIcons; else -> projectPhotoImages }
+    val inline = when (directory) { "avatars" -> avatars; "technology-icons" -> technologyIcons; "theme-originals" -> emptyMap(); else -> projectPhotoImages }
     inline[name]?.let { return it }
     val row = imageFiles.single { it.directory == directory && it.name == name }
     val file = imageContents.getValue(row.key); verifyImage(row, file)

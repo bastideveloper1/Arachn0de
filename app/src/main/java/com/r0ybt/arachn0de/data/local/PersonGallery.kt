@@ -24,8 +24,8 @@ data class PersonPhotoEntity(@PrimaryKey val id:String,val personId:String,val f
 internal fun validatePersonGallery(people:Set<String>,photos:List<PersonPhotoEntity>,birthdays:List<PersonBirthdayEntity>) {
     require(photos.map {it.id}.toSet().size==photos.size)
     require(birthdays.map {it.personId}.toSet().size==birthdays.size)
-    birthdays.forEach {require(it.personId in people);val date=LocalDate.parse(it.date);require(date.toString()==it.date && date.year in 1..9999)}
-    photos.forEach {require(it.id.isNotBlank() && it.id.length<=200 && it.personId in people && it.position in 0..3 && Regex("[a-f0-9-]{36}\\.png").matches(it.file));com.r0ybt.arachn0de.domain.model.AvatarFraming(it.zoom,it.x,it.y).validate()}
+    birthdays.forEach {require(it.personId in people);PersonBirthDate.parse(it.date)}
+    photos.forEach {require(it.id.isNotBlank() && it.id.length<=200 && it.personId in people && it.position in 0..3 && com.r0ybt.arachn0de.backup.imageNameValid("avatars",it.file));com.r0ybt.arachn0de.domain.model.AvatarFraming(it.zoom,it.x,it.y).validate()}
     photos.groupBy {it.personId}.values.forEach {require(it.size<=4 && it.map {p->p.position}.toSet().size==it.size)}
 }
 internal fun personAge(date:String,today:LocalDate=LocalDate.now()):Int? = runCatching {LocalDate.parse(date).takeIf {!it.isAfter(today)}?.let {Period.between(it,today).years}}.getOrNull()

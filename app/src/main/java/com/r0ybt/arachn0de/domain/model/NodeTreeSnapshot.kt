@@ -58,7 +58,7 @@ class NodeTreeSnapshot(val nodes: List<Node>) {
     }
 
     private fun calculateProjectProgress(): Map<String, NodeProgress> {
-        val byProject = nodes.groupBy { it.projectId }
+        val byProject = nodes.filter { it.projectId != null }.groupBy { checkNotNull(it.projectId) }
         return byProject.mapValues { (projectId, projectNodes) ->
             val projectChildren = projectNodes.groupBy { it.parentId }
             val leafNodes = projectNodes.filter { node -> !projectChildren.containsKey(node.id) && node.purpose == NodePurpose.ACTION }

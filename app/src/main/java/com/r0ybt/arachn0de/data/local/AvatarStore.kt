@@ -18,7 +18,7 @@ open class AvatarStore(context: Context, private val directoryName: String = "av
         when (directoryName) { "avatars" -> "backup-restore-journal"; "technology-icons" -> "technology-icon-journal"; else -> "project-photo-journal" }, syncDirectory)
     private val directory get() = File(context.filesDir, directoryName).apply { mkdirs() }
     private fun file(name: String): File {
-        require(name.matches(Regex("[a-f0-9-]{36}\\.png")))
+        require(com.r0ybt.arachn0de.backup.imageNameValid(directoryName,name))
         return File(directory, name)
     }
     internal fun privateRoot():File=context.filesDir.canonicalFile
@@ -29,9 +29,11 @@ open class AvatarStore(context: Context, private val directoryName: String = "av
         SecureFiles.decoded(target,bounds)
         var sample=1
         while(bounds.outWidth/sample>2048 || bounds.outHeight/sample>2048) sample*=2
-        return SecureFiles.decoded(target,BitmapFactory.Options().apply {inSampleSize=sample})
+        val decoded=SecureFiles.decoded(target,BitmapFactory.Options().apply {inSampleSize=sample}) ?: return null
+        if(directoryName!="avatars") return decoded
+        return com.r0ybt.arachn0de.photos.PrivatePhoto.orient(decoded,runCatching {SecureFiles.orientation(target)}.getOrDefault(1)).also {if(it!==decoded)decoded.recycle()}
     }
-    fun readThumbnail(name: String, maxDimension:Int=96): Bitmap? = if(directoryName=="project-photos") ProjectThumbnailCache.read(context,file(name),maxDimension) else PrivateImageCache.read(file(name),maxDimension)
+    fun readThumbnail(name: String, maxDimension:Int=96): Bitmap? = if(directoryName=="project-photos") ProjectThumbnailCache.read(context,file(name),maxDimension,syncDirectory) else PrivateImageCache.read(file(name),maxDimension,oriented=directoryName=="avatars")
     /** Decode for the actual square crop, including zoom and portrait/panorama aspect. */
     fun readFramedThumbnail(name:String,side:Int,zoom:Float):Bitmap? {
         val source=file(name)
@@ -41,12 +43,16 @@ open class AvatarStore(context: Context, private val directoryName: String = "av
         val ratio=maxOf(bounds.outWidth,bounds.outHeight).toDouble()/minOf(bounds.outWidth,bounds.outHeight)
         // The shared power-of-two sampler rounds down; request headroom so it never
         // chooses a decoded short side smaller than the crop when the source permits.
-        val dimension=kotlin.math.ceil(side.coerceAtLeast(1)*zoom.coerceIn(1f,5f)*ratio*2).toInt().coerceIn(96,4096)
-        return PrivateImageCache.read(source,dimension)
+        val projectPhoto=directoryName=="project-photos"
+        val dimension=kotlin.math.ceil(side.coerceAtLeast(1)*zoom.coerceIn(1f,5f)*ratio*(if(projectPhoto) 1 else 2)).toInt()
+            .coerceIn(96,if(projectPhoto) 2048 else 4096)
+        return if(projectPhoto) ProjectThumbnailCache.read(context,source,dimension,syncDirectory) else PrivateImageCache.read(source,dimension,oriented=true)
     }
     internal fun export(name:String,destination:Uri) {
         SecureFiles.input(file(name)).use {input->
-            requireNotNull(context.contentResolver.openOutputStream(destination,"w")).use {output->input.copyTo(output)}
+            val raw=com.r0ybt.arachn0de.photos.PrivatePhoto.read(input)
+            val public=try {com.r0ybt.arachn0de.photos.PublicImages.prepare(raw)} finally {raw.fill(0)}
+            try {requireNotNull(context.contentResolver.openOutputStream(destination,"w")).use {it.write(public)}} finally {public.fill(0)}
         }
     }
     open fun delete(name: String) = lifecycle.remove(name) {
@@ -56,6 +62,25 @@ open class AvatarStore(context: Context, private val directoryName: String = "av
         PrivateImageCache.invalidate(target)
     }
     internal fun cleanup(references: Set<String>, protected: Set<String>) = lifecycle.cleanup(references, protected, ::delete)
+
+    /** Full-resolution Antisocial photos; existing icon/project normalization is unchanged. */
+    internal fun importPhoto(uri:Uri,sourceFile:File?=null,checkCancelled:()->Unit={}):String {
+        require(directoryName=="avatars")
+        val clean=(sourceFile?.let {SecureFiles.input(it)} ?: requireNotNull(context.contentResolver.openInputStream(uri))).use {
+            com.r0ybt.arachn0de.photos.PrivatePhoto.clean(com.r0ybt.arachn0de.photos.PrivatePhoto.read(it))
+        }
+        checkCancelled()
+        val name="${UUID.randomUUID()}.${if(clean.mime=="image/jpeg") "jpg" else "png"}"
+        val output=file(name)
+        try {
+            lifecycle.reserve(name)
+            SecureFiles.output(output).use {it.write(clean.bytes)}
+            syncDirectory(directory);checkCancelled()
+            return name
+        } catch(failure:Throwable) {
+            runCatching {lifecycle.release(name);delete(name)};throw failure
+        } finally {clean.bytes.fill(0)}
+    }
 
     fun import(uri:Uri,checkCancelled:()->Unit):String=import(uri,sourceFile=null,checkCancelled=checkCancelled)
     fun import(uri: Uri, sourceFile:File?=null, checkCancelled: () -> Unit = {}): String {

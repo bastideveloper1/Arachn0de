@@ -43,7 +43,7 @@ class ObligationReportDataTest {
         assertEquals("Sin vencimiento", data.obligations.last().due)
         assertEquals("Completada", data.obligations.single { it.title == "paid" }.status)
         assertTrue(data.obligations.first().due.startsWith("Vence 15"))
-        assertEquals("5 obligaciones · 4 pendientes · 1 completada", data.counts)
+        assertEquals("5 pagos · 4 pendientes · 1 completada", data.counts)
         assertTrue(data.generatedLabel.contains("2026 · 12:00"))
         assertEquals(ReportFixture.now, data.generatedAt)
     }

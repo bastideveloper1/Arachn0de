@@ -3,7 +3,7 @@ package com.r0ybt.arachn0de.domain.model
 import java.math.BigInteger
 import java.util.TimeZone
 
-/** Financial state is derived from the existing completion flag, never persisted. */
+/** Financial state derives from confirmed payments and manual completion, never from a mutable balance. */
 enum class FinancialState { NO_OBLIGATIONS, PENDING, PARTIAL, COMPLETED }
 enum class FinancialPeriod {
     ALL, THIS_MONTH, PREVIOUS_MONTH, NEXT_MONTH;
@@ -39,7 +39,7 @@ data class FinancialSummary(val byCurrency: Map<String, CurrencyTotals> = emptyM
     val state: FinancialState get() = when {
         count == 0 -> FinancialState.NO_OBLIGATIONS
         pendingCount == 0 -> FinancialState.COMPLETED
-        completedCount == 0 -> FinancialState.PENDING
+        completedCount == 0 && byCurrency.values.none {it.completedMinor.signum()>0} -> FinancialState.PENDING
         else -> FinancialState.PARTIAL
     }
     operator fun plus(other: FinancialSummary): FinancialSummary {
@@ -56,6 +56,7 @@ class FinancialSnapshot(
     val selection: FinancialSelection,
     currentMonth: CalendarMonth,
     zone: TimeZone,
+    paidByNode:Map<String,Long> = emptyMap(),
 ) {
     val zoneId: String = zone.id
     val periodMonth: CalendarMonth? = selection.selectedMonth ?: selection.period.month(currentMonth)
@@ -80,16 +81,18 @@ class FinancialSnapshot(
         tree.nodes.forEach { node ->
             if (remaining.getValue(node.id) == 0) {
                 val dueMonth = node.dueAt?.let { CalendarDates.localDay(it, zone).calendarMonth }
-                val qualifies = node.purpose == NodePurpose.ACTION && node.obligation != null &&
+                val qualifies = node.projectId!=null && node.purpose == NodePurpose.ACTION && node.obligation != null &&
                     (selection.personId == null || this.responsibleByNode[node.id].orEmpty().any { it.id == selection.personId })
                 val own = if (qualifies) {
                     val obligation = checkNotNull(node.obligation)
                     val amount = BigInteger.valueOf(obligation.amountMinor)
-                    FinancialSummary(mapOf(obligation.currencyCode to if (node.isCompleted)
-                        CurrencyTotals(amount, completedMinor = amount, completedCount = 1)
-                    else CurrencyTotals(amount, pendingMinor = amount, pendingCount = 1,
-                        thisMonthPendingMinor = if (dueMonth == currentMonth) amount else BigInteger.ZERO,
-                        nextMonthPendingMinor = if (dueMonth == currentMonth.shifted(1)) amount else BigInteger.ZERO)))
+                    val paid=BigInteger.valueOf(paidByNode[node.id] ?: 0L).coerceIn(BigInteger.ZERO,amount)
+                    val pending=if(node.isCompleted)BigInteger.ZERO else amount-paid
+                    val completed=amount-pending
+                    FinancialSummary(mapOf(obligation.currencyCode to CurrencyTotals(amount,
+                        pendingMinor=pending,completedMinor=completed,pendingCount=if(pending.signum()>0)1 else 0,completedCount=if(pending.signum()==0)1 else 0,
+                        thisMonthPendingMinor=if(dueMonth==currentMonth)pending else BigInteger.ZERO,
+                        nextMonthPendingMinor=if(dueMonth==currentMonth.shifted(1))pending else BigInteger.ZERO)))
                 } else FinancialSummary()
                 overviewNodes[node.id] = own
                 nodeTotals[node.id] = if (qualifies && (periodMonth == null || dueMonth == periodMonth)) {
@@ -108,8 +111,8 @@ class FinancialSnapshot(
             overviewNodes[node.id] = overviewOwn
             val parent = node.parentId
             if (parent == null) {
-                projectTotals[node.projectId] = (projectTotals[node.projectId] ?: FinancialSummary()) + own
-                overviewProjects[node.projectId] = (overviewProjects[node.projectId] ?: FinancialSummary()) + overviewOwn
+                node.projectId?.let {projectTotals[it] = (projectTotals[it] ?: FinancialSummary()) + own
+                overviewProjects[it] = (overviewProjects[it] ?: FinancialSummary()) + overviewOwn}
             }
             else {
                 overviewNodes[parent] = (overviewNodes[parent] ?: FinancialSummary()) + overviewOwn

@@ -2,10 +2,12 @@ package com.r0ybt.arachn0de.pomodoro
 
 import android.content.Context
 import android.content.SharedPreferences
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
-/** Global, hierarchy-free timer. No coroutine or per-second disk writes in the controller. */
+/** Global, hierarchy-free timer; no per-second disk writes. */
 internal class PomodoroController(private val context:Context,private val clock:()->PomodoroTime={pomodoroClock(context)}) {
     val sounds=PomodoroSounds(context)
     private val cache=context.getSharedPreferences(CACHE,0)
@@ -75,6 +77,20 @@ internal class PomodoroController(private val context:Context,private val clock:
         val old=mutable.value
         val session=old.session?.let {s->if(s.status==PomodoroStatus.READY) s.copy(total=config.duration(s.phase),remaining=config.duration(s.phase)) else s}
         if(save(old.copy(config=config,session=session,revision=old.revision+1))) schedule()
+    }
+    /** Foreground completion uses the deadline; background alarms retain their existing owner. */
+    suspend fun observeForeground() {
+        refresh()
+        state.collectLatest {value->
+            sounds.update(value)
+            if(value.session?.status==PomodoroStatus.RUNNING && !value.session.manualEnd) {
+                while(state.value==value) {
+                    val wait=remaining()
+                    delay(if(wait>0) wait else 100)
+                    refresh()
+                }
+            }
+        }
     }
     @Synchronized fun refresh() {complete(mutable.value,clock())}
     private fun complete(before:PomodoroState,now:PomodoroTime) {

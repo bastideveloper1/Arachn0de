@@ -22,9 +22,12 @@ internal class EditorDraft(
     priority: com.r0ybt.arachn0de.domain.model.Priority = com.r0ybt.arachn0de.domain.model.Priority.NONE,
     val attachmentDraftId: String = UUID.randomUUID().toString(),
 ) {
+    var bankType by mutableStateOf(false)
     var audioCreationRequested=false
     var audioProvisionalTitle:String?=null
     var removedAttachmentIds by mutableStateOf(emptyList<String>())
+    // IME-only continuation candidate; transient, never persisted or replayed on reopening.
+    var pendingDescriptionList:Triple<String,String,Int>?=null
     var descriptionSelectionStart by mutableStateOf(description.length)
     var descriptionSelectionEnd by mutableStateOf(description.length)
     var attachmentsLoaded by mutableStateOf(false)
@@ -144,9 +147,11 @@ internal class EditorDraft(
         val Saver = listSaver<EditorDraft?, String>(
             save = {
                 if (it == null) emptyList()
-                else (if(it.metroJourneyId!=null) listOf("__metro_link_v1",it.metroJourneyId.orEmpty(),it.metroJourneyRevision?.toString().orEmpty(),it.metroOriginalPlan.orEmpty(),it.metroOriginalTraveler.orEmpty()) else emptyList()) + listOf("__templates_v2", it.templateMetroPlan.orEmpty(), it.templateMetroCatalog.orEmpty(), it.templateTraveler.orEmpty(), it.technologiesLoaded.toString(), it.technologyIds.size.toString(), it.originalTechnologyIds.joinToString("\u001f")) + it.technologyIds + listOf("__attachments_v1", it.attachmentDraftId, it.descriptionSelectionStart.toString(), it.descriptionSelectionEnd.toString(), it.removedAttachmentIds.size.toString()) + it.removedAttachmentIds + (if (it.defaultStartMinute != null || it.defaultDueMinute != null) listOf("__time_defaults_v1", it.defaultStartMinute?.toString().orEmpty(), it.defaultDueMinute?.toString().orEmpty()) else emptyList()) + listOf("__shared_v1", it.creationGroupId.orEmpty(), (it.sharedBaseline?.size ?: 0).toString()) + it.sharedBaseline.orEmpty() + listOf("__ux_v1", it.batchEnabled.toString(), it.batchQuantity, it.batchNumbering.name, it.batchStartNumber, it.batchTemporal.name, it.latentFrequency, it.startEnabled.toString(), it.dueEnabled.toString()) + listOf(it.id.orEmpty(), it.parentId.orEmpty(), it.title, it.description, it.creationId, it.startAt?.toString().orEmpty(), it.dueAt?.toString().orEmpty(), it.purpose.name, it.financialEnabled.toString(), it.amountText, it.currencyCode, it.moneyLocaleTag, it.hadObligation.toString(), it.financialRemovalConfirmed.toString(), it.showResponsible.toString()) + listOf("__recurrence_v1", it.recurrenceFrequency, it.recurrenceInterval, it.recurrenceStart, it.recurrenceEnd) + listOf("__priority_v1", it.priority.name) + listOf("__tags_v1", it.tagIds.size.toString()) + it.tagIds + it.responsibleIds
+                else (if(it.bankType) listOf("__bank_v1") else emptyList()) + (if(it.metroJourneyId!=null) listOf("__metro_link_v1",it.metroJourneyId.orEmpty(),it.metroJourneyRevision?.toString().orEmpty(),it.metroOriginalPlan.orEmpty(),it.metroOriginalTraveler.orEmpty()) else emptyList()) + listOf("__templates_v2", it.templateMetroPlan.orEmpty(), it.templateMetroCatalog.orEmpty(), it.templateTraveler.orEmpty(), it.technologiesLoaded.toString(), it.technologyIds.size.toString(), it.originalTechnologyIds.joinToString("\u001f")) + it.technologyIds + listOf("__attachments_v1", it.attachmentDraftId, it.descriptionSelectionStart.toString(), it.descriptionSelectionEnd.toString(), it.removedAttachmentIds.size.toString()) + it.removedAttachmentIds + (if (it.defaultStartMinute != null || it.defaultDueMinute != null) listOf("__time_defaults_v1", it.defaultStartMinute?.toString().orEmpty(), it.defaultDueMinute?.toString().orEmpty()) else emptyList()) + listOf("__shared_v1", it.creationGroupId.orEmpty(), (it.sharedBaseline?.size ?: 0).toString()) + it.sharedBaseline.orEmpty() + listOf("__ux_v1", it.batchEnabled.toString(), it.batchQuantity, it.batchNumbering.name, it.batchStartNumber, it.batchTemporal.name, it.latentFrequency, it.startEnabled.toString(), it.dueEnabled.toString()) + listOf(it.id.orEmpty(), it.parentId.orEmpty(), it.title, it.description, it.creationId, it.startAt?.toString().orEmpty(), it.dueAt?.toString().orEmpty(), it.purpose.name, it.financialEnabled.toString(), it.amountText, it.currencyCode, it.moneyLocaleTag, it.hadObligation.toString(), it.financialRemovalConfirmed.toString(), it.showResponsible.toString()) + listOf("__recurrence_v1", it.recurrenceFrequency, it.recurrenceInterval, it.recurrenceStart, it.recurrenceEnd) + listOf("__priority_v1", it.priority.name) + listOf("__tags_v1", it.tagIds.size.toString()) + it.tagIds + it.responsibleIds
             },
-            restore = { storedDraft ->
+            restore = { savedDraft ->
+                val bank=savedDraft.firstOrNull()=="__bank_v1"
+                val storedDraft=if(bank)savedDraft.drop(1) else savedDraft
                 val metroLink=storedDraft.takeIf {it.firstOrNull()=="__metro_link_v1"}?.take(5)
                 val original=if(metroLink!=null) storedDraft.drop(5) else storedDraft
                 val template = original.takeIf { it.firstOrNull() == "__templates_v2" }
@@ -167,6 +172,7 @@ internal class EditorDraft(
                 if (it.isEmpty()) null
                 else EditorDraft(it[0].ifEmpty { null }, it[1].ifEmpty { null }, it[2], it[3], it[4], it.getOrNull(5)?.toLongOrNull(), it.getOrNull(6)?.toLongOrNull(), it.getOrNull(7)?.let(com.r0ybt.arachn0de.domain.model.NodePurpose::valueOf) ?: com.r0ybt.arachn0de.domain.model.NodePurpose.ACTION,
                     moneyLocaleTag = it.getOrNull(11) ?: java.util.Locale.getDefault().toLanguageTag(), hadObligation = it.getOrNull(12)?.toBoolean() ?: false, attachmentDraftId = attachmentMeta?.get(1) ?: UUID.randomUUID().toString()).apply {
+                    bankType=bank
                     metroJourneyId=metroLink?.get(1)?.ifEmpty {null};metroJourneyRevision=metroLink?.get(2)?.toLongOrNull();metroOriginalPlan=metroLink?.get(3)?.ifEmpty {null};metroOriginalTraveler=metroLink?.get(4)?.ifEmpty {null}
                     templateMetroPlan=template?.get(1)?.ifEmpty { null };templateMetroCatalog=template?.get(2)?.ifEmpty { null };templateTraveler=template?.get(3)?.ifEmpty { null };technologiesLoaded=template?.get(4)?.toBoolean() ?: false;technologyIds=template?.drop(7)?.take(technologyCount).orEmpty();originalTechnologyIds=template?.get(6)?.takeIf {it.isNotEmpty()}?.split("\u001f").orEmpty()
                     removedAttachmentIds = attachmentMeta?.drop(5)?.take(attachmentCount).orEmpty()

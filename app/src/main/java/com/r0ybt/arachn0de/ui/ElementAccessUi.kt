@@ -1,12 +1,14 @@
 package com.r0ybt.arachn0de.ui
 
+import androidx.compose.foundation.background
+import com.r0ybt.arachn0de.ui.theme.*
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.StarBorder
 import androidx.compose.material3.*
@@ -25,94 +27,65 @@ import java.util.UUID
 internal val LocalElementAccess=staticCompositionLocalOf<AccessRepository?> {null}
 internal val LocalElementAccessState=staticCompositionLocalOf {AccessState()}
 
-@Composable internal fun FavoriteToggle(key:String,compactSquare:Boolean=false) {
-    val repo=LocalElementAccess.current ?: return
-    val selected=key in LocalElementAccessState.current.favorites
-    val scope=rememberCoroutineScope();val op=remember(repo,scope) {OperationState(scope)}
-    if(compactSquare) CompactCardIconButton(if(selected) Icons.Default.Star else Icons.Default.StarBorder,
-        if(selected) "Quitar de Favoritos" else "Marcar favorito",{op.submit("No se pudo cambiar Favoritos.",{repo.toggle(key);true},{})},
-        Modifier.testTag("favorite:$key"),enabled=!op.busy,selected=selected,tint=if(selected) com.r0ybt.arachn0de.ui.theme.Arachn0deColors.TextPrimary else com.r0ybt.arachn0de.ui.theme.BlackWhite90.Inactive)
-    else {
-    IconButton(enabled=!op.busy,onClick={op.submit("No se pudo cambiar Favoritos.",{repo.toggle(key);true},{})},modifier=Modifier.testTag("favorite:$key")) {
-        LucideIcon(if(selected) Icons.Default.Star else Icons.Default.StarBorder,if(selected) "Quitar de Favoritos" else "Marcar favorito",tint=if(selected) com.r0ybt.arachn0de.ui.theme.Arachn0deColors.TextPrimary else com.r0ybt.arachn0de.ui.theme.BlackWhite90.Inactive)
-    }
-    }
+internal data class FavoriteControl(val selected:Boolean,val enabled:Boolean,val toggle:()->Unit)
+internal val FavoriteActionLabels=setOf("Marcar favorito","Quitar de Favoritos")
+
+@Composable internal fun rememberFavoriteControl(key:String,enabled:Boolean=true):FavoriteControl? {
+    val repo=LocalElementAccess.current ?: return null
+    val confirmed=key in LocalElementAccessState.current.favorites
+    val context=androidx.compose.ui.platform.LocalContext.current.applicationContext
+    val session=(context as? com.r0ybt.arachn0de.Arachn0deApplication)?.security?.current?.value
+    val screenScope=rememberCoroutineScope()
+    val scope=session?.scope ?: screenScope
+    val feedback=remember(repo,key,scope) {com.r0ybt.arachn0de.ui.state.FavoriteFeedback(scope)}
+    val op=feedback.operation
+    val selected=feedback.shown(confirmed)
+    LaunchedEffect(confirmed,op.busy) {feedback.acknowledge(confirmed)}
+    var attached by remember {mutableStateOf(true)}
+    DisposableEffect(feedback) {attached=true;onDispose {attached=false}}
+    val toggle:()->Unit={
+        val started=com.r0ybt.arachn0de.ui.ResponseTiming.start("favorite_press")
+        feedback.toggle(confirmed,{desired->
+        repo.toggle(key,desired)
+        com.r0ybt.arachn0de.ui.ResponseTiming.end("favorite_commit",started)
+    },{if(!attached) withContext(Dispatchers.Main) {android.widget.Toast.makeText(context,"No se pudo cambiar Favoritos.",android.widget.Toast.LENGTH_LONG).show()}})}
     OperationErrorDialog(op)
+    return FavoriteControl(selected,enabled && !op.busy,toggle)
 }
 
-@Composable internal fun ElementSearchScreen(index:List<ElementResult>,mode:String,query:String,onQuery:(String)->Unit,onMode:(String)->Unit,onBack:()->Unit,onOpen:(ElementResult)->Unit,listState:androidx.compose.foundation.lazy.LazyListState,ready:Boolean=true) {
-    val state=LocalElementAccessState.current
-    val results by produceState<List<ElementResult>?>(null,index,query,mode,state,ready) {
-        if(!ready) {value=null;return@produceState}
-        value=withContext(Dispatchers.Default) {
-            val filtered=ElementSearch.find(index,query)
-            when(mode) {
-                "Favoritos"->filtered.filter {it.key in state.favorites}
-                "Recientes"->state.recent.mapNotNull {key->filtered.find {it.key==key}}
-                "Frecuentes"->filtered.filter {it.key in state.counts}.sortedByDescending {state.counts[it.key]}
-                else->filtered
-            }
-        }
-    }
-    androidx.activity.compose.BackHandler(onBack=onBack)
-    Surface(Modifier.fillMaxSize(), color = if (mode == "Favoritos") com.r0ybt.arachn0de.ui.theme.Arachn0deColors.Background else MaterialTheme.colorScheme.surface) {
-        Column(Modifier.fillMaxSize().padding(14.dp).testTag("search-screen")) {
-            Row(Modifier.fillMaxWidth(),verticalAlignment=androidx.compose.ui.Alignment.CenterVertically) {
-                GlobalChromeActions(leading=true)
-                IconButton(onClick=onBack,modifier=Modifier.size(48.dp)) {LucideIcon(androidx.compose.material.icons.Icons.Default.ArrowBack,"Volver")}
-                NavigationHeading(if(mode=="Favoritos") "Favoritos" else "Buscar",Modifier.weight(1f))
-                GlobalChromeActions()
-            }
-            // Reserve the result viewport even while loading; controls remain above the IME
-            // because the owning AppSafeArea already consumes safeDrawing (including keyboard).
-            Box(Modifier.weight(1f).fillMaxWidth()) {
-            if(!ready || results==null) Text("Cargando…")
-            else if(results.orEmpty().isEmpty()) Text(if(mode=="Favoritos" && state.favorites.isEmpty()) "No hay favoritos" else "Sin resultados")
-            else LazyColumn(Modifier.fillMaxSize().testTag("search-results"),state=listState,
-                verticalArrangement=Arrangement.spacedBy(if(mode=="Favoritos") 8.dp else 0.dp)) {items(results.orEmpty(),key={it.key}) {result->
-                val content: @Composable () -> Unit = {
-                Row(Modifier.fillMaxWidth().heightIn(min=56.dp).testTag("access-result:${result.key}").clickable(onClickLabel="Abrir ${result.type}") {onOpen(result)}
-                    .then(if(mode=="Favoritos") Modifier.padding(horizontal=12.dp) else Modifier),verticalAlignment=androidx.compose.ui.Alignment.CenterVertically) {
-                    Column(Modifier.weight(1f).padding(vertical=8.dp)) {
-                        Text(result.title,style=MaterialTheme.typography.titleSmall,maxLines=2,overflow=androidx.compose.ui.text.style.TextOverflow.Ellipsis)
-                        Text("${result.type} · ${result.path}",style=MaterialTheme.typography.bodySmall,maxLines=2,overflow=androidx.compose.ui.text.style.TextOverflow.Ellipsis)
-                    }
-                    FavoriteToggle(result.key)
-                }
-                }
-                if(mode=="Favoritos") Card(Modifier.fillMaxWidth(),
-                    colors=CardDefaults.cardColors(containerColor=com.r0ybt.arachn0de.ui.theme.Arachn0deColors.Surface)) {content()}
-                else content()
-            }}
-            }
-            Column(Modifier.fillMaxWidth().padding(top=8.dp).testTag("search-controls"),verticalArrangement=Arrangement.spacedBy(6.dp)) {
-                OutlinedTextField(query,onQuery,label={Text(if(mode=="Favoritos") "Buscar en favoritos" else "Título o descripción")},modifier=Modifier.fillMaxWidth(),singleLine=true)
-                if(mode!="Favoritos") BoxWithConstraints(Modifier.fillMaxWidth()) {
-                    val fontScale=androidx.compose.ui.platform.LocalDensity.current.fontScale
-                    val columns=if(maxWidth >= 440.dp * fontScale) 4 else 2
-                    Column(verticalArrangement=Arrangement.spacedBy(4.dp)) {
-                        listOf("Buscar","Recientes","Frecuentes").chunked(columns).forEach {group ->
-                            Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(6.dp)) {
-                                group.forEach {label ->
-                                    FilterChip(mode==label,{onMode(label)},label={Text(label,style=MaterialTheme.typography.labelSmall)},
-                                        modifier=Modifier.weight(1f).heightIn(min=48.dp).testTag("search-mode:$label"))
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
+@Composable internal fun rememberFavoriteMenuAction(key:String,enabled:Boolean=true,exterior:Boolean=false):ContextAction? {
+    val control=rememberFavoriteControl(key,enabled) ?: return null
+    return ContextAction(if(exterior) {if(control.selected) "Quitar de favoritos" else "Marcar como favorito"}
+        else if(control.selected) "Quitar de Favoritos" else "Marcar favorito",
+        if(control.selected) Icons.Default.Star else Icons.Default.StarBorder,control.toggle,enabled=control.enabled)
+}
+
+@Composable internal fun FavoriteCardIndicator(key:String) {
+    if(key in LocalElementAccessState.current.favorites) LucideIcon(Icons.Default.Star,"Favorito",
+        Modifier.size(16.dp).testTag("card-signal:$key:favorite"),tint=Arachn0deColors.TextPrimary)
+}
+
+@Composable internal fun FavoriteToggle(key:String,compactSquare:Boolean=false,enabled:Boolean=true) {
+    val control=rememberFavoriteControl(key,enabled) ?: return
+    val selected=control.selected
+    if(compactSquare) CompactCardIconButton(if(selected) Icons.Default.Star else Icons.Default.StarBorder,
+        if(selected) "Quitar de Favoritos" else "Marcar favorito",control.toggle,
+        Modifier.testTag("favorite:$key"),enabled=control.enabled,selected=selected,tint=if(selected) Arachn0deColors.TextPrimary else com.r0ybt.arachn0de.ui.theme.BlackWhite90.Inactive)
+    else IconButton(enabled=control.enabled,onClick=control.toggle,modifier=Modifier.size(48.dp).testTag("favorite:$key").background(androidx.compose.ui.graphics.Color.Transparent,androidx.compose.foundation.shape.CircleShape)) {
+        LucideIcon(if(selected) Icons.Default.Star else Icons.Default.StarBorder,if(selected) "Quitar de Favoritos" else "Marcar favorito",tint=if(selected) Arachn0deColors.TextPrimary else com.r0ybt.arachn0de.ui.theme.BlackWhite90.Inactive)
     }
 }
 
-@Composable internal fun QuickCaptureDialog(index:List<ElementResult>,repo:AccessRepository,onDismiss:()->Unit) = QuickCaptureDialog(index,repo,onDismiss,null,null)
+@Composable internal fun QuickCaptureDialog(index:List<ElementResult>?,repo:AccessRepository,onDismiss:()->Unit) {
+    if(index==null) NavigationIndexLoading(onDismiss) else QuickCaptureDialog(index,repo,onDismiss,null,null)
+}
 
 @Composable internal fun QuickCaptureDialog(index:List<ElementResult>,repo:AccessRepository,onDismiss:()->Unit,pending:com.r0ybt.arachn0de.sharing.SharedCaptureQueue.Entry?,queue:com.r0ybt.arachn0de.sharing.SharedCaptureQueue?) {
     val state=LocalElementAccessState.current
     val linkNote=pending?.linkNote==true
+    var purpose by rememberSaveable {mutableStateOf(if(linkNote) com.r0ybt.arachn0de.domain.model.NodePurpose.NOTE else com.r0ybt.arachn0de.domain.model.NodePurpose.ACTION)}
     val targets=index.filter {it.destination}
-    var key by rememberSaveable {mutableStateOf(pending?.destination ?: state.destination?.takeIf {id->targets.any {it.key==id}} ?: targets.firstOrNull()?.key)}
+    var key by rememberSaveable {mutableStateOf(pending?.destination)}
     val draftState=rememberSaveable(pending?.id,stateSaver=com.r0ybt.arachn0de.ui.state.EditorDraft.Saver) {mutableStateOf<com.r0ybt.arachn0de.ui.state.EditorDraft?>(
         com.r0ybt.arachn0de.ui.state.EditorDraft(null,null,pending?.title.orEmpty(),pending?.description.orEmpty(),creationId=pending?.id ?: UUID.randomUUID().toString(),attachmentDraftId=pending?.id ?: UUID.randomUUID().toString()).apply {removedAttachmentIds=pending?.removed.orEmpty()} )}
     val draft=checkNotNull(draftState.value)
@@ -120,7 +93,6 @@ internal val LocalElementAccessState=staticCompositionLocalOf {AccessState()}
     var description by draft::description
     var descriptionOpen by rememberSaveable {mutableStateOf(pending!=null)}
     var choosing by rememberSaveable {mutableStateOf(false)}
-    LaunchedEffect(targets.map {it.key}) {if(key==null) key=targets.firstOrNull()?.key}
     val creationId=draft.creationId
     val scope=rememberCoroutineScope();val op=remember(repo,scope) {OperationState(scope)}
     val gate=LocalCaptureGate.current
@@ -139,23 +111,26 @@ internal val LocalElementAccessState=staticCompositionLocalOf {AccessState()}
         if(pending==null) onDismiss()
         else op.submit("No se pudo descartar la captura. Se conserva para reintentar.",{requireNotNull(queue).discard(pending.id);true},onDismiss)
     }
+    val titleFeedback=rememberTitleInput()
     val destination=targets.firstOrNull {it.key==key}
     AccessDialog(onDismissRequest={if(!op.busy) cancel()},title={Text("Captura rápida")},text={Column(Modifier.verticalScroll(androidx.compose.foundation.rememberScrollState())) {
-        OutlinedTextField(title,{title=it},enabled=!op.busy,label={Text("Título")},modifier=Modifier.fillMaxWidth(),singleLine=false,maxLines=Int.MAX_VALUE,isError=TitleLimits.count(title)>TitleLimits.NODE)
+        if(pending==null) FormChoices(listOf(com.r0ybt.arachn0de.domain.model.NodePurpose.ACTION to "Tarea",com.r0ybt.arachn0de.domain.model.NodePurpose.NOTE to "Nota"),purpose,!op.busy) {purpose=it}
+        OutlinedTextField(title,{titleFeedback.change(title,it,TitleLimits.NODE) {title=it}},supportingText={TitleLimitHint(title,TitleLimits.NODE,titleFeedback.blocked)},enabled=!op.busy,label={Text("Título")},modifier=Modifier.fillMaxWidth(),singleLine=false,maxLines=Int.MAX_VALUE,isError=TitleLimits.count(title)>TitleLimits.NODE)
         TextButton(enabled=!op.busy,onClick={descriptionOpen=!descriptionOpen}) {Text(if(linkNote) "Texto y enlaces" else "Descripción opcional")}
         if(descriptionOpen) {
             if(linkNote) OutlinedTextField(description,{description=it},enabled=!op.busy,label={Text("Texto y enlaces")},modifier=Modifier.fillMaxWidth())
             else if(pending!=null) AttachmentDescriptionEditor(draft,!op.busy,tools={},repository=requireNotNull(queue).attachments)
             else OutlinedTextField(description,{description=it},enabled=!op.busy,label={Text("Descripción")},modifier=Modifier.fillMaxWidth())
         }
-        OutlinedButton(enabled=!op.busy,onClick={choosing=true}) {Text("Destino: ${destination?.let {it.path+if(it.nodeId!=null) " › ${it.title}" else ""} ?: "Seleccionar"}")}
-        if(targets.isEmpty()) Text(if(linkNote) "Crea primero un Proyecto para guardar notas." else "Crea primero un Proyecto para guardar tareas.")
-    }},confirmButton={TextButton(enabled=!op.busy && title.isNotBlank() && TitleLimits.count(title)<=TitleLimits.NODE && destination!=null,onClick={
-        op.submit(if(linkNote) "No se pudo crear la nota. Revisa el título, el enlace y el destino." else "No se pudo crear la tarea. Revisa el título y el destino.",{if(pending==null) repo.capture(requireNotNull(key),title,description,creationId) else requireNotNull(queue).save(pending.id,requireNotNull(key),title,description,draft.removedAttachmentIds.toSet());true},onDismiss)
-    }) {Text(if(linkNote) "Crear nota" else "Crear tarea")}},dismissButton={TextButton(enabled=!op.busy,onClick=::cancel) {Text("Cancelar")}})
+        OutlinedButton(enabled=!op.busy,onClick={choosing=true}) {Text("Destino: ${destination?.let {it.path+if(it.nodeId!=null) " › ${it.title}" else ""} ?: "Borradores"}")}
+
+    }},confirmButton={TextButton(enabled=!op.busy && title.isNotBlank() && TitleLimits.count(title)<=TitleLimits.NODE && (key==null || destination!=null),onClick={
+        op.submit(if(linkNote) "No se pudo crear la nota. Revisa el título, el enlace y el destino." else "No se pudo crear la tarea. Revisa el título y el destino.",{if(pending==null) repo.capture(key,title,description,creationId,purpose) else requireNotNull(queue).save(pending.id,key,title,description,draft.removedAttachmentIds.toSet());true},onDismiss)
+    }) {Text(if(key==null) "Guardar en Borradores" else if(linkNote) "Crear nota" else "Crear tarea")}},dismissButton={TextButton(enabled=!op.busy,onClick=::cancel) {Text("Cancelar")}})
     if(choosing) {
         var query by rememberSaveable {mutableStateOf("")}
         AccessDialog(onDismissRequest={choosing=false},title={Text(if(linkNote) "Destino de la nota" else "Destino de la tarea")},text={Column {
+            TextButton(onClick={key=null;choosing=false}) {Text("Guardar en Borradores")}
             OutlinedTextField(query,{query=it},label={Text("Buscar destino")},singleLine=true)
             LazyColumn(Modifier.heightIn(max=360.dp)) {items(ElementSearch.find(targets,query),key={it.key}) {target->TextButton(onClick={key=target.key;choosing=false}) {Text("${target.type} · ${target.path}${if(target.nodeId!=null) " › ${target.title}" else ""}")}}}
         }},confirmButton={TextButton(onClick={choosing=false}) {Text("Cerrar")}})
@@ -164,7 +139,7 @@ internal val LocalElementAccessState=staticCompositionLocalOf {AccessState()}
 }
 
 @Composable
-private fun AccessDialog(onDismissRequest:()->Unit,title:@Composable ()->Unit,text:@Composable ()->Unit,confirmButton:@Composable ()->Unit,dismissButton:(@Composable ()->Unit)?=null) {
+internal fun AccessDialog(onDismissRequest:()->Unit,title:@Composable ()->Unit,text:@Composable ()->Unit,confirmButton:@Composable ()->Unit,dismissButton:(@Composable ()->Unit)?=null) {
     BottomModulesDialog(onDismissRequest=onDismissRequest,properties=androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth=false)) {
         Surface(modifier=Modifier.fillMaxWidth(),shape=androidx.compose.foundation.shape.RoundedCornerShape(16.dp),color=MaterialTheme.colorScheme.surface) {
             Column(Modifier.fillMaxWidth().heightIn(max=620.dp).padding(16.dp),verticalArrangement=Arrangement.spacedBy(12.dp)) {

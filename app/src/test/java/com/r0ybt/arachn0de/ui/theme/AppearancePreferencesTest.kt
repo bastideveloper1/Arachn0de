@@ -16,7 +16,7 @@ class AppearancePreferencesTest {
     private val storage get() = RuntimeEnvironment.getApplication().getSharedPreferences(AppearancePreferences.FILE, 0)
     @Test fun availableThemesAndThreeSizesDefaultToCharcoal() {
         storage.edit().clear().commit()
-        assertEquals(listOf("Charcoal", "Dark", "King Crimson", "Deep Moss", "Heavy Gold", "Azul noche", "Gris día", "Green Bash"), AppearanceTheme.entries.map { it.label })
+        assertEquals(listOf("Charcoal", "Dark", "King Crimson", "Deep Moss", "Heavy Gold", "Azul noche", "Gris día", "Green Bash", "Pure Black"), selectableAppearanceThemes.map { it.label })
         assertEquals(listOf("Pequeña", "Mediana", "Grande"), AppearanceTextSize.entries.map { it.label })
         assertEquals(AppearanceSettings(), AppearancePreferences(storage).settings)
     }
@@ -53,7 +53,7 @@ class AppearancePreferencesTest {
     }
     @Test fun everyThemeAndSizePersistAndRestoreBeforeUiIsDrawn() {
         val preferences = AppearancePreferences(storage)
-        AppearanceTheme.entries.forEach { theme ->
+        selectableAppearanceThemes.forEach { theme ->
             preferences.setTheme(theme)
             AppearanceTextSize.entries.forEach { size ->
                 preferences.setTextSize(size)
@@ -78,6 +78,32 @@ class AppearancePreferencesTest {
             assertEquals(Typography.labelSmall, typography.labelSmall)
         }
         assertEquals(Typography, appearanceTypography(AppearanceTextSize.Small))
+    }
+    @Test fun retiredHistoricalPreferencesMigrateWithoutChangingOtherValuesAndReloadAfterRestore() {
+        storage.edit().clear().commit()
+        val preferences=AppearancePreferences(storage)
+        for(theme in retiredAppearanceThemes) {
+            val values=mapOf("theme" to theme.name,"text_size" to "Large","indicator_color_verify" to "BLUE")
+            val historical=com.r0ybt.arachn0de.security.EncryptedPreferences.encode(values)
+            AppearancePreferences.validate(historical)
+            // Restore uses the existing validated preference payload; normalization occurs on read/reload.
+            val decoded=com.r0ybt.arachn0de.security.EncryptedPreferences.decode(historical)
+            storage.edit().apply {decoded.forEach {(key,value)->putString(key,value as String)}}.commit()
+            preferences.reload()
+            assertEquals(AppearanceTheme.Arachn0de,preferences.settings.theme)
+            assertEquals("Arachn0de",storage.getString("theme",null))
+            assertEquals(AppearanceTextSize.Large,preferences.settings.textSize)
+            assertEquals(IndicatorColor.BLUE,preferences.settings.indicatorColors["verify"])
+            assertEquals(preferences.settings,AppearancePreferences(storage).settings)
+            preferences.setTheme(theme)
+            assertEquals(AppearanceTheme.Arachn0de,preferences.settings.theme)
+            val context=RuntimeEnvironment.getApplication()
+            UnlockAppearanceCache.update(context,theme)
+            assertEquals(AppearanceTheme.Arachn0de,UnlockAppearanceCache.read(context))
+        }
+        assertEquals(androidx.compose.ui.graphics.Color.Black,AppearanceTheme.PureBlack.palette.background)
+        assertTrue(AppearanceTheme.PureBlack in selectableAppearanceThemes)
+        assertTrue(selectableAppearanceThemes.none {it in retiredAppearanceThemes})
     }
     private fun contrast(a: Color, b: Color): Float {
         val x = a.luminance(); val y = b.luminance()
@@ -104,9 +130,9 @@ class AppearancePreferencesTest {
     }
     @Test fun blackWhite90UsesSoftNeutralTokensAndKeepsExistingPreferenceKey() {
         val p=AppearanceTheme.Arachn0de.palette
-        assertEquals(Color(0xFF202124),p.background)
-        assertEquals(Color(0xFF2B2D30),p.surface)
-        assertEquals(Color(0xFFD6D6D6),p.text)
+        assertEquals(Color(0xFF121212),p.background)
+        assertEquals(Color(0xFF242424),p.surface)
+        assertEquals(Color(0xFFEEEEEE),p.text)
         assertEquals(p.background,p.middle);assertEquals(p.background,p.end)
         storage.edit().putString("theme","Arachn0de").commit()
         assertEquals(AppearanceTheme.Arachn0de,AppearancePreferences(storage).settings.theme)

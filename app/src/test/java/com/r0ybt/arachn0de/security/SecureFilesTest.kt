@@ -43,4 +43,33 @@ class SecureFilesTest {
         try { file.writeText("existing data");assertEquals("existing data",SecureFiles.text(file)) }
         finally { file.delete() }
     }
+    @Test fun closingRejectsNewAcquisitionsBeforeResourceCleanupAndClosesOnlyOnce() {
+        val root=Files.createTempDirectory("closing-admission").toFile()
+        val session=SecureFiles.Session(UUID.randomUUID(),root,VaultCrypto.randomKey());SecureFiles.register(session)
+        val closes=java.util.concurrent.atomic.AtomicInteger()
+        try {
+            val file=File(root,"private");SecureFiles.write(file,"synthetic".toByteArray());val input=SecureFiles.input(file)
+            session.retain(AutoCloseable {closes.incrementAndGet()})
+            session.beginClosing()
+            assertTrue(runCatching {session.withKey {it.size}}.isFailure)
+            assertTrue(runCatching {session.retain(AutoCloseable {})}.isFailure)
+            assertTrue(runCatching {SecureFiles.input(file)}.isFailure)
+            assertTrue(runCatching {SecureFiles.output(file)}.isFailure)
+            assertTrue(runCatching {input.read()}.isFailure)
+            assertEquals(0,closes.get())
+            session.close();session.close();assertEquals(1,closes.get())
+        } finally {SecureFiles.revoke(session);root.deleteRecursively()}
+    }
+    @Test(timeout=10000) fun registrationRacingCloseCannotLeaveAnUnrevokedHandle() {
+        val root=Files.createTempDirectory("retain-close-race").toFile()
+        try {repeat(100) {
+            val session=SecureFiles.Session(UUID.randomUUID(),root,VaultCrypto.randomKey())
+            val start=java.util.concurrent.CountDownLatch(1);val closed=java.util.concurrent.atomic.AtomicInteger();var retained=false
+            val thread=Thread {start.await();retained=runCatching {session.retain(AutoCloseable {closed.incrementAndGet()})}.isSuccess}
+            thread.start();start.countDown();session.close();thread.join(1000);assertFalse(thread.isAlive)
+            session.close();assertEquals(if(retained)1 else 0,closed.get())
+            assertTrue(runCatching {session.withKey {it.size}}.isFailure)
+        }} finally {root.deleteRecursively()}
+    }
+
 }

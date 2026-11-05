@@ -1,6 +1,9 @@
 package com.r0ybt.arachn0de.ui
 
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -21,6 +24,26 @@ internal enum class HeadingKind { CORE, LAYER, TASK, NOTE, SECTION }
 internal data class HeadingLocation(val name:String,val kind:HeadingKind,val core:String?=null)
 internal val LocalReturnHeading=staticCompositionLocalOf<HeadingLocation?> {null}
 
+internal data class AncestorLocation(val id:String?, val name:String)
+
+@Composable internal fun HierarchyRoute(ancestors:List<AncestorLocation>,onNavigate:(String?)->Unit) {
+    // A new context starts beside its nearest ancestor, even after scrolling a deep route.
+    key(ancestors) {
+        LazyRow(Modifier.fillMaxWidth().testTag("hierarchy-route"),verticalAlignment=Alignment.CenterVertically) {
+            item(key="current") {
+                Text("Aquí",color=Arachn0deColors.TextSecondary,fontSize=12.sp,
+                    modifier=Modifier.padding(horizontal=8.dp).testTag("hierarchy-current"))
+            }
+            items(ancestors,key={it.id ?: "project-root"}) { ancestor ->
+                Text("‹",color=Arachn0deColors.TextSecondary)
+                TextButton(onClick={onNavigate(ancestor.id)},modifier=Modifier.testTag("hierarchy-ancestor:${ancestor.id ?: "root"}")) {
+                    Text(ancestor.name,color=Arachn0deColors.TextSecondary,maxLines=1)
+                }
+            }
+        }
+    }
+}
+
 /** Presentation mirror only; names and validity always come from the current catalog. */
 internal fun headingLocation(project:Project?,nodeId:String?,nodes:Map<String,Node>):HeadingLocation? {
     project ?: return null
@@ -33,12 +56,17 @@ internal fun headingLocation(project:Project?,nodeId:String?,nodes:Map<String,No
     },project.name.takeIf {it!=node.title})
 }
 
+/** The project root lists the first layer; deeper locations retain their actual parent. */
+internal fun projectPreviousHeading(project:Project,currentNode:Node?,nodes:Map<String,Node>):HeadingLocation? =
+    if(currentNode==null) HeadingLocation("Núcleos",HeadingKind.SECTION)
+    else headingLocation(project,currentNode.parentId,nodes)?.copy(core=null)
+
 @Composable internal fun NavigationHeading(title:String,modifier:Modifier=Modifier,
     style:TextStyle=MaterialTheme.typography.titleMedium.copy(fontSize=16.sp),color:Color=LocalContentColor.current,
-    context:HeadingLocation?=LocalReturnHeading.current,returning:Boolean=LocalReturnHeading.current!=null,titleTag:String="navigation-heading",showTitle:Boolean=true) {
-    val shownContext=context?.takeIf {returning || it.name!=title}
+    context:HeadingLocation?=LocalReturnHeading.current,returning:Boolean=LocalReturnHeading.current!=null,titleTag:String="navigation-heading",showTitle:Boolean=true,onContextClick:(()->Unit)?=null) {
+    val shownContext=context?.takeIf {onContextClick!=null || returning || it.name!=title}
     val returnLine=returning && shownContext!=null
-    Column(modifier,verticalArrangement=Arrangement.spacedBy(if(returnLine) 2.dp else 0.dp,Alignment.CenterVertically)) {
+    Column(modifier.then(if(onContextClick!=null)Modifier.heightIn(min=48.dp).clickable(onClickLabel="Abrir navegación de ubicación",onClick=onContextClick) else Modifier),verticalArrangement=Arrangement.spacedBy(if(returnLine) 2.dp else 0.dp,Alignment.CenterVertically)) {
         if(showTitle) Row {
             // Same space as the two 12-dp contextual icons and their 3-dp gaps.
             if(returnLine) Spacer(Modifier.width(30.dp))

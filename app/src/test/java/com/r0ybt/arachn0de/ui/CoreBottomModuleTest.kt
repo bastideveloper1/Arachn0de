@@ -34,27 +34,105 @@ class CoreBottomModuleTest {
         compose.mainClock.advanceTimeByFrame();block()
     }
     private fun back()=compose.runOnUiThread {compose.activity.onBackPressedDispatcher.onBackPressed()}
+    @Test fun taskStatusIsOnlyInContentAndConfigurationOnlyInOptionsWithConversion() {
+        val project=runBlocking {app.projectRepository.createProject("Estados")}
+        val layer=runBlocking {app.nodeRepository.createNode(project.id,null,"Capa",purpose=NodePurpose.LAYER)}
+        runBlocking {app.nodeRepository.setTaskStateCount(layer.id,3)}
+        val task=runBlocking {app.nodeRepository.createNode(project.id,layer.id,"Tarea heredada")}
+        compose.setContent {Arachn0deTheme {ProjectNodeScreen(project,app.nodeRepository,{},openNodeId=task.id)}}
+        await {compose.onAllNodesWithTag("core-context:Content").fetchSemanticsNodes().isNotEmpty()}
+        compose.onNodeWithTag("core-context:Content").performClick()
+        compose.onNodeWithTag("context-action:Configurar estados").assertDoesNotExist()
+        compose.onAllNodesWithTag("context-action:Cambiar estado").assertCountEquals(1)
+        compose.onNodeWithTag("context-action:Cambiar estado").performScrollTo().performClick()
+        await {compose.onAllNodesWithText("Por verificar",substring=false).fetchSemanticsNodes().isNotEmpty()}
+        compose.onNodeWithText("Por verificar",substring=false).assertIsEnabled().performClick()
+        await {runBlocking {app.nodeRepository.getNode(task.id)!!.awaitingVerification}}
+        compose.onNodeWithTag("core-context:Options").performClick()
+        compose.onNodeWithTag("context-action:Cambiar estado").assertDoesNotExist()
+        compose.onAllNodesWithTag("context-action:Configurar estados").assertCountEquals(1)
+        compose.onNodeWithTag("context-action:Configurar estados").performScrollTo().performClick()
+        compose.onNodeWithText("Heredar del contenedor").assertExists()
+        compose.onNodeWithText("2 estados").performClick()
+        await {compose.onAllNodesWithTag("task-state-conversion-confirm").fetchSemanticsNodes().isNotEmpty()}
+        compose.onNodeWithTag("task-state-conversion-confirm").performClick()
+        await {runBlocking {app.nodeRepository.getNode(task.id)!!.taskStateCount==2}}
+        assertEquals(com.r0ybt.arachn0de.domain.model.TaskStatus.PENDING,runBlocking {app.nodeRepository.getNode(task.id)!!.taskStatus})
+    }
+    @Test fun coreStateConfigurationIsOnlyInOptions()=stateConfigurationLocation(null)
+    @Test fun layerStateConfigurationIsOnlyInOptions()=stateConfigurationLocation(NodePurpose.LAYER)
+    @Test fun noteDoesNotAcquireTaskStateActions()=stateConfigurationLocation(NodePurpose.NOTE)
+    private fun stateConfigurationLocation(purpose:NodePurpose?) {
+        val project=runBlocking {app.projectRepository.createProject("Ámbito")}
+        val node=purpose?.let {runBlocking {app.nodeRepository.createNode(project.id,null,"Elemento",purpose=it)}}
+        compose.setContent {Arachn0deTheme {ProjectNodeScreen(project,app.nodeRepository,{},openNodeId=node?.id)}}
+        await {compose.onAllNodesWithTag("core-context:Content").fetchSemanticsNodes().isNotEmpty()}
+        compose.onNodeWithTag("core-context:Content").performClick()
+        compose.onNodeWithTag("context-action:Configurar estados").assertDoesNotExist()
+        compose.onNodeWithTag("context-action:Cambiar estado").assertDoesNotExist()
+        compose.onNodeWithTag("core-context:Options").performClick()
+        compose.onNodeWithTag("context-action:Cambiar estado").assertDoesNotExist()
+        if(purpose==NodePurpose.NOTE)compose.onNodeWithTag("context-action:Configurar estados").assertDoesNotExist()
+        else {
+            compose.onAllNodesWithTag("context-action:Configurar estados").assertCountEquals(1)
+            compose.onNodeWithTag("context-action:Configurar estados").performScrollTo().performClick()
+            compose.onNodeWithText("3 estados").assertIsEnabled()
+            if(node!=null)compose.onNodeWithText("Heredar del contenedor").assertExists()
+            else compose.onNodeWithText("Heredar del contenedor").assertDoesNotExist()
+        }
+    }
     @After fun close() {
         compose.runOnUiThread {val root=compose.activity.findViewById<android.view.ViewGroup>(android.R.id.content)
             for(i in 0 until root.childCount) (root.getChildAt(i) as? androidx.compose.ui.platform.AbstractComposeView)?.disposeComposition()
             root.removeAllViews()}
-        val manager=app.security
-        val closing=CoroutineScope(Dispatchers.Default).async {manager.lock()}
-        await {closing.isCompleted};runBlocking {closing.await()}
+        val process=Arachn0deApplication::class.java.getDeclaredField("processScope").apply {isAccessible=true}.get(app) as CoroutineScope
+        runBlocking {process.coroutineContext[Job]?.cancelAndJoin()}
+        val database=app.database
+        runBlocking {
+            app.security.current.value!!.scope.coroutineContext[Job]?.cancelAndJoin()
+            withTimeout(15000) {database.getCoroutineScope().coroutineContext[Job]!!.children.toList().joinAll()}
+        }
+        database.close()
     }
-    @Test fun rootStartsInContentAndBottomOptionsUsesTheSameModuleAndBackCompactsFirst() {
+    @Test fun creationShowsDirectChoicesAndKeepsRootDestination() = directCreationChoices(false)
+    @Test fun creationShowsDirectChoicesAndKeepsLayerDestination() = directCreationChoices(true)
+    private fun directCreationChoices(inLayer:Boolean) {
+        val project=runBlocking {app.projectRepository.createProject("Núcleo")}
+        val parent=if(inLayer)runBlocking {app.nodeRepository.createNode(project.id,null,"Capa",purpose=NodePurpose.LAYER)}.id else null
+        compose.setContent {Arachn0deTheme {ProjectNodeScreen(project,app.nodeRepository,{},openNodeId=parent)}}
+        await {compose.onAllNodesWithTag("core-context:Creation").fetchSemanticsNodes().isNotEmpty()}
+        compose.onNodeWithTag("core-context:Creation").performClick()
+        compose.onNodeWithText("Nuevo").assertIsDisplayed()
+        compose.onNodeWithText("Desde plantilla").assertIsDisplayed()
+        compose.onAllNodesWithText("Crear",substring=false).assertCountEquals(1)
+        compose.onNodeWithText("Desde plantilla").performClick()
+        compose.onNodeWithTag("structure-template-panel").assertIsDisplayed()
+        compose.onNodeWithText("No hay plantillas compatibles. Guarda una desde Opciones.").assertIsDisplayed()
+        compose.onAllNodes(SemanticsMatcher.keyIsDefined(androidx.compose.ui.semantics.SemanticsActions.Dismiss)).onFirst()
+            .performSemanticsAction(androidx.compose.ui.semantics.SemanticsActions.Dismiss) {it()}
+        await {compose.onAllNodesWithTag("structure-template-panel").fetchSemanticsNodes().isEmpty()}
+        compose.onNodeWithTag("core-panel-fold").performClick()
+        compose.onNodeWithText("Nuevo").assertDoesNotExist()
+        compose.onNodeWithTag("core-context:Creation").performClick()
+        compose.onNodeWithText("Nuevo").performClick()
+        await {compose.onAllNodesWithTag("quick-create-title").fetchSemanticsNodes().isNotEmpty()}
+        compose.onNodeWithTag("quick-create-title").performTextReplacement("Creación directa")
+        compose.onNodeWithTag("quick-create-save").performClick()
+        await {runBlocking {app.nodeRepository.getProjectNodes(project.id).any {it.title=="Creación directa" && it.parentId==parent}}}
+    }
+    @Test fun rootStartsCollapsedAndOptionsToggleSwitchAndBackCompactsFirst() {
         val project=runBlocking {app.projectRepository.createProject("Núcleo modular","Descripción original")}
         var exits=0
         compose.setContent {Arachn0deTheme {ProjectNodeScreen(project,app.nodeRepository,{exits++})}}
         await {compose.onAllNodesWithTag("core-bottom-module").fetchSemanticsNodes().isNotEmpty()}
-        compose.onNodeWithTag("core-context:Content").assertIsSelected()
-        compose.onNodeWithTag("context-action:Título").assertIsDisplayed()
-        compose.onNodeWithTag("context-action:Descripción").assertIsDisplayed()
+        CoreBottomContext.entries.forEach {compose.onNodeWithTag("core-context:${it.name}").assertIsNotSelected()}
+        compose.onNodeWithTag("context-action:Título").assertDoesNotExist()
+        compose.onNodeWithTag("context-action:Descripción").assertDoesNotExist()
         compose.onNodeWithTag("core-context:Creation").performClick()
         compose.onNodeWithTag("core-context:Creation").assertIsSelected()
         compose.onNodeWithTag("project-bottom-actions").assertIsDisplayed()
-        compose.onNodeWithText("Crear",substring=false).assertIsEnabled()
-        compose.onNodeWithText("Capas",substring=false).assertIsDisplayed()
+        compose.onNodeWithText("Nuevo",substring=false).assertIsEnabled()
+        compose.onNodeWithText("Desde plantilla",substring=false).assertIsDisplayed()
         compose.onNodeWithContentDescription("Opciones del proyecto").assertDoesNotExist()
         compose.onNodeWithTag("core-context:Options").performClick()
         compose.onNodeWithTag("core-context:Options").assertIsSelected()
@@ -65,10 +143,10 @@ class CoreBottomModuleTest {
         }
         compose.onNodeWithTag("core-context:Content").performClick()
         compose.onNodeWithTag("core-context:Content").assertIsSelected()
-        compose.onNodeWithTag("context-action:Editar tecnologías").assertIsDisplayed()
+        compose.onNodeWithTag("context-action:Tecnologías").assertIsDisplayed()
         compose.onNodeWithTag("context-action:Fijar").assertDoesNotExist()
         compose.onNodeWithText("Descripción original").assertExists()
-        back();compose.onNodeWithTag("core-context:Creation").assertIsSelected();assertEquals(0,exits)
+        back();CoreBottomContext.entries.forEach {compose.onNodeWithTag("core-context:${it.name}").assertIsNotSelected()};assertEquals(0,exits)
         back();assertEquals(1,exits)
     }
     @Test fun childLevelsUseSharedContextsAndReturningToRootResetsContext() {
@@ -79,7 +157,7 @@ class CoreBottomModuleTest {
         await {compose.onAllNodesWithTag("core-context:Options").fetchSemanticsNodes().isNotEmpty()}
         compose.onNodeWithTag("core-context:Options").performClick()
         compose.onNodeWithText("Capa de prueba",substring=false).performScrollTo().performClick()
-        await {runCatching {compose.onNodeWithTag("core-context:Content").assertIsSelected()}.isSuccess}
+        await {runCatching {compose.onNodeWithTag("core-context:Content").assertIsNotSelected()}.isSuccess}
         compose.onNodeWithTag("core-context:Creation").performClick()
         compose.onNodeWithTag("project-bottom-actions").assertIsDisplayed()
         compose.onNodeWithText("Tarea de prueba",substring=false).performScrollTo().performClick()
@@ -92,32 +170,34 @@ class CoreBottomModuleTest {
         back()
         await {compose.onAllNodesWithTag("context-action:Historial").fetchSemanticsNodes().isEmpty()}
         back()
-        compose.onNodeWithTag("core-context:Creation").assertIsSelected()
-        compose.onNodeWithTag("project-bottom-actions").assertIsDisplayed()
+        compose.onNodeWithTag("core-context:Creation").assertIsNotSelected()
+        compose.onNodeWithTag("project-bottom-actions").assertDoesNotExist()
         back()
         await {compose.onAllNodesWithTag("core-context:Creation").fetchSemanticsNodes().isNotEmpty()}
-        compose.onNodeWithTag("core-context:Content").assertIsSelected()
+        compose.onNodeWithTag("core-context:Content").assertIsNotSelected()
     }
     @Test fun creationDraftOwnsTheFooterAndSurvivesRecreationUntilExplicitSave() {
         val project=runBlocking {app.projectRepository.createProject("Núcleo")}
         val restoration=StateRestorationTester(compose)
         restoration.setContent {Arachn0deTheme {ProjectNodeScreen(project,app.nodeRepository,{})}}
-        await {compose.onAllNodesWithText("Crear",substring=false).fetchSemanticsNodes().isNotEmpty()}
-        compose.onNodeWithText("Crear",substring=false).performClick()
+        await {compose.onAllNodesWithTag("core-context:Creation").fetchSemanticsNodes().isNotEmpty()}
+        compose.onNodeWithTag("core-context:Creation").performClick()
+        compose.onNodeWithText("Nuevo",substring=false).performClick()
         await {compose.onAllNodesWithTag("quick-create-title").fetchSemanticsNodes().isNotEmpty()}
         compose.onNodeWithTag("quick-create-title").performTextReplacement("Borrador intacto")
         compose.onNodeWithTag("core-bottom-module").assertDoesNotExist()
-        compose.onNodeWithContentDescription("Opciones del proyecto").assertIsNotEnabled()
+        compose.onNodeWithContentDescription("Opciones del proyecto").assertDoesNotExist()
         assertTrue(runBlocking {app.nodeRepository.getProjectNodes(project.id).isEmpty()})
         restoration.emulateSavedInstanceStateRestore()
         await {compose.onAllNodesWithTag("quick-create-title").fetchSemanticsNodes().isNotEmpty()}
         compose.onNodeWithTag("quick-create-title").assert(hasText("Borrador intacto"))
         compose.onNodeWithTag("quick-create-save").performClick()
         await {runBlocking {app.nodeRepository.getProjectNodes(project.id).any {it.title=="Borrador intacto"}}}
-        compose.onNodeWithTag("core-context:Creation").assertIsSelected()
+        // The committed row can appear before the save callback restores the footer.
+        await {runCatching {compose.onNodeWithTag("core-context:Creation").assertIsNotSelected()}.isSuccess}
     }
     @Test fun longOptionsScrollAboveAnAccessibleFixedSelectorWithLargeFonts() {
-        var context by mutableStateOf(CoreBottomContext.Options)
+        var context by mutableStateOf<CoreBottomContext?>(CoreBottomContext.Options)
         var clicks=0
         compose.setContent {Arachn0deTheme {
             CompositionLocalProvider(LocalDensity provides Density(LocalDensity.current.density,1.7f)) {
@@ -199,7 +279,7 @@ class CoreBottomModuleTest {
         compose.onNodeWithText("Confirmar").performClick()
         await {runBlocking {repository.getProject(project.id)!!.name=="Título nuevo"}}
         await {compose.onAllNodesWithTag("core-context:Content").fetchSemanticsNodes().isNotEmpty()}
-        compose.onNodeWithTag("app-bar-title").assert(hasText("Título nuevo"))
+        compose.onNodeWithText("Título nuevo",substring=false).assertExists()
         compose.onNodeWithTag("context-action:Descripción").performClick()
         compose.onNodeWithTag("modular-text-field").assert(hasText("Descripción actual")).assertIsFocused().performTextReplacement("Descripción descartada")
         back()
@@ -230,6 +310,31 @@ class CoreBottomModuleTest {
         assertTrue(runCatching {repository.updateField(project.id,"title","Título externo"," ")}.isFailure)
         assertEquals("Título externo",repository.getProject(project.id)!!.name)
         assertFalse(repository.updateField("inexistente","title","","Nuevo"))
+    }
+
+    @Test fun eachMainActionTogglesAndGesturesRestoreOnlyTheLastSection() {
+        var context by mutableStateOf<CoreBottomContext?>(null)
+        compose.setContent {Arachn0deTheme {CoreBottomModule(context,{context=it},350.dp,
+            contextActions={action("Acción de prueba",Icons.Default.Info,{})},creationActions={Text("Creación existente")},onEditProject={})}}
+        fun collapsed() {
+            CoreBottomContext.entries.forEach {compose.onNodeWithTag("core-context:${it.name}").assertIsNotSelected().assertHeightIsAtLeast(48.dp)}
+            compose.onNodeWithTag("core-panel-fold").assertDoesNotExist()
+            assertTrue(compose.onNodeWithTag("core-bottom-module").fetchSemanticsNode().boundsInRoot.height<=54*compose.activity.resources.displayMetrics.density)
+        }
+        collapsed()
+        CoreBottomContext.entries.forEach {entry->
+            compose.onNodeWithTag("core-context:${entry.name}").performClick().assertIsSelected()
+            compose.onNodeWithTag("core-context:${entry.name}").performClick();collapsed()
+        }
+        compose.onNodeWithTag("core-context:Content").performClick()
+        compose.onNodeWithTag("core-context:Options").performClick()
+        compose.onNodeWithTag("context-action:Título").assertDoesNotExist()
+        compose.onNodeWithTag("context-action:Acción de prueba").assertExists()
+        compose.onNodeWithTag("core-panel-fold").performTouchInput {swipe(center,center+androidx.compose.ui.geometry.Offset(0f,70f),300)}
+        collapsed()
+        compose.onNodeWithTag("core-context:Content").performTouchInput {swipe(center,center-androidx.compose.ui.geometry.Offset(0f,70f),300)}
+        compose.onNodeWithTag("core-context:Options").assertIsSelected()
+        compose.onNodeWithTag("core-context:Content").assertIsNotSelected()
     }
 
 }

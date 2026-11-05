@@ -62,10 +62,10 @@ internal val LocalOpenPomodoro=staticCompositionLocalOf<(() -> Unit)?> {null}
     val lifecycle=LocalLifecycleOwner.current.lifecycle
     val enabled=LocalAudioFooterVisible.current
     var tick by remember {mutableLongStateOf(0)}
-    LaunchedEffect(controller,lifecycle,enabled,data.session?.status,data.config.ticking,data.session?.phase) {
-        if(enabled && data.session?.status==PomodoroStatus.RUNNING) lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
+    LaunchedEffect(controller,lifecycle,enabled,data.session?.status,data.session?.manualEnd,data.config.ticking,data.session?.phase) {
+        if(enabled && data.session?.status==PomodoroStatus.RUNNING && data.session.manualEnd!=true) lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
             while(isActive) {
-                controller.refresh();tick++
+                tick++
                 delay(250)
             }
         }
@@ -99,6 +99,7 @@ internal val LocalOpenPomodoro=staticCompositionLocalOf<(() -> Unit)?> {null}
         Column(Modifier.fillMaxSize()) {
             Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically) {
                 GlobalChromeActions(leading=true)
+                IconButton(onClick=onBack,modifier=Modifier.size(48.dp)) {LucideIcon(Icons.Default.ArrowBack,"Volver")}
                 NavigationHeading("Pomodoro",Modifier.weight(1f))
                 GlobalChromeActions()
             }
@@ -123,7 +124,6 @@ internal val LocalOpenPomodoro=staticCompositionLocalOf<(() -> Unit)?> {null}
                     }
                 }
                 if(s?.manualEnd==true) Text("Límite manual: retrocede o finaliza.",style=MaterialTheme.typography.labelSmall,modifier=Modifier.align(Alignment.CenterHorizontally))
-                Text("− Retroceder · + Adelantar",style=MaterialTheme.typography.labelSmall,modifier=Modifier.align(Alignment.CenterHorizontally))
             }
             Row(Modifier.fillMaxWidth().padding(8.dp).horizontalScroll(rememberScrollState()),
                 horizontalArrangement=Arrangement.Center,verticalAlignment=Alignment.CenterVertically) {
@@ -145,9 +145,10 @@ internal val LocalOpenPomodoro=staticCompositionLocalOf<(() -> Unit)?> {null}
     // Reserve six digits, including configured phases of 100–180 minutes; ticks never move controls.
     val timeWidth=with(LocalDensity.current) {measurer.measure("000:00",timeStyle).size.width.toDp()}
     PersistentModuleBoundary("pomodoro-module") {
-    Row(modifier.fillMaxWidth().background(LocalAppearancePalette.current.taskPanel.copy(alpha=.94f),RoundedCornerShape(8.dp))
+    NavigationBarFrame("pomodoro-module-frame") {
+    Row(modifier.fillMaxWidth()
         // Only unusually narrow windows or enlarged system fonts need horizontal scrolling.
-        .horizontalScroll(rememberScrollState()).padding(horizontal=4.dp).heightIn(min=48.dp).testTag("pomodoro-bar"),
+        .horizontalScroll(rememberScrollState()).padding(horizontal=4.dp,vertical=4.dp).heightIn(min=48.dp).testTag("pomodoro-bar"),
         verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(4.dp)) {
         IconButton(onClick={onCompactChange(!compact)},modifier=Modifier.size(48.dp).testTag("pomodoro-compact-toggle")) {
             Box(Modifier.semantics {contentDescription=if(compact) "Expandir barra de Pomodoro" else "Minimizar barra de Pomodoro"}) {
@@ -162,6 +163,7 @@ internal val LocalOpenPomodoro=staticCompositionLocalOf<(() -> Unit)?> {null}
             Icon(painterResource(R.drawable.lucide_chevron_down),"Ampliar Pomodoro",Modifier.size(20.dp).rotate(180f),tint=Arachn0deColors.TextPrimary)
         }
     }
+}
 }
 
 }

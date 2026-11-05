@@ -28,6 +28,30 @@ class NavigationHeadingTest {
     private val project=Project("p","Proyecto de Trabajo","",0,0,0)
     private fun node(purpose:NodePurpose)=Node("n","p",null,"Amigos","",false,0,0,0,false,purpose=purpose)
 
+    @Test fun hierarchyShowsHereAndNearestAncestorsAndNavigatesAfterDeepScrolling() {
+        val original=(24 downTo 1).map {AncestorLocation("$it","Capa $it")}+AncestorLocation(null,project.name)
+        var ancestors by mutableStateOf(original)
+        val visited=mutableListOf<String?>()
+        compose.setContent {Arachn0deTheme {Box(Modifier.width(360.dp)) {
+            HeaderBar({},showTitle=false,headingContent={HierarchyRoute(ancestors) {visited.add(it)}})
+        }}}
+        compose.onNodeWithTag("app-bar-title").assertDoesNotExist()
+        compose.onNodeWithTag("hierarchy-current").assertTextEquals("Aquí").assertHasNoClickAction()
+        compose.onNodeWithText("Capa 24").assertIsDisplayed().performClick()
+        repeat(3) {
+            compose.onNodeWithTag("hierarchy-route").performScrollToNode(hasText(project.name))
+            compose.onNodeWithText(project.name).performClick()
+            compose.onNodeWithTag("hierarchy-route").performScrollToNode(hasText("Capa 24"))
+            compose.onNodeWithText("Capa 24").performClick()
+        }
+        assertEquals(listOf("24",null,"24",null,"24",null,"24"),visited)
+        compose.runOnIdle {ancestors=listOf(AncestorLocation(null,project.name))}
+        compose.onNodeWithText(project.name).assertIsDisplayed()
+        compose.runOnIdle {ancestors=emptyList()}
+        compose.onNodeWithTag("hierarchy-current").assertIsDisplayed().assertHasNoClickAction()
+        compose.onNodeWithText(project.name).assertDoesNotExist()
+    }
+
     @Test fun lateralHeadingUsesEqualTypographyAlignedTextAndExistingBackControl() {
         compose.setContent {Arachn0deTheme {
             CompositionLocalProvider(LocalReturnHeading provides HeadingLocation("Amigos",HeadingKind.TASK,project.name)) {
@@ -95,4 +119,20 @@ class NavigationHeadingTest {
         compose.onNodeWithTag("app-bar-title").assertTextEquals("Nota Amigos")
         compose.onNodeWithContentDescription("Regresar a").assertDoesNotExist()
     }
+    @Test fun firstLayerShowsCoresAndKeepsExistingBackCallback() {
+        var returned by mutableStateOf(false)
+        val first=projectPreviousHeading(project,null,emptyMap())
+        assertEquals(HeadingLocation("Núcleos",HeadingKind.SECTION),first)
+        val parent=node(NodePurpose.LAYER)
+        val child=parent.copy(id="child",parentId=parent.id)
+        assertEquals(HeadingLocation(parent.title,HeadingKind.LAYER),projectPreviousHeading(project,child,mapOf(parent.id to parent)))
+        compose.setContent {Arachn0deTheme {Box(Modifier.width(360.dp)) {
+            if(!returned)HeaderBar({},title=project.name,showTitle=false,context=first,onBack={returned=true})
+            else androidx.compose.material3.Text("Listado de Núcleos")
+        }}}
+        compose.onNodeWithTag("navigation-context-text").assertTextEquals("Núcleos").assertIsDisplayed()
+        compose.onNodeWithContentDescription("Volver").performClick()
+        compose.onNodeWithText("Listado de Núcleos").assertIsDisplayed()
+    }
+
 }

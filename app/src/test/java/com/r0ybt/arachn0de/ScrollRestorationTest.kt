@@ -25,9 +25,9 @@ class ScrollRestorationTest {
                 val project = ProjectRepository(app.database.projectDao()) { 1L }.createProject("Proyecto scroll")
                 repeat(35) { i ->
                     ProjectRepository(app.database.projectDao()) { 100L + i }.createProject("Proyecto $i")
-                    val node = app.nodeRepository.createNode(project.id, null, "Raíz $i", purpose = com.r0ybt.arachn0de.domain.model.NodePurpose.LAYER)
+                    val node = app.nodeRepository.createNode(project.id, null, (if(i%3==0 && i!=20) "Raíz $i con un título bastante largo que ocupa varias líneas para probar alturas diferentes" else "Raíz $i"), purpose = com.r0ybt.arachn0de.domain.model.NodePurpose.LAYER)
                     if (i != 20) app.nodeRepository.createNode(project.id, node.id, "Tarea")
-                    if (i == 20) repeat(35) { j -> app.nodeRepository.createNode(project.id, node.id, "Hijo $j") }
+                    if (i == 20) repeat(35) { j -> app.nodeRepository.createNode(project.id, node.id, if(j%3==0 && j!=20) "Hijo $j con un título más largo que debe ocupar dos líneas y cambiar la altura de la tarjeta" else "Hijo $j") }
                 }
             }
         }
@@ -54,6 +54,8 @@ class ScrollRestorationTest {
         awaitTag("nodes-list")
         compose.onNodeWithText("Hijo 20").assertIsDisplayed()
         back()
+        compose.waitForIdle()
+        compose.waitUntil(10_000) { compose.onAllNodesWithText("Raíz 20").fetchSemanticsNodes().isNotEmpty() }
         compose.onNodeWithText("Raíz 20").assertIsDisplayed()
     }
 
@@ -62,7 +64,7 @@ class ScrollRestorationTest {
         compose.onNodeWithTag("projects-list").performScrollToIndex(21)
         compose.onNodeWithText("Proyecto 20").performClick()
         compose.activityRule.scenario.recreate()
-        compose.waitUntil(10_000) { compose.onAllNodesWithContentDescription("Capas de cebolla").fetchSemanticsNodes().isNotEmpty() }
+        awaitTag("nodes-list")
         back()
         awaitTag("projects-list")
         compose.onNodeWithText("Proyecto 20").assertIsDisplayed()

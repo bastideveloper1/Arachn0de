@@ -48,7 +48,7 @@ class ObligationRepositoryTest {
         invalid { nodes.updateLeaf(task.id,"Bill","Details",1,20,null) }
         nodes.updateLeaf(task.id,"Bill","Details",1,20,null,removeObligation=true)
         assertNull(nodes.getNode(task.id)!!.obligation)
-        nodes.updateLeaf(task.id,"Bill","Details",1,20,Obligation(1050,"USD"))
+        nodes.updateLeaf(task.id,"Bill","Details",1,20,Obligation(1050,"CLP"))
         invalid { nodes.convertPurpose(task.id,NodePurpose.NOTE) }
         nodes.convertPurpose(task.id,NodePurpose.NOTE,removeObligation=true)
         assertNull(nodes.getNode(task.id)!!.obligation); assertEquals(20L,nodes.getNode(task.id)!!.dueAt)

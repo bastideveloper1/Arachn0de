@@ -10,7 +10,7 @@ internal object CreationDefaultsDraftFactory {
         dueAt=DefaultDateResolver.instant(defaults.due,defaults.dueTime,now,zone,true),purpose=defaults.purpose,priority=defaults.priority).apply {
         defaultStartMinute=(defaults.startTime as? DefaultTime.Minute)?.value
         defaultDueMinute=(defaults.dueTime as? DefaultTime.Minute)?.value
-        financialEnabled=defaults.obligation;currencyCode=defaults.currency
+        financialEnabled=defaults.obligation;currencyCode="CLP"
         tagIds=defaults.tags.sorted();responsibleIds=defaults.people.sorted()
     }
 }

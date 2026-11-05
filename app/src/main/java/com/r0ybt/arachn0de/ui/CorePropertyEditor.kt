@@ -21,6 +21,7 @@ internal fun CorePropertyEditor(field:String,value:String,onChange:(String)->Uni
     fun finish(action:()->Unit) {focus.clearFocus();keyboard?.hide();action()}
     BackHandler {if(enabled) finish(onCancel)}
     val title=field=="title"
+    val titleFeedback=rememberTitleInput()
     val valid=!title || (value.isNotBlank() && TitleLimits.count(value)<=titleLimit)
     ModularPanelSurface(Modifier.fillMaxWidth().heightIn(max=maxHeight).testTag("core-property-editor")) {
         ModularPanelLayout(header={},headerDivider=false,outlinedBody=false,compact=true,
@@ -29,8 +30,8 @@ internal fun CorePropertyEditor(field:String,value:String,onChange:(String)->Uni
             },confirm={
                 PrimaryControlButton(enabled=enabled && valid,onClick={finish(onConfirm)},modifier=Modifier.fillMaxWidth().heightIn(min=48.dp)) {Text("Confirmar")}
             })}) {
-            ModularTextField(value,onChange,if(title) "Título" else "Descripción",enabled,singleLine=title && !multilineTitle,growVertically=title && multilineTitle)
-            if(title) Text("${TitleLimits.count(value)} / $titleLimit",style=MaterialTheme.typography.labelSmall)
+            ModularTextField(value,{next->if(title) titleFeedback.change(value,next,titleLimit,onChange) else onChange(next)},if(title) "Título" else "Descripción",enabled,singleLine=title && !multilineTitle,growVertically=title && multilineTitle,isError=title && TitleLimits.count(value)>titleLimit)
+            if(title) TitleLimitHint(value,titleLimit,titleFeedback.blocked)
         }
     }
 }

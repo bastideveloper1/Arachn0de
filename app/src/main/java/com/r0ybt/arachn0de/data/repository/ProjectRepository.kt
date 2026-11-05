@@ -22,6 +22,18 @@ class ProjectRepository(
 
     fun observeProjects(): Flow<List<Project>> = projectDao.observeWithPhotos().map { rows -> rows.map { it.toProject() } }
 
+    internal suspend fun <T> withBankKind(id:String,bank:Boolean,write:suspend ()->T):T = inTransaction {
+        val result=write()
+        if(bank) {val db=requireNotNull(database);require(projectDao.getById(id)!=null);if(db.bankDao().roots().none {it.id==id})db.bankDao().insertRoots(listOf(com.r0ybt.arachn0de.bank.BankRoot(id)))}
+        result
+    }
+
+    suspend fun setVerificationEnabled(id:String,enabled:Boolean):Boolean = inTransaction {
+        val db=requireNotNull(database)
+        if(projectDao.getById(id)==null) return@inTransaction false
+        TaskStateConfiguration(db,currentTimeMillis).apply(TaskStateConfiguration.Request(id,null,if(enabled)3 else 2))
+    }
+
     suspend fun setPinned(id:String,pinned:Boolean):Boolean = inTransaction {projectDao.setPinned(id,pinned)==1}
 
     suspend fun normalizeProjectOrder() = inTransaction {

@@ -1,5 +1,10 @@
 package com.r0ybt.arachn0de.ui
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
+import androidx.compose.ui.input.pointer.pointerInput
+
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
@@ -28,7 +33,7 @@ import kotlinx.coroutines.withContext
 import java.util.UUID
 
 /** Existing profile data and image lifecycle, presented one operation at a time. */
-@Composable internal fun PersonProfileModule(person:Person,people:List<Person>,selfId:String?,repository:PersonRepository,onDelete:(()->Unit)?=null) {
+@Composable internal fun PersonProfileModule(person:Person,people:List<Person>,selfId:String?,repository:PersonRepository,onDelete:(()->Unit)?=null,onBanner:(()->Unit)?=null,onGuest:(()->Unit)?=null,onInfo:()->Unit={},displayName:String=person.name) {
     val scope=rememberCoroutineScope()
     val actions=remember(repository,scope) {PersonActions(repository,scope)}
     var stage by rememberSaveable(person.id) {mutableStateOf("menu")}
@@ -38,10 +43,8 @@ import java.util.UUID
     var held by rememberSaveable(person.id) {mutableStateOf(listOfNotNull(person.avatarFile))}
     var pending by rememberSaveable(person.id) {mutableStateOf<String?>(null)}
     var cropping by rememberSaveable(person.id) {mutableStateOf(false)}
-    var replacingSelf by rememberSaveable(person.id) {mutableStateOf(false)}
     var pickerOpen by rememberSaveable(person.id) {mutableStateOf(false)}
     val busy=actions.operation.busy || pickerOpen
-    val own=selfId==person.id
     fun framing()=AvatarFraming(frame[0],frame[1],frame[2])
     LaunchedEffect(person.id) {held.forEach {repository.retainAvatar(it,draft)}}
     LaunchedEffect(stage,person.avatarFile,person.avatarZoom,person.avatarX,person.avatarY) {
@@ -61,11 +64,17 @@ import java.util.UUID
             }}
         }
     }
+    val camera=rememberPrivatePhotoCamera(!busy,{actions.operation.report(it)}) {photo,done->
+        actions.import(android.net.Uri.EMPTY,onResult=done,sourceFile=photo.file) {file->
+            held=(held+file).distinct()
+            scope.launch {repository.retainAvatar(file,draft);savePhoto(file,AvatarFraming())}
+        }
+    }
     val picker=rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) {uri->
         pickerOpen=false
         if(uri!=null) actions.import(uri) {file->
-            held=(held+file).distinct();pending=file;cropping=true
-            scope.launch {repository.retainAvatar(file,draft)}
+            held=(held+file).distinct()
+            scope.launch {repository.retainAvatar(file,draft);savePhoto(file,AvatarFraming())}
         }
     }
     fun pickPhoto() {
@@ -74,54 +83,66 @@ import java.util.UUID
         try {picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))}
         catch(e:Exception) {pickerOpen=false;throw e}
     }
-    fun identify() {actions.save(person.id,person.name,person.avatarFile,false,AvatarFraming(person.avatarZoom,person.avatarX,person.avatarY),identity=!own) {replacingSelf=false}}
     BackHandler(enabled=stage!="menu") {if(!busy) stage="menu"}
-    TaskBottomPanel(enabled=true,panelKey=person.id,title="Inicio",editRequest=null,accessibilityLabel="Antisocial") {
-    BoxWithConstraints(Modifier.fillMaxWidth().navigationBarsPadding()) {
-    Box(Modifier.fillMaxWidth().heightIn(max=maxHeight*.65f).testTag("profile-inline-panel")) {
-    ModularPanelDialog(inline=true,onDismissRequest={if(!busy) stage="menu"},compact=true,plainBody=true,showActions=false,
-        title={Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically) {
-            Text(if(stage=="photo") "Foto" else "Inicio",Modifier.weight(1f))
-            if(stage!="menu") IconButton(enabled=!busy,onClick={stage="menu"}) {Icon(Icons.Default.ArrowBack,"Volver a Inicio")}
-        }},text={
-            if(stage=="menu") Column {
-                Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(4.dp),verticalAlignment=Alignment.CenterVertically) {
-                    TextButton(enabled=!busy,onClick={stage="photo"},modifier=Modifier.weight(1f).heightIn(min=48.dp).testTag("profile-photo")) {
-                        Icon(Icons.Default.Image,null,Modifier.size(20.dp));Spacer(Modifier.width(8.dp));Text("Foto")
+    val threshold=with(androidx.compose.ui.platform.LocalDensity.current) {24.dp.toPx()}
+    val gesture=Modifier.pointerInput(stage,busy) {
+        var distance=0f
+        detectVerticalDragGestures(onDragStart={distance=0f},onDragCancel={distance=0f},onDragEnd={
+            if(!busy) {if(distance>threshold) stage="menu" else if(distance < -threshold) stage="photo"}
+        },onVerticalDrag={change,amount->change.consume();distance+=amount})
+    }
+    TaskBottomPanel(enabled=true,panelKey=person.id,title="Inicio",editRequest=null,accessibilityLabel="Antisocial",ownsMainActions=true) {
+        BoxWithConstraints(Modifier.fillMaxWidth().navigationBarsPadding()) {
+            Column(Modifier.fillMaxWidth().heightIn(max=maxHeight*.65f).testTag("profile-inline-panel")) {
+                if(stage=="photo") Column(Modifier.weight(1f,fill=false)) {
+                    Box(Modifier.fillMaxWidth().height(24.dp).then(gesture).clickable(enabled=!busy,onClickLabel="Contraer opciones de Antisocial") {stage="menu"},contentAlignment=androidx.compose.ui.Alignment.BottomCenter) {
+                        Box(Modifier.padding(bottom=2.dp).size(36.dp,4.dp).background(com.r0ybt.arachn0de.ui.theme.Arachn0deColors.TextSecondary.copy(alpha=.65f),androidx.compose.foundation.shape.RoundedCornerShape(2.dp)))
                     }
-                    TextButton(enabled=!busy,onClick={if(!own && selfId!=null) replacingSelf=true else identify()},
-                        modifier=Modifier.weight(1f).heightIn(min=48.dp).testTag("profile-self").semantics {
-                            selected=own;contentDescription="Soy yo";stateDescription=if(own) "Activado" else "Desactivado"
-                        },colors=ButtonDefaults.textButtonColors(
-                            containerColor=if(own) com.r0ybt.arachn0de.ui.theme.Arachn0deColors.ControlSurface else androidx.compose.ui.graphics.Color.Transparent,
-                            contentColor=if(own) com.r0ybt.arachn0de.ui.theme.Arachn0deColors.TextPrimary else com.r0ybt.arachn0de.ui.theme.Arachn0deColors.TextSecondary)) {
-                        Icon(if(own) Icons.Default.Person else Icons.Default.PersonOutline,null,Modifier.size(20.dp));Spacer(Modifier.width(8.dp));Text("Soy yo")
+                    ModularPanelDialog(inline=true,onDismissRequest={if(!busy) stage="menu"},compact=true,plainBody=true,showActions=false,
+                        title={Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically) {
+                            Text("Foto",Modifier.weight(1f))
+                            IconButton(enabled=!busy,onClick={stage="menu"}) {Icon(Icons.Default.ArrowBack,"Volver a Inicio")}
+                        }},text={Column {
+                            PersonPhoto(Person(person.id,displayName,avatar,frame[0],frame[1],frame[2]),Modifier.size(80.dp),framed=true)
+                            ModularFieldMenu(listOf(
+                                ModularPanelOption("Galería",Icons.Default.Image,"profile-change-photo",!busy) {pickPhoto()},
+                                ModularPanelOption("Cámara",Icons.Default.CameraAlt,"profile-camera",!busy,camera),
+                                ModularPanelOption("Ajustar encuadre",Icons.Default.Crop,"profile-frame",!busy && avatar!=null) {cropping=true},
+                                ModularPanelOption("Quitar avatar",Icons.Default.HideImage,"profile-remove-avatar",!busy && avatar!=null) {savePhoto(null,AvatarFraming())}
+                            ),compact=true)
+                        }},confirmButton={})
+                }
+                ModularPanelSurface(Modifier.then(gesture)) {
+                    Column(Modifier.fillMaxWidth().padding(horizontal=8.dp,vertical=4.dp)) {
+                        AlternatingBottomBar {
+                            val barActions=buildList {
+                                add(BottomBarAction("Foto",Icons.Default.Image,!busy,"profile-photo") {stage=if(stage=="photo")"menu" else "photo"})
+                                onBanner?.let {add(BottomBarAction("Banner",Icons.Default.Image,!busy,"profile-banner",run=it))}
+                                add(BottomBarAction("Información",Icons.Default.Info,!busy,"profile-information",run=onInfo))
+                            }
+                            CompactBarActions(barActions,iconAbove=false,style=MaterialTheme.typography.labelLarge) {a->
+                                TextButton(enabled=a.enabled,onClick=a.run,modifier=Modifier.weight(1f).heightIn(min=48.dp).testTag(a.tag)) {
+                                    Icon(a.icon,null,Modifier.size(20.dp));Spacer(Modifier.width(8.dp));Text(a.label)
+                                }
+                            }
+                        }
+                        onGuest?.let {guest->
+                            ModularFieldMenu(listOf(ModularPanelOption("Captura de invitado",Icons.Default.CameraAlt,"profile-guest",!busy,guest)),compact=true)
+                        }
+                        onDelete?.let {remove->
+                            HorizontalDivider()
+                            Text("Persona",style=MaterialTheme.typography.labelSmall)
+                            ModularFieldMenu(listOf(ModularPanelOption("Eliminar perfil",Icons.Default.Delete,"person-delete-profile",!busy,remove)),compact=true)
+                        }
                     }
                 }
-                onDelete?.let {remove->
-                    HorizontalDivider()
-                    Text("Persona",style=MaterialTheme.typography.labelSmall)
-                    ModularFieldMenu(listOf(ModularPanelOption("Eliminar perfil",Icons.Default.Delete,"person-delete-profile",!busy,remove)),compact=true)
-                }
-            } else Column {
-                PersonPhoto(Person(person.id,person.name,avatar,frame[0],frame[1],frame[2]),Modifier.size(80.dp),framed=true)
-                ModularFieldMenu(listOf(
-                    ModularPanelOption("Cambiar fotografía",Icons.Default.Image,"profile-change-photo",!busy) {pickPhoto()},
-                    ModularPanelOption("Ajustar encuadre",Icons.Default.Crop,"profile-frame",!busy && avatar!=null) {cropping=true},
-                    ModularPanelOption("Quitar avatar",Icons.Default.HideImage,"profile-remove-avatar",!busy && avatar!=null) {savePhoto(null,AvatarFraming())}
-                ),compact=true)
             }
-        },confirmButton={})
-    }
-    }
+        }
     }
     if(cropping) (pending ?: avatar)?.let {file->AvatarEditor(file,framing(),enabled=!busy,
         shape=androidx.compose.foundation.shape.RoundedCornerShape(8.dp),onConfirm={savePhoto(file,it)},onCancel={if(!busy) {
             val discarded=pending;pending=null;cropping=false;avatar=person.avatarFile;frame=listOf(person.avatarZoom,person.avatarX,person.avatarY)
             discarded?.let {scope.launch {withContext(NonCancellable) {repository.discardAvatar(it,draft);held=held-it}}}
         }})}
-    if(replacingSelf) AlertDialog(onDismissRequest={if(!busy) replacingSelf=false},title={Text("Cambiar mi perfil")},
-        text={Text("${people.firstOrNull {it.id==selfId}?.name ?: "El perfil actual"} dejará de estar marcado como propio. ${person.name} será el único perfil marcado como «Soy yo».")},
-        confirmButton={TextButton(enabled=!busy,onClick=::identify) {Text("Confirmar")}},dismissButton={TextButton(enabled=!busy,onClick={replacingSelf=false}) {Text("Cancelar")}})
     OperationErrorDialog(actions.operation)
 }

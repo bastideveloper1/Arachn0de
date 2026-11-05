@@ -44,7 +44,7 @@ class ObligationPngRenderer(private val resources: Resources) {
     class Document internal constructor(val height: Int, internal val marks: List<Mark>)
 
     fun measure(data: ObligationReportData, budgetBytes: Long = bitmapBudget(), checkCancelled: () -> Unit = {}): Document {
-        require(data.obligations.isNotEmpty()) { "No hay obligaciones para generar este informe." }
+        require(data.obligations.isNotEmpty()) { "No hay pagos para generar este informe." }
         val marks = mutableListOf<Mark>()
         val primary = AppearanceTheme.Arachn0de.palette.text.toArgb()
         val secondary = AppearanceTheme.Arachn0de.palette.muted.toArgb()
@@ -74,7 +74,7 @@ class ObligationPngRenderer(private val resources: Resources) {
         marks.add(Mark.Logo)
         text("ARACHN0DE", WIDTH - 268f, y + 18, 188, 26f, violet, true)
         y = 192f
-        y += text("INFORME DE OBLIGACIONES", 80f, y, 1280, 50f, bold = true) + 24
+        y += text("INFORME DE PAGOS", 80f, y, 1280, 50f, bold = true) + 24
         val context = listOfNotNull(data.person, data.period).joinToString(" · ")
         y += text(context, 80f, y, 1280, 34f, violet) + 40
         marks.add(Mark.Rule(y)); y += 48
@@ -99,7 +99,7 @@ class ObligationPngRenderer(private val resources: Resources) {
         }
         y += 8
         y += text(data.counts, 80f, y, 1280, 26f, secondary) + 56
-        y += text("OBLIGACIONES", 80f, y, 1280, 26f, violet, true) + 24
+        y += text("PAGOS", 80f, y, 1280, 26f, violet, true) + 24
         data.obligations.forEach { entry ->
             checkCancelled()
             val start = y

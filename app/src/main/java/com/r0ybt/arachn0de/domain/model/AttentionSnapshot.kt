@@ -5,7 +5,7 @@ enum class AttentionReason { OVERDUE, DUE_TODAY, UPCOMING, HIGH_PRIORITY, MEDIUM
 
 object AttentionPolicy {
     fun reasons(node: Node, now: Long, zone: java.util.TimeZone): List<AttentionReason> {
-        if (!node.isCompletable || node.isCompleted) return emptyList()
+        if (node.projectId==null || !node.isCompletable || node.isCompleted) return emptyList()
         val temporal = TaskTemporal.state(node, now)
         val reason = when {
             temporal == TaskTemporalState.OVERDUE -> AttentionReason.OVERDUE
@@ -78,7 +78,7 @@ class AttentionSnapshot(val tree: NodeTreeSnapshot, val now: Long, val zone: jav
             val summary = counts.getOrDefault(node.id, AttentionSummary())
             counts[node.id] = summary
             val parent = node.parentId
-            if (parent == null) projects[node.projectId] = projects.getOrDefault(node.projectId, AttentionSummary()) + summary
+            if (parent == null) node.projectId?.let {projects[it] = projects.getOrDefault(it, AttentionSummary()) + summary}
             else {
                 val inherited=cardCounts[node.id] ?: ProjectCardAlerts()
                 val previous=cardCounts[parent] ?: ProjectCardAlerts()

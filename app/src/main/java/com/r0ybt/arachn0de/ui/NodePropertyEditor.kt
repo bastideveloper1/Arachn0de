@@ -31,21 +31,30 @@ internal fun EditorDraft.propertyValues(field:NodeProperty):List<String> = when(
 /** The same panel, draft and specialized fields used elsewhere, with one property at a time. */
 @Composable internal fun NodePropertyEditor(draft:EditorDraft,field:NodeProperty,enabled:Boolean,maxHeight:Dp,
     people:List<Person>,tags:TagState,tagRepository:TagRepository,catalog:List<TechnologyEntity>,
-    onCancel:()->Unit,onConfirm:()->Unit) {
+    onCancel:()->Unit,onConfirm:()->Unit,project:Boolean=false,titleLimit:Int=TitleLimits.NODE,originalTagIds:Set<String>?=null,onAssignTags:((Set<String>,Boolean)->Unit)?=null) {
+    LaunchedEffect(draft.attachmentDraftId,field) {
+        if(field==NodeProperty.PAYMENT && !draft.hadObligation)draft.financialEnabled=true
+    }
     val available=enabled && !draft.attachmentBusy
     val focus=LocalFocusManager.current
     val keyboard=LocalSoftwareKeyboardController.current
     fun cancel() {focus.clearFocus();keyboard?.hide();onCancel()}
     BackHandler {if(available) cancel()}
     if(field==NodeProperty.TITLE) {
-        CorePropertyEditor("title",draft.title,{draft.title=it},available,maxHeight,::cancel,onConfirm,TitleLimits.NODE,multilineTitle=true)
+        CorePropertyEditor("title",draft.title,{draft.title=it},available,maxHeight,::cancel,onConfirm,titleLimit,multilineTitle=true)
         return
     }
     if(field==NodeProperty.TAGS) {
-        val changed=draft.tagIds.toSet()!=tags.nodeIds[draft.id].orEmpty()
+        if(onAssignTags!=null) {
+            TagPanel(tags,tagRepository,draft.tagIds.toSet(),{onAssignTags(it,false)},enabled=available,singleAssignment=true,
+                modifier=Modifier.heightIn(max=maxHeight).testTag("node-property-editor:TAGS"),
+                immediateAssignment=true,onSelection={onAssignTags(it,true)},onClose=::cancel)
+            return
+        }
+        val changed=draft.tagIds.toSet()!=(originalTagIds ?: tags.nodeIds[draft.id].orEmpty())
         TagPanel(tags,tagRepository,draft.tagIds.toSet(),{draft.tagIds=it.toList()},enabled=available,
             modifier=Modifier.heightIn(max=maxHeight).testTag("node-property-editor:TAGS"),
-            onCancel=::cancel,pendingSelection=changed,doneLabel=if(changed) "Guardar" else "Cerrar",
+            immediateAssignment=true,
             onClose={if(changed) {focus.clearFocus();keyboard?.hide();onConfirm()} else cancel()})
         return
     }
@@ -59,29 +68,35 @@ internal fun EditorDraft.propertyValues(field:NodeProperty):List<String> = when(
         NodeProperty.DESCRIPTION->draft.attachmentsLoaded
         NodeProperty.DATES->(!draft.startEnabled || draft.startAt!=null) && (!draft.dueEnabled || draft.dueAt!=null) &&
             (draft.activeStart==null || draft.activeDue==null || draft.activeDue!!>=draft.activeStart!!)
-        NodeProperty.PAYMENT->runCatching {draft.obligation()}.isSuccess
+        NodeProperty.PAYMENT->(draft.financialEnabled || draft.financialRemovalConfirmed) && runCatching {draft.obligation()}.isSuccess
         else->true
     }
     ModularPanelSurface(Modifier.fillMaxWidth().heightIn(max=maxHeight).testTag("node-property-editor:${field.name}")) {
         ModularPanelLayout(header={},headerDivider=false,outlinedBody=false,compact=true,
             fieldOwnsScroll=field in setOf(NodeProperty.PEOPLE,NodeProperty.TAGS,NodeProperty.TECHNOLOGIES),
-            actions={ModularPanelActions(cancel={
+            actions={Column(Modifier.fillMaxWidth()) {
+                if(field==NodeProperty.DESCRIPTION) AttachmentDescriptionTools(draft,available,project=project,compact=true)
+                ModularPanelActions(cancel={
                 PrimaryControlButton(enabled=available,onClick={cancel()},modifier=Modifier.fillMaxWidth().heightIn(min=48.dp)) {Text("Cancelar")}
             },confirm={PrimaryControlButton(enabled=available && valid,onClick={
                 if(field==NodeProperty.PAYMENT && draft.hadObligation && !draft.financialEnabled && !draft.financialRemovalConfirmed) confirmRemoval=true
                 else {focus.clearFocus();keyboard?.hide();onConfirm()}
-            },modifier=Modifier.fillMaxWidth().heightIn(min=48.dp)) {Text("Confirmar")}})}) {
+            },modifier=Modifier.fillMaxWidth().heightIn(min=48.dp)) {Text("Confirmar")}})
+            }}) {
             when(field) {
                 NodeProperty.DESCRIPTION->{
                     Text(draft.title,style=MaterialTheme.typography.titleMedium,modifier=Modifier.fillMaxWidth())
-                    AttachmentDescriptionEditor(draft,available,focusRequester=requestFocus,maxLines=8)
+                    AttachmentDescriptionEditor(draft,available,project=project,focusRequester=requestFocus,maxLines=8,tools={})
                 }
                 NodeProperty.DATES->TaskDatesEditor(draft,available,picker,progressive=true)
-                NodeProperty.PAYMENT->ObligationFields(draft,available)
+                NodeProperty.PAYMENT->{
+                    ObligationFields(draft,available,showToggle=false)
+                    if(draft.hadObligation)TextButton(onClick={confirmRemoval=true},enabled=available && draft.currencyCode=="CLP") {Text("Eliminar pago")}
+                }
                 NodeProperty.PRIORITY->{
                     val prioritized=draft.priority==Priority.HIGH
                     FilterChip(selected=prioritized,onClick={draft.priority=if(prioritized) Priority.NONE else Priority.HIGH},enabled=available,
-                        label={Text(if(prioritized) "Prioritario" else "Común")})
+                        modifier=Modifier.fillMaxWidth().heightIn(min=48.dp),label={Text(if(prioritized) "Prioritario" else "Común",Modifier.fillMaxWidth(),textAlign=androidx.compose.ui.text.style.TextAlign.Center)})
                 }
                 NodeProperty.PEOPLE->ResponsiblePickerBody(draft.creationId,people,draft.responsibleIds,!available) {draft.responsibleIds=it}
                 NodeProperty.TAGS->Unit
@@ -91,6 +106,6 @@ internal fun EditorDraft.propertyValues(field:NodeProperty):List<String> = when(
         }
     }
     if(confirmRemoval) RemoveObligationDialog(!available,false,onDismiss={confirmRemoval=false},onConfirm={
-        draft.financialRemovalConfirmed=true;confirmRemoval=false;onConfirm()
+        draft.financialEnabled=false;draft.financialRemovalConfirmed=true;confirmRemoval=false;onConfirm()
     })
 }

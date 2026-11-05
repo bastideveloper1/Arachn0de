@@ -5,15 +5,25 @@ import kotlinx.coroutines.*
 import java.io.ByteArrayOutputStream
 import java.util.concurrent.atomic.AtomicBoolean
 
+/** Signals are conflated: resuming/stopping before await cannot lose the wakeup. */
+internal class AudioCaptureControl {
+    val paused=AtomicBoolean(false)
+    val stopped=AtomicBoolean(false)
+    private val changes=kotlinx.coroutines.channels.Channel<Unit>(kotlinx.coroutines.channels.Channel.CONFLATED)
+    fun pause(value:Boolean) {paused.set(value);changes.trySend(Unit)}
+    fun stop() {stopped.set(true);changes.trySend(Unit)}
+    suspend fun awaitChange() {changes.receive()}
+}
+
 /** Microphone PCM is encoded directly to AAC; only encrypted segments reach disk. */
 internal class AudioCapture(private val store:AudioDraftStore,private val draft:String,private val progress:(Long)->Unit,private val interrupted:()->Unit={},
     private val levels:(List<Float>)->Unit={}) {
-    val paused=AtomicBoolean(false)
-    val stopped=AtomicBoolean(false)
+    private val control=AudioCaptureControl()
+    fun pause(value:Boolean) {control.pause(value)}
     @Volatile var limitReached=false
         private set
     @Volatile private var microphone:AudioRecord?=null
-    fun stop() {stopped.set(true);runCatching {microphone?.stop()}}
+    fun stop() {control.stop();runCatching {microphone?.stop()}}
     suspend fun run()=withContext(Dispatchers.IO) {
         val minimum=AudioRecord.getMinBufferSize(AacFrames.RATE,AudioFormat.CHANNEL_IN_MONO,AudioFormat.ENCODING_PCM_16BIT)
         require(minimum>0) {"Micrófono no disponible."}
@@ -24,7 +34,7 @@ internal class AudioCapture(private val store:AudioDraftStore,private val draft:
         var eosQueued=false
         val callback=if(android.os.Build.VERSION.SDK_INT>=29) object:AudioManager.AudioRecordingCallback() {
             override fun onRecordingConfigChanged(configs:MutableList<AudioRecordingConfiguration>?) {
-                if(configs.orEmpty().any {it.clientAudioSessionId==record.audioSessionId && it.isClientSilenced}) {paused.set(true);interrupted()}
+                if(configs.orEmpty().any {it.clientAudioSessionId==record.audioSessionId && it.isClientSilenced}) {control.pause(true);interrupted()}
             }
         } else null
         val info=MediaCodec.BufferInfo()
@@ -36,7 +46,7 @@ internal class AudioCapture(private val store:AudioDraftStore,private val draft:
                 if(info.size>0 && info.flags and MediaCodec.BUFFER_FLAG_CODEC_CONFIG==0) {
                     val b=codec.getOutputBuffer(out)!!;b.position(info.offset);b.limit(info.offset+info.size)
                     val payload=ByteArray(info.size);b.get(payload);val packet=AacFrames.packet(payload);payload.fill(0)
-                    if(total+segment.size()+packet.size>20L*1024*1024) {limitReached=true;stopped.set(true)} else segment.write(packet)
+                    if(total+segment.size()+packet.size>20L*1024*1024) {limitReached=true;control.stop()} else segment.write(packet)
                     packet.fill(0)
                     if(segment.size()>=4096) publish()
                 }
@@ -58,17 +68,17 @@ internal class AudioCapture(private val store:AudioDraftStore,private val draft:
             var recording=true
             var lastLevelSample=0L
             val pcm=ByteArray(2048)
-            while(!stopped.get()) {
+            while(!control.stopped.get()) {
                 currentCoroutineContext().ensureActive()
-                if(paused.get()) {if(recording) {record.stop();recording=false;drain();publish()};delay(50);continue}
+                if(control.paused.get()) {if(recording) {record.stop();recording=false;drain();publish()};control.awaitChange();continue}
                 if(!recording) {record.startRecording();recording=true}
                 val index=codec.dequeueInputBuffer(10000)
                 if(index<0) {drain();continue}
                 val n=record.read(pcm,0,pcm.size,AudioRecord.READ_BLOCKING)
-                if(n<=0) {if(stopped.get()) {codec.queueInputBuffer(index,0,0,samples*1000000/AacFrames.RATE,MediaCodec.BUFFER_FLAG_END_OF_STREAM);eosQueued=true;break};error("La captura se interrumpió; se conserva el audio parcial.")}
-                if(paused.get()) {codec.queueInputBuffer(index,0,0,samples*1000000/AacFrames.RATE,0);continue}
+                if(n<=0) {if(control.stopped.get()) {codec.queueInputBuffer(index,0,0,samples*1000000/AacFrames.RATE,MediaCodec.BUFFER_FLAG_END_OF_STREAM);eosQueued=true;break};error("La captura se interrumpió; se conserva el audio parcial.")}
+                if(control.paused.get()) {codec.queueInputBuffer(index,0,0,samples*1000000/AacFrames.RATE,0);continue}
                 // Reuse captured PCM, at most ten meter updates per audio second; no extra reader/timer.
-                if(!stopped.get() && samples-lastLevelSample>=AacFrames.RATE/10) {
+                if(!control.stopped.get() && samples-lastLevelSample>=AacFrames.RATE/10) {
                     levels(pcmRecordingLevels(pcm,n));lastLevelSample=samples
                 }
                 val buffer=codec.getInputBuffer(index)!!;buffer.clear();buffer.put(pcm,0,n)

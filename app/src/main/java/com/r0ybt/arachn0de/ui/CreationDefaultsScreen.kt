@@ -79,7 +79,7 @@ private fun DefaultsEditor(repository:CreationDefaultsRepository, scope:Defaults
     BackHandler { leave() }
     Column(Modifier.fillMaxSize().padding(14.dp)) {
         Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween) {
-            Text(if(scope==DefaultsScope.Global) "Configuración" else "Valores predeterminados",style=MaterialTheme.typography.titleLarge,modifier=Modifier.weight(1f))
+            Text(if(scope==DefaultsScope.Global) "Configuración" else "Valores iniciales",style=MaterialTheme.typography.titleLarge,modifier=Modifier.weight(1f))
             TextButton(enabled=!operation.busy,onClick={ leave() }) { Text("Volver") }
         }
         Column(Modifier.weight(1f).verticalScroll(rememberScrollState()),verticalArrangement=Arrangement.spacedBy(6.dp)) {
@@ -90,11 +90,9 @@ private fun DefaultsEditor(repository:CreationDefaultsRepository, scope:Defaults
             AdaptiveFormRow(listOf({
             DefaultsChoice("Tipo",own.purpose,inherited.purpose,NodePurpose.entries,{ when(it) { NodePurpose.ACTION -> "Tarea";NodePurpose.NOTE -> "Nota";NodePurpose.LAYER -> "Capa" } },!operation.busy) { own=own.copy(purpose=it) }
             }, {
-            DefaultsChoice("Obligación",own.obligation,inherited.obligation,listOf(false,true),{ if(it) "Activada" else "Desactivada" },!operation.busy) { own=own.copy(obligation=it) }
+            DefaultsChoice("Pago",own.obligation,inherited.obligation,listOf(false,true),{ if(it) "Activada" else "Desactivada" },!operation.busy) { own=own.copy(obligation=it) }
             }), minFieldWidth=130.dp)
             AdaptiveFormRow(listOf({
-            DefaultsChoice("Moneda",own.currency,inherited.currency,listOf("CLP","USD","EUR"),{ it },!operation.busy) { own=own.copy(currency=it) }
-            }, {
             DefaultsChoice("Prioridad",own.priority,inherited.priority,listOf(Priority.NONE,Priority.HIGH),::priorityLabel,!operation.busy) { own=own.copy(priority=it) }
             }), minFieldWidth=130.dp)
             Text("Las opciones de pago, prioridad y fechas se aplican a tareas. Si cambias una nota a tarea durante la creación, estarán disponibles.")

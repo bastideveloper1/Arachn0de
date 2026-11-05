@@ -10,7 +10,7 @@ import kotlinx.coroutines.flow.Flow
 ], indices = [Index(value = ["projectId"], unique = true), Index(value = ["nodeId"], unique = true)])
 data class ConversionRootEntity(@PrimaryKey val id: String, val projectId: String?, val nodeId: String?,
     val projectIdentity: String, val nodeIdentity: String, val projectPosition: Int, val nodePosition: Int,
-    val startAt: Long?, val dueAt: Long?, val priority: String, val creationGroupId: String?, val sprintMode: Boolean)
+    val startAt: Long?, val dueAt: Long?, val priority: String, val creationGroupId: String?, val sprintMode: Boolean, @ColumnInfo(defaultValue="0") val effort:Int=0)
 
 @Entity(tableName = "conversion_people", primaryKeys = ["rootId", "personId"], foreignKeys = [
     ForeignKey(entity = ConversionRootEntity::class, parentColumns = ["id"], childColumns = ["rootId"], onDelete = ForeignKey.CASCADE),

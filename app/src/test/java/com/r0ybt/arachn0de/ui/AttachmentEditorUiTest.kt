@@ -56,6 +56,66 @@ class AttachmentEditorUiTest {
         compose.onNodeWithTag("description-inner", useUnmergedTree = true).performTouchInput { click(bounds.center) }
         compose.onNodeWithTag("attachment-viewer").assertExists()
     }
+    @Test fun descriptionThumbnailsKeepOccurrenceOrderLabelsAndOpenOriginalAfterSaveReopen() {
+        val repo=repository
+        val nodes=app.nodeRepository
+        val image=runBlocking {repo.import(Uri.fromFile(input()),"thumbnail-draft")}
+        val project=runBlocking {app.projectRepository.createProject("Fotos")}
+        val source="1. Primero\n${AttachmentReferences.token(image.id,"Primera")}\na. Segundo\n${AttachmentReferences.token(image.id,"Segunda")}\nFinal"
+        val node=runBlocking {
+            repo.saveNodeDraft("thumbnail-draft",listOf("thumbnail-node"),source,emptySet()) {text->
+                nodes.createNode(project.id,null,"Tarea",text,creationId="thumbnail-node")
+            }
+        }
+        val reopened=runBlocking {app.nodeRepository.getNode(node.id)!!}
+        val bytes=repo.localFile(image).readBytes()
+        compose.setContent {AttachmentText(reopened.description)}
+        compose.waitUntil(10000) {
+            Shadows.shadowOf(android.os.Looper.getMainLooper()).idle()
+            compose.onAllNodesWithTag("description-thumbnail-image:${image.id}",useUnmergedTree=true).fetchSemanticsNodes().size==2
+        }
+        val thumbs=compose.onAllNodesWithTag("description-thumbnail:${image.id}").fetchSemanticsNodes()
+        assertTrue(thumbs[0].boundsInRoot.top<thumbs[1].boundsInRoot.top)
+        compose.onNodeWithContentDescription("Primera").assertExists()
+        compose.onNodeWithContentDescription("Segunda").assertExists()
+        compose.onAllNodesWithTag("description-thumbnail:${image.id}")[1].performClick()
+        compose.onNodeWithTag("attachment-viewer").assertExists()
+        compose.onNodeWithText("Cerrar").performClick()
+        assertEquals(source,runBlocking {app.nodeRepository.getNode(node.id)!!.description})
+        assertEquals(1,runBlocking {repo.filesForNode(node.id).size})
+        assertArrayEquals(bytes,repo.localFile(image).readBytes())
+    }
+    @Test fun numberedAndAlphabeticToolbarListsKeepSpacingThroughSaveAndReopen() {
+        val repo=repository
+        val nodes=app.nodeRepository
+        val project=runBlocking {app.projectRepository.createProject("Listas")}
+        val draft=EditorDraft(null,null,"Lista","")
+        compose.setContent {AttachmentDescriptionEditor(draft,true,repository=repo)}
+        compose.waitUntil(10000) {
+            Shadows.shadowOf(android.os.Looper.getMainLooper()).idle()
+            draft.attachmentsLoaded
+        }
+        compose.onNodeWithContentDescription("Lista numerada").assertIsEnabled().performClick()
+        assertEquals("1. ",draft.description)
+        val field=compose.onNode(hasSetTextAction() and hasText("Descripción"))
+        field.performTextInput("primero")
+        field.performTextInput("\n")
+        assertEquals("1. primero\n2. ",draft.description)
+        field.performTextInput("segundo\ntercero")
+        compose.onNodeWithContentDescription("Lista alfabética").performClick()
+        assertEquals("1. primero\n2. segundo\na. tercero",draft.description)
+        field.performTextInput("\n")
+        assertEquals("1. primero\n2. segundo\na. tercero\nb. ",draft.description)
+        field.performTextInput("cuarto")
+        val stored=runBlocking {
+            repo.saveNodeDraft(draft.attachmentDraftId,listOf(draft.creationId),draft.description,emptySet()) {text->
+                nodes.createNode(project.id,null,draft.title,text,creationId=draft.creationId)
+            }
+        }
+        val reopened=runBlocking {nodes.getNode(stored.id)!!}
+        assertEquals(draft.description,reopened.description)
+        assertEquals("1. primero\n2. segundo\na. tercero\nb. cuarto",reopened.description)
+    }
     @Test fun photoPickerImportCloseReopenAndExplicitDiscard() {
         val repo = repository
         val store = EditorDraftStore().apply { open(null) { EditorDraft(null, null, "Task", "Before") } }
@@ -203,10 +263,26 @@ class AttachmentEditorUiTest {
         assertEquals("Otro uso", AttachmentReferences.label(AttachmentReferences.matches(draft.description).single()))
         compose.onNodeWithTag("attachment-viewer").assertDoesNotExist()
     }
+    @Test fun retiredHighlightIsAbsentAndImageActionRemainsAvailable() {
+        val marker=com.r0ybt.arachn0de.domain.model.DescriptionParser.Format.Highlight.marker
+        val source=marker+"Texto"+marker+" normal"
+        val draft=EditorDraft(null,null,"Contenido",source)
+        compose.setContent {Column {
+            AttachmentText(draft.description,selectableDescription=true)
+            AttachmentDescriptionEditor(draft,true,project=true,repository=repository)
+        }}
+        compose.waitUntil(10000) {Shadows.shadowOf(android.os.Looper.getMainLooper()).idle();draft.attachmentsLoaded}
+        compose.onAllNodesWithContentDescription("Destacador").assertCountEquals(0)
+        assertEquals(source,draft.description)
+        assertEquals("Texto normal",AttachmentVisualTransformation(emptyMap()).filter(androidx.compose.ui.text.AnnotatedString(source)).text.text)
+        compose.onNodeWithContentDescription("Insertar imagen").assertIsEnabled().performClick()
+        assertNotNull(Shadows.shadowOf(compose.activity).nextStartedActivityForResult)
+    }
     @Test fun formattingButtonsApplyAndRemoveSelectedText() {
         val draft = EditorDraft(null, null, "Task", "Texto normal")
         compose.setContent { Column { AttachmentDescriptionEditor(draft, true, repository = repository) } }
-        await("Imagen")
+        compose.waitUntil(10000) {Shadows.shadowOf(android.os.Looper.getMainLooper()).idle();draft.attachmentsLoaded}
+        compose.onNodeWithContentDescription("Insertar imagen").assertExists()
         compose.onNodeWithContentDescription("Negrita").assertIsNotEnabled()
         compose.onNode(hasSetTextAction()).performTextInputSelection(androidx.compose.ui.text.TextRange(0, 5))
         compose.onNodeWithContentDescription("Negrita").performClick()
@@ -219,6 +295,15 @@ class AttachmentEditorUiTest {
         compose.onNodeWithContentDescription("Subrayado").performClick()
         assertEquals("Texto normal", draft.description)
         assertEquals(0, draft.descriptionSelectionStart); assertEquals(5, draft.descriptionSelectionEnd)
+        compose.onNodeWithContentDescription("Título").performClick()
+        compose.onNodeWithContentDescription("Código").performClick()
+        assertTrue(com.r0ybt.arachn0de.domain.model.DescriptionParser.parse(draft.description).first().formats.containsAll(setOf(
+            com.r0ybt.arachn0de.domain.model.DescriptionParser.Format.Title,com.r0ybt.arachn0de.domain.model.DescriptionParser.Format.Code)))
+        compose.onNodeWithContentDescription("Código").performClick()
+        compose.onNodeWithContentDescription("Título").performClick()
+        assertEquals("Texto normal",draft.description)
+        compose.onNodeWithContentDescription("Destacador").performClick();compose.onNodeWithContentDescription("Destacador").assertIsSelected()
+        compose.onNodeWithContentDescription("Destacador").performClick().assertIsNotSelected()
     }
     @Test fun customLabelWithFormattingKeepsInteractiveViewerAndHidesSyntax() {
         val repo = repository

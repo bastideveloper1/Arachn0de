@@ -1,5 +1,10 @@
 package com.r0ybt.arachn0de.ui
 
+import androidx.compose.material.icons.filled.Share
+import com.r0ybt.arachn0de.domain.model.TaskStatePolicy
+import com.r0ybt.arachn0de.domain.model.TaskStatus
+import com.r0ybt.arachn0de.domain.model.TaskViewProjection
+
 import com.r0ybt.arachn0de.ui.theme.BashColors
 import androidx.compose.material3.VerticalDivider
 import androidx.compose.foundation.layout.imePadding
@@ -76,6 +81,7 @@ import androidx.compose.material.icons.filled.Layers
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.FilterList
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.Repeat
 import androidx.compose.material.icons.filled.SwapHoriz
 import androidx.compose.material.icons.filled.Code
 import androidx.compose.material.icons.filled.CopyAll
@@ -83,6 +89,7 @@ import androidx.compose.material.icons.filled.DriveFileMove
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.AccountTree
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -101,6 +108,9 @@ import com.r0ybt.arachn0de.ui.state.EditorDraft
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.ui.platform.testTag
+import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.mutableStateMapOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -114,6 +124,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.zIndex
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.text.font.FontWeight
@@ -123,7 +134,7 @@ import androidx.compose.ui.unit.sp
 import com.r0ybt.arachn0de.data.repository.NodeRepository
 import com.r0ybt.arachn0de.domain.model.NodeTreeSnapshot
 import com.r0ybt.arachn0de.domain.model.Project
-import com.r0ybt.arachn0de.ui.theme.Arachn0deColors
+import com.r0ybt.arachn0de.ui.theme.*
 import com.r0ybt.arachn0de.ui.theme.ContentTypography
 import com.r0ybt.arachn0de.ui.state.LoadState
 import com.r0ybt.arachn0de.ui.state.NodeActions
@@ -139,7 +150,6 @@ internal fun ProjectNodeScreen(
     onOpenCalendar: () -> Unit = {},
     onOpenObligations: () -> Unit = {},
     onOpenAbout: () -> Unit = {},
-    onOpenGame: () -> Unit = {},
     onOpenMetro: () -> Unit = {},
     onOpenAppearance: () -> Unit = {},
     onBackToObligations: (() -> Unit)? = null,
@@ -148,6 +158,9 @@ internal fun ProjectNodeScreen(
     openNodeId: String? = null,
     onOpenNodeHandled: () -> Unit = {},
     onHeadingNodeChanged: (String?) -> Unit = {},
+    entryAction:String?=null,
+    entryNodeId:String?=openNodeId,
+    onEntryActionHandled:()->Unit={},
     clock: () -> Long = System::currentTimeMillis,
     onOpenProjects: () -> Unit = onBackToProjects,
     sortPreferences: NodeSortPreferences = rememberSaveable(project.id, saver = NodeSortPreferences.Saver) { NodeSortPreferences() },
@@ -156,7 +169,20 @@ internal fun ProjectNodeScreen(
     onOpenTags:()->Unit={},
     onConverted: (String, String?) -> Unit = { _, _ -> onBackToProjects() },
     conversionScope: kotlinx.coroutines.CoroutineScope = rememberCoroutineScope(),
+    calendarStore:ContextCalendarStore=rememberContextCalendarStore(),
+    sharedAssignments:Map<String,List<com.r0ybt.arachn0de.domain.model.Person>>?=null,
+    sharedAssignmentsReady:Boolean=false,
 ) {
+    val bankDb=(LocalContext.current.applicationContext as? com.r0ybt.arachn0de.Arachn0deApplication)?.database
+    if(bankDb!=null) {
+        val bankRoots by remember(bankDb) {bankDb.bankDao().observeRoots()}.collectAsState(initial=null)
+        if(bankRoots==null) {Box(Modifier.fillMaxSize(),contentAlignment=Alignment.Center) {androidx.compose.material3.CircularProgressIndicator()};return}
+        if(bankRoots.orEmpty().any {it.id==project.id}) {
+            BankWorkspace(project,bankDb,onBackToSearch ?: onBackToObligations ?: onBackToCalendar ?: onBackToProjects,openNodeId) {core,node->onConverted(core,node)}
+            LaunchedEffect(openNodeId) {if(openNodeId!=null)onOpenNodeHandled()}
+            return
+        }
+    }
     val pendingOpenNode by rememberUpdatedState(openNodeId)
     val handleOpenNode by rememberUpdatedState(onOpenNodeHandled)
     var moveProject by rememberSaveable(project.id) { mutableStateOf(false) }
@@ -170,26 +196,36 @@ internal fun ProjectNodeScreen(
     val scope = rememberCoroutineScope()
     val personActions = remember(personRepository, scope) { com.r0ybt.arachn0de.ui.state.PersonActions(personRepository, scope) }
     var people by remember { mutableStateOf(emptyList<com.r0ybt.arachn0de.domain.model.Person>()) }
-    var responsibleByNode by remember(project.id) { mutableStateOf(emptyMap<String, List<com.r0ybt.arachn0de.domain.model.Person>>()) }
+    var localResponsibleByNode by remember(project.id) { mutableStateOf(emptyMap<String, List<com.r0ybt.arachn0de.domain.model.Person>>()) }
     var peopleLoaded by remember { mutableStateOf(false) }
-    var assignmentsLoaded by remember(project.id) { mutableStateOf(false) }
+    var localAssignmentsLoaded by remember(project.id) { mutableStateOf(false) }
     var responsibleNodeId by rememberSaveable(project.id) { mutableStateOf<String?>(null) }
     val peopleLoad = remember(personRepository) { LoadState() }
     val assignmentsLoad = remember(personRepository, project.id) { LoadState() }
     LaunchedEffect(personRepository, peopleLoad.attempt) {
         peopleLoad.collect(personRepository.observePeople()) { people = it; peopleLoaded = true }
     }
-    LaunchedEffect(personRepository, project.id, assignmentsLoad.attempt) {
-        assignmentsLoad.collect(personRepository.observeAssignments(project.id)) { responsibleByNode = it; assignmentsLoaded = true }
+    LaunchedEffect(personRepository, project.id, sharedAssignments!=null,assignmentsLoad.attempt) {
+        if(sharedAssignments==null) assignmentsLoad.collect(personRepository.observeAssignments(project.id)) { localResponsibleByNode = it; localAssignmentsLoaded = true }
     }
     val layerScrollStates = rememberSaveableStateHolder()
-    val navigatorListState = rememberLazyListState()
     val currentPath = rememberSaveable(project.id, saver = listSaver<SnapshotStateList<String>, String>(
         save = { it.toList() },
         restore = { it.toMutableStateList() },
     )) { mutableStateListOf<String>() }
+    val openedAt=remember(project.id) {ResponseTiming.start("project_composition_started")}
+    var openReported by remember(project.id) {mutableStateOf(false)}
     var hasLoaded by remember(project.id) { mutableStateOf(false) }
     var projectState by remember(project.id) { mutableStateOf(NodeTreeSnapshot(emptyList())) }
+    val projectNodeIds=projectState.nodesById.keys
+    val sharedProjection by produceState<Map<String,List<com.r0ybt.arachn0de.domain.model.Person>>?>(null,sharedAssignments,projectNodeIds) {
+        val global=sharedAssignments
+        value=global?.let {kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
+            projectNodeIds.mapNotNull {id->global[id]?.let {id to it}}.toMap()
+        }}
+    }
+    val responsibleByNode=if(sharedAssignments!=null)sharedProjection.orEmpty() else localResponsibleByNode
+    val assignmentsLoaded=if(sharedAssignments!=null)sharedAssignmentsReady && sharedProjection!=null else localAssignmentsLoaded
     val drafts = rememberSaveable(project.id, saver = com.r0ybt.arachn0de.ui.state.EditorDraftStore.Saver) { com.r0ybt.arachn0de.ui.state.EditorDraftStore() }
     val draft = drafts.active
     var quickCreation by rememberSaveable(project.id) { mutableStateOf(false) }
@@ -199,11 +235,6 @@ internal fun ProjectNodeScreen(
     var deletingNodeName by rememberSaveable(project.id) { mutableStateOf("") }
     var movingNodeId by rememberSaveable(project.id) { mutableStateOf<String?>(null) }
     var showDrawer by remember { mutableStateOf(false) }
-    var showNavigator by rememberSaveable(project.id) { mutableStateOf(false) }
-    var expandedLayerIds by rememberSaveable(
-        project.id,
-        stateSaver = listSaver<List<String>, String>(save = { it }, restore = { it.toList() }),
-    ) { mutableStateOf(emptyList<String>()) }
     var recurrenceSelected by rememberSaveable(project.id) { mutableStateOf<String?>(null) }
     var recurrenceReceipts by remember(nodeRepository) { mutableStateOf(emptyList<com.r0ybt.arachn0de.data.local.RecurrenceOccurrenceEntity>()) }
     val recurrenceLoad = remember(nodeRepository) { LoadState() }
@@ -248,42 +279,37 @@ internal fun ProjectNodeScreen(
     var editingTechnologies by remember { mutableStateOf(false) }
     if(editingTechnologies) EditOwnerTechnologies(currentNodeId ?: project.id,currentNodeId==null) {editingTechnologies=false}
     var showContextActions by remember(currentNodeId) { mutableStateOf(false) }
-    var coreContext by remember(project.id,currentNodeId) {mutableStateOf(CoreBottomContext.Content)}
+    var coreContext by remember(project.id,currentNodeId) {mutableStateOf<CoreBottomContext?>(null)}
     var planningOpen by remember(currentNodeId) {mutableStateOf(false)}
     val currentNode = projectState.nodesById[currentNodeId]
     var projectEditField by rememberSaveable(project.id) {mutableStateOf<String?>(null)}
-    var projectFieldOriginal by rememberSaveable(project.id) {mutableStateOf("")}
-    var projectFieldValue by rememberSaveable(project.id) {mutableStateOf("")}
-    val projectEditingActions=remember(projectRepository,scope,attachmentRepository) {com.r0ybt.arachn0de.ui.state.ProjectActions(projectRepository,scope,attachmentRepository)}
-    OperationErrorDialog(projectEditingActions.operation)
-    val finishProjectEdit:()->Unit={
-        projectEditField=null;projectFieldOriginal="";projectFieldValue=""
-        coreContext=CoreBottomContext.Content
-    }
-    val editProject:(String)->Unit={field->
-        projectFieldOriginal=if(field=="title") project.name else project.description
-        projectFieldValue=projectFieldOriginal
-        projectEditField=field
-    }
+    val editProject:(String)->Unit={field->projectEditField=field}
     LaunchedEffect(projectEditField) {
         if(projectEditField!=null) coreContext=CoreBottomContext.Content
     }
     val cleanCompleted=if(currentNode==null || currentNode.isStructural) completedCleanupLauncher(project.id,currentNode?.id) else null
     val scopeDescription = currentNode?.description ?: project.description
-    val sprintScope = currentNode?.sprintMode == true
+    val sprintScope = false // Sprint is historical data, no longer an active view.
 
-    val sprintLinks by remember(nodeRepository) {nodeRepository.sprintLinks.links}.collectAsState(initial=emptyList())
-    val managementContexts by remember(nodeRepository) {nodeRepository.management.contexts}.collectAsState(initial=emptyList())
-    val cascadeLayers by remember(nodeRepository) {nodeRepository.management.cascade.layers}.collectAsState(initial=emptyList())
-    val cascadeRoles by remember(nodeRepository) {nodeRepository.management.backlog.observe(project.id)}.collectAsState(initial=com.r0ybt.arachn0de.data.repository.BacklogState())
-    val managementRoots by remember(nodeRepository) {nodeRepository.management.roots}.collectAsState(initial=emptyList())
+    val sprintLinks=emptyList<com.r0ybt.arachn0de.data.local.SprintLinkEntity>()
+    val managementContexts=emptyList<com.r0ybt.arachn0de.data.local.ManagementContextEntity>()
+    val cascadeLayers=emptyList<com.r0ybt.arachn0de.data.local.ManagementLayerEntity>()
+    val cascadeRoles=com.r0ybt.arachn0de.data.repository.BacklogState()
+    val managementRoots=emptyList<com.r0ybt.arachn0de.data.local.ConversionRootEntity>()
     val managementRoot=managementRoots.firstOrNull {if(currentNodeId==null) it.projectId==project.id else it.nodeId==currentNodeId}
     val managementContext=managementContexts.firstOrNull {it.id==managementRoot?.id}
     var managementCreationRequest by remember(currentNodeId) {mutableStateOf(0)}
     val creationMapping=cascadeLayers.firstOrNull {it.nodeId==currentNodeId}
     val creationRole=cascadeRoles.records.roles.firstOrNull {it.nodeId==currentNodeId}
-    val iterationOverview by remember(nodeRepository.management.iterations,creationMapping?.contextId) {nodeRepository.management.iterations.observe(creationMapping?.contextId ?: "")}.collectAsState(initial=com.r0ybt.arachn0de.data.repository.IterationState())
-    val sprintOverviewRefs by nodeRepository.management.relations.stories.collectAsState(initial=emptyList())
+    val sprintOverviewActive=creationMapping?.kind=="SPRINTS"
+    val iterationOverview=if(sprintOverviewActive) {
+        val state by remember(nodeRepository.management.iterations,creationMapping?.contextId) {nodeRepository.management.iterations.observe(requireNotNull(creationMapping).contextId)}.collectAsState(initial=com.r0ybt.arachn0de.data.repository.IterationState())
+        state
+    } else com.r0ybt.arachn0de.data.repository.IterationState()
+    val sprintOverviewRefs=if(sprintOverviewActive) {
+        val refs by nodeRepository.management.relations.stories.collectAsState(initial=emptyList())
+        refs
+    } else emptyList()
     val teamScope=cascadeLayers.any {it.nodeId==currentNodeId && it.kind=="TEAM"}
     val managedSprint=sprintScope && managementContexts.any {it.enabled && it.id==cascadeRoles.owners[currentNodeId]}
     val storiesByEpic=remember(cascadeRoles.records.epicStories,cascadeRoles.records.roles,projectState.nodes) {
@@ -304,6 +330,7 @@ internal fun ProjectNodeScreen(
         currentNodeId,creationMapping?.kind,creationRole?.role,requireNotNull(creationMapping?.contextId ?: creationRole?.contextId),contextualCreationLabel,nodeRepository.management
     ) {managementCreationRequest=0}
     fun openTraditionalElement(quick: Boolean = false) {
+        if(isSubmittingNode || currentNode?.sprintMode==true)return // Preserve historical Sprint boundaries without creating new phase-managed tasks.
         val parent = currentNodeId
         if(drafts.hasNew(parent)) {
             drafts.open(parent) { error("Borrador existente") }
@@ -311,24 +338,20 @@ internal fun ProjectNodeScreen(
         }
         else {
             var seed: EditorDraft? = null
+            val preparationStarted=ResponseTiming.start("create_preparation_started")
             defaultsOperation.submit("No se pudieron cargar los valores predeterminados. Puedes reintentar.", {
                 val defaults = nodeRepository.creationDefaults.resolve(project.id,parent)
                 seed = com.r0ybt.arachn0de.ui.state.CreationDefaultsDraftFactory.create(parent,defaults,clock(),java.util.TimeZone.getDefault())
                 true
             }, {
+                ResponseTiming.end("create_preparation_ready",preparationStarted)
                 drafts.open(parent) { checkNotNull(seed) }
                 quickCreation = quick && checkNotNull(seed).let { it.purpose != NodePurpose.LAYER }
             })
         }
     }
     var cascadeError by remember(project.id) {mutableStateOf<String?>(null)}
-    LaunchedEffect(managementContexts,managementRoots,hasLoaded) {
-        for(root in managementRoots.filter {it.projectId==project.id || projectState.nodesById[it.nodeId]?.projectId==project.id}) {
-            if(managementContexts.any {it.id==root.id && it.enabled}) try {nodeRepository.management.cascade.ensure(root.id)}
-            catch(c:kotlinx.coroutines.CancellationException) {throw c}
-            catch(e:Exception) {cascadeError=e.message ?: "No se pudo preparar la gestión. Los datos se conservaron."}
-        }
-    }
+
 
     val linkedIds=sprintLinks.filter {it.sprintId==currentNodeId}.mapTo(hashSetOf()) {it.taskId}
     var showLinkTasks by remember(currentNodeId) {mutableStateOf(false)}
@@ -342,6 +365,8 @@ internal fun ProjectNodeScreen(
     var historyNodeId by rememberSaveable { mutableStateOf<String?>(null) }
     historyNodeId?.let { id -> projectState.nodesById[id]?.let { node -> NodeHistoryDialog(node, nodeRepository) { historyNodeId = null } } }
     val tagState by remember(nodeRepository) { nodeRepository.tags.observe() }.collectAsState(initial = com.r0ybt.arachn0de.domain.model.TagState())
+    var contentOwner by rememberSaveable(project.id) {mutableStateOf<String?>(null)}
+    var contentRequest by rememberSaveable(project.id) {mutableStateOf(0)}
     var directEditField by rememberSaveable(project.id) { mutableStateOf<String?>(null) }
     fun openNodeEditor(node: com.r0ybt.arachn0de.domain.model.Node, field: String? = null) {
         if (isSubmittingNode || !assignmentsLoaded || !peopleLoaded) return
@@ -357,31 +382,42 @@ internal fun ProjectNodeScreen(
         }
     }
     val now = com.r0ybt.arachn0de.ui.state.rememberTaskScreenNow(projectState.nodes, clock)
+    val calendarZone=java.util.TimeZone.getDefault().id
+    val calendarToday=com.r0ybt.arachn0de.domain.model.CalendarDates.localDay(now,java.util.TimeZone.getTimeZone(calendarZone))
+    val contextualCalendar=calendarStore.scope("project:${project.id}:${currentNodeId ?: "root"}",calendarToday)
+    val contextualBirthdays=rememberContextBirthdays(personRepository)
+    val contextualIndex by if(currentNode==null || currentNode.isStructural) rememberContextCalendarIndex(projectState,calendarZone,project.id,currentNodeId)
+        else remember {mutableStateOf<com.r0ybt.arachn0de.domain.model.ContextCalendarIndex?>(null)}
     val scopeFilterStore = rememberSaveable(project.id, saver = ScopeFilterStore.Saver) { ScopeFilterStore() }
     val scopeFilters = scopeFilterStore.scope(currentNodeId ?: "project-root")
+    val taskViewSession=rememberTaskViewSession()
+    val taskViewEnabled=currentNode==null || (currentNode.isStructural && !sprintScope && creationMapping==null && creationRole==null && managementRoot==null)
+    val compactHeader=taskViewEnabled && !sprintScope && managementRoot==null
+    val headerTaskCounts=remember(projectState,currentNodeId,project.id) {
+        if(currentNode==null || currentNode.isStructural)interiorTaskCounts(projectState,project.id,currentNodeId) else null
+    }
+    var taskViewOpen by remember(project.id,currentNodeId) {mutableStateOf(false)}
+    val selectedTaskStatus=if(taskViewEnabled)taskViewSession.status?.name else null
+    LaunchedEffect(scopeFilters) {scopeFilters.completion=com.r0ybt.arachn0de.domain.model.CompletionFilter.ALL}
     val scopedFilter = com.r0ybt.arachn0de.domain.model.NodeFilter(
         com.r0ybt.arachn0de.domain.model.TemporalRanges.resolve(scopeFilters.time, now, java.util.TimeZone.getDefault(), java.util.Locale.getDefault()),
-        scopeFilters.person, scopeFilters.completion, scopeFilters.tag, scopeFilters.priority)
-    val completedAt by remember(nodeRepository, project.id) { nodeRepository.observeCompletionTimes(project.id) }.collectAsState(initial = emptyMap())
+        scopeFilters.person, com.r0ybt.arachn0de.domain.model.CompletionFilter.ALL, scopeFilters.tag, scopeFilters.priority,selectedTaskStatus?.let(com.r0ybt.arachn0de.domain.model.TaskStatus::valueOf))
+    val completedOrderOverrides=remember(project.id,currentNodeId,selectedTaskStatus) {mutableStateMapOf<String,Pair<Node,Long?>>()}
+    val storedCompletedAt by remember(nodeRepository, project.id) { nodeRepository.observeCompletionTimes(project.id) }.collectAsState(initial = emptyMap())
+    val completedAt=storedCompletedAt+completedOrderOverrides.mapNotNull {(id,entry)->entry.second?.takeIf {projectState.nodesById[id]==entry.first}?.let {id to it}}.toMap()
     val sortContext = "${project.id}:${currentNodeId ?: "project-root"}"
     val layersFirst=sortPreferences.layersFirst(sortContext)
-    val sortMode = sortPreferences.mode(sortContext)
+    val sortConfiguration=sortPreferences.configuration(sortContext)
+    val sortMode = NodeSortMode.MANUAL
     var showSortMenu by remember(currentNodeId) { mutableStateOf(false) }
-    val filterActive = scopeFilters.active
-    val automaticNodes by androidx.compose.runtime.produceState<List<com.r0ybt.arachn0de.domain.model.Node>?>(null, projectState, currentNodeId, sortMode,layersFirst) {
-        value = null
-        if (sortMode == NodeSortMode.MANUAL) return@produceState
-        value = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
-            NodePresentationSort.children(projectState.nodes.filter { it.projectId == project.id && it.parentId == currentNodeId }, sortMode,layersFirst=layersFirst)
-        }
+    val otherFiltersActive=scopeFilters.priority!=null || scopeFilters.time!=com.r0ybt.arachn0de.domain.model.TimeFilter.ALL || scopeFilters.person!=null || scopeFilters.tag!=null || contextualCalendar.filtering
+    val filterActive = otherFiltersActive || selectedTaskStatus!=null
+    val currentNodes = remember(projectState,currentNodeId,layersFirst) {
+        NodePresentationSort.children(projectState.childrenOf(currentNodeId),NodeSortMode.MANUAL,layersFirst=layersFirst)
     }
-    // Manual keeps the existing coherent projection, without a new asynchronous loading phase.
-    val currentNodes = if (sortMode == NodeSortMode.MANUAL) remember(projectState, currentNodeId, completedAt,layersFirst) {
-        NodePresentationSort.children(projectState.childrenOf(currentNodeId), NodeSortMode.MANUAL, completedAt,layersFirst)
-    } else automaticNodes
-    val sortChoices=projectState.nodes.filter {it.isStructural}.associate {it.id as String? to (sortPreferences.mode("${project.id}:${it.id}") to sortPreferences.layersFirst("${project.id}:${it.id}"))} +
-        (null to (sortPreferences.mode("${project.id}:project-root") to sortPreferences.layersFirst("${project.id}:project-root")))
-    val filteredRows by androidx.compose.runtime.produceState<List<com.r0ybt.arachn0de.domain.model.FilteredNodeRow>?>(null, projectState, currentNodeId, scopedFilter, sortMode,layersFirst,sortChoices, tagState, responsibleByNode, completedAt, linkedIds) {
+    val sortChoices=projectState.nodes.filter {it.isStructural}.associate {it.id as String? to (NodeSortMode.MANUAL to sortPreferences.layersFirst("${project.id}:${it.id}"))} +
+        (null to (NodeSortMode.MANUAL to sortPreferences.layersFirst("${project.id}:project-root")))
+    val filteredRows by androidx.compose.runtime.key(project.id,currentNodeId) {androidx.compose.runtime.produceState<List<com.r0ybt.arachn0de.domain.model.FilteredNodeRow>?>(null, projectState, currentNodeId, scopedFilter, sortMode,layersFirst,sortChoices, tagState, responsibleByNode, linkedIds) {
         value = null
         if (!filterActive) { value = emptyList(); return@produceState }
         value = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
@@ -391,25 +427,85 @@ internal fun ProjectNodeScreen(
                 responsibleByNode[it.id].orEmpty().map { person -> person.id }.toSet(), tagIds = tagState.nodeIds[it.id].orEmpty()) }
                 .map { com.r0ybt.arachn0de.domain.model.FilteredNodeRow(it, 0, true) }
             val rows = (physicalRows + externalRows).distinctBy { it.node.id }
-            NodePresentationSort.filtered(rows, sortMode, completedAt,layersFirst) {parent->sortChoices[parent] ?: (sortMode to layersFirst)}
+            NodePresentationSort.filtered(rows, sortMode, emptyMap(),layersFirst) {parent->sortChoices[parent] ?: (sortMode to layersFirst)}
+        }
+    }}
+    val contextualFavorites=LocalElementAccessState.current.favorites
+    val calendarEligible=remember(contextualIndex,contextualCalendar.selected,contextualCalendar.conditions,contextualCalendar.favorites,contextualFavorites,now,scopedFilter.copy(taskStatus=null),responsibleByNode,tagState) {
+        contextualIndex?.results(contextualCalendar.selected,false,contextualCalendar.favorites,contextualFavorites,now,java.util.TimeZone.getTimeZone(calendarZone),contextualCalendar.conditions)?.filter {node->
+            (if(contextualCalendar.selected!=null) scopedFilter.copy(range=null,taskStatus=null) else scopedFilter.copy(taskStatus=null)).matches(node,responsibleByNode[node.id].orEmpty().map {it.id}.toSet(),tagIds=tagState.nodeIds[node.id].orEmpty())
+        }.orEmpty()
+    }
+    val calendarResults=calendarEligible.filter {selectedTaskStatus==null || (it.isCompletable && it.taskStatus.name==selectedTaskStatus)}
+    val baseTaskFilter=scopedFilter.copy(taskStatus=null)
+    val taskViewInput=TaskViewInput(projectState,project,currentNodeId,baseTaskFilter,if(contextualCalendar.filtering)calendarEligible else null,responsibleByNode,tagState,selectedTaskStatus)
+    val taskViewCalculation by produceState<TaskViewCalculation?>(null,taskViewInput) {
+        val input=taskViewInput
+        value=kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {input.calculate()}
+    }
+    val taskViewReady=taskViewCalculation?.source==taskViewInput
+    val taskViewUsable=taskViewCalculation?.source?.let {it.project.id==project.id && it.parent==currentNodeId && it.status==selectedTaskStatus}==true
+    LaunchedEffect(hasLoaded,taskViewUsable) {
+        if(hasLoaded && (!taskViewEnabled || taskViewUsable) && !openReported) {
+            openReported=true;ResponseTiming.end("project_content_ready",openedAt)
+        }
+    }
+    val taskProjection=if(taskViewUsable)requireNotNull(taskViewCalculation).projection else TaskViewProjection(emptyList(),emptyMap(),emptySet(),emptyMap(),selectedTaskStatus==TaskStatus.VERIFY.name)
+    LaunchedEffect(taskViewEnabled,hasLoaded,taskViewReady,taskProjection.verificationAvailable) {if((currentNode==null || currentNode.isStructural) && hasLoaded && taskViewReady)taskViewSession.validate(taskProjection.verificationAvailable)}
+    val taskViewAndroidView=androidx.compose.ui.platform.LocalView.current
+    val taskViewControls=if(taskViewEnabled) TaskViewControls(taskViewSession.status,taskProjection.counts,taskProjection.verificationAvailable,taskViewOpen,
+        {taskViewOpen=!taskViewOpen},{taskViewOpen=false},{chosen->
+            taskViewSession.status=chosen;taskViewOpen=false
+            val count=if(chosen==null)taskProjection.total else taskProjection.counts[chosen] ?: 0
+            taskViewAndroidView.announceForAccessibility("Mostrando $count tareas${if(chosen==null) "" else " "+taskViewLabel(chosen).lowercase(java.util.Locale.getDefault())}")
+        },ready=taskViewReady) else null
+    SideEffect {
+        actions.taskViewFeedback=if(!taskViewEnabled || selectedTaskStatus==null)null else com.r0ybt.arachn0de.ui.state.TaskViewFeedback({node,peopleOverride,tagsOverride->
+            val chain=mutableListOf(node);var parent=node.parentId;val visited=hashSetOf<String>()
+            while(parent!=null && visited.add(parent)) {val ancestor=projectState.nodesById[parent] ?: break;chain.add(ancestor);parent=ancestor.parentId}
+            val index=com.r0ybt.arachn0de.domain.model.ContextCalendarIndex(com.r0ybt.arachn0de.domain.model.NodeTreeSnapshot(chain),java.util.TimeZone.getTimeZone(calendarZone),project.id,currentNodeId)
+            val inScope=index.results(contextualCalendar.selected,false,contextualCalendar.favorites,contextualFavorites,now,java.util.TimeZone.getTimeZone(calendarZone),contextualCalendar.conditions).any {it.id==node.id}
+            inScope && (if(contextualCalendar.selected!=null)scopedFilter.copy(range=null)else scopedFilter).matches(node,
+                peopleOverride ?: responsibleByNode[node.id].orEmpty().map {it.id}.toSet(),tagIds=tagsOverride ?: tagState.nodeIds[node.id].orEmpty())
+        },{taskViewSession.status=null;taskViewOpen=false},{node->
+            val previous=completedAt[node.id]
+            val restore:(Node)->Unit={restored->completedOrderOverrides[node.id]=restored to previous}
+            restore
+        })
+    }
+    val nameSearch=rememberInlineSearch("${project.id}:${currentNodeId.orEmpty()}")
+    val nameRows by androidx.compose.runtime.key(projectState,currentNodeId,nameSearch.query,scopedFilter,calendarResults,contextualCalendar.filtering,responsibleByNode,tagState,sortMode,layersFirst,sortChoices) {
+        androidx.compose.runtime.produceState<List<com.r0ybt.arachn0de.domain.model.FilteredNodeRow>?>(null) {
+            if(nameSearch.active) value=kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
+                inlineNameRows(projectState,project.id,currentNodeId,nameSearch.query,scopedFilter,
+                    responsibleByNode.mapValues {it.value.map {person->person.id}.toSet()},tagState.nodeIds,
+                    order={rows->NodePresentationSort.filtered(rows,sortMode,emptyMap(),layersFirst) {parent->sortChoices[parent] ?: (sortMode to layersFirst)}})
+                    .filter {row->!contextualCalendar.filtering || calendarResults.any {it.id==row.node.id}}
+            }
         }
     }
     val filteredIds = remember(filteredRows) { filteredRows.orEmpty().mapTo(hashSetOf()) { it.node.id } }
-    if (scopeFilters.open) ScopeFiltersDialog(scopeFilters, people, tagState.tags)
-    if (showSortMenu) NodeSortMenu(sortMode, { sortPreferences.set(sortContext, it) }, { showSortMenu = false },
-        projectDefault = currentNodeId == null,
-        onInherit = if (currentNodeId == null) null else ({ sortPreferences.inherit(sortContext) }),
-        layersFirst=layersFirst,onLayersFirst={sortPreferences.setLayersFirst(sortContext,it)})
+    RegisterGlobalSort(sortPreferences.loaded,filter=filterActive) {showSortMenu=true}
+    if (scopeFilters.open) ScopeFiltersDialog(scopeFilters, people, tagState.tags,showState=false,taskControls=taskViewControls,cardFilters=contextualCalendar)
+    if (showSortMenu) NodeSortMenu(sortConfiguration,{sortPreferences.configure(sortContext,it)},{showSortMenu=false},
+        cardFilters=contextualCalendar,onApply={done->
+            val ids=if(taskViewEnabled && filterActive)taskProjection.rows.mapTo(hashSetOf()) {it.node.id}
+                else if(contextualCalendar.filtering)calendarResults.mapTo(hashSetOf()) {it.id}
+                else if(filterActive)filteredRows.orEmpty().mapTo(hashSetOf()) {it.node.id} else null
+            sortPreferences.apply(sortContext,ids,done)
+        },filters=scopeFilters,people=people,tags=tagState.tags,taskControls=taskViewControls,projectDefault=currentNodeId==null,owns=sortPreferences.owns(sortContext),
+        onInherit=if(currentNodeId==null)null else ({sortPreferences.inherit(sortContext)}),
+        threeStates=(currentNode?.let {com.r0ybt.arachn0de.domain.model.TaskStatePolicy.count(it,projectState.nodesById,project)==3} ?: project.verificationEnabled) || (taskViewUsable && taskProjection.verificationAvailable))
     val selection = remember(project.id, currentNodeId, scopedFilter) { com.r0ybt.arachn0de.ui.state.NodeSelection() }
-    val visibleSelectionIds = if(scopeFilters.active) filteredRows.orEmpty().map { it.node.id }.toSet() else currentNodes.orEmpty().map { it.id }.toSet()
-    LaunchedEffect(visibleSelectionIds, filteredRows != null, currentNodes != null) { if((scopeFilters.active && filteredRows != null) || (!scopeFilters.active && currentNodes != null)) selection.retain(visibleSelectionIds) }
+    val visibleSelectionIds = if(taskViewEnabled && filterActive)taskProjection.rows.mapTo(hashSetOf()) {it.node.id} else if(contextualCalendar.filtering) calendarResults.map {it.id}.toSet() else if(filterActive) filteredRows.orEmpty().map { it.node.id }.toSet() else currentNodes.orEmpty().map { it.id }.toSet()
+    val selectionReady=if(taskViewEnabled && filterActive)taskViewUsable else if(contextualCalendar.filtering) contextualIndex!=null else if(filterActive) filteredRows!=null else currentNodes!=null
+    LaunchedEffect(visibleSelectionIds,selectionReady) {if(selectionReady && !nameSearch.active) selection.retain(visibleSelectionIds)}
     var bulkDelete by remember(selection) { mutableStateOf(false) }
     var bulkMove by remember(selection) { mutableStateOf(false) }
     var groupReview by remember { mutableStateOf<List<com.r0ybt.arachn0de.domain.model.Node>?>(null) }
 
     LaunchedEffect(draft?.creationId) { groupReview = null }
 
-    val currentProgress = projectState.progressById[currentNodeId]
     val attention by com.r0ybt.arachn0de.ui.state.rememberAttention(projectState, now)
     val currentMonth = remember(now) { com.r0ybt.arachn0de.domain.model.CalendarDates.localDay(now, java.util.TimeZone.getDefault()).calendarMonth }
     val financial by com.r0ybt.arachn0de.ui.state.rememberFinancial(projectState, responsibleByNode,
@@ -449,7 +545,6 @@ internal fun ProjectNodeScreen(
             while (currentPath.size > validPath.size) currentPath.removeAt(currentPath.lastIndex)
             // Data invalidation may return to an ancestor; this is not a user visit.
             if (currentPath.lastOrNull() != openId) recordedNode = currentPath.lastOrNull()
-            expandedLayerIds = expandedLayerIds.filter { it in snapshot.nodesById }
             projectState = snapshot
             hasLoaded = true
         }
@@ -467,12 +562,21 @@ internal fun ProjectNodeScreen(
         }
     }
 
-    BackHandler(enabled=currentNodeId==null && coreContext!=CoreBottomContext.Creation && draft==null && projectEditField==null) {coreContext=CoreBottomContext.Creation}
-    BackHandler(enabled = selection.ids.isNotEmpty()) { selection.clear() }
+    BackHandler(enabled=!nameSearch.open && currentNodeId==null && coreContext!=null && draft==null && projectEditField==null) {coreContext=null}
+    BackHandler(enabled = !nameSearch.open && selection.ids.isNotEmpty()) { selection.clear() }
     BackHandler(enabled = showDrawer) { showDrawer = false }
 
     if (!hasLoaded) {
-        Surface(Modifier.fillMaxSize(), color = Arachn0deColors.Background) {}
+        Surface(Modifier.fillMaxSize(), color = Arachn0deColors.Background) {
+            Column(Modifier.padding(16.dp).testTag("project-loading"),verticalArrangement=Arrangement.spacedBy(8.dp)) {
+                Row(verticalAlignment=Alignment.CenterVertically) {
+                    IconButton(onClick=onBackToProjects) {LucideIcon(Icons.AutoMirrored.Filled.ArrowBack,"Volver",tint=androidx.compose.material3.LocalContentColor.current)}
+                    NavigationHeading(project.name,Modifier.weight(1f))
+                }
+                OperationProgress(!load.failed)
+                Text(if(load.failed) "No se pudo cargar el contenido" else "Cargando contenido…",style=androidx.compose.material3.MaterialTheme.typography.bodySmall)
+            }
+        }
         LoadErrorDialog(load)
         return
     }
@@ -485,7 +589,26 @@ internal fun ProjectNodeScreen(
     val nodeBackDispatcher=androidx.activity.compose.LocalOnBackPressedDispatcherOwner.current?.onBackPressedDispatcher
     var nodeEditRequest by remember(currentNodeId) {mutableStateOf<com.r0ybt.arachn0de.domain.model.NodeProperty?>(null)}
     val nodeTechnologies by (LocalContext.current.applicationContext as com.r0ybt.arachn0de.Arachn0deApplication).technologyRepository.state.collectAsState()
+    var shareExport by rememberSaveable(currentNodeId) {mutableStateOf(false)}
+    if(shareExport) ShareExportPanel(currentNode?.title ?: project.name,project.id,currentNode?.id,currentNode==null || currentNode.isStructural,
+        !copyActions.busy,!copyActions.busy,{descendants->
+            if(currentNode==null) copyActions.copyProject(project,projectState,descendants) else copyActions.copy(projectState,currentNode.id,descendants)
+        }) {shareExport=false}
+    var saveStructure by remember(currentNodeId) {mutableStateOf(false)}
+    var createStructure by remember(currentNodeId) {mutableStateOf(false)}
+    if(saveStructure) SaveStructurePanel(project.id,currentNodeId,currentNode?.title ?: project.name) {saveStructure=false}
+    if(createStructure) StructureCreationPanel(project.id,currentNodeId,openLibrary=true,
+        onNew={createStructure=false;openTraditionalElement(quick=true)},onDismiss={createStructure=false})
+    val favoriteAction=rememberFavoriteMenuAction(if(currentNode==null)"project:${project.id}" else "node:${currentNode.id}",!isSubmittingNode)
     val contextActions:ContextActions.()->Unit={
+        favoriteAction?.let {items+=it}
+        action("Guardar como plantilla",Icons.Default.Description,{showContextActions=false;saveStructure=true},enabled=!isSubmittingNode)
+        exportSpec=ElementOptionsExport(project.id,currentNode?.id,currentNode==null || currentNode.isStructural,!copyActions.busy,!copyActions.busy) {descendants->
+            if(currentNode==null)copyActions.copyProject(project,projectState,descendants) else copyActions.copy(projectState,currentNode.id,descendants)
+        }
+        if(currentNode==null || currentNode.isStructural || (currentNode.isCompletable && currentNode.workState==null)) submenu("Configurar estados",androidx.compose.material.icons.Icons.Default.Settings,enabled=!isSubmittingNode) {close->TaskStateSettingsItems(project=if(currentNode==null) project else null,node=currentNode) {close();showContextActions=false}}
+        if(currentNode?.isCompletable==true && currentNode.workState==null) submenu("Cambiar estado",androidx.compose.material.icons.Icons.Default.Repeat,enabled=!isSubmittingNode) {close->TaskStatusItems(currentNode,{status,done->actions.setTaskStatus(currentNode.id,status,done)}) {close();showContextActions=false}}
+        action("Compartir y exportar",androidx.compose.material.icons.Icons.Default.Share,{showContextActions=false;shareExport=true},enabled=!isSubmittingNode)
         cleanCompleted?.let {clean->action("Limpiar completadas",androidx.compose.material.icons.Icons.Default.Delete,{showContextActions=false;clean()})}
         if(currentNode==null || currentNode.isStructural) action(
             if(currentNode?.isPinned ?: project.isPinned) "Desfijar" else "Fijar",
@@ -496,14 +619,10 @@ internal fun ProjectNodeScreen(
                 }) {showContextActions=false}
             },enabled=!isSubmittingNode)
         if(contextualCreationLabel!=null) action("Nuevo elemento",androidx.compose.material.icons.Icons.Default.Add,{showContextActions=false;openTraditionalElement()},enabled=!isSubmittingNode && currentNode?.canReceiveChildren==true)
-        if(currentNode==null || managementRoot!=null) action("Planificación",androidx.compose.material.icons.Icons.Default.Settings,{showContextActions=false;planningOpen=true})
         if (currentNode == null) action("Fotografía", androidx.compose.material.icons.Icons.Default.Image, {
             showContextActions = false; showProjectPhoto = true
         }, enabled = !isSubmittingNode)
-        action("Editar tecnologías", androidx.compose.material.icons.Icons.Default.Code, {showContextActions=false;if(useNodeModule) nodeEditRequest=com.r0ybt.arachn0de.domain.model.NodeProperty.TECHNOLOGIES else editingTechnologies=true})
         action("Recurrencias", androidx.compose.material.icons.Icons.Default.Refresh, { showContextActions=false; recurrenceSelected="" })
-        if(currentNode?.isStructural == true) action(if(currentNode.sprintMode) "Desactivar Modo Sprint" else "Modo Sprint", androidx.compose.material.icons.Icons.Default.SwapHoriz, { showContextActions=false;showSprintMode=true }, enabled=!isSubmittingNode)
-        if(currentNode?.workState != null) action("Cambiar estado", androidx.compose.material.icons.Icons.Default.SwapHoriz, { showContextActions=false;changingWorkStateId=currentNode.id }, enabled=!isSubmittingNode)
         if(currentNode != null) {
             // Inline Kanban does not expose the ordinary editable context title.
             if(creationMapping?.kind=="KANBAN" && managementContexts.any {it.id==creationMapping.contextId && it.enabled})
@@ -512,10 +631,11 @@ internal fun ProjectNodeScreen(
                 },enabled=!isSubmittingNode && assignmentsLoaded && peopleLoaded)
             action("Eliminar", androidx.compose.material.icons.Icons.Default.Delete, { showContextActions=false;deletingNodeId=currentNode.id;deletingNodeName=currentNode.title }, enabled=!isSubmittingNode,destructive=true)
             action("Responsables", androidx.compose.material.icons.Icons.Default.People, { showContextActions=false;if(useNodeModule) nodeEditRequest=com.r0ybt.arachn0de.domain.model.NodeProperty.PEOPLE else responsibleNodeId=currentNode.id }, enabled=!isSubmittingNode && !personActions.operation.busy && peopleLoaded && assignmentsLoaded)
+            if(!currentNode.isStructural) action("Mover a Borradores", androidx.compose.material.icons.Icons.Default.Description, {actions.moveToDrafts(currentNode.id) {showContextActions=false}}, enabled=!isSubmittingNode)
             action("Mover a…", androidx.compose.material.icons.Icons.Default.DriveFileMove, { showContextActions=false;movingNodeId=currentNode.id }, enabled=!isSubmittingNode)
             action("Historial", androidx.compose.material.icons.Icons.Default.History, { showContextActions=false;historyNodeId=currentNode.id })
         }
-        if(currentNode == null || (currentNode.isStructural)) action("Valores predeterminados", androidx.compose.material.icons.Icons.Default.Settings, {
+        if(currentNode == null || (currentNode.isStructural)) action("Valores iniciales", androidx.compose.material.icons.Icons.Default.Settings, {
             showContextActions = false; showDefaults = true
         }, enabled = !isSubmittingNode)
         if(currentNode != null && !currentNode.hasChildren) action(
@@ -531,38 +651,55 @@ internal fun ProjectNodeScreen(
         },enabled=!isSubmittingNode)
         if(currentNode?.isStructural == true) action("Convertir en proyecto", androidx.compose.material.icons.Icons.Default.AccountTree, { showContextActions=false;promotingLayerId=currentNode.id }, enabled=!isSubmittingNode)
         if(currentNode==null) action("Convertir en capa",androidx.compose.material.icons.Icons.Default.AccountTree,{ showContextActions=false;moveProject=true },enabled=!isSubmittingNode)
-        action(if(currentNode == null) "Copiar" else "Copiar este elemento", androidx.compose.material.icons.Icons.Default.ContentCopy, {
-            showContextActions = false
-            if(currentNode == null) copyActions.copyProject(project,projectState,false) else copyActions.copy(projectState,currentNode.id,false)
-        },enabled = !copyActions.busy)
-        if(currentNode == null || currentNode.isStructural) action("Copiar texto con descendientes", androidx.compose.material.icons.Icons.Default.CopyAll, {
-            showContextActions = false
-            if(currentNode == null) copyActions.copyProject(project,projectState,true) else copyActions.copy(projectState,currentNode.id,true)
-        },enabled = !copyActions.busy)
+
     }
     val creationActions:@Composable ()->Unit={
-                Row(Modifier.fillMaxWidth().background(Arachn0deColors.Surface)
+                Row(Modifier.fillMaxWidth().background(navigationBarBackground)
                     .testTag("project-bottom-actions"),horizontalArrangement=Arrangement.spacedBy(8.dp),verticalAlignment=Alignment.CenterVertically) {
-                    TextButton(onClick={if(contextualCreationLabel!=null) managementCreationRequest++ else if(!isSubmittingNode && (currentNode==null || currentNode.canReceiveChildren)) openTraditionalElement(quick = true)},
+                    val enabled=!isSubmittingNode && currentNode?.sprintMode!=true && (currentNode==null || currentNode.canReceiveChildren)
+                    TextButton(onClick={openTraditionalElement(quick=true)},
                         modifier=Modifier.weight(1f).heightIn(min=48.dp),contentPadding=PaddingValues(8.dp),
-                        colors=ButtonDefaults.textButtonColors(contentColor=Arachn0deColors.TextPrimary),
-                        enabled=!isSubmittingNode && (currentNode==null || currentNode.canReceiveChildren)) {
-                        Icon(androidx.compose.material.icons.Icons.Default.Add,null,Modifier.size(20.dp))
+                        colors=ButtonDefaults.textButtonColors(contentColor=Arachn0deColors.TextPrimary),enabled=enabled) {
+                        NavigationBarIcon(androidx.compose.material.icons.Icons.Default.Add,label="Nuevo elemento")
                         Spacer(Modifier.width(6.dp))
-                        Text("Crear",maxLines=1,style=MaterialTheme.typography.labelSmall)
+                        Text("Nuevo",maxLines=1,style=MaterialTheme.typography.labelSmall)
                     }
-                    VerticalDivider(Modifier.height(24.dp),thickness=.5.dp,color=Arachn0deColors.Outline)
-                    TextButton(onClick={expandedLayerIds=(expandedLayerIds.toSet()+currentPath).toList();showNavigator=true},
+                    TextButton(onClick={createStructure=true},
                         modifier=Modifier.weight(1f).heightIn(min=48.dp),contentPadding=PaddingValues(8.dp),
-                        colors=ButtonDefaults.textButtonColors(contentColor=Arachn0deColors.TextPrimary)) {
-                        Icon(androidx.compose.material.icons.Icons.Default.Layers,null,Modifier.size(20.dp))
+                        colors=ButtonDefaults.textButtonColors(contentColor=Arachn0deColors.TextPrimary),enabled=enabled) {
+                        NavigationBarIcon(androidx.compose.material.icons.Icons.Default.Description,label="Desde plantilla")
                         Spacer(Modifier.width(6.dp))
-                        Text("Capas",maxLines=1,style=MaterialTheme.typography.labelSmall)
+                        Text("Desde plantilla",style=MaterialTheme.typography.labelSmall)
                     }
+
                 }
     }
-    val bottomControlsDensity=androidx.compose.ui.platform.LocalDensity.current
-    var bottomControlsHeight by remember { mutableStateOf(70.dp) }
+    LaunchedEffect(entryAction,currentNode?.id,peopleLoaded,assignmentsLoaded,recurrenceByNode) {
+        if(entryAction=="content" && entryNodeId==null && currentNodeId==null) {
+            coreContext=CoreBottomContext.Content;onEntryActionHandled();return@LaunchedEffect
+        }
+        val node=currentNode
+        if(entryAction!=null && node!=null && node.id==entryNodeId && peopleLoaded && assignmentsLoaded) {
+            if(entryAction=="recurrence" && recurrenceByNode[node.id]==null) return@LaunchedEffect
+            when(entryAction) {
+                "recurrence"->recurrenceSelected=recurrenceByNode[node.id]
+                "content"->if(useNodeModule) {contentOwner=node.id;contentRequest++} else openNodeEditor(node)
+                "edit"->openNodeEditor(node)
+                "delete"->{deletingNodeId=node.id;deletingNodeName=node.title}
+                "move"->movingNodeId=node.id
+                "people"->responsibleNodeId=node.id
+                "history"->historyNodeId=node.id
+                "copy","copy-descendants"->copyActions.copy(projectState,node.id,entryAction=="copy-descendants")
+                "toggle"->if(node.workState==null) actions.cycleTaskStatus(node.id)
+                "advance"->Unit
+                "state"->if(node.workState==null)showContextActions=true
+                "layer"->if(node.obligation!=null) {convertingPurpose=NodePurpose.LAYER;convertingObligationId=node.id} else actions.convert(node.id,NodePurpose.LAYER)
+                "convert"->if(node.obligation!=null) {convertingPurpose=NodePurpose.NOTE;convertingObligationId=node.id} else actions.convert(node.id,NodePurpose.NOTE)
+            }
+            onEntryActionHandled()
+        }
+    }
+    val bottomControlsHeight=0.dp
     Surface(modifier = Modifier.fillMaxSize(), color = Arachn0deColors.Background) {
         BoxWithConstraints(
             modifier = Modifier
@@ -570,24 +707,35 @@ internal fun ProjectNodeScreen(
                 .background(background)
                 .then(if(projectEditField!=null) Modifier.imePadding() else Modifier),
         ) {
-            val coreModuleMaxHeight=(maxHeight*.5f).coerceAtLeast(120.dp).coerceAtMost(maxHeight)
+            val viewport=LocalBottomViewportHeight.current.let {if(it.value.isNaN())maxHeight else it}
+            val coreModuleMaxHeight=(viewport*.5f).coerceAtLeast(120.dp).coerceAtMost(viewport)
             Column(
                 modifier = Modifier
                     .fillMaxSize()
                     .then(if(showDrawer) Modifier.clearAndSetSemantics {} else Modifier)
-                    .padding(horizontal = 12.dp, vertical = 10.dp),
+                    .padding(horizontal = 4.dp, vertical = 10.dp),
             ) {
-                HeaderBar(onMenuClick = { showDrawer = true }, title = currentNode?.title ?: project.name, compactLock=true, showTitle=false,
-                    context=if(currentNode!=null) headingLocation(project,currentNode.parentId,projectState.nodesById)?.copy(core=null) else null,
+                OperationProgress(isSubmittingNode)
+                HeaderBar(onMenuClick = { showDrawer = true }, compactLock=true, showTitle=false,
+                    headingContent={
+                        val ancestors=if(currentNode==null) emptyList() else
+                            currentPath.dropLast(1).asReversed().mapNotNull { id ->
+                                projectState.nodesById[id]?.let { AncestorLocation(id,it.title) }
+                            }+AncestorLocation(null,project.name)
+                        HierarchyRoute(ancestors) { targetId ->
+                            if(targetId==null) {currentPath.clear();referenceReturns=emptyList()}
+                            else actions.navigate(targetId) {path -> currentPath.clear();currentPath.addAll(path)}
+                        }
+                    },
                     onBack=if(useNodeModule) ({nodeBackDispatcher?.onBackPressed();Unit}) else if(referenceReturns.lastOrNull()?.let {org.json.JSONObject(it).getString("target")==currentNodeId}==true) ({restoreReference();Unit}) else if(onBackToSearch!=null) onBackToSearch else if(currentPath.isNotEmpty()) ({
                         if(onBackToObligations!=null) onBackToObligations()
                         else if(onBackToCalendar!=null) onBackToCalendar()
                         else currentPath.removeAt(currentPath.lastIndex)
                     }) else null,
-                    backDescription=if(onBackToSearch!=null) "Volver a búsqueda" else if(onBackToObligations!=null) "Volver a Obligaciones" else if(onBackToCalendar!=null) "Volver al Calendario" else "Volver a la capa anterior",
+                    backDescription=if(onBackToSearch!=null) "Volver a búsqueda" else if(onBackToObligations!=null) "Volver a Pagos" else if(onBackToCalendar!=null) "Volver al Calendario" else "Volver a la capa anterior",
                     trailingAction={
-                        IconButton(onClick={showSortMenu=true},modifier=Modifier.size(48.dp).semantics {stateDescription="Orden: ${sortMode.label}" + if(layersFirst) "; Capas primero: arrastre de Capas" else if(sortMode!=NodeSortMode.MANUAL) "; arrastre deshabilitado" else ""}) {LucideIcon(Icons.AutoMirrored.Filled.Sort,"Ordenar")}
-                        IconButton(onClick={scopeFilters.open=true},modifier=Modifier.size(48.dp)) {LucideIcon(Icons.Default.FilterList,if(scopeFilters.active) "Filtros activos" else "Filtros",tint=if(scopeFilters.active) Arachn0deColors.Accent else Arachn0deColors.TextSecondary)}
+                        if(LocalGlobalNavigation.current?.bottomAccess!=true) IconButton(onClick={showSortMenu=true},enabled=sortPreferences.loaded,modifier=Modifier.size(48.dp).semantics {stateDescription="Orden: "+(if(sortConfiguration.manual) "Manual" else sortConfiguration.rules.filter {it.enabled}.joinToString(" → ") {it.criterion.label})}) {LucideIcon(Icons.AutoMirrored.Filled.Sort,"Ordenar")}
+                        if(LocalGlobalNavigation.current?.bottomAccess!=true) IconButton(onClick={scopeFilters.open=true},modifier=Modifier.size(48.dp)) {LucideIcon(Icons.Default.FilterList,if(filterActive) "Filtros activos" else "Filtros",tint=if(filterActive) Arachn0deColors.Accent else Arachn0deColors.TextSecondary)}
                         if(currentNodeId!=null && !useNodeModule) IconButton(onClick={showContextActions=true},modifier=Modifier.size(48.dp)) {LucideIcon(Icons.Default.MoreVert,"Opciones del elemento")}
                     })
                 BashPrompt(bashLocation(project.name,currentNode,projectState.nodesById),
@@ -602,123 +750,123 @@ internal fun ProjectNodeScreen(
                 }
 
                 layerScrollStates.SaveableStateProvider(currentNodeId?.let { "node:$it" } ?: "project-root") {
-                    val nodeListState = rememberLazyListState()
+                    val originalNodeListState = rememberLazyListState()
+                    val searchNodeListState = rememberLazyListState()
+                    val nodeListState = if(nameSearch.active)searchNodeListState else originalNodeListState
                     val groups: Map<Any,List<String>> = if(layersFirst) mapOf(
                         "pinned-layers" to currentNodes.orEmpty().filter {it.isStructural && it.isPinned}.map {it.id},
                         "layers" to currentNodes.orEmpty().filter {it.isStructural && !it.isPinned}.map {it.id},
                         "pending" to currentNodes.orEmpty().filter {sortMode==NodeSortMode.MANUAL && !it.isStructural && !it.isCompleted}.map {it.id},
                         "completed" to currentNodes.orEmpty().filter {sortMode==NodeSortMode.MANUAL && !it.isStructural && it.isCompleted}.map {it.id})
                     else listOf(false,true).flatMap {completed->listOf(("pinned:$completed" as Any) to currentNodes.orEmpty().filter {it.isCompleted==completed && it.isStructural && it.isPinned}.map {it.id},(completed as Any) to currentNodes.orEmpty().filter {it.isCompleted==completed && !it.isPinned}.map {it.id})}.toMap()
-                    val dragDisabled = sprintScope || isSubmittingNode || selection.ids.isNotEmpty() || filterActive || (sortMode != NodeSortMode.MANUAL && !layersFirst) || currentNodes == null
+                    val dragDisabled = nameSearch.active || taskViewOpen || sprintScope || isSubmittingNode || selection.ids.isNotEmpty() || filterActive || (sortMode != NodeSortMode.MANUAL && !layersFirst) || currentNodes == null
                     val drag = rememberDragReorderState(nodeListState, "node:", groups, dragDisabled, actions.operation.error, "$currentNodeId:${sortMode.name}:$layersFirst:$filterActive") { source, target, _ ->
                         if(layersFirst && projectState.nodesById[source]?.isStructural==true && !filterActive) actions.reorderLayersTo(source,currentNodeId,target)
                         else if(layersFirst && sortMode==NodeSortMode.MANUAL && !filterActive) actions.reorderContentTo(source,currentNodeId,target)
                         else if (sortMode == NodeSortMode.MANUAL && !filterActive) actions.reorderTo(source, currentNodeId, target)
                     }
+                    SideEffect {drag.onBlockedDrag=if(selectedTaskStatus!=null) ({actions.blockedReorder()}) else null}
                     val boardMapping=creationMapping?.takeIf {it.kind=="KANBAN" && managementContexts.any {c->c.id==it.contextId && c.enabled}}
-                    if(boardMapping!=null) ManagedKanbanDialog(boardMapping.contextId,nodeRepository.management.kanban,{openReference(it)},onPlanning={cascadeLayers.firstOrNull {it.contextId==boardMapping.contextId && it.kind=="SPRINTS"}?.let {openReference(it.nodeId)}},onDismiss={if(!restoreReference() && currentPath.isNotEmpty()) currentPath.removeAt(currentPath.lastIndex)},inline=true,modifier=Modifier.weight(1f),description=scopeDescription,onEditDescription={currentNode?.let {openNodeEditor(it,"description")}})
+                    if(boardMapping!=null && !nameSearch.active) ManagedKanbanDialog(boardMapping.contextId,nodeRepository.management.kanban,{openReference(it)},onPlanning={cascadeLayers.firstOrNull {it.contextId==boardMapping.contextId && it.kind=="SPRINTS"}?.let {openReference(it.nodeId)}},onDismiss={if(!restoreReference() && currentPath.isNotEmpty()) currentPath.removeAt(currentPath.lastIndex)},inline=true,modifier=Modifier.weight(1f),bottomInset=bottomControlsHeight,description=scopeDescription,onEditDescription={currentNode?.let {openNodeEditor(it,"description")}})
+                    else if(!hasLoaded || (taskViewEnabled && !taskViewUsable) || (contextualCalendar.filtering && contextualIndex==null) || (filterActive && filteredRows==null) || (!filterActive && currentNodes==null))
+                        Box(Modifier.fillMaxWidth().weight(1f),contentAlignment=Alignment.Center) {androidx.compose.material3.CircularProgressIndicator()}
                     else LazyColumn(
                         state = nodeListState,
-                        modifier = Modifier.fillMaxWidth().weight(1f).testTag("nodes-list").then(drag.gestureModifier),
+                        modifier = Modifier.fillMaxWidth().weight(1f).testTag("nodes-list").then(drag.gestureModifier).ignoreTaskViewTaps(taskViewOpen),
                         verticalArrangement = Arrangement.spacedBy(8.dp),
-                        contentPadding = PaddingValues(bottom=bottomControlsHeight),
+                        contentPadding = PaddingValues(bottom=if(taskViewEnabled)0.dp else bottomControlsHeight),
                     ) {
+                        if(currentNode==null || currentNode.isStructural) item(key="context-calendar:$currentNodeId") {
+                            ContextCalendar(contextualCalendar,contextualIndex,calendarToday,resultCount=calendarResults.size,birthdays=contextualBirthdays)
+                        }
+                        if(!sprintScope && contextualCalendar.selected?.let {contextualBirthdays?.on(it)?.isNotEmpty()}==true)
+                            item(key="context-birthdays") {ContextBirthdayCards(contextualBirthdays,contextualCalendar.selected)}
                         item(key = "layer-context", contentType = "context") {
                             Column {
-                                Spacer(modifier = Modifier.height(14.dp))
+                                Spacer(modifier = Modifier.height(if(compactHeader)0.dp else 14.dp))
 
 
                                 if (currentNode == null) Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Box(Modifier.weight(1f)) { DetailScopeTitle(project.name) }
+                                    Box(Modifier.weight(1f)) { DetailScopeTitle(project.name,compact=compactHeader) }
                                 } else Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically,
                                     horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                     val nodeTitle:@Composable ()->Unit={
                                         Box(Modifier.weight(1f)) {
-                                            DetailScopeTitle(com.r0ybt.arachn0de.data.repository.storyDisplayTitle(currentNode.id,currentNode.title,LocalStoryLabels.current))
+                                            DetailScopeTitle(com.r0ybt.arachn0de.data.repository.storyDisplayTitle(currentNode.id,currentNode.title,LocalStoryLabels.current),
+                                                compact=compactHeader,level=currentLayer,layer=currentNode.isStructural)
                                         }
                                     }
                                     if(!useNodeModule) nodeTitle()
                                     if (currentNode.isCompletable && currentNode.workState == null) {
                                         val colors = completionControlColors(false, currentNode.isCompleted, !isSubmittingNode)
                                         androidx.compose.material3.IconButton(
-                                            onClick = { actions.setCompleted(currentNode.id, !currentNode.isCompleted) },
+                                            onClick = rememberPaymentCheck(currentNode) { actions.cycleTaskStatus(currentNode.id) },
                                             enabled = !isSubmittingNode,
                                             modifier = Modifier.size(48.dp).testTag("detail-completion:${currentNode.id}")
-                                                .semantics { stateDescription = if (currentNode.isCompleted) "Completada" else "Pendiente" }
+                                                .semantics { stateDescription = currentNode.taskStatus.label;contentDescription="Cambiar estado: ${currentNode.title}" }
                                                 .background(if (currentNode.isCompleted) colors.fill else Arachn0deColors.ControlSurface,
                                                     androidx.compose.foundation.shape.RoundedCornerShape(10.dp)),
                                         ) {
                                             if (currentNode.isCompleted) LucideIcon(androidx.compose.material.icons.Icons.Default.Check,
-                                                "Marcar pendiente: ${currentNode.title}", tint = colors.mark)
+                                                null, tint = colors.mark)
+                                            else if(currentNode.awaitingVerification) VerificationMark()
                                             else Box(Modifier.size(14.dp).border(2.dp, colors.border, androidx.compose.foundation.shape.RoundedCornerShape(4.dp))
-                                                .semantics { contentDescription = "Completar: ${currentNode.title}" })
+                                                )
                                         }
                                     }
                                     if(useNodeModule) nodeTitle()
                                 }
-                                Spacer(modifier = Modifier.height(8.dp))
+                                Spacer(modifier = Modifier.height(0.dp))
                                 if(LocalBashPresentation.current) {
                                     if(currentNode==null) Text("id=${project.id}") else BashNodeProperties(currentNode)
                                 }
-                                if (currentNode == null) Text(if(LocalBashPresentation.current) "type=directory" else "Núcleo", color = Arachn0deColors.TextSecondary, fontSize = 12.sp)
+                                if(currentNode==null && LocalBashPresentation.current) Text("type=directory",color=Arachn0deColors.TextSecondary,fontSize=12.sp)
 
-                                if (currentNode != null) {
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        verticalAlignment = Alignment.CenterVertically,
-                                    ) {
-                                        Text(
-                                            text = if(LocalBashPresentation.current) "depth=$currentLayer" else "CAPA $currentLayer",
-                                            color = Arachn0deColors.TextSecondary,
-                                            fontSize = 12.sp,
-                                            fontWeight = FontWeight.Bold,
+                                if(currentNode==null && !compactHeader) androidx.compose.foundation.layout.FlowRow(horizontalArrangement=Arrangement.spacedBy(8.dp)) {
+                                    Text("${projectState.nodes.count {it.isCompletable && !it.isCompleted}} sin completar",style=MaterialTheme.typography.bodySmall,color=Arachn0deColors.TextSecondary)
+                                    AttentionIndicator(attention?.byProjectId?.get(project.id))
+                                }
+                            }
+                        }
+                        if(scopeDescription.isNotBlank()) item(key="scope-description:$currentNodeId",contentType="description") {
+                            GeneralCard(
+                                modifier = Modifier.fillMaxWidth().testTag("detail-description"),
+                                shape = RoundedCornerShape(10.dp),
+                                colors = androidx.compose.material3.CardDefaults.cardColors(
+                                    containerColor = Arachn0deColors.ControlSurface,
+                                ),
+                            ) {
+                                Column(
+                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = if(compactHeader)4.dp else 10.dp),
+                                ) {
+                                    if(!compactHeader) Text(
+                                        text = if(LocalBashPresentation.current) "description=" else "DESCRIPCIÓN",
+                                        color = Arachn0deColors.TextSecondary,
+                                        fontSize = 10.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                        letterSpacing = 0.08.sp,
+                                    )
+                                    if(!compactHeader) Spacer(modifier = Modifier.height(4.dp))
+                                    Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(6.dp),verticalAlignment=Alignment.Top) {
+                                        PropertyIdentityIcon(description=true,modifier=Modifier.padding(top=2.dp).size(16.dp))
+                                        AttachmentText(
+                                            modifier = Modifier.weight(1f),
+                                            text = scopeDescription,
+                                            ownerNodeId=currentNodeId,
+                                            selectableDescription=true,
+                                            webLinks=currentNode?.purpose in setOf(NodePurpose.ACTION,NodePurpose.NOTE),
+                                            color = Arachn0deColors.TextPrimary,
+                                            fontSize = ContentTypography.Detail,
+                                            lineHeight = ContentTypography.DetailLine,
                                         )
-
                                     }
                                 }
+                            }
+                        }
 
-                                Spacer(modifier = Modifier.height(10.dp))
-
-                                if (currentNode == null) AttentionIndicator(attention?.byProjectId?.get(project.id))
-                                if (scopeDescription.isNotBlank() || currentNode != null) {
-                                    GeneralCard(
-                                        modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp).testTag("detail-description"),
-                                        shape = RoundedCornerShape(10.dp),
-                                        colors = androidx.compose.material3.CardDefaults.cardColors(
-                                            containerColor = Arachn0deColors.ControlSurface,
-                                        ),
-                                    ) {
-                                        Column(
-                                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
-                                        ) {
-                                            Text(
-                                                text = if(LocalBashPresentation.current) "description=" else "DESCRIPCIÓN",
-                                                color = Arachn0deColors.TextSecondary,
-                                                fontSize = 10.sp,
-                                                fontWeight = FontWeight.SemiBold,
-                                                letterSpacing = 0.08.sp,
-                                            )
-                                            Spacer(modifier = Modifier.height(4.dp))
-                                            Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(6.dp),verticalAlignment=Alignment.Top) {
-                                                PropertyIdentityIcon(description=true,modifier=Modifier.padding(top=2.dp).size(16.dp))
-                                                AttachmentText(
-                                                    modifier = Modifier.weight(1f),
-                                                    text = scopeDescription.ifBlank { "Añadir descripción" },
-                                                    ownerNodeId=currentNodeId,
-                                                    webLinks=currentNode?.purpose in setOf(NodePurpose.ACTION,NodePurpose.NOTE),
-                                                    color = Arachn0deColors.TextPrimary,
-                                                    fontSize = ContentTypography.Detail,
-                                                    lineHeight = ContentTypography.DetailLine,
-                                                )
-                                            }
-                                        }
-                                    }
-                                }
-
+                        item(key="scope-details:$currentNodeId",contentType="context") {
+                            Column {
                                 cascadeError?.let {Text(it,color=MaterialTheme.colorScheme.error)}
-                                currentNodeId?.let {id->ManagementCascadeTools(id,cascadeLayers.firstOrNull {it.nodeId==id},cascadeRoles.records.roles.firstOrNull {it.nodeId==id},nodeRepository.management,contextId=cascadeRoles.owners[id],sprint=currentNode?.sprintMode==true,onLeaveLayer={if(!restoreReference() && currentPath.lastOrNull()==id) currentPath.removeAt(currentPath.lastIndex)},enabled=managementContexts.any {it.id==cascadeRoles.owners[id] && it.enabled}) {target->openReference(target)}}
-                                if(currentNodeId==null || managementRoot!=null) ManagementSection(
-                                    if(currentNodeId==null) project.id else null,currentNodeId,managementContext,nodeRepository.management,currentNode?.title ?: project.name,scopeDescription, onOpenNode={id->openReference(id)},configurationOpen=planningOpen,onConfigurationDismiss={planningOpen=false})
                                 if(currentNode?.purpose==com.r0ybt.arachn0de.domain.model.NodePurpose.ACTION) {
                                     val byNode=projectState.nodes.associateBy {it.id}
                                     val boundaries=managementRoots.filter {root->managementContexts.any {it.id==root.id}}.associateBy {it.nodeId}
@@ -734,23 +882,19 @@ internal fun ProjectNodeScreen(
                                     if(workContext!=null) ResponsibilitiesAccess(workContext.id,currentNode.id,false,nodeRepository.management.participation)
                                 }
                                 if (currentNode != null) AttentionIndicator(if (currentNode.isStructural) attention?.byNodeId?.get(currentNode.id) else null)
-                                if (currentNode == null || currentNode.isStructural) FinancialSummaryCard(
-                                    if (currentNode == null) financial?.byProjectId?.get(project.id) else financial?.byNodeId?.get(currentNode.id), title = "Obligaciones · Todo el período",
-                                    overview = if (currentNode == null) financial?.overviewByProjectId?.get(project.id) else financial?.overviewByNodeId?.get(currentNode.id))
+                                if(currentNode==null || currentNode.isStructural) FinancialSummaryCard(
+                                    if (currentNode == null) financial?.byProjectId?.get(project.id) else financial?.byNodeId?.get(currentNode.id), title = "Pagos · Todo el período",
+                                    overview = if (currentNode == null) financial?.overviewByProjectId?.get(project.id) else financial?.overviewByNodeId?.get(currentNode.id),modifier=Modifier.testTag("detail-payments"))
                                 if (sprintScope && !managedSprint) {
-                                    SprintProgressCard(com.r0ybt.arachn0de.ui.state.sprintProgressPercentage(projectState.nodes, currentNode!!.id,linkedIds))
                                     TextButton(onClick={showLinkTasks=true},enabled=!isSubmittingNode) {Text("Vincular tareas")}
                                     Spacer(modifier = Modifier.height(12.dp))
                                 }
-                                if (currentNode != null && currentNode.isStructural && !sprintScope && !teamScope && currentProgress != null) {
-                                    NodeProgressCard(progress = currentProgress!!)
-                                    Spacer(modifier = Modifier.height(12.dp))
-                                }
+
 
                                 Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically,
                                     horizontalArrangement=Arrangement.spacedBy(8.dp)) {
                                     FlowRow(Modifier.weight(1f),horizontalArrangement=Arrangement.spacedBy(4.dp),verticalArrangement=Arrangement.spacedBy(0.dp),itemVerticalAlignment=Alignment.CenterVertically) {
-                                        CardIndicatorDetail(currentNode?.id?.let {"node:$it"} ?: "project:${project.id}",onOpenNode={id->openReference(id)},onOpenPeople=onOpenPeople,onOpenTechnologies=onOpenTechnologies,managementContext=managementContexts.firstOrNull {it.enabled && it.id==(cascadeRoles.owners[currentNodeId] ?: managementContext?.id)}?.id,participationRepository=nodeRepository.management.participation,showPeople=!managedSprint,fillWidth=false)
+                                        CardIndicatorDetail(currentNode?.id?.let {"node:$it"} ?: "project:${project.id}",onOpenNode={id->openReference(id)},onOpenPeople=onOpenPeople,onOpenTechnologies=onOpenTechnologies,managementContext=managementContexts.firstOrNull {it.enabled && it.id==(cascadeRoles.owners[currentNodeId] ?: managementContext?.id)}?.id,participationRepository=nodeRepository.management.participation,showPeople=!managedSprint,fillWidth=false,taskCounts=headerTaskCounts,verificationEnabled=currentNode?.let {TaskStatePolicy.count(it,projectState.nodesById,project)==3} ?: project.verificationEnabled)
                                         if(teamScope && responsibleByNode[currentNodeId].orEmpty().isNotEmpty()) Text("Responsables del contenido Equipo",style=MaterialTheme.typography.labelLarge)
                                         if(!managedSprint) CompactAssignments(currentNode?.id ?: project.id, currentNode?.let {responsibleByNode[it.id]}.orEmpty(), project=currentNode==null,showTechnologies=currentNode!=null,fillWidth=false,compactSpacing=true,showPeople=currentNode?.isStructural!=true)
                                     }
@@ -759,24 +903,120 @@ internal fun ProjectNodeScreen(
                                 }
                                 if (currentNode != null) {
                                     androidx.compose.foundation.layout.FlowRow(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                        if(currentNode.workState != null) SecondaryAction("Estado: ${currentNode.workState.label}", { changingWorkStateId = currentNode.id }, enabled = !isSubmittingNode)
                                     }
                                     if (currentNode.purpose == NodePurpose.NOTE && cascadeLayers.none {it.nodeId==currentNode.parentId && it.kind=="ACTA"}) Text("Nota · Convierte en capa para añadir hijos", color = Arachn0deColors.TextSecondary)
-                                    PriorityIndicator(currentNode)
-                                    ObligationIndicator(currentNode)
-                                    if (currentNode.obligation != null) Text("Convierte esta obligación en una tarea antes de usarla como capa.", color = Arachn0deColors.TextSecondary)
+                                    ObligationIndicator(currentNode,compactSummary=false)
+                                    if (currentNode.obligation != null) Text("Convierte este pago en una tarea antes de usarla como capa.", color = Arachn0deColors.TextSecondary)
                                     TaskDateIndicator(currentNode, now)
 
-                                    Spacer(modifier = Modifier.height(12.dp))
+                                    if(!compactHeader) Spacer(modifier = Modifier.height(12.dp))
                                 }
 
                             }
                         }
-                        if (scopeFilters.active && !sprintScope) {
+                        // Both normal and semaphore results use the same card and action wiring.
+                        val renderCard: @Composable (Node, List<Node>, Boolean, Modifier) -> Unit = { node, renderNodes, filtered, cardModifier ->
+                            val enterCard:()->Unit={
+                                    if(contextualCalendar.filtering) {
+                                        openReference(node.id)
+                                    } else if(filtered) {
+                                        actions.navigate(node.id) { path -> currentPath.clear();currentPath.addAll(path) }
+                                    } else if(sprintScope && node.id in linkedIds) {
+                                        val path=mutableListOf<String>();var cursor:Node?=node
+                                        while(cursor!=null) {path.add(cursor.id);cursor=projectState.nodesById[cursor.parentId]}
+                                        openReference(node.id)
+                                    } else if(currentPath.lastOrNull()==node.parentId) currentPath.add(node.id)
+                                }
+                            NodeCard(
+                                navigationTool=cascadeLayers.firstOrNull {it.nodeId==node.id}?.kind?.let {kind->
+                                    if(kind.startsWith("OBJECTIVE:")) ManagementToolVisual(node.title,"Resultado del proyecto",Icons.Default.Flag) else managementToolVisual(kind)
+                                } ?: if(node.sprintMode && creationMapping?.kind=="SPRINTS") sprintCardVisual(node.id,node.title,iterationOverview,sprintOverviewRefs.count {it.sprintId==node.id}) else null
+                                ?: cascadeRoles.records.roles.firstOrNull {it.nodeId==node.id}?.let {role->
+                                    if(role.role=="EPIC") ManagementToolVisual(node.title,"${storiesByEpic[node.id].orEmpty().size} historias asociadas",Icons.Default.Workspaces)
+                                    else ManagementToolVisual(node.title,"Historia de usuario",Icons.Default.Article)
+                                } ?: if(node.purpose==NodePurpose.NOTE && creationMapping?.kind=="ACTA") ManagementToolVisual(node.title,"Sección del Acta",Icons.Default.Description) else null,
+                                taskViewCount=if(taskViewEnabled && taskViewUsable && node.isStructural)taskProjection.containerCounts[node.id] ?: 0 else null,
+                                onTaskStatusChange={status,done->actions.setTaskStatus(node.id,status,done)},
+                                stateBusy = isSubmittingNode,
+                                onHistory = { historyNodeId = node.id },
+                                tags = tagState.forNode(node.id),
+                                node = node,
+                                onRecurrence = recurrenceByNode[node.id]?.let { ruleId -> ({ recurrenceSelected = ruleId }) },
+                                progress = progressMap[node.id],
+                                hasChildren = node.hasChildren,
+                                onConvertToProject = if (node.isStructural) ({ promotingLayerId = node.id }) else null,
+                                onMakeLayer = { if(node.obligation!=null) { convertingPurpose=NodePurpose.LAYER;convertingObligationId=node.id } else actions.convert(node.id,NodePurpose.LAYER) },
+                                onConvert = { done -> if (node.obligation != null) { convertingPurpose=NodePurpose.NOTE;convertingObligationId = node.id; done() } else actions.convert(node.id, if (node.purpose != NodePurpose.ACTION) NodePurpose.ACTION else NodePurpose.NOTE, onSuccess = done) },
+                                canToggleComplete = node.isCompletable,
+                                onOpen = enterCard,
+                                responsiblePeople = responsibleByNode[node.id].orEmpty(),
+                                now = now,
+                                attention = attention?.byNodeId?.get(node.id),
+                                cardAlerts = attention?.cardAlertsByNodeId?.get(node.id),
+                                onResponsible = { if (!isSubmittingNode && !personActions.operation.busy && peopleLoaded && assignmentsLoaded) responsibleNodeId = node.id },
+                                selected = node.id in selection.ids,
+                                selecting = selection.ids.isNotEmpty(),
+                                onSelect = { if(!isSubmittingNode) selection.toggle(node.id) },
+                                onMove = { if (!isSubmittingNode) movingNodeId = node.id },
+                                canCopy = !copyActions.busy,
+                                canDragReorder = !filtered && !dragDisabled && !layersFirst,
+                                onCopy = { descendants -> copyActions.copy(projectState, node.id, descendants) },
+                                onEdit = { openNodeEditor(node) },
+                                onContent=if(node.workState==null && !node.sprintMode && !sprintScope && managementRoots.none {it.nodeId==node.id} && cascadeLayers.none {it.nodeId==node.id} && cascadeRoles.records.roles.none {it.nodeId==node.id}) ({contentOwner=node.id;contentRequest++;enterCard()}) else null,
+                                canMoveUp = !filtered && !sprintScope && !isSubmittingNode && (if(layersFirst && node.isStructural) node.id!=renderNodes.firstOrNull {it.isStructural && it.isPinned==node.isPinned}?.id else sortMode==NodeSortMode.MANUAL && node.id!=renderNodes.firstOrNull {it.isPinned==node.isPinned && (if(layersFirst) !it.isStructural else true)}?.id),
+                                canMoveDown = !filtered && !sprintScope && !isSubmittingNode && (if(layersFirst && node.isStructural) node.id!=renderNodes.lastOrNull {it.isStructural && it.isPinned==node.isPinned}?.id else sortMode==NodeSortMode.MANUAL && node.id!=renderNodes.lastOrNull {it.isPinned==node.isPinned && (if(layersFirst) !it.isStructural else true)}?.id),
+                                onReorder = { moveUp, onSuccess ->
+                                    if(layersFirst && node.isStructural) actions.reorderLayers(node.id,node.parentId,moveUp,onSuccess)
+                                    else if(layersFirst && sortMode==NodeSortMode.MANUAL) actions.reorderContent(node.id,node.parentId,moveUp,onSuccess)
+                                    else if (sortMode == NodeSortMode.MANUAL) actions.reorder(node.id, node.parentId, moveUp, onSuccess)
+                                },
+                                onDelete = {
+                                    deletingNodeId = node.id
+                                    deletingNodeName = node.title
+                                },
+                                onToggleComplete = {
+                                    if (node.workState == null && node.isCompletable) actions.cycleTaskStatus(node.id)
+                                },
+                                paymentListState=nodeListState,
+                                dragging = !filtered && drag.isDragging(node.id),
+                                modifier = cardModifier,
+                                footer=if(nameSearch.active && node.parentId!=currentNodeId) ({
+                                    Text(originalNodePath(node,projectState,mapOf(project.id to project.name)),Modifier.testTag("search-location:${node.id}"),style=MaterialTheme.typography.labelSmall,color=Arachn0deColors.TextSecondary,maxLines=2,overflow=TextOverflow.Ellipsis)
+                                }) else if(contextualCalendar.filtering) ({
+                                    if(contextualCalendar.filtering)Text(contextualIndex?.location(node,mapOf(project.id to project)).orEmpty(),Modifier.testTag("context-calendar-location:${node.id}"),style=MaterialTheme.typography.labelSmall,color=Arachn0deColors.TextSecondary,maxLines=2,overflow=TextOverflow.Ellipsis)
+                                }) else null,
+                            )
+                        }
+                        if(taskViewEnabled && !compactHeader && !nameSearch.active) item(key="task-view-current-count") {Text("${taskProjection.matchingIds.size} tareas",Modifier.testTag("task-view-current-count"),style=MaterialTheme.typography.labelSmall,color=Arachn0deColors.TextSecondary)}
+                        if(nameSearch.active) {
+                            if(nameRows==null) item {Text("Buscando…")}
+                            else if(nameRows!!.isEmpty()) item {Text("Sin coincidencias",Modifier.testTag("inline-search-empty"))}
+                            items(nameRows.orEmpty(),key={"node:${it.node.id}"}) {row->renderCard(row.node,emptyList(),true,Modifier)}
+                        } else if(taskViewEnabled && !taskViewUsable) item {Text("Cargando tareas…")}
+                        else if(taskViewEnabled && filterActive) {
+                            if(!taskViewUsable) item {Text("Cargando tareas…")}
+                            else {
+                                if(taskProjection.matchingIds.isEmpty() && (!compactHeader || selectedTaskStatus!=null)) item(key="task-view-empty") {Column {
+                                    if(!compactHeader) Text("No hay tareas${if(taskViewSession.status==null) "" else " "+taskViewLabel(taskViewSession.status).lowercase(java.util.Locale.getDefault())}${if(otherFiltersActive) " con los filtros actuales" else ""}",Modifier.testTag("task-view-empty"))
+                                    if(selectedTaskStatus!=null)TextButton(onClick={taskViewSession.status=null}) {Text("Ver todas")}
+                                }}
+                                val viewRows=NodePresentationSort.filtered(taskProjection.rows,sortMode,emptyMap(),layersFirst) {parent->sortChoices[parent] ?: (sortMode to layersFirst)}
+                                items(viewRows,key={"node:${it.node.id}"}) {row->
+                                    val modifier=Modifier.padding(start=12.dp*minOf(row.depth,6)).animateItem(fadeInSpec=androidx.compose.animation.core.tween(120),fadeOutSpec=androidx.compose.animation.core.tween(120))
+                                    renderCard(row.node,emptyList(),true,modifier)
+                                }
+                            }
+                        } else if(contextualCalendar.filtering) {
+                            if(contextualIndex==null || !hasLoaded) item {Text("Cargando tareas…")}
+                            else if(calendarResults.isEmpty() && !compactHeader) item {Text("No hay coincidencias con los filtros activos.",Modifier.testTag("context-calendar-empty"))}
+                            items(calendarResults,key={"calendar:${it.id}"}) {node->renderCard(node,emptyList(),true,Modifier)}
+                        } else if (filterActive && !sprintScope) {
                             if (filteredRows == null) item { Text("Cargando resultados…") }
-                            else if (filteredRows!!.none { it.isMatch }) item { Text("Sin coincidencias") }
+                            else if (!compactHeader && filteredRows!!.none { it.isMatch }) item { Text("Sin coincidencias") }
                             items(filteredRows.orEmpty(), key = { "filtered:${it.node.id}" }) { row ->
-                                if (scopeFilters.person != null && row.isMatch && row.node.obligation != null) {
+                                if (selectedTaskStatus!=null && row.isMatch) {
+                                    renderCard(row.node,emptyList(),true,Modifier.padding(start=minOf(row.depth,6).times(12).dp))
+                                } else if (scopeFilters.person != null && row.isMatch && row.node.obligation != null) {
                                     GeneralCard(
                                         bashEntry = true,
                                         modifier = Modifier.fillMaxWidth().padding(start = minOf(row.depth, 6).times(12).dp)
@@ -787,8 +1027,7 @@ internal fun ProjectNodeScreen(
                                     ) {
                                         Column(Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
                                             TextButton(modifier = Modifier.fillMaxWidth(), onClick = { if(selection.ids.isNotEmpty()) selection.toggle(row.node.id) else actions.navigate(row.node.id) { path -> currentPath.clear(); currentPath.addAll(path) } }) { Text(if(LocalBashPresentation.current) bashFileName(row.node.title,row.node.purpose) else row.node.title, modifier = Modifier.fillMaxWidth(), color = Arachn0deColors.TextPrimary, fontSize = ContentTypography.ProjectTitle, fontWeight = FontWeight.SemiBold, maxLines = if(LocalBashPresentation.current) Int.MAX_VALUE else 2, overflow = TextOverflow.Ellipsis) }
-                                            CompactCardIndicators("node:${row.node.id}")
-                                            PriorityIndicator(row.node)
+                                            CompactCardIndicators("node:${row.node.id}",showContainedTasks=row.node.isStructural)
                                             TagChips(tagState.forNode(row.node.id))
                                             androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                                                 SecondaryAction(if(row.node.id in selection.ids) "✓ Seleccionado" else "Seleccionar", { selection.toggle(row.node.id) }, enabled = !isSubmittingNode)
@@ -803,8 +1042,7 @@ internal fun ProjectNodeScreen(
                                         if (!row.isMatch) Text("Contexto · ${row.node.title}", color = Arachn0deColors.TextSecondary)
                                         else {
                                             TextButton(onClick = { if(selection.ids.isNotEmpty()) selection.toggle(row.node.id) else actions.navigate(row.node.id) { path -> currentPath.clear(); currentPath.addAll(path) } }) { Text(row.node.title,maxLines=2,overflow=TextOverflow.Ellipsis) }
-                                            CompactCardIndicators("node:${row.node.id}")
-                                            PriorityIndicator(row.node)
+                                            CompactCardIndicators("node:${row.node.id}",showContainedTasks=row.node.isStructural)
                                             TagChips(tagState.forNode(row.node.id))
                                             TextButton(onClick = { historyNodeId = row.node.id }) { Text("Historial") }
                                             TextButton(onClick = { if (assignmentsLoaded && peopleLoaded) drafts.open(row.node.parentId, row.node.id) { EditorDraft(row.node.id, row.node.parentId, row.node.title, row.node.description, startAt = row.node.startAt, dueAt = row.node.dueAt, purpose = row.node.purpose, obligation = row.node.obligation, priority = row.node.priority).apply { tagIds = tagState.nodeIds[row.node.id].orEmpty().toList(); responsibleIds = responsibleByNode[row.node.id].orEmpty().map { it.id }; creationGroupId = row.node.creationGroupId; captureSharedBaseline() } } }) { Text("Editar") }
@@ -813,14 +1051,14 @@ internal fun ProjectNodeScreen(
                                 }
                             }
                         } else {
-                        if(creationRole?.role=="EPIC" && !scopeFilters.active) {
+                        if(creationRole?.role=="EPIC" && !filterActive) {
                             val related=storiesByEpic[currentNodeId].orEmpty().mapNotNull {projectState.nodesById[it]}.filter {it.parentId!=currentNodeId}.sortedWith(compareBy<Node> {it.position}.thenBy {it.id})
                             if(related.isNotEmpty()) item {Text("Historias vinculadas desde otras épicas",style=MaterialTheme.typography.titleMedium)}
                             items(related,key={"related-story:${it.id}"}) {story->ManagementNavigationCard(ManagementToolVisual(story.title,"Vínculo adicional · "+story.parentId?.let {projectState.nodesById[it]?.title}.orEmpty(),Icons.Default.Article)) {openReference(story.id)}}
                         }
                         if (currentNodes == null) item { Text("Cargando orden…") }
-                        else if (!teamScope && !managedSprint && (currentNode == null || currentNode.isStructural)) {
-                            val message = layerContentMessage(currentNodes.orEmpty().isNotEmpty(), currentProgress ?: projectState.projectProgressById[project.id])
+                        else if (!compactHeader && !teamScope && !managedSprint && (currentNode == null || currentNode.isStructural)) {
+                            val message = layerContentMessage(currentNodes.orEmpty().isNotEmpty(), null)
                             if (message != null) item(key = "layer-status", contentType = "empty") { LayerContentStatus(message) }
                         }
                         if (sprintScope && filterActive) {
@@ -849,7 +1087,7 @@ internal fun ProjectNodeScreen(
                                         collapsedSprintSections = if (expanded) collapsedSprintSections + sectionKey else collapsedSprintSections - sectionKey
                                     }
                                 }
-                            } else if (groupNodes.isNotEmpty()) {
+                            } else if (groupNodes.isNotEmpty() && (!compactHeader || completedGroup)) {
                                 item(key = "section:$completedGroup", contentType = "section") {
                                     Column {
                                         if (completedGroup) androidx.compose.material3.HorizontalDivider(color = Arachn0deColors.Outline)
@@ -864,67 +1102,10 @@ internal fun ProjectNodeScreen(
                                     Text("Vinculada · Origen: ${sprintOrigin(node,projectState)}",Modifier.weight(1f),style=MaterialTheme.typography.labelSmall)
                                     TextButton(onClick={node.workState?.let {unlinkTask=node.id to it}}) {Text("Desvincular")}
                                 }
-                                NodeCard(
-                                    navigationTool=cascadeLayers.firstOrNull {it.nodeId==node.id}?.kind?.let {kind->
-                                        if(kind.startsWith("OBJECTIVE:")) ManagementToolVisual(node.title,"Resultado del proyecto",Icons.Default.Flag) else managementToolVisual(kind)
-                                    } ?: if(node.sprintMode && creationMapping?.kind=="SPRINTS") sprintCardVisual(node.id,node.title,iterationOverview,sprintOverviewRefs.count {it.sprintId==node.id}) else null
-                                    ?: cascadeRoles.records.roles.firstOrNull {it.nodeId==node.id}?.let {role->
-                                        if(role.role=="EPIC") ManagementToolVisual(node.title,"${storiesByEpic[node.id].orEmpty().size} historias asociadas",Icons.Default.Workspaces)
-                                        else ManagementToolVisual(node.title,"Historia de usuario",Icons.Default.Article)
-                                    } ?: if(node.purpose==NodePurpose.NOTE && creationMapping?.kind=="ACTA") ManagementToolVisual(node.title,"Sección del Acta",Icons.Default.Description) else null,
-                                    onAdvanceWorkState = node.workState?.let { ({ actions.advanceWorkState(node.id) }) },
-                                    onChangeWorkState = node.workState?.let { ({ changingWorkStateId = node.id }) },
-                                    stateBusy = isSubmittingNode,
-                                    onHistory = { historyNodeId = node.id },
-                                    tags = tagState.forNode(node.id),
-                                    node = node,
-                                    onRecurrence = recurrenceByNode[node.id]?.let { ruleId -> ({ recurrenceSelected = ruleId }) },
-                                    progress = progressMap[node.id],
-                                    hasChildren = node.hasChildren,
-                                    onConvertToProject = if (node.isStructural) ({ promotingLayerId = node.id }) else null,
-                                    onMakeLayer = { if(node.obligation!=null) { convertingPurpose=NodePurpose.LAYER;convertingObligationId=node.id } else actions.convert(node.id,NodePurpose.LAYER) },
-                                    onConvert = { done -> if (node.obligation != null) { convertingPurpose=NodePurpose.NOTE;convertingObligationId = node.id; done() } else actions.convert(node.id, if (node.purpose != NodePurpose.ACTION) NodePurpose.ACTION else NodePurpose.NOTE, onSuccess = done) },
-                                    canToggleComplete = node.isCompletable,
-                                    onOpen = {
-                                        if(sprintScope && node.id in linkedIds) {
-                                            val path=mutableListOf<String>();var cursor:Node?=node
-                                            while(cursor!=null) {path.add(cursor.id);cursor=projectState.nodesById[cursor.parentId]}
-                                            openReference(node.id)
-                                        } else currentPath.add(node.id)
-                                    },
-                                    responsiblePeople = responsibleByNode[node.id].orEmpty(),
-                                    now = now,
-                                    attention = attention?.byNodeId?.get(node.id),
-                                    cardAlerts = attention?.cardAlertsByNodeId?.get(node.id),
-                                    onResponsible = { if (!isSubmittingNode && !personActions.operation.busy && peopleLoaded && assignmentsLoaded) responsibleNodeId = node.id },
-                                    selected = node.id in selection.ids,
-                                    selecting = selection.ids.isNotEmpty(),
-                                    onSelect = { if(!isSubmittingNode) selection.toggle(node.id) },
-                                    onMove = { if (!isSubmittingNode) movingNodeId = node.id },
-                                    canCopy = !copyActions.busy,
-                                    canDragReorder = !dragDisabled && !layersFirst,
-                                    onCopy = { descendants -> copyActions.copy(projectState, node.id, descendants) },
-                                    onEdit = { openNodeEditor(node) },
-                                    canMoveUp = !sprintScope && !isSubmittingNode && (if(layersFirst && node.isStructural) node.id!=renderNodes.firstOrNull {it.isStructural && it.isPinned==node.isPinned}?.id else sortMode==NodeSortMode.MANUAL && node.id!=renderNodes.firstOrNull {it.isPinned==node.isPinned && (if(layersFirst) !it.isStructural else true)}?.id),
-                                    canMoveDown = !sprintScope && !isSubmittingNode && (if(layersFirst && node.isStructural) node.id!=renderNodes.lastOrNull {it.isStructural && it.isPinned==node.isPinned}?.id else sortMode==NodeSortMode.MANUAL && node.id!=renderNodes.lastOrNull {it.isPinned==node.isPinned && (if(layersFirst) !it.isStructural else true)}?.id),
-                                    onReorder = { moveUp, onSuccess ->
-                                        if(layersFirst && node.isStructural) actions.reorderLayers(node.id,node.parentId,moveUp,onSuccess)
-                                        else if(layersFirst && sortMode==NodeSortMode.MANUAL) actions.reorderContent(node.id,node.parentId,moveUp,onSuccess)
-                                        else if (sortMode == NodeSortMode.MANUAL) actions.reorder(node.id, node.parentId, moveUp, onSuccess)
-                                    },
-                                    onDelete = {
-                                        deletingNodeId = node.id
-                                        deletingNodeName = node.title
-                                    },
-                                    onToggleComplete = {
-                                        if (node.workState != null) actions.confirmWorkState(node.id) else if (node.isCompletable) actions.setCompleted(node.id, !node.isCompleted)
-                                    },
-                                    dragging = dragging,
-                                    modifier = Modifier.animateItem(
-                                        fadeInSpec = null, fadeOutSpec = null,
-                                        placementSpec = if (dragging) null else androidx.compose.animation.core.spring(),
-                                    ).then(drag.cardModifier(node.id)),
-                                )
+                                renderCard(node,renderNodes,false,Modifier.animateItem(
+                                    fadeInSpec = null, fadeOutSpec = null,
+                                    placementSpec = if (dragging) null else androidx.compose.animation.core.spring(),
+                                ).then(drag.cardModifier(node.id)))
                             }
                         }
                         if (sprintScope && filterActive) {
@@ -943,10 +1124,11 @@ internal fun ProjectNodeScreen(
                     }
                 }
             }
-            Column(Modifier.align(Alignment.BottomCenter).fillMaxWidth()
-                .then(if(showDrawer) Modifier.clearAndSetSemantics {} else Modifier)
-                .onSizeChanged {bottomControlsHeight=with(bottomControlsDensity) {it.height.toDp()}}) {
-                androidx.compose.material3.SnackbarHost(actions.snackbar, Modifier.fillMaxWidth().padding(horizontal=12.dp)) { data ->
+            // Keep inline editors above the main content, including elevated card surfaces.
+            ContextualBottomPanel {
+            Column(Modifier.fillMaxWidth()
+                .then(if(showDrawer) Modifier.clearAndSetSemantics {} else Modifier)) {
+                androidx.compose.material3.SnackbarHost(actions.snackbar, Modifier.fillMaxWidth().padding(horizontal=12.dp).testTag("task-view-snackbar")) { data ->
                     androidx.compose.material3.Snackbar(
                         snackbarData = data,
                         shape = RoundedCornerShape(8.dp),
@@ -957,13 +1139,13 @@ internal fun ProjectNodeScreen(
                     )
                 }
                 RecurrenceManager(nodeRepository.recurrence, project.id, projectState.nodes, people, peopleLoaded, recurrenceSelected, showLauncher = false) { recurrenceSelected = null }
-                // Transparent layout only: the list reserves this height; AppSafeArea owns system insets.
+                // The shared footer owns the measured space; AppSafeArea owns system insets.
                 val taskPanel = if(quickCreation) draft?.purpose == NodePurpose.ACTION
                     else useNodeModule || (currentNodeId==null && projectEditField==null)
                 TaskBottomPanel(enabled=taskPanel,
                     panelKey=if(quickCreation) draft?.creationId else currentNodeId,
                     title=if(quickCreation) "Nueva tarea" else currentNode?.title ?: "Tareas",
-                    editRequest=nodeEditRequest) {
+                    editRequest=nodeEditRequest,ownsMainActions=!quickCreation && (useNodeModule || currentNodeId==null)) {
                 if(quickCreation && draft?.id == null && draft != null) QuickCreateBar(draft, isSubmittingNode,
                     onSave = { actions.saveDraft(project.id, draft, draft.purpose == NodePurpose.ACTION) { drafts.clear(); quickCreation = false } },
                     onCancel = { actions.discardDraft(draft) { drafts.clear(); quickCreation = false } },
@@ -982,20 +1164,20 @@ internal fun ProjectNodeScreen(
                         } else if(audio!=null) audio.state.value=audio.state.value.copy(error="Finaliza el audio actual o espera a que termine su recuperación.")
                     })
                 else
-                if(currentNodeId==null && projectEditField!=null) {
-                    CorePropertyEditor(projectEditField!!,projectFieldValue,{projectFieldValue=it},
-                        enabled=!projectEditingActions.operation.busy,maxHeight=coreModuleMaxHeight,
-                        onCancel=finishProjectEdit,onConfirm={
-                            projectEditingActions.saveField(project.id,projectEditField!!,projectFieldOriginal,projectFieldValue,finishProjectEdit)
-                        })
-                } else if(currentNodeId==null) CoreBottomModule(coreContext,{coreContext=it},coreModuleMaxHeight,
-                    contextActions=contextActions,creationActions=creationActions,onEditProject=editProject)
+                if(currentNodeId==null) CoreContentModule(project,
+                    androidx.compose.ui.platform.LocalContext.current.applicationContext as com.r0ybt.arachn0de.Arachn0deApplication,
+                    people,peopleLoaded,tagState,nodeTechnologies,coreModuleMaxHeight,coreContext,{coreContext=it},
+                    contextActions,creationActions,taskViewControls,projectEditField,{projectEditField=null})
                 else if(useNodeModule && currentNode!=null) androidx.compose.runtime.key(currentNode.id) {
                     NodeBottomModule(currentNode,nodeRepository,actions,people,responsibleByNode[currentNode.id].orEmpty(),
                         peopleLoaded && assignmentsLoaded,tagState,nodeTechnologies,coreModuleMaxHeight,contextActions,creationActions,
-                        nodeEditRequest,{nodeEditRequest=null})
+                        nodeEditRequest,{nodeEditRequest=null},viewControls=taskViewControls,
+                        contentRequest=if(contentOwner==currentNode.id) contentRequest else 0,
+                        onRecurrence=recurrenceByNode[currentNode.id]?.let {ruleId->({recurrenceSelected=ruleId})})
                 } else creationActions()
                 }
+
+            }
 
             }
 
@@ -1005,7 +1187,7 @@ internal fun ProjectNodeScreen(
                         .fillMaxSize(),
                 ) {
                     Box(Modifier.fillMaxSize().background(Arachn0deColors.Scrim.copy(alpha = 0.45f)).clickable { showDrawer = false }.clearAndSetSemantics {})
-                    AppIdentityDrawer(onDismiss = { showDrawer = false }, onProjects = onOpenProjects, projectsSelected = true, onPeople = { showDrawer = false; onOpenPeople() }, onTechnologies = { showDrawer = false; onOpenTechnologies() },onTags={showDrawer=false;onOpenTags()}, onAttention = { showDrawer = false; onOpenAttention() }, onCalendar = { showDrawer = false; onOpenCalendar() }, onObligations = { showDrawer = false; onOpenObligations() }, onAppearance = { showDrawer = false; onOpenAppearance() }, onMetro = { showDrawer = false; onOpenMetro() }, onGame = { showDrawer = false; onOpenGame() }, onAbout = { showDrawer = false; onOpenAbout() })
+                    AppIdentityDrawer(onDismiss = { showDrawer = false }, onProjects = onOpenProjects, projectsSelected = true, onPeople = { showDrawer = false; onOpenPeople() }, onTechnologies = { showDrawer = false; onOpenTechnologies() },onTags={showDrawer=false;onOpenTags()}, onAttention = { showDrawer = false; onOpenAttention() }, onCalendar = { showDrawer = false; onOpenCalendar() }, onObligations = { showDrawer = false; onOpenObligations() }, onAppearance = { showDrawer = false; onOpenAppearance() }, onMetro = { showDrawer = false; onOpenMetro() }, onAbout = { showDrawer = false; onOpenAbout() })
                 }
             }
         }
@@ -1057,10 +1239,11 @@ internal fun ProjectNodeScreen(
 
     if (showSprintMode && currentNode?.isStructural == true) SprintModeDialog(currentNode.sprintMode, isSubmittingNode,
         { showSprintMode = false }, { actions.sprintMode(currentNode.id, !currentNode.sprintMode) { showSprintMode = false } })
+
     changingWorkStateId?.let { id -> projectState.nodesById[id]?.let { node -> node.workState?.let { state ->
         WorkStateDialog(node.title, state, isSubmittingNode, { changingWorkStateId = null }, { chosen -> actions.workState(id, chosen) { changingWorkStateId = null } })
     } } }
-    if(showContextActions && currentNodeId!=null) ContextActionMenu(currentNode?.title ?: project.name,{ showContextActions = false },bottomAligned=currentNode?.purpose==NodePurpose.ACTION && currentNode.isStructural==false,content=contextActions)
+    if(showContextActions && currentNodeId!=null) ContextActionMenu(currentNode?.title ?: project.name,{ showContextActions = false },bottomAligned=currentNode?.purpose==NodePurpose.ACTION && currentNode.isStructural==false,showCancel=false,groupConversions=true,cardEditingIcons=true,content=contextActions)
 
 
     groupReview?.let { members -> draft?.let { editor ->
@@ -1078,13 +1261,9 @@ internal fun ProjectNodeScreen(
         confirmButton = { DestructiveAction("Eliminar seleccionados", { actions.deleteSelected(project.id,selection.ids) { bulkDelete = false; selection.clear() } }, enabled = !isSubmittingNode) },
         dismissButton = { TextButton(enabled = !isSubmittingNode, onClick = { bulkDelete = false }) { Text("Cancelar") } })
     if(bulkMove && selection.ids.isNotEmpty()) {
-        var expanded by remember { mutableStateOf(currentPath.toList()) }
-        AlertDialog(onDismissRequest = { if(!isSubmittingNode) bulkMove = false }, title = { Text("Mover ${selection.ids.size} elementos") },
-            text = { LayerNavigator(nodes = projectState.nodes, expandedIds = expanded, onToggle = { id -> expanded = if(id in expanded) expanded - id else expanded + id },
-                currentNodeId = currentNodeId, projectName = project.name, movingIds = selection.ids, enabled = !isSubmittingNode,
-                onHome = {}, onProject = { actions.moveSelected(project.id,selection.ids,null) { bulkMove = false; selection.clear() } },
-                onNavigateTo = { target -> actions.moveSelected(project.id,selection.ids,target) { bulkMove = false; selection.clear() } }) },
-            confirmButton = {}, dismissButton = { TextButton(enabled = !isSubmittingNode, onClick = { bulkMove = false }) { Text("Cancelar") } })
+        NodeDestinationDialog(selection.ids,quickCaptureIndex(),nodeRepository,
+            initialKey=currentNodeId?.let {"node:$it"} ?: "project:${project.id}",
+            onDismiss={bulkMove=false},onMoved={bulkMove=false;selection.clear()})
     }
 
     responsibleNodeId?.let { id ->
@@ -1101,72 +1280,12 @@ internal fun ProjectNodeScreen(
     LoadErrorDialog(recurrenceLoad)
 
     movingNodeId?.let { sourceId ->
-        val source = projectState.nodesById[sourceId]
-        var moveExpanded by rememberSaveable(
-            sourceId,
-            stateSaver = listSaver<List<String>, String>(save = { it }, restore = { it.toList() }),
-        ) { mutableStateOf(currentPath.toList()) }
-        AlertDialog(
-            containerColor = Arachn0deColors.Surface,
-            titleContentColor = Arachn0deColors.TextPrimary,
-            textContentColor = Arachn0deColors.TextSecondary,
-            onDismissRequest = { if (!isSubmittingNode) movingNodeId = null },
-            title = { Text("Mover a…") },
-            text = {
-                Column {
-                    Text(source?.title ?: "El elemento ya no existe", maxLines = 2)
-                    Text("Selecciona un destino. Una tarea que reciba hijos pasará a ser Capa.")
-                    LayerNavigator(
-                        nodes = projectState.nodes,
-                        expandedIds = moveExpanded,
-                        onToggle = { id -> moveExpanded = if (id in moveExpanded) moveExpanded - id else moveExpanded + id },
-                        currentNodeId = source?.parentId,
-                        projectName = project.name,
-                        movingId = sourceId,
-                        enabled = !isSubmittingNode && source != null,
-                        onHome = {},
-                        onProject = { actions.move(sourceId, null) { movingNodeId = null } },
-                        onNavigateTo = { target -> actions.move(sourceId, target) { movingNodeId = null } },
-                    )
-                }
-            },
-            confirmButton = {},
-            dismissButton = {
-                TextButton(enabled = !isSubmittingNode, onClick = { movingNodeId = null }) { Text("Cancelar") }
-            },
-        )
-    }
-
-    if (showNavigator) {
-        AlertDialog(
-            containerColor = Arachn0deColors.Surface,
-            titleContentColor = Arachn0deColors.TextPrimary,
-            onDismissRequest = { showNavigator = false },
-            title = { Text("Capas de cebolla") },
-            text = {
-                LayerNavigator(
-                    projectName = project.name,
-                    nodes = projectState.nodes,
-                    expandedIds = expandedLayerIds,
-                    onToggle = { id ->
-                        val ids = expandedLayerIds.toSet()
-                        expandedLayerIds = (if (id in ids) ids - id else ids + id).toList()
-                    },
-                    currentNodeId = currentNodeId,
-                    onHome = { showNavigator = false; onBackToProjects() },
-                    onProject = { currentPath.clear();referenceReturns=emptyList(); showNavigator = false },
-                    onNavigateTo = { targetId ->
-                        actions.navigate(targetId) { path ->
-                            currentPath.clear()
-                            currentPath.addAll(path)
-                            showNavigator = false
-                        }
-                    },
-                    listState = navigatorListState,
-                )
-            },
-            confirmButton = { TextButton(onClick = { showNavigator = false }) { Text("Cerrar") } },
-        )
+        NodeDestinationDialog(setOf(sourceId),quickCaptureIndex(),nodeRepository,
+            initialKey=projectState.nodesById[sourceId]?.parentId?.let {"node:$it"} ?: "project:${project.id}",
+            onDismiss={movingNodeId=null},onMoved={target->
+                movingNodeId=null
+                if(currentNodeId==sourceId && target.projectId!=project.id) onConverted(target.projectId!!,sourceId)
+            })
     }
 
     deletingNodeId?.let { deletingId ->
@@ -1210,9 +1329,10 @@ internal fun ProjectNodeScreen(
 /** Keeps the editor composed while folded so drafts, scroll and field buffers survive. */
 @Composable
 internal fun TaskBottomPanel(enabled:Boolean,panelKey:String?,title:String,editRequest:com.r0ybt.arachn0de.domain.model.NodeProperty?,
-    accessibilityLabel:String="tareas",content:@Composable ()->Unit) {
+    accessibilityLabel:String="tareas",ownsMainActions:Boolean=false,content:@Composable ()->Unit) {
     var minimized by rememberSaveable(panelKey) { mutableStateOf(false) }
-    val folded=enabled && minimized
+    val canFold=enabled && !ownsMainActions
+    val folded=canFold && minimized
     val focus=LocalFocusManager.current
     val keyboard=LocalSoftwareKeyboardController.current
     val palette=LocalAppearancePalette.current
@@ -1222,11 +1342,11 @@ internal fun TaskBottomPanel(enabled:Boolean,panelKey:String?,title:String,editR
     fun minimize() {focus.clearFocus();keyboard?.hide();minimized=true}
     LaunchedEffect(editRequest) {if(editRequest!=null) minimized=false}
     Column(Modifier.fillMaxWidth()
-        .then(if(enabled) Modifier.background(charcoal).drawWithContent {
+        .then(if(enabled) Modifier.appearancePaint("taskPanel",charcoal).drawWithContent {
             drawContent()
             drawRect(edge,size=androidx.compose.ui.geometry.Size(size.width,1.dp.toPx()))
         } else Modifier)) {
-        if(enabled) {
+        if(canFold) {
             val gesture=Modifier.pointerInput(folded,threshold) {
                 var distance=0f
                 detectVerticalDragGestures(onDragStart={distance=0f},onDragCancel={distance=0f},

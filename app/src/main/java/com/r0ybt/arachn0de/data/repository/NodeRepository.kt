@@ -11,8 +11,10 @@ import com.r0ybt.arachn0de.domain.model.Priority
 import com.r0ybt.arachn0de.domain.model.NodeEventType
 import com.r0ybt.arachn0de.data.local.NodeEntity
 import com.r0ybt.arachn0de.data.local.toNode
+import com.r0ybt.arachn0de.data.local.toProject
 import com.r0ybt.arachn0de.domain.model.Node
 import com.r0ybt.arachn0de.domain.model.Obligation
+import com.r0ybt.arachn0de.domain.model.PaymentCurrencyPolicy
 import com.r0ybt.arachn0de.domain.model.GeneratedNodeSpec
 import com.r0ybt.arachn0de.domain.model.NodeBatchGenerator
 import com.r0ybt.arachn0de.domain.model.NodePurpose
@@ -21,16 +23,20 @@ import com.r0ybt.arachn0de.domain.model.NodeTreeSnapshot
 import java.util.UUID
 import com.r0ybt.arachn0de.domain.model.TitleLimits
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.emitAll
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 
+internal class DraftLocationConflictException(message:String):IllegalArgumentException(message)
+
 class NodeRepository(
     private val database: Arachn0deDatabase,
     private val currentTimeMillis: () -> Long = System::currentTimeMillis,
 ) {
+    internal val sortWriteMutex=kotlinx.coroutines.sync.Mutex()
     internal var beforeDelete:suspend (Set<String>)->Unit = {}
     internal suspend fun <T> withEditorAssignments(nodeId: String, technologyIds: List<String>?, metroCatalog: String?, metroPlan: String?, traveler: String?, metroJourneyId: String? = null, metroRevision: Long? = null, work: suspend () -> T): T = database.withTransaction {
         require((metroCatalog==null)==(metroPlan==null)) {"Completa el itinerario Metro antes de guardar."}
@@ -65,19 +71,17 @@ class NodeRepository(
 
     /** Derived from existing history; no schema or persisted presentation order. */
     fun observeCompletionTimes(projectId: String): Flow<Map<String, Long>> =
-        database.invalidationTracker.createFlow("nodes", "node_events").map {
-            val ids = nodeDao.getProjectNodes(projectId).map { it.id }
-            val result = mutableMapOf<String, Long>()
-            ids.chunked(500).forEach { batch ->
-                database.nodeEventDao().eventsForNodes(batch).forEach { event ->
-                    if (event.type == "COMPLETED") result.putIfAbsent(event.nodeId, event.occurredAt)
-                }
-            }
-            result.toMap()
-        }.flowOn(Dispatchers.Default)
+        database.nodeEventDao().observeCompletionTimes(projectId)
+            .map { rows -> rows.associate { it.nodeId to it.occurredAt } }
+            .distinctUntilChanged().flowOn(Dispatchers.Default)
 
     fun observeHistory(nodeId: String) = database.nodeEventDao().observe(nodeId).map { rows -> rows.map { it.toEvent() } }
         .flowOn(Dispatchers.Default)
+
+    internal suspend fun completionStillCommitted(nodeId:String,eventId:String):Boolean=database.withTransaction {
+        database.nodeEventDao().committedCompletion(eventId,nodeId) && getNode(nodeId)?.isCompleted==true
+    }
+    internal var onCompletionCandidate:(String,String)->Unit={_,_->}
 
     private suspend fun appendEvent(nodeId: String, type: NodeEventType, occurredAt: Long) {
         val id = if (type == NodeEventType.CREATED) UUID.nameUUIDFromBytes("node-created:$nodeId".toByteArray(Charsets.UTF_8)).toString()
@@ -92,11 +96,13 @@ class NodeRepository(
         if (current.isCompleted) check(changeCompletion(current, false, at, updatedAt = current.updatedAt))
     }
 
+    fun observeDrafts(): Flow<List<Node>> = nodeDao.observeDrafts().distinctUntilChanged().map {rows->rows.map {it.toNode(false)}}.flowOn(Dispatchers.IO)
+
     fun observeAllState(): Flow<NodeTreeSnapshot> =
-        nodeDao.observeAllNodes().map(::snapshot).flowOn(Dispatchers.Default)
+        nodeDao.observeAllNodes().map {it.filter {row->row.projectId!=null}}.distinctUntilChanged().map(::snapshot).flowOn(Dispatchers.Default)
 
     fun observeProjectState(projectId: String): Flow<NodeTreeSnapshot> =
-        nodeDao.observeProjectNodes(projectId).map(::snapshot).flowOn(Dispatchers.Default)
+        nodeDao.observeProjectNodes(projectId).distinctUntilChanged().map(::snapshot).flowOn(Dispatchers.Default)
 
     /** Repair legacy order before the screen starts observing; normal observers remain read-only. */
     fun observePreparedProjectState(projectId: String): Flow<NodeTreeSnapshot> = flow {
@@ -168,6 +174,39 @@ class NodeRepository(
         true
     }
 
+    /** Apply to the visible sibling slots, atomically, through the same position writer as drag. */
+    suspend fun applyConfiguredOrder(context:String,configuration:com.r0ybt.arachn0de.domain.model.SortConfiguration,visibleIds:Set<String>?=null)=kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {database.withTransaction {
+        val projectId=context.substringBeforeLast(':');val parentId=context.substringAfterLast(':').takeUnless {it=="project-root"}
+        val project=requireNotNull(database.projectDao().getById(projectId))
+        require(parentId==null || nodeDao.getById(parentId)?.let {it.projectId==projectId && it.purpose=="LAYER"}==true)
+        val all=nodeDao.getProjectNodes(projectId)
+        val parents=all.mapNotNullTo(hashSetOf()) {it.parentId}
+        val nodes=all.map {it.toNode(it.id in parents)}.associateBy {it.id}
+        val people=database.personDao().assignmentsForNodes(all.map {it.id}).groupBy {it.nodeId}.mapValues {(_,links)->links.mapNotNull {database.personDao().get(it.personId)?.name}}
+        val tags=all.associate {it.id to database.tagDao().nodeIds(it.id).mapNotNull {id->database.tagDao().get(id)?.name}}
+        val policies=nodes.mapValues {(_,node)->com.r0ybt.arachn0de.domain.model.TaskStatePolicy.count(node,nodes,project.toProject())}
+        val favorites=com.r0ybt.arachn0de.access.AccessRepository(database).snapshot().favorites
+        val dao=database.nodeSortPreferenceDao()
+        val choices=dao.all().associate {it.context to (it.mode to it.layersFirst)}.toMutableMap()
+        choices[context]=com.r0ybt.arachn0de.domain.model.SortConfigurationCodec.encode(configuration) to configuration.appliedLayersFirst
+        val visible=all.filter {if(visibleIds==null)it.parentId==parentId else it.id in visibleIds}
+        for((parent,rows) in visible.groupBy {it.parentId}) {
+            val key="$projectId:${parent ?: "project-root"}"
+            val effective=com.r0ybt.arachn0de.domain.model.SortConfigurationCodec.effective(choices,key)
+            val comparator=com.r0ybt.arachn0de.domain.model.HierarchicalSort.comparator(effective,people,tags,policies,favorites)
+            val before=rows.sortedWith(compareBy<NodeEntity> {it.position}.thenBy {it.createdAt}.thenBy {it.id})
+            val after=before.sortedWith(Comparator {a,b->comparator.compare(nodes.getValue(a.id),nodes.getValue(b.id))})
+            writeLayerOrder(before,after)
+            val updated=effective.copy(appliedLayersFirst=effective.layersFirst)
+            dao.save(com.r0ybt.arachn0de.data.local.NodeSortPreferenceEntity(key,com.r0ybt.arachn0de.domain.model.SortConfigurationCodec.encode(updated),updated.appliedLayersFirst))
+        }
+        // Empty views still retain the configuration, without manufacturing positions.
+        if(visible.none {it.parentId==parentId}) {
+            val updated=configuration.copy(appliedLayersFirst=configuration.layersFirst)
+            dao.save(com.r0ybt.arachn0de.data.local.NodeSortPreferenceEntity(context,com.r0ybt.arachn0de.domain.model.SortConfigurationCodec.encode(updated),updated.appliedLayersFirst))
+        }
+    }}
+
     /** Only layer slots change; automatic task order and persisted task positions stay intact. */
     private suspend fun writeLayerOrder(before:List<NodeEntity>,after:List<NodeEntity>) {
         val slots=before.map {it.position}.let {if(it.distinct().size==it.size) it else before.indices.toList()}
@@ -202,7 +241,7 @@ class NodeRepository(
     }
 
     suspend fun createNode(
-        projectId: String,
+        projectId: String?,
         parentId: String?,
         title: String,
         description: String = "",
@@ -216,7 +255,7 @@ class NodeRepository(
         priority: Priority = Priority.NONE,
     ): Node = database.withTransaction {
         com.r0ybt.arachn0de.domain.model.TaskTemporal.validateDates(startAt, dueAt)
-        require(purpose == NodePurpose.ACTION || obligation == null) { "Una nota no puede ser obligación." }
+        require(purpose == NodePurpose.ACTION || obligation == null) { "Una nota no puede tener un pago." }
         require(purpose == NodePurpose.ACTION || priority == Priority.NONE) { "Una nota no admite prioridad." }
         val normalizedTitle = validateTitle(title)
         require(creationId.isNotBlank())
@@ -231,7 +270,9 @@ class NodeRepository(
             }
             return@withTransaction existing.toNode(nodeDao.hasChildren(projectId, creationId))
         }
-        require(database.projectDao().getById(projectId) != null) { "Project not found" }
+        PaymentCurrencyPolicy.requireNew(obligation)
+        projectId?.let { require(database.projectDao().getById(it) != null) { "Project not found" } }
+        require(projectId != null || (parentId == null && purpose != NodePurpose.LAYER)) { "Borradores admite notas y tareas sin jerarquía." }
         validateParent(projectId, parentId)
         responsibleIds.forEach { requireNotNull(database.personDao().get(it)) { "Person not found" } }
         tags.validate(tagIds)
@@ -250,7 +291,6 @@ class NodeRepository(
         appendEvent(entity.id, NodeEventType.CREATED, now)
         if (responsibleIds.isNotEmpty()) database.personDao().assign(responsibleIds.map { NodePersonEntity(entity.id, it) })
         tags.assignNode(entity.id, tagIds)
-        management.iterations.recordScope()
         entity.toNode(hasChildren = false)
     }
 
@@ -288,6 +328,7 @@ class NodeRepository(
                     node.toNode(nodeDao.hasChildren(projectId, node.id))
                 }
             } else {
+                specs.forEach { PaymentCurrencyPolicy.requireNew(it.obligation) }
                 require(database.projectDao().getById(projectId) != null) { "Project not found" }
                 validateParent(projectId, parentId)
                 people.forEach { requireNotNull(database.personDao().get(it)) { "Person not found" } }
@@ -312,7 +353,7 @@ class NodeRepository(
                     })
                     tags.assignNode(entity.id, labels)
                     entity.toNode(hasChildren = false)
-                }.also {management.iterations.recordScope()}
+                }
             }
         }
     }
@@ -322,7 +363,7 @@ class NodeRepository(
         database.withTransaction {
             if (nodeDao.getById(id) == null) return@withTransaction false
             ensureNodeReferences(database, id, description)
-            (nodeDao.updateContent(id, validateTitle(title), description, currentTimeMillis()) == 1).also {updated->if(updated) management.cascade.synchronizeText(id)}
+            nodeDao.updateContent(id, validateTitle(title), description, currentTimeMillis()) == 1
         }
 
     /** Apply only the selected property to current rows, retaining the ordinary group rules. */
@@ -394,6 +435,7 @@ class NodeRepository(
         com.r0ybt.arachn0de.domain.model.TaskTemporal.validateDates(startAt, dueAt)
         val current = nodeDao.getById(id) ?: return@withTransaction false
         if (current.purpose != NodePurpose.ACTION.name || nodeDao.hasChildren(current.projectId, id)) return@withTransaction false
+        PaymentCurrencyPolicy.requireEdit(current.amountMinor?.let { Obligation(it, requireNotNull(current.currencyCode)) }, obligation)
         require(current.amountMinor == null || obligation != null || removeObligation) { "Confirma la eliminación de los datos financieros." }
         ensureNodeReferences(database, id, description)
         nodeDao.updateLeaf(id, validateTitle(title), description, startAt, dueAt, obligation?.amountMinor, obligation?.currencyCode, currentTimeMillis()) == 1
@@ -416,6 +458,14 @@ class NodeRepository(
         updated
     }
 
+    suspend fun setEffort(id:String,effort:Int):Boolean = database.withTransaction {
+        require(effort in 0..5) {"Esfuerzo inválido."}
+        val node=getNode(id) ?: return@withTransaction false
+        if(!node.isCompletable)return@withTransaction false
+        if(node.effort==effort)return@withTransaction true
+        nodeDao.setEffort(id,effort,currentTimeMillis())==1
+    }
+
     suspend fun togglePriority(id:String):Boolean = database.withTransaction {
         val node=getNode(id) ?: return@withTransaction false
         setPriority(id,if(node.priority==Priority.HIGH) Priority.NONE else Priority.HIGH)
@@ -435,9 +485,11 @@ class NodeRepository(
         val current = nodeDao.getById(id) ?: return@withTransaction false
         if (nodeDao.hasChildren(current.projectId, id)) return@withTransaction false
         if (current.purpose == purpose.name) return@withTransaction true
+        require(!current.awaitingVerification) {"Resuelve Por verificar antes de cambiar el tipo de la tarea."}
         requireSprintLink(database.sprintLinkDao().task(id)==null) {"Desvincula la tarea del Sprint antes de cambiar su tipo."}
         require(purpose == NodePurpose.LAYER || database.conversionDao().node(id) == null) { "Esta capa conserva propiedades de un proyecto. Conviértela en proyecto antes de cambiar su tipo." }
         require(current.amountMinor == null || removeObligation) { "Confirma la eliminación de los datos financieros." }
+        PaymentCurrencyPolicy.requireEdit(current.amountMinor?.let { Obligation(it, requireNotNull(current.currencyCode)) }, null)
         management.backlog.validateStructure(database.backupDao().nodes().map {if(it.id==id) it.copy(purpose=purpose.name) else it})
         val at = currentTimeMillis()
         reopenBeforeConversion(id, at)
@@ -455,9 +507,137 @@ class NodeRepository(
         val at = currentTimeMillis()
         reopenBeforeConversion(parentId, at)
         check(nodeDao.move(id, parentId, nextPosition(current.projectId, parentId), at, movedWorkState(current, parentId)) == 1) { "Move was not written" }
-        management.iterations.recordScope()
         true
     }
+
+    /** Atomic in-place relocation: node identities, attachments and history are never deleted/recreated. */
+    suspend fun moveToContainer(selected:Set<String>,projectId:String,parentId:String?):Boolean = database.withTransaction {
+        require(selected.isNotEmpty())
+        requireNotNull(database.projectDao().getById(projectId)) {"El Núcleo ya no existe."}
+        require(database.bankDao().roots().none {it.id==projectId}) {"Banco solo admite cuentas creadas desde Banco."}
+        require(parentId==null || nodeDao.getById(parentId)?.let {it.projectId==projectId && it.purpose=="LAYER"}==true) {"Selecciona un Núcleo o Capa."}
+        val all=database.backupDao().nodes();val byId=all.associateBy {it.id}
+        selected.forEach {requireNotNull(byId[it]) {"El elemento ya no existe."}}
+        val roots=selected.filter {id->
+            var p=byId.getValue(id).parentId;val seen=hashSetOf<String>();var selectedAncestor=false
+            while(p!=null && seen.add(p)) {if(p in selected)selectedAncestor=true;p=byId[p]?.parentId}
+            !selectedAncestor
+        }
+        val ids=roots.flatMap {nodeDao.getSubtreeIds(it)}.toSet()
+        require(parentId !in ids) {"No puedes mover un elemento dentro de sí mismo o de sus descendientes."}
+        require(database.bankDao().accounts().none {it.id in ids}) {"Las cuentas deben permanecer en su Núcleo Banco."}
+        val moving=all.filter {it.id in ids}
+        if(moving.all {it.projectId==projectId}) {
+            // Keep the established same-core Sprint/state rules, but never auto-convert a task destination.
+            roots.forEach {check(moveNode(it,parentId))}
+            for(n in moving.filter {it.awaitingVerification}) require(taskStateCount(n.id)==3) {"Habilita 3 estados en el destino para conservar Por verificar."}
+            return@withTransaction true
+        }
+        require(moving.none {it.workState!=null && it.id in roots}) {"Traslada el Sprint completo para conservar sus estados."}
+        val changing=moving.filter {it.projectId!=projectId}.mapTo(hashSetOf()) {it.id}
+        val groups=moving.mapNotNull {it.creationGroupId}.toSet()
+        require(all.none {it.id !in ids && it.creationGroupId in groups}) {"Traslada el grupo completo para conservar sus relaciones."}
+        val rules=database.recurrenceDao().rules().filter {it.parentId in ids}
+        val ruleIds=rules.mapTo(hashSetOf()) {it.id}
+        require(database.recurrenceDao().occurrences().none {o->
+            (o.nodeId in changing && o.ruleId !in ruleIds) || (o.ruleId in ruleIds && byId[o.nodeId]?.let {it.id !in ids}==true)
+        }) {"La recurrencia tiene elementos fuera de esta Capa. Traslada el contenedor completo."}
+        val defaults=database.creationDefaultsDao().all().filter {it.nodeId in ids}
+        // Project-scoped planning/Sprint links cannot silently cross contexts. Identity-only metadata is retained.
+        val allowed=setOf("nodes","node_attachments","node_person","node_tag","node_events","node_technologies","project_photos","creation_defaults","bank_allocations")
+        val sql=database.openHelper.writableDatabase;val tables=mutableListOf<String>()
+        sql.query("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'").use {c->while(c.moveToNext())tables+=c.getString(0)}
+        for(table in tables.filter {it !in allowed}) {
+            val columns=mutableListOf<String>()
+            sql.query("PRAGMA foreign_key_list(`$table`)").use {c->while(c.moveToNext())if(c.getString(2)=="nodes")columns+=c.getString(3)}
+            for(column in columns) for(id in changing) sql.query("SELECT 1 FROM `$table` WHERE `$column`=? LIMIT 1",arrayOf(id)).use {c->
+                require(!c.moveToFirst()) {"Hay relaciones de planificación o contexto incompatibles con otro Núcleo. El contenido se conserva."}
+            }
+        }
+        val proposed=all.map {n->if(n.id in ids)n.copy(projectId=projectId,parentId=if(n.id in roots)parentId else n.parentId) else n}
+        management.backlog.validateStructure(proposed)
+        validateParent(projectId,parentId)
+        // Composite parent/default FKs stay enforced at commit while both ends change together.
+        sql.execSQL("PRAGMA defer_foreign_keys=ON")
+        val now=currentTimeMillis()
+        for(rootId in roots) {
+            val n=byId.getValue(rootId)
+            check(nodeDao.relocate(n.id,projectId,parentId,nextPosition(projectId,parentId),movedWorkState(n,parentId),now)==1)
+        }
+        val children=moving.groupBy {it.parentId}
+        val queue=java.util.ArrayDeque<String>();roots.forEach {queue.add(it)}
+        while(queue.isNotEmpty()) {
+            val parent=queue.removeFirst()
+            for(n in children[parent].orEmpty()) {
+                check(nodeDao.relocate(n.id,projectId,n.parentId,n.position,n.workState,now)==1)
+                queue.add(n.id)
+            }
+        }
+        for(n in moving.filter {it.awaitingVerification}) require(taskStateCount(n.id)==3) {"Habilita 3 estados en el destino para conservar Por verificar."}
+        defaults.forEach {database.creationDefaultsDao().save(it.copy(projectId=projectId))}
+        rules.forEach {database.recurrenceDao().update(it.copy(projectId=projectId))}
+        val sorting=database.nodeSortPreferenceDao();val preferences=sorting.all()
+        for(n in moving) {
+            val old=n.projectId?.let {"$it:${n.id}"} ?: "draft:${n.id}";val new="$projectId:${n.id}"
+            if(old!=new) preferences.firstOrNull {it.context==old}?.let {row->
+                require(preferences.none {it.context==new}) {"El destino tiene una configuración de orden incompatible."}
+                sorting.delete(old);sorting.save(row.copy(context=new))
+            }
+        }
+        sql.query("PRAGMA foreign_key_check").use {require(!it.moveToFirst()) {"El traslado no conserva todas las referencias."}}
+        true
+    }
+
+    /** Relocates only independent leaf content. All identity-based links and bytes stay in place. */
+    suspend fun relocateNode(id:String, projectId:String?, parentId:String? = null):Boolean = try { database.withTransaction {
+        val current=nodeDao.getById(id) ?: return@withTransaction false
+        require(projectId!=null || parentId==null) { "Borradores no admite capas internas." }
+        if(current.projectId==projectId && current.parentId==parentId) return@withTransaction true
+        require(current.purpose!="LAYER" && current.creationGroupId==null && !nodeDao.hasChildren(current.projectId,id)) {
+            "Solo pueden trasladarse notas y tareas independientes, sin grupo ni hijos."
+        }
+        require(current.workState==null && database.sprintLinkDao().task(id)==null) {
+            "Retira primero la tarea de su Sprint para conservar sus relaciones."
+        }
+        if(current.awaitingVerification) {
+            require(projectId!=null) {"Por verificar requiere un Núcleo real."}
+            var destinationCount=current.taskStateCount
+            var ancestor=parentId?.let {nodeDao.getById(it)}
+            while(destinationCount==null && ancestor!=null) {destinationCount=ancestor.taskStateCount;ancestor=ancestor.parentId?.let {nodeDao.getById(it)}}
+            require((destinationCount ?: if(database.projectDao().getById(projectId)?.verificationEnabled==true) 3 else 2)==3) {"Habilita 3 estados en el destino antes de trasladar la tarea por verificar."}
+        }
+        if(projectId!=null) requireNotNull(database.projectDao().getById(projectId)) { "El proyecto de destino ya no existe." }
+        if(parentId!=null) require(nodeDao.getById(parentId)?.purpose=="LAYER") { "Selecciona un proyecto o una capa existente." }
+        validateParent(projectId,parentId,movingId=id)
+        // Relations owned by a project or management context cannot be silently reassigned.
+        // Keep ordinary node metadata, attachment and history references untouched.
+        if(current.projectId!=projectId) {
+            require(database.recurrenceDao().occurrences().none {it.nodeId==id}) { "Las ocurrencias recurrentes conservan su proyecto e historial. No pueden trasladarse a Borradores." }
+            val allowed=setOf("nodes","node_attachments","node_person","node_tag","node_events","node_technologies")
+            val sql=database.openHelper.writableDatabase
+            val tables=mutableListOf<String>()
+            sql.query("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'").use {c->while(c.moveToNext()) tables+=c.getString(0)}
+            for(table in tables.filter {it !in allowed}) {
+                val columns=mutableListOf<String>()
+                sql.query("PRAGMA foreign_key_list(`$table`)").use {c->while(c.moveToNext()) if(c.getString(2)=="nodes") columns+=c.getString(3)}
+                for(column in columns) sql.query("SELECT 1 FROM `$table` WHERE `$column`=? LIMIT 1",arrayOf(id)).use {
+                    require(!it.moveToFirst()) { "El elemento tiene relaciones de planificación, recurrencia o contexto. Retíralas antes de cambiar su ubicación." }
+                }
+            }
+        }
+        management.backlog.validateStructure(database.backupDao().nodes().map {if(it.id==id) it.copy(projectId=projectId,parentId=parentId) else it})
+        val oldSortContext=current.projectId?.let {"$it:$id"} ?: "draft:$id"
+        val newSortContext=projectId?.let {"$it:$id"} ?: "draft:$id"
+        if(oldSortContext!=newSortContext) {
+            val sorting=database.nodeSortPreferenceDao()
+            sorting.all().firstOrNull {it.context==oldSortContext}?.let {row->
+                require(sorting.all().none {it.context==newSortContext}) {"El destino contiene una preferencia de orden incompatible."}
+                sorting.delete(oldSortContext);sorting.save(row.copy(context=newSortContext))
+            }
+        }
+        check(nodeDao.relocate(id,projectId,parentId,nextPosition(projectId,parentId),initialWorkState(parentId,NodePurpose.valueOf(current.purpose)),currentTimeMillis())==1)
+        true
+    }} catch(e:IllegalArgumentException) {throw DraftLocationConflictException(e.message ?: "La ubicación es incompatible. El contenido se conserva.")}
 
     internal val management=ManagementRepository(database)
     internal val sprintLinks=SprintLinkRepository(database)
@@ -486,6 +666,7 @@ class NodeRepository(
         if(enabled) requireSprintLink(nodeDao.getSiblings(layer.projectId,id).none {database.sprintLinkDao().task(it.id)!=null}) {"Hay tareas vinculadas a otro Sprint. Desvincúlalas primero."}
         val at = currentTimeMillis()
         nodeDao.getSiblings(layer.projectId, id).filter { it.purpose == "ACTION" }.forEach { child ->
+            require(!child.awaitingVerification) {"Resuelve las tareas por verificar antes de activar Modo Sprint."}
             val state = if (enabled) WorkState.fromCompletion(child.isCompleted).name else null
             check(nodeDao.setWorkState(child.id, state, child.isCompleted, at) == 1)
         }
@@ -523,6 +704,44 @@ class NodeRepository(
         return true
     }
 
+    suspend fun setTaskStateCount(id:String,count:Int?):Boolean=database.withTransaction {
+        require(count==null || count==2 || count==3)
+        val node=nodeDao.getById(id) ?: return@withTransaction false
+        TaskStateConfiguration(database,currentTimeMillis).apply(TaskStateConfiguration.Request(requireNotNull(node.projectId),id,count))
+    }
+    private suspend fun effectiveTaskStateCount(node:NodeEntity):Int {
+        if(node.projectId==null) return 2
+        var cursor:NodeEntity?=node;val visited=hashSetOf<String>()
+        while(cursor!=null && visited.add(cursor.id)) {
+            cursor.taskStateCount?.let {return it}
+            cursor=cursor.parentId?.let {nodeDao.getById(it)}
+        }
+        return if(node.projectId?.let {database.projectDao().getById(it)?.verificationEnabled}==true) 3 else 2
+    }
+    internal suspend fun taskStateCount(id:String):Int=effectiveTaskStateCount(requireNotNull(nodeDao.getById(id)))
+    suspend fun cycleTaskStatus(id:String):Boolean=database.withTransaction {
+        val node=nodeDao.getById(id) ?: return@withTransaction false
+        val current=if(node.isCompleted) com.r0ybt.arachn0de.domain.model.TaskStatus.COMPLETED else if(node.awaitingVerification) com.r0ybt.arachn0de.domain.model.TaskStatus.VERIFY else com.r0ybt.arachn0de.domain.model.TaskStatus.PENDING
+        setTaskStatus(id,com.r0ybt.arachn0de.domain.model.TaskStatePolicy.next(current,effectiveTaskStateCount(node)))
+    }
+
+    suspend fun setTaskStatus(id:String,status:com.r0ybt.arachn0de.domain.model.TaskStatus):Boolean = database.withTransaction {
+        val current=nodeDao.getById(id) ?: return@withTransaction false
+        require(current.purpose=="ACTION" && current.workState==null && !nodeDao.hasChildren(current.projectId,id)) {"Estado disponible solo para tareas normales."}
+        if(status!=com.r0ybt.arachn0de.domain.model.TaskStatus.VERIFY) return@withTransaction changeCompletion(current,status==com.r0ybt.arachn0de.domain.model.TaskStatus.COMPLETED,currentTimeMillis())
+        if(current.awaitingVerification) return@withTransaction true
+        require(current.projectId!=null && effectiveTaskStateCount(current)==3) {"Esta tarea utiliza 2 estados."}
+        if(current.isCompleted) check(changeCompletion(current,false,currentTimeMillis()))
+        check(nodeDao.markAwaitingVerification(id,currentTimeMillis())==1)
+        true
+    }
+
+    /** Undo only this exact last state write. Retains append-only history and persisted order. */
+    suspend fun restoreTaskStatus(expected:Node,status:com.r0ybt.arachn0de.domain.model.TaskStatus):Boolean=database.withTransaction {
+        if(getNode(expected.id)!=expected) return@withTransaction false
+        setTaskStatus(expected.id,status)
+    }
+
     suspend fun setCompleted(id: String, completed: Boolean): Boolean = database.withTransaction {
         val current = nodeDao.getById(id) ?: return@withTransaction false
         changeCompletion(current, completed, currentTimeMillis())
@@ -536,14 +755,20 @@ class NodeRepository(
     /** Read/validate current persisted state under the same Room transaction as both writes. */
     private suspend fun changeCompletion(current: NodeEntity, completed: Boolean, at: Long, updatedAt: Long = at): Boolean {
         if (current.purpose != NodePurpose.ACTION.name || nodeDao.hasChildren(current.projectId, current.id)) return false
-        if (current.isCompleted == completed) return true
+        if (current.isCompleted == completed && !current.awaitingVerification) return true
         val state = current.workState
         if (nodeDao.setWorkState(current.id, state, completed, updatedAt) != 1) return false
-        appendEvent(current.id, if (completed) NodeEventType.COMPLETED else NodeEventType.REOPENED, at)
+        if(completed && !current.isCompleted) {
+            val eventId=UUID.randomUUID().toString()
+            database.nodeEventDao().insert(NodeEventEntity(eventId,current.id,NodeEventType.COMPLETED.name,at))
+            // The session validates this exact event from a separate transaction after commit/rollback.
+            // Audio must never turn a successful data operation into a reported failure.
+            runCatching {onCompletionCandidate(current.id,eventId)}
+        } else appendEvent(current.id, if (completed) NodeEventType.COMPLETED else NodeEventType.REOPENED, at)
         return true
     }
 
-    suspend fun createNodeWithUndo(projectId: String, parentId: String?, title: String, description: String, creationId: String,
+    suspend fun createNodeWithUndo(projectId: String?, parentId: String?, title: String, description: String, creationId: String,
         startAt: Long?, dueAt: Long?, purpose: NodePurpose, obligation: Obligation?, responsibleIds: Set<String>, tagIds: Set<String>, priority: Priority) = database.withTransaction {
         val node = createNode(projectId,parentId,title,description,creationId,startAt,dueAt,purpose,obligation,responsibleIds,tagIds,priority)
         captureCreation(listOf(node.id))
@@ -626,7 +851,6 @@ class NodeRepository(
             check(maximum.toLong() + changing.size <= Int.MAX_VALUE) { "Orden agotado." }
             changing.forEachIndexed { index, id -> check(nodeDao.move(id,parentId,maximum+index+1,at,movedWorkState(checkNotNull(nodeDao.getById(id)),parentId)) == 1) }
         }
-        management.iterations.recordScope()
         selected.size
     }
 
@@ -664,6 +888,7 @@ class NodeRepository(
             val actualAmount = if (patch.amount != null) patch.amount.value else current.amountMinor
             val currency = if (patch.currency != null) patch.currency.value else current.currencyCode
             val financial = actualAmount?.let { Obligation(it, requireNotNull(currency)) }
+            PaymentCurrencyPolicy.requireEdit(current.amountMinor?.let { Obligation(it, requireNotNull(current.currencyCode)) }, financial)
             require((actualAmount == null) == (currency == null)) { "Monto y moneda deben ser consistentes." }
             val leaf = current.purpose == "ACTION" && current.id !in parents
             require((patch.amount == null && patch.currency == null && patch.priority == null) || leaf) { "El grupo contiene notas o capas incompatibles con estos cambios." }
@@ -738,7 +963,8 @@ class NodeRepository(
         path.asReversed().toList()
     }
 
-    private suspend fun validateParent(projectId: String, parentId: String?, movingId: String? = null) {
+    internal suspend fun validateParent(projectId: String?, parentId: String?, movingId: String? = null) {
+        require(parentId==null || database.bankDao().roots().none {it.id==projectId}) {"Las cuentas de Banca no admiten subcuentas ni Capas interiores."}
         val visited = mutableSetOf<String>()
         var currentId = parentId
         while (currentId != null) {
@@ -746,7 +972,7 @@ class NodeRepository(
             check(visited.add(currentId)) { "Cycle in existing hierarchy" }
             val parent = nodeDao.getById(currentId)
             requireNotNull(parent) { "Parent node not found" }
-            require(parent.amountMinor == null) { "Convierte esta obligación en una tarea antes de usarla como capa." }
+            require(parent.amountMinor == null) { "Convierte este pago en una tarea antes de usarla como capa." }
             require(parent.purpose == NodePurpose.LAYER.name || (currentId == parentId && parent.purpose == "ACTION" && !parent.isCompleted)) { "Only layers or pending tasks can receive children" }
             require(parent.projectId == projectId) { "Parent node must belong to the same project" }
             currentId = parent.parentId
@@ -756,7 +982,7 @@ class NodeRepository(
         }
     }
 
-    private suspend fun nextPosition(projectId: String, parentId: String?): Int {
+    private suspend fun nextPosition(projectId: String?, parentId: String?): Int {
         var maximum = nodeDao.maxPosition(projectId, parentId) ?: -1
         if (maximum == Int.MAX_VALUE) {
             writeOrder(nodeDao.getSiblings(projectId, parentId))

@@ -48,6 +48,39 @@ class AttachmentRepositoryTest {
     private suspend fun imported() = attachments.import(Uri.fromFile(image()), "draft")
     private fun marker(file: AttachmentFileEntity) = "[[arachnode:image:${file.id}]]"
 
+    @Test fun prototypeHistoryPreservesAttachmentOnSaveAndRollback() = runBlocking {
+        val file=imported()
+        val original="**Before**\n${marker(file)}\nAfter"
+        attachments.saveNodeDraft("draft",listOf(node.id),original,emptySet()) {clean->nodes.updateNode(node.id,node.title,clean)}
+        val bytes=store.file(file.storageName).readBytes()
+        val draft=com.r0ybt.arachn0de.ui.state.EditorDraft(node.id,null,node.title,original,attachmentDraftId="edit")
+        val state=androidx.compose.foundation.text.input.TextFieldState(original,androidx.compose.ui.text.TextRange(0,original.length))
+        val session=com.r0ybt.arachn0de.ui.DescriptionPrototypeSession(state,draft)
+        assertTrue(session.replace(""))
+        assertEquals(setOf(file.id),session.snapshotDraft().removedAttachmentIds.toSet())
+        attachments.cleanup()
+        assertEquals(1,db.attachmentDao().references(file.id))
+        assertArrayEquals(bytes,store.file(file.storageName).readBytes())
+        assertTrue(session.replace(original))
+        assertTrue(session.snapshotDraft().removedAttachmentIds.isEmpty())
+        assertTrue(session.undo())
+        assertEquals(setOf(file.id),session.snapshotDraft().removedAttachmentIds.toSet())
+        assertTrue(session.redo())
+        val snapshot=session.snapshotDraft()
+        assertEquals(original,snapshot.description)
+        assertTrue(snapshot.removedAttachmentIds.isEmpty())
+        assertTrue(runCatching {
+            attachments.saveNodeDraft("edit",listOf(node.id),"",setOf(file.id)) {throw IllegalStateException("rollback fixture")}
+        }.isFailure)
+        assertEquals(original,nodes.getNode(node.id)!!.description)
+        assertEquals(1,db.attachmentDao().references(file.id))
+        attachments.saveNodeDraft("edit",listOf(node.id),snapshot.description,snapshot.removedAttachmentIds.toSet()) {clean->nodes.updateNode(node.id,node.title,clean)}
+        attachments.cleanup()
+        assertEquals(original,nodes.getNode(node.id)!!.description)
+        assertEquals(1,db.attachmentDao().references(file.id))
+        assertArrayEquals(bytes,store.file(file.storageName).readBytes())
+    }
+
     @Test fun pngKeepsBytesDimensionsAndSurvivesOriginalRemoval() = runBlocking {
         val input = image(); val bytes = input.readBytes()
         val file = attachments.import(Uri.fromFile(input), "draft")

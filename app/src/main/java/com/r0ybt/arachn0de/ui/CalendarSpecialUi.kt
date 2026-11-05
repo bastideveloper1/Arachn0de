@@ -1,5 +1,7 @@
 package com.r0ybt.arachn0de.ui
 
+import kotlinx.coroutines.launch
+
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
@@ -63,6 +65,8 @@ internal fun Modifier.calendarSpecialMarker(count:Int,color:Color):Modifier=if(c
 @Composable internal fun CalendarSpecialSettings(preferences:CalendarSpecialPreferences,catalog:CalendarSpecialDates) {
     val settings=preferences.settings
     var failed by remember {mutableStateOf(false)}
+    var saving by remember {mutableStateOf(false)}
+    val scope=rememberCoroutineScope()
     Text("Fechas informativas",style=MaterialTheme.typography.titleSmall)
     listOf(Triple("Feriados de Chile",settings.holidays,{v:Boolean->settings.copy(holidays=v)}),
         Triple("Santoral",settings.saints,{v:Boolean->settings.copy(saints=v)}),
@@ -70,7 +74,12 @@ internal fun Modifier.calendarSpecialMarker(count:Int,color:Color):Modifier=if(c
         Triple("Cumpleaños de Personas",settings.birthdays,{v:Boolean->settings.copy(birthdays=v)})).forEach {(name,checked,changed)->
         Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically) {
             Text(name,Modifier.weight(1f))
-            Switch(checked,onCheckedChange={failed=!preferences.set(changed(it))},modifier=Modifier.testTag("calendar-special-toggle:$name"))
+            Switch(checked,enabled=!saving,onCheckedChange={value->if(!saving) {saving=true;scope.launch {
+                try {failed=!kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO+kotlinx.coroutines.NonCancellable) {preferences.set(changed(value))}}
+                catch(c:kotlinx.coroutines.CancellationException) {throw c}
+                catch(_:Exception) {failed=true}
+                finally {saving=false}
+            }}},modifier=Modifier.testTag("calendar-special-toggle:$name"))
         }
     }
     if(failed) Text("No se pudo conservar la preferencia. Reintenta el cambio.",color=Arachn0deColors.TextSecondary)
@@ -85,11 +94,11 @@ internal fun Modifier.calendarBirthdayMarker(count:Int,color:Color):Modifier=if(
     drawCircle(color,radius=1.5.dp.toPx(),center=Offset(4.dp.toPx(),4.dp.toPx()),style=androidx.compose.ui.graphics.drawscope.Stroke(width=1.dp.toPx()))
 }
 
-@Composable internal fun CalendarBirthdayRow(birthday:CalendarBirthday,onOpen:()->Unit) {
+@Composable internal fun CalendarBirthdayRow(birthday:CalendarBirthday,compact:Boolean=false,onOpen:()->Unit) {
     Card(Modifier.fillMaxWidth().testTag("calendar-birthday:${birthday.person.id}").clickable(onClick=onOpen),
         colors=CardDefaults.cardColors(containerColor=Arachn0deColors.Surface)) {
-        Row(Modifier.fillMaxWidth().padding(12.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(8.dp)) {
-            Icon(Icons.Outlined.Cake,null,Modifier.size(16.dp),tint=Arachn0deColors.TextSecondary)
+        Row(Modifier.fillMaxWidth().then(if(compact) Modifier.heightIn(min=48.dp) else Modifier).padding(horizontal=12.dp,vertical=if(compact) 4.dp else 12.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(8.dp)) {
+            Icon(Icons.Outlined.Cake,null,Modifier.size(16.dp),tint=cardIndicatorColor("birthday",true))
             Text(birthday.person.name,Modifier.weight(1f),color=Arachn0deColors.TextPrimary)
             birthday.age?.let {Text("Cumple $it ${if(it==1) "año" else "años"}",style=MaterialTheme.typography.bodySmall,color=Arachn0deColors.TextSecondary)}
         }

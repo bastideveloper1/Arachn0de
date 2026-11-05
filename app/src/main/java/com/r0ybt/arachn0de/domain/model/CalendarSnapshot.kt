@@ -56,7 +56,7 @@ class CalendarSnapshot(val tree: NodeTreeSnapshot, zone: TimeZone) {
         val calendar = GregorianCalendar(zone, Locale.ROOT)
         val groups = mutableMapOf<CalendarDay, MutableList<Node>>()
         tree.nodes.forEach { node ->
-            if (node.purpose == NodePurpose.ACTION && node.id !in parents && node.dueAt != null) {
+            if (node.projectId!=null && node.purpose == NodePurpose.ACTION && node.id !in parents && node.dueAt != null) {
                 calendar.timeInMillis = node.dueAt
                 groups.getOrPut(CalendarDates.dayOf(calendar)) { mutableListOf() }.add(node)
             }

@@ -1,5 +1,86 @@
 # Changelog
 
+## 0.25.0 — release oficial local, código 40
+
+- Incluye el estado actual anterior al nuevo rediseño de navegación.
+- Simplificación de Tecnologías y herramientas de gestión, conservando datos históricos.
+- Plantillas estructurales de Núcleos, Capas, Tareas y Notas con recursos cifrados e instancias independientes.
+- Depuración del catálogo de temas y corrección del cierre antes de la contraseña por inicialización circular.
+- Compatibilidad histórica preservada; payload de plantilla v2 no legible por versiones antiguas.
+
+## 0.18.0 — release oficial local, código 33
+
+- Tragaperras Ahorro: compras físicas confirmadas, cuenta Banco asociada, créditos persistentes, RTP exacto configurable, reserva máxima, premios pendientes y retiro/conservación.
+- Libro cifrado y backup JSON 51 con recuperación de giros, versiones de configuración e integridad de movimientos.
+- Incluye las correcciones UX locales: contraste de Banco, explorador de destinos, traslados transaccionales, grabadora y volumen de Tragaperras.
+- Recursos históricos, modos Tradicional/Tareas y funcionalidades existentes conservados. Sin acceso a notificaciones ajenas.
+
+## 0.17.1 — release oficial local, código 32
+
+- Retirada de detección automática CMR: sin servicio ni capacidad de acceso a notificaciones ajenas, controles o reconocimiento.
+- Compatibilidad histórica de datos y respaldos conservada; Banco, pagos, abonos parciales y demás funcionalidades intactos.
+- Permisos de cámara, micrófono, avisos propios y actualizador sin cambios. Misma firma y applicationId oficiales.
+- APK release no depurable firmada y verificada, sin acceso a notificaciones ajenas; certificado oficial conservado.
+
+## 0.17.0 — release oficial local, código 31
+
+- Indicadores de personas actualizados en tarjetas y tareas recurrentes sin depender de abrir otras vistas.
+- Banco: Núcleos sin indicadores habituales, cuenta y titular combinados, formulario Pagar y tarjetas de selección compactos conservando skins.
+- Abonos parciales: pendiente en tarjetas exteriores e información completa en el detalle e historial.
+- Conserva los demás cambios locales y recursos históricos. CMR permanece congelado, sin emisores autorizados ni detección real activa.
+- APK release no depurable firmada y verificada; misma identidad oficial y certificado que 0.16.0/code30.
+
+## 0.16.0 — release oficial local, código 30
+
+- Primera versión de Banca: Núcleo especial con cuentas de primer nivel, varias cuentas por persona e historial financiero.
+- Ingresar dinero, Retirar dinero y Pagar; nombres opcionales, pagos desde saldo/directos, selección de tarjetas originales y reparto automático o manual.
+- Validación inmediata y confirmación compacta, sumas exactas, pagos parciales, anulación, idempotencia y rollback; tareas compartidas excluidas de pagos ejecutables.
+- Migración aditiva Room 52→53 y backup JSON 49 con historial, asignaciones y compatibilidad anterior.
+- Conserva las mejoras de Antisocial, skins y sonidos actuales; Tragaperras Tradicional/Tareas, menú inferior y transparencia estable al parpadear.
+- Conserva Carrera y los recursos gráficos/sonoros existentes. Misma identidad oficial de firma y paquete; APK release firmada y verificada.
+
+
+## 0.15.0 — preparación oficial local, código 29
+
+- Tragaperras independiente: Tradicional y sorteo de Tareas, sonidos de prueba, créditos y premios ficticios de sesión.
+- Acceso directo a Tragaperras desde Inicio del menú lateral.
+- Botón Hoy del calendario contextual permite seleccionar y quitar la fecha actual.
+- Conserva todas las mejoras previas del árbol de trabajo. Firma y artefacto final pendientes de verificación.
+
+## 0.12.0 — preparación oficial local, código 26
+
+- Menú inferior de dos niveles con skin existente y destinos reorganizados.
+- Filtros contextuales de Atención/Favoritos y calendario antes de la información de ubicación.
+- Respuesta optimista de Favoritos y conservación del tema detrás de la cobertura de privacidad.
+- Degradado compartido más suave y con mayor zona de ilustración visible.
+- Misma identidad, cifrado y persistencia. Rendimiento real pendiente de revisión en teléfono.
+- APK oficial verificada: certificado habitual, ZIP íntegro y SHA-256 fdc1c287ebc1a709450a6c34418c9751f894f2a6aa8e7d7791c1e9d1fd11250a.
+
+## 0.11.0 — preparación oficial local, código 25
+
+- Calendario contextual plegable en Núcleos y Capas, con navegación a las tarjetas originales.
+- Optimización de preferencias pequeñas y limpieza de imágenes; se mantiene lectura por bloques para valores grandes.
+- Correcciones de tarjetas, Semáforo, superposición del editor y barra de anotaciones.
+- Eliminada la línea redundante de estado de tarea; se conserva su casilla funcional.
+- Misma identidad de firma, cifrado, Room 50 y backup JSON hasta 43. Firma y entrega pendientes de verificación.
+
+## 0.10.0 — preparación oficial local, código 24
+
+- Diagramas: separación de Guardar, reutilización de configuración animada, colores GIF y refinamiento visual del editor.
+- PDF: previsualización a pantalla completa con pinza y regreso al configurador; separación de controles.
+- Núcleos: recurrencia compacta y contexto de regreso al listado; se conservan Borradores y mejoras previas.
+- Skins: editor interactivo, controles visuales y correcciones de guardado de imágenes grandes.
+- Se conservan identidad de firma, cifrado y compatibilidad de datos. Room 50; backup JSON hasta 43.
+- Firma, SHA-256 y entrega sujetos a verificación del nuevo artefacto; comprobaciones físicas pendientes.
+
+## 0.9.0 — preparación local, código 23
+
+- Incluye los cambios actuales de Diagramas y el pulido de skins personalizadas.
+- Conserva originales cifrados de imágenes de temas y sus bytes en respaldo/restauración.
+- Room 48; lector de backup hasta JSON 41, compatible con formatos anteriores.
+- Misma identidad y certificado oficial. Firma y entrega pendientes de verificación.
+- Correcciones adicionales del PDF aplazadas; sin publicación automática.
+
 ## 0.5.1 — corrección local, código 19, firma pendiente
 
 - Pie global compartido por navegación, editores y selectores, a ancho completo.

@@ -7,14 +7,18 @@ import kotlinx.coroutines.flow.Flow
 import java.time.LocalDate
 
 @Entity(tableName="person_memories",foreignKeys=[ForeignKey(entity=PersonEntity::class,parentColumns=["id"],childColumns=["personId"],onDelete=ForeignKey.CASCADE)],indices=[Index("personId")])
-data class PersonMemoryEntity(@PrimaryKey val id:String,val personId:String,val date:String?,val description:String,val position:Int,@ColumnInfo(defaultValue="0") val isPinned:Boolean=false)
+data class PersonMemoryEntity(@PrimaryKey val id:String,val personId:String,val date:String?,val description:String,val position:Int,@ColumnInfo(defaultValue="0") val isPinned:Boolean=false,@ColumnInfo(defaultValue="1") val peopleVisible:Boolean=true)
 @Entity(tableName="person_memory_images",foreignKeys=[
     ForeignKey(entity=PersonMemoryEntity::class,parentColumns=["id"],childColumns=["memoryId"],onDelete=ForeignKey.CASCADE),
     ForeignKey(entity=AttachmentFileEntity::class,parentColumns=["id"],childColumns=["attachmentId"],onDelete=ForeignKey.RESTRICT),
     ForeignKey(entity=PersonPhotoEntity::class,parentColumns=["id"],childColumns=["legacyPhotoId"],onDelete=ForeignKey.RESTRICT)
 ],indices=[Index("memoryId"),Index("attachmentId"),Index("legacyPhotoId")])
-data class PersonMemoryImageEntity(@PrimaryKey val id:String,val memoryId:String,val attachmentId:String?,val legacyPhotoId:String?,val position:Int,val date:String?=null,val description:String="")
+data class PersonMemoryImageEntity(@PrimaryKey val id:String,val memoryId:String,val attachmentId:String?,val legacyPhotoId:String?,val position:Int,val date:String?=null,val description:String="",@ColumnInfo(defaultValue="1") val zoom:Float=1f,@ColumnInfo(defaultValue="0") val x:Float=0f,@ColumnInfo(defaultValue="0") val y:Float=0f)
 @Dao interface PersonMemoryDao {
+    @Query("SELECT * FROM person_memory_people ORDER BY memoryId,position,id") suspend fun people():List<PersonMemoryPersonEntity>
+    @Query("DELETE FROM person_memory_people WHERE memoryId=:id") suspend fun clearPeople(id:String)
+    @Insert suspend fun people(rows:List<PersonMemoryPersonEntity>)
+
     @Query("SELECT * FROM person_memories ORDER BY isPinned DESC,position,id") fun observeMemories():Flow<List<PersonMemoryEntity>>
     @Query("SELECT * FROM person_memory_images ORDER BY position,id") fun observeImages():Flow<List<PersonMemoryImageEntity>>
     @Query("SELECT * FROM person_memories ORDER BY isPinned DESC,position,id") suspend fun memories():List<PersonMemoryEntity>
@@ -37,6 +41,7 @@ internal fun validatePersonMemories(people:Set<String>,memories:List<PersonMemor
     val owners=memories.associateBy {it.id};val attachments=files.associateBy {it.id};val old=legacy.associateBy {it.id}
     memories.forEach {require(it.id.isNotBlank() && it.id.length<=200 && it.personId in people && it.position>=0);require(it.description.length<=16000);date(it.date);require(grouped[it.id].orEmpty().isNotEmpty()) {"Entrada fotográfica vacía."}}
     images.forEach {image->
+        com.r0ybt.arachn0de.domain.model.AvatarFraming(image.zoom,image.x,image.y).validate()
         val owner=requireNotNull(owners[image.memoryId]);require(image.id.isNotBlank() && image.id.length<=200 && image.position>=0 && image.description.length<=16000);date(image.date)
         require((image.attachmentId!=null)!=(image.legacyPhotoId!=null))
         image.attachmentId?.let {require(attachments[it]?.lifecycleState=="READY") {"Fotografía original ausente."}}

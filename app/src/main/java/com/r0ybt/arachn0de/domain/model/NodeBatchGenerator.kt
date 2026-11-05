@@ -28,7 +28,7 @@ object NodeBatchGenerator {
 
     fun generate(parameters: NodeBatchParameters, zone: TimeZone): List<GeneratedNodeSpec> {
         val p = parameters
-        require(p.purpose == NodePurpose.ACTION || p.obligation == null) { "Una nota no puede ser obligación." }
+        require(p.purpose == NodePurpose.ACTION || p.obligation == null) { "Una nota no puede tener un pago." }
         require(p.quantity in 1..MAX_BATCH_SIZE) { "La cantidad debe estar entre 1 y $MAX_BATCH_SIZE." }
         val base = p.baseName.trim()
         validateTitle(base)
@@ -58,7 +58,7 @@ object NodeBatchGenerator {
         require(specs.map { it.priority }.distinct().size == 1) { "El lote debe compartir prioridad." }
         require(specs.map { it.obligation }.distinct().size == 1) { "Todo el lote debe compartir la misma capacidad financiera, monto y moneda." }
         specs.forEach {
-            require(it.purpose == NodePurpose.ACTION || it.obligation == null) { "Una nota no puede ser obligación." }
+            require(it.purpose == NodePurpose.ACTION || it.obligation == null) { "Una nota no puede tener un pago." }
             require(it.purpose == NodePurpose.ACTION || it.priority == Priority.NONE) { "Una nota no admite prioridad." }
             validateTitle(it.title)
             require(it.title == it.title.trim()) { "El título generado contiene espacios en sus extremos." }

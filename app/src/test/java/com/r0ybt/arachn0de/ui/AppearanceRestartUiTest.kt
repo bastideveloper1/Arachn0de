@@ -23,10 +23,10 @@ class AppearanceRestartUiTest {
     @get:Rule val rules: RuleChain = RuleChain.outerRule(object : ExternalResource() {
         override fun before() {
             app = ApplicationProvider.getApplicationContext()
-            val prefs = AppearancePreferences(app.getSharedPreferences(AppearancePreferences.FILE, 0).apply { edit().clear().commit() })
+            val prefs = AppearancePreferences(app.privateContext.getSharedPreferences(AppearancePreferences.FILE, 0).apply { edit().clear().commit() })
             prefs.setTheme(AppearanceTheme.HeavyGold); prefs.setTextSize(AppearanceTextSize.Medium)
         }
-        override fun after() { app.database.close() }
+        override fun after() { stopAppearanceTestApplication(app) }
     }).around(compose)
     private fun layout(tag: String): androidx.compose.ui.text.TextLayoutResult {
         val layouts = mutableListOf<androidx.compose.ui.text.TextLayoutResult>()
@@ -37,12 +37,15 @@ class AppearanceRestartUiTest {
         compose.waitUntil(10000) { compose.onAllNodesWithContentDescription("Abrir menú").fetchSemanticsNodes().isNotEmpty() }
         assertEquals(AppearanceTheme.HeavyGold.palette.muted, layout("app-bar-title").layoutInput.style.color)
         compose.onNodeWithContentDescription("Abrir menú").performClick()
-        compose.onNodeWithText("Ajustes").performScrollTo().performClick(); compose.onNodeWithText("Apariencia").performScrollTo().performClick()
+        compose.onNodeWithTag("menu-category:Ajustes").performClick()
+        compose.onNodeWithTag("menu-item:Apariencia").performScrollTo().performClick()
         compose.onNodeWithTag("appearance-preview").performScrollTo()
         assertEquals(16f, layout("appearance-preview-title").layoutInput.style.fontSize.value, .01f)
         compose.onNodeWithTag("appearance-theme:KingCrimson").performScrollTo().performClick()
+        compose.waitUntil(15000) {app.security.current.value!!.appearance.settings.theme==AppearanceTheme.KingCrimson}
         compose.onNodeWithTag("appearance-size:Large").performScrollTo().performClick()
         compose.activityRule.scenario.recreate()
+        compose.waitUntil(15000) {app.security.current.value!!.appearance.settings.textSize==AppearanceTextSize.Large}
         compose.onNodeWithTag("appearance-theme:KingCrimson").performScrollTo().assertIsSelected()
         compose.onNodeWithTag("appearance-size:Large").performScrollTo().assertIsSelected()
         compose.onNodeWithTag("appearance-preview").performScrollTo()

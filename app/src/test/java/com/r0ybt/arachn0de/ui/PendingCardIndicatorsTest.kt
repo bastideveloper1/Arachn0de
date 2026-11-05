@@ -17,6 +17,20 @@ class PendingCardIndicatorsTest {
         assertTrue(f.deadlines.isEmpty());assertTrue(f.priorities.isEmpty());assertTrue(f.dueNodes.isEmpty());assertTrue(f.todayNodes.isEmpty())
     }
 
+    @Test fun verificationAndPendingPropagateAsUncompletedWorkButCompletionDoesNot() {
+        val container=layer("layer")
+        val pending=task("pending","layer")
+        val verify=task("verify","layer").copy(awaitingVerification=true,priority=Priority.HIGH,dueAt=now-1000)
+        val completed=task("completed","layer",true).copy(priority=Priority.HIGH,dueAt=now-1000)
+        val active=facts(listOf(container,pending,verify,completed))
+        for(key in listOf("node:layer","project:p")) {
+            assertEquals(setOf("pending","verify"),active.getValue(key).tasks)
+            assertEquals(setOf("verify"),active.getValue(key).priorities)
+            assertEquals(setOf("verify"),active.getValue(key).deadlines)
+        }
+        val done=facts(listOf(container,pending.copy(isCompleted=true),verify.copy(isCompleted=true,awaitingVerification=false),completed))
+        assertNoAttention(done.getValue("node:layer"));assertNoAttention(done.getValue("project:p"))
+    }
     @Test fun fiveTasksFinishAndReactivateWithoutRemovingHistory() {
         val container=layer("layer").copy(dueAt=now-1000)
         val normal=task("normal","layer")

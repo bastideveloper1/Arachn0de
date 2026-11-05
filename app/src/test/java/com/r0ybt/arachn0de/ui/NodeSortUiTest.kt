@@ -44,11 +44,6 @@ class NodeSortUiTest {
         compose.onNodeWithTag("nodes-list").performScrollToIndex(0)
         return compose.onNodeWithContentDescription("Ordenar")
     }
-    private fun sort(mode:NodeSortMode) {
-        order().performClick()
-        compose.onNodeWithText(mode.label).performScrollTo().performClick()
-        order().assert(hasStateDescription("Orden: ${mode.label}" + if(mode!=NodeSortMode.MANUAL) "; arrastre deshabilitado" else ""))
-    }
     private fun node(label:String):SemanticsNodeInteraction {
         compose.onNodeWithTag("nodes-list").performScrollToNode(hasText(label))
         return compose.onNode(hasText(label) and hasAnyAncestor(hasTestTag("nodes-list")))
@@ -57,13 +52,14 @@ class NodeSortUiTest {
         compose.onNodeWithTag("nodes-list").performScrollToNode(hasTestTag("node-options:$id"))
         compose.onNodeWithTag("node-options:$id").performClick()
     }
-    private fun first(expected:String, labels:Set<String> = setOf("A","B","C","D","Cuentas")) {
-        compose.onNodeWithTag("nodes-list").performScrollToIndex(2)
-        compose.waitUntil(10000) {
-            val nodes=compose.onAllNodes(hasAnyAncestor(hasTestTag("nodes-list"))).fetchSemanticsNodes()
-                .filter { n -> n.config.getOrElse(androidx.compose.ui.semantics.SemanticsProperties.Text) { emptyList() }.any { it.text in labels } && n.boundsInRoot.height>0 }
-            nodes.minByOrNull { it.boundsInRoot.top }?.config?.getOrElse(androidx.compose.ui.semantics.SemanticsProperties.Text) { emptyList() }?.any { it.text==expected }==true
-        }
+    private fun first(expected:String,labels:Set<String> = emptySet()) {
+        val id=persisted().first {it.title==expected}.id
+        compose.onNodeWithTag("nodes-list").performScrollToNode(hasText(expected))
+        compose.onNodeWithTag("node-title:$id",useUnmergedTree=true).assertIsDisplayed()
+    }
+    private fun dueCriterion() {
+        compose.onNodeWithTag("sort-criteria").performScrollToNode(hasTestTag("sort-rule:DUE"))
+        compose.onNodeWithTag("sort-check:DUE").assertIsDisplayed().performClick()
     }
     private fun persisted()=runBlocking { app.nodeRepository.getProjectNodes(project.id) }
     @Test fun dashboardUsesExistingHierarchyFallbackAndTagsRemainAccessibleFromDrawer() {
@@ -77,169 +73,43 @@ class NodeSortUiTest {
         compose.onNodeWithText("Cerrar").performClick()
         await(project.name)
     }
-    @Test fun layersFirstIsIndependentAndAllowsLayerMovementUnderAutomaticTaskSorting() {
-        val another=runBlocking {app.nodeRepository.createNode(project.id,null,"Otra capa",purpose=NodePurpose.LAYER)}
-        open();sort(NodeSortMode.DUE_PRIORITY)
-        order().performClick();compose.onNodeWithText("Capas primero").performScrollTo().performClick()
-        first("Cuentas",setOf("A","Cuentas","Otra capa"))
-        menu(another.id);compose.onNodeWithText("Subir").performScrollTo().assertIsEnabled().performClick()
-        compose.waitUntil(10000) {runBlocking {app.nodeRepository.getNode(another.id)!!.position<app.nodeRepository.getNode(layer.id)!!.position}}
-        first("Otra capa",setOf("A","Cuentas","Otra capa"))
-        val prefs=runBlocking {app.database.nodeSortPreferenceDao().all()}
-        assertTrue(prefs.single {it.context=="${project.id}:project-root"}.layersFirst)
-        assertEquals("DUE_PRIORITY",prefs.single {it.context=="${project.id}:project-root"}.mode)
-        order().performClick();compose.onNodeWithText("Capas primero").performScrollTo().performClick()
+    @Test fun savedCriteriaDoNotMoveCardsUntilApplyAndCanBeReappliedAfterManualMovement() {
+        open();val before=persisted()
+        order().performClick()
+        dueCriterion()
+        compose.waitUntil(10000) {runBlocking {app.database.nodeSortPreferenceDao().all().any {it.context=="${project.id}:project-root" && it.mode.startsWith(SortConfigurationCodec.PREFIX)}}}
+        assertEquals(before,persisted())
+        compose.onNodeWithTag("sort-apply").performClick()
+        compose.waitUntil(10000) {persisted().filter {it.parentId==null}.minBy {it.position}.title=="C"}
         first("C")
-    }
-    @Test fun allModesHaveSelectedSemanticsAndPreservePositionsAndStructuralCopy() {
-        open();val original=persisted();val events=runBlocking { app.database.nodeEventDao().all() }
+        val c=persisted().first {it.title=="C"}
+        assertTrue(runBlocking {app.nodeRepository.reorderNodeTo(a.id,null,c.id)})
+        assertEquals("A",persisted().filter {it.parentId==null}.minBy {it.position}.title)
         first("A")
-        for(mode in NodeSortMode.entries) {
-            sort(mode)
-            val expected=NodePresentationSort.children(original.filter { it.parentId==null },mode).first().title
-            first(expected)
-            order().performClick()
-            compose.onNodeWithText(mode.label).performScrollTo().assertIsSelected()
-            compose.onNodeWithText("Cancelar").performClick()
-            assertEquals(original,persisted())
-        }
-        sort(NodeSortMode.DUE_ASC)
-        compose.onNodeWithTag("nodes-list").performScrollToIndex(0)
-        compose.onNodeWithContentDescription("Opciones del proyecto").performClick()
-        compose.onNodeWithText("Copiar texto con descendientes").performScrollTo().performClick()
-        compose.onNodeWithText("Copiar").performClick()
-        val expected=PendingChatRenderer.render(NodeTreeSnapshot(original),null,project,completeHierarchy=true)
-        val clipboard=app.getSystemService(ClipboardManager::class.java)
-        compose.waitUntil(10000) { org.robolectric.Shadows.shadowOf(android.os.Looper.getMainLooper()).idle();clipboard.primaryClip?.getItemAt(0)?.text?.toString()==expected }
-        sort(NodeSortMode.MANUAL);first("A")
-        assertEquals(original,persisted());assertEquals(events,runBlocking { app.database.nodeEventDao().all() })
+        order().performClick();compose.onNodeWithTag("sort-apply").performClick()
+        compose.waitUntil(10000) {persisted().filter {it.parentId==null}.minBy {it.position}.title=="C"}
+        first("C")
+        assertEquals(before.map {it.copy(position=0,updatedAt=0)}.sortedBy {it.id},persisted().map {it.copy(position=0,updatedAt=0)}.sortedBy {it.id})
     }
-    @Test fun projectDefaultIsClearlyLabeledInheritedAndManualOverrideSurvivesRecreation() {
-        open();order().performClick()
-        compose.onNodeWithText("Orden predeterminado del Proyecto").assertExists()
-        compose.onNodeWithText("Las Capas sin orden propio utilizan este criterio.").assertExists()
-        compose.onNodeWithText(NodeSortMode.DUE_PRIORITY.label).performScrollTo().performClick()
+    @Test fun layerOverrideSurvivesRecreationAndCanReturnToCurrentCoreConfiguration() {
+        open();order().performClick();dueCriterion();compose.onNodeWithTag("sort-apply").performClick()
         node("Cuentas").performClick();node("Idea").assertExists()
-        order().assert(hasStateDescription("Orden: Vencimiento y prioridad; arrastre deshabilitado"))
-        sort(NodeSortMode.MANUAL)
-        compose.activityRule.scenario.recreate();await("Nuevo elemento");node("Idea").assertExists()
-        order().assert(hasStateDescription("Orden: Manual"))
-        order().performClick();compose.onNodeWithText("Usar orden predeterminado del Proyecto").performScrollTo().performClick()
-        order().assert(hasStateDescription("Orden: Vencimiento y prioridad; arrastre deshabilitado"))
+        order().performClick();compose.onNodeWithTag("sort-inherit").assertIsOn()
+        compose.onNodeWithTag("sort-manual").performClick();compose.onNodeWithTag("sort-apply").performClick()
+        compose.activityRule.scenario.recreate();await("Idea")
+        order().performClick();compose.onNodeWithTag("sort-inherit").assertIsOff();compose.onNodeWithTag("sort-manual").assertIsOn()
+        compose.onNodeWithTag("sort-inherit").performClick()
+        compose.onNodeWithTag("sort-inherit").assertIsOn();compose.onNodeWithTag("sort-manual").assertIsOff()
+        compose.onNodeWithTag("sort-criteria").performScrollToNode(hasTestTag("sort-rule:DUE"))
+        compose.onNodeWithTag("sort-check:DUE").assertIsOn();compose.onNodeWithTag("sort-apply").performClick()
     }
-    @Test fun activityRecreationRestoresIndependentProjectAndLayerModes() {
-        open();sort(NodeSortMode.DUE_ASC);first("C")
-        node("Cuentas").performClick();node("Idea").assertExists()
-        order().assert(hasStateDescription("Orden: Vencimiento próximo; arrastre deshabilitado"))
-        sort(NodeSortMode.CREATED_OLDEST)
-        compose.activityRule.scenario.recreate();await("Nuevo elemento");node("Idea").assertExists()
-        order().assert(hasStateDescription("Orden: Más antiguos; arrastre deshabilitado"))
-        compose.runOnUiThread { compose.activity.onBackPressedDispatcher.onBackPressed() };await("Nuevo elemento")
-        order().assert(hasStateDescription("Orden: Vencimiento próximo; arrastre deshabilitado"))
-        node("Cuentas").performClick();node("Idea").assertExists()
-        order().assert(hasStateDescription("Orden: Más antiguos; arrastre deshabilitado"))
-        compose.runOnUiThread { compose.activity.onBackPressedDispatcher.onBackPressed() }
-        compose.runOnUiThread { compose.activity.onBackPressedDispatcher.onBackPressed() }
-        await(project.name);compose.onNodeWithText(project.name).performClick();await("Nuevo elemento")
-        order().assert(hasStateDescription("Orden: Vencimiento próximo; arrastre deshabilitado"))
-    }
-    @Test fun differentProjectsKeepIndependentRootPreferencesAndDashboardHasNoSelector() {
-        runBlocking {
-            val other=app.projectRepository.createProject("Other project")
-            app.nodeRepository.createNode(other.id,null,"Other task",dueAt=10)
-        }
-        open();sort(NodeSortMode.DUE_ASC)
-        compose.onNodeWithContentDescription("Abrir menú").performClick()
-        compose.onNodeWithText("Proyectos").performScrollTo().performClick();await(project.name)
-        compose.onNodeWithContentDescription("Ordenar").assertDoesNotExist()
-        compose.onNodeWithText("Other project").performClick();await("Other task")
-        order().assert(hasStateDescription("Orden: Manual"))
-        sort(NodeSortMode.PRIORITY)
-        compose.onNodeWithContentDescription("Abrir menú").performClick()
-        compose.onNodeWithText("Proyectos").performScrollTo().performClick();await(project.name)
-        compose.onNodeWithText(project.name).performClick();await("Nuevo elemento")
-        order().assert(hasStateDescription("Orden: Vencimiento próximo; arrastre deshabilitado"))
-    }
-    @Test @Config(qualifiers = "h900dp") fun automaticDragCannotWriteAndManualDragWorksAgain() {
-        runBlocking {
-            persisted().filter { it.parentId==null }.forEach { app.nodeRepository.deleteNode(it.id) }
-            app.nodeRepository.createNode(project.id,null,"Alpha")
-            app.nodeRepository.createNode(project.id,null,"Beta")
-        }
-        await(project.name);compose.onNodeWithText(project.name).performClick();await("Alpha")
-        sort(NodeSortMode.DUE_ASC)
-        compose.onNodeWithTag("nodes-list").performScrollToNode(hasText("Alpha"))
-        val original=persisted();drag("Alpha","Beta")
-        assertEquals(original,persisted())
-        if(compose.onAllNodesWithText("Salir").fetchSemanticsNodes().isNotEmpty()) compose.onNodeWithText("Salir").performClick()
-        sort(NodeSortMode.MANUAL)
-        compose.onNodeWithTag("nodes-list").performScrollToNode(hasText("Alpha"));drag("Alpha","Beta")
-        compose.waitUntil(10000) { persisted().first { it.parentId==null }.title=="Beta" }
-        sort(NodeSortMode.DUE_ASC);sort(NodeSortMode.MANUAL)
-        assertEquals(listOf("Beta","Alpha"),persisted().map { it.title })
-    }
-    private fun drag(fromLabel:String,toLabel:String) {
-        val from=compose.onNodeWithText(fromLabel).fetchSemanticsNode().boundsInRoot.center
-        val to=compose.onNodeWithText(toLabel).fetchSemanticsNode().boundsInRoot.center
-        compose.mainClock.autoAdvance=false
-        compose.onRoot().performTouchInput { down(from);advanceEventTime(700);moveTo(from) }
-        compose.mainClock.advanceTimeBy(32)
-        repeat(6) { step -> compose.onRoot().performTouchInput { moveTo(from+(to-from)*((step+1)/6f),delayMillis=40) };compose.mainClock.advanceTimeBy(48) }
-        compose.onRoot().performTouchInput { up() };compose.mainClock.autoAdvance=true;compose.waitForIdle()
-    }
-    @Test fun automaticSelectionBulkDeleteUsesIdentitiesAndKeepsUnselectedRows() {
-        open();sort(NodeSortMode.DUE_ASC);first("C")
-        menu(a.id);compose.onNodeWithText("Seleccionar").performScrollTo().performClick()
-        node("D").performClick();await("2 seleccionados")
-        compose.onNodeWithText("Eliminar").performClick();await("¿Eliminar 2 elementos?")
-        compose.onNodeWithText("Eliminar seleccionados").performClick();await("2 elementos eliminados")
-        val retained=persisted()
-        assertFalse(retained.any { it.id in setOf(a.id,d.id) })
-        assertTrue(retained.any { it.title=="C" });assertTrue(retained.any { it.title=="B" })
-        compose.onNodeWithText("2 seleccionados").assertDoesNotExist()
-        order().assert(hasStateDescription("Orden: Vencimiento próximo; arrastre deshabilitado"))
-    }
-    @Test fun automaticBulkMoveKeepsGroupAndRelationsAndDestinationSort() {
-        val tag=runBlocking { app.nodeRepository.tags.create("Test") }
-        val personId=java.util.UUID.randomUUID().toString()
-        runBlocking { app.personRepository.save(personId,"Persona",null) }
-        val rows=runBlocking { app.nodeRepository.createBatch(project.id,null,"sort-group",listOf(
-            GeneratedNodeSpec("Moved late","",NodePurpose.ACTION,30,null,Priority.HIGH),
-            GeneratedNodeSpec("Moved early","",NodePurpose.ACTION,2,null,Priority.HIGH)),responsibleIds=setOf(personId),tagIds=setOf(tag.id)) }
-        open();sort(NodeSortMode.DUE_ASC)
-        node("Cuentas").performClick();node("Idea").assertExists();sort(NodeSortMode.DUE_ASC)
-        compose.runOnUiThread { compose.activity.onBackPressedDispatcher.onBackPressed() };await("Nuevo elemento")
-        menu(rows[0].id);compose.onNodeWithText("Seleccionar").performScrollTo().performClick();node("Moved early").performClick();await("2 seleccionados")
-        compose.onNodeWithText("Mover").performClick();await("Mover 2 elementos")
-        compose.onNodeWithTag("layer-navigator").performScrollToNode(hasTestTag("navigator-node:${layer.id}"))
-        compose.onNodeWithTag("navigator-node:${layer.id}").performClick();await("2 elementos movidos")
-        val moved=persisted().filter { it.id in rows.map { r -> r.id } }
-        assertTrue(moved.all { it.parentId==layer.id && it.creationGroupId=="sort-group" })
-        assertEquals(setOf(1,2),moved.map { it.position }.toSet())
-        moved.forEach { assertEquals(listOf(personId),runBlocking { app.database.personDao().assignmentIds(it.id) }) }
-        assertEquals(rows.map { it.id }.toSet(),runBlocking { app.database.tagDao().nodeTags() }.filter { it.tagId==tag.id }.map { it.nodeId }.toSet())
-        node("Cuentas").performClick();node("Moved early").assertExists()
-        order().assert(hasStateDescription("Orden: Vencimiento próximo; arrastre deshabilitado"))
-        compose.onNodeWithTag("nodes-list").performScrollToNode(hasText("Moved early"))
-        first("Moved early",setOf("Moved early","Moved late","Idea"))
-        val tree=NodeTreeSnapshot(persisted())
-        assertEquals(listOf("Moved early","Moved late","Idea"),NodePresentationSort.children(tree.childrenOf(layer.id),NodeSortMode.DUE_ASC).map { it.title })
-    }
-    @Test fun creationAndBatchUndoRefreshAutomaticViewWithoutChangingOldPositions() {
-        open();sort(NodeSortMode.DUE_ASC);val original=persisted()
-        compose.onNodeWithText("Nuevo elemento").performClick();await("Título")
-        compose.onNodeWithText("Título").performScrollTo().performTextReplacement("New")
-        compose.onNodeWithText("Crear").performClick();await("Deshacer")
-        node("New").assertExists();compose.onNodeWithText("Deshacer").performClick();await("Creación deshecha")
-        assertEquals(original,persisted())
-        compose.onNodeWithText("Nuevo elemento").performClick();await("Título")
-        compose.onNodeWithText("Título").performScrollTo().performTextReplacement("Batch")
-        compose.onNodeWithTag("option:Crear varios").performScrollTo().performClick()
-        compose.onNodeWithText("Cantidad").performScrollTo().performTextReplacement("3")
-        compose.onNodeWithText("Crear").performClick();await("3 elementos creados")
-        assertEquals(original.size+3,persisted().size)
-        compose.onNodeWithText("Deshacer").performClick();await("Creación deshecha")
-        assertEquals(original,persisted())
-        order().assert(hasStateDescription("Orden: Vencimiento próximo; arrastre deshabilitado"))
+    @Test fun layersFirstIsSavedSeparatelyAndOnlyChangesPresentationWhenApplied() {
+        open();val before=persisted()
+        order().performClick();compose.onNodeWithTag("sort-layers-first").performClick()
+        assertEquals(before,persisted())
+        compose.onNodeWithTag("sort-apply").performClick()
+        compose.waitUntil(10000) {runBlocking {app.database.nodeSortPreferenceDao().all().any {it.context=="${project.id}:project-root" && it.layersFirst}}}
+        first("Cuentas",setOf("A","Cuentas"))
+        order().performClick();compose.onNodeWithTag("sort-layers-first").assertIsOn()
     }
 }

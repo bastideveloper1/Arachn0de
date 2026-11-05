@@ -30,14 +30,14 @@ open class AttachmentStore(context: Context, private val syncDirectory: (File) -
         val file=galleryLease(id,draft);if(file.exists()) {check(file.delete());syncDirectory(staging)}
         if(lease(id).isFile && SecureFiles.text(lease(id))==draft) release(id)
     }
-    fun protectedGalleryNames():Set<String> = galleryLeases().map {SecureFiles.text(it).substringAfter('\n',"")}.filter {it.matches(Regex("[a-f0-9-]{36}\\.(png|jpg)"))}.toSet()
+    fun protectedGalleryNames():Set<String> = galleryLeases().map {SecureFiles.text(it).substringAfter('\n',"")}.filter {it.matches(Regex("[a-f0-9-]{36}\\.(png|jpg|gif|aac)"))}.toSet()
     fun reserved(id: String) = lease(id).isFile || galleryLeases().any {it.name.substringBefore('.')==id}
     fun release(id: String) {
         if (lease(id).exists()) { check(lease(id).delete()); syncDirectory(staging) }
     }
     fun reservations(draftId: String): Set<String> = staging.listFiles().orEmpty().filter { it.extension == "lease" && SecureFiles.text(it) == draftId }.map { it.nameWithoutExtension }.toSet() + galleryLeases().filter {SecureFiles.text(it).substringBefore('\n')==draftId}.map {it.name.substringBefore('.')}
     fun file(name: String): File {
-        require(name.matches(Regex("[a-f0-9-]{36}\\.(png|jpg|aac)")))
+        require(name.matches(Regex("[a-f0-9-]{36}\\.(png|jpg|gif|aac)")))
         uuid(name.substringBefore('.'))
         return File(root, name)
     }
@@ -45,7 +45,17 @@ open class AttachmentStore(context: Context, private val syncDirectory: (File) -
         if (!it.exists()) true else if (it.delete()) { syncDirectory(root); PrivateImageCache.invalidate(it); true } else false
     }
 
+    internal fun cleanPhoto(uri:Uri)=requireNotNull(context.contentResolver.openInputStream(uri)).use {com.r0ybt.arachn0de.photos.PrivatePhoto.clean(com.r0ybt.arachn0de.photos.PrivatePhoto.read(it))}
+
     suspend fun import(uri: Uri, draftId: String): AttachmentFileEntity {
+        val original = runCatching { context.contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor -> if (cursor.moveToFirst()) cursor.getString(0) else null } }.getOrNull()?.takeIf { it.isNotBlank() } ?: (if (uri.scheme == "file") uri.lastPathSegment?.substringAfterLast('/')?.takeIf {it.isNotBlank()} else null)
+        return importStream(draftId,original) { requireNotNull(context.contentResolver.openInputStream(uri)) }
+    }
+
+    internal suspend fun importBytes(bytes:ByteArray,name:String,draftId:String):AttachmentFileEntity =
+        importStream(draftId,name) { bytes.inputStream() }
+
+    private suspend fun importStream(draftId:String,original:String?,open:()->java.io.InputStream):AttachmentFileEntity {
         require(draftId.isNotBlank())
         check(staging.isDirectory || staging.mkdirs())
         val id = UUID.randomUUID().toString()
@@ -56,7 +66,7 @@ open class AttachmentStore(context: Context, private val syncDirectory: (File) -
             syncDirectory(staging)
             val digest = MessageDigest.getInstance("SHA-256")
             var size = 0L
-            context.contentResolver.openInputStream(uri).use { input ->
+            open().use { input ->
                 requireNotNull(input) { "Imagen no disponible." }
                 SecureFiles.output(part).use { output ->
                     val buffer = ByteArray(8192)
@@ -74,20 +84,22 @@ open class AttachmentStore(context: Context, private val syncDirectory: (File) -
             val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
             SecureFiles.decoded(part, bounds)
             val mime = bounds.outMimeType
-            require(mime == "image/png" || mime == "image/jpeg") { "Solo se admiten PNG y JPEG." }
+            require(mime == "image/png" || mime == "image/jpeg" || mime == "image/gif") { "Solo se admiten PNG, JPEG y GIF." }
             require(bounds.outWidth in 1..32000 && bounds.outHeight in 1..32000) { "Imagen inválida." }
             val signature = SecureFiles.input(part).use { input -> ByteArray(8).also { require(input.read(it) == 8) } }
-            require(if (mime == "image/png") signature.contentEquals(byteArrayOf(-119,80,78,71,13,10,26,10)) else signature[0] == (-1).toByte() && signature[1] == (-40).toByte()) { "Imagen inválida." }
+            require(if (mime == "image/png") signature.contentEquals(byteArrayOf(-119,80,78,71,13,10,26,10)) else if(mime=="image/gif") signature.take(3)==listOf(71.toByte(),73.toByte(),70.toByte()) else signature[0] == (-1).toByte() && signature[1] == (-40).toByte()) { "Imagen inválida." }
+            if(mime=="image/gif") SecureFiles.input(part).use {com.r0ybt.arachn0de.media.ContentGif.inspect(it.readBytes())}
             var sample = 1
             while (bounds.outWidth / sample > 512 || bounds.outHeight / sample > 512) sample *= 2
             requireNotNull(SecureFiles.decoded(part, BitmapFactory.Options().apply { inSampleSize = sample })) { "Imagen inválida." }.recycle()
-            val original = runCatching { context.contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor -> if (cursor.moveToFirst()) cursor.getString(0) else null } }.getOrNull()?.takeIf { it.isNotBlank() } ?: (if (uri.scheme == "file") uri.lastPathSegment?.substringAfterLast('/')?.takeIf { it.isNotBlank() } else null) ?: "imagen.${if (mime == "image/png") "png" else "jpg"}"
-            val name = "$id.${if (mime == "image/png") "png" else "jpg"}"
+            if(mime=="image/png") SecureFiles.input(part).use { com.r0ybt.arachn0de.annotations.EditableImagePng.read(it.readBytes()) }
+            val extension=when(mime) {"image/png"->"png";"image/gif"->"gif";else->"jpg"}
+            val name = "$id.$extension"
             published = file(name)
             check(part.renameTo(published)) { "No se pudo guardar la imagen." }
             syncDirectory(root); syncDirectory(staging)
             currentCoroutineContext().ensureActive()
-            return AttachmentFileEntity(id, name, original, mime, size, bounds.outWidth, bounds.outHeight,
+            return AttachmentFileEntity(id, name, original ?: "imagen.$extension", mime, size, bounds.outWidth, bounds.outHeight,
                 digest.digest().joinToString("") { "%02x".format(it) }, System.currentTimeMillis())
         } catch (failure: Throwable) {
             // Leave a reservation behind if a failed physical deletion needs recovery.
@@ -105,7 +117,7 @@ open class AttachmentStore(context: Context, private val syncDirectory: (File) -
         fun canonicalId(file: File) = runCatching { uuid(file.nameWithoutExtension); true }.getOrDefault(false)
         staging.listFiles().orEmpty().filter { it.isFile && it.extension == "part" && canonicalId(it) && it.canonicalFile.parentFile == staging.canonicalFile }.forEach { check(it.delete()) }
         rootFiles.filter { it.name !in names }.forEach { file ->
-            if (file.name.matches(Regex("[a-f0-9-]{36}\\.(png|jpg|aac)")) && canonicalId(file) && delete(file.name)) release(file.nameWithoutExtension)
+            if (file.name.matches(Regex("[a-f0-9-]{36}\\.(png|jpg|gif|aac)")) && canonicalId(file) && delete(file.name)) release(file.nameWithoutExtension)
         }
         val remaining = root.listFiles().orEmpty().mapTo(hashSetOf()) { it.nameWithoutExtension }
         staging.listFiles().orEmpty().filter { it.isFile && it.extension == "lease" && canonicalId(it) && it.nameWithoutExtension !in ids && it.nameWithoutExtension !in remaining }.forEach { check(it.delete()) }

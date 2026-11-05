@@ -26,8 +26,59 @@ class AttachmentRepository(private val database: Arachn0deDatabase, private val 
             }
         }
     }
+    /** Publish a validated derivative before replacing references; historical editable copies remain supported. */
+    internal suspend fun saveAnnotated(sourceId:String,bytes:ByteArray,draftId:String?,replace:Boolean=false):AttachmentFileEntity = withContext(Dispatchers.IO) {
+        val saved=fileOperations.withLock {
+            val source=requireNotNull(dao.get(sourceId));require(source.lifecycleState=="READY")
+            val editable=com.r0ybt.arachn0de.annotations.EditableImagePng.read(bytes)
+            require(if(replace)editable==null else editable!=null) {"El formato de la imagen anotada no es válido."}
+            if(draftId!=null) require(sourceId in store.reservations(draftId) || dao.references(sourceId)>0) {"La imagen pertenece a otro borrador."}
+            val nodes=dao.nodeAttachments().filter {it.attachmentId==sourceId}
+            val projects=dao.projectAttachments().filter {it.attachmentId==sourceId}
+            require(draftId!=null || nodes.isNotEmpty() || projects.isNotEmpty()) {"Abre el editor del elemento para guardar la copia."}
+            val reservation=draftId ?: "annotation-${java.util.UUID.randomUUID()}"
+            var imported:AttachmentFileEntity?=null
+            try {
+                val copy=store.importBytes(bytes,source.originalName.substringBeforeLast('.')+"-anotada.png",reservation);imported=copy
+                if(replace)require(copy.mimeType=="image/png")
+                database.withTransaction {
+                    requireReady(database,setOf(sourceId));dao.insert(copy)
+                    if(draftId==null) {
+                        val nodes=dao.nodeAttachments().filter {it.attachmentId==sourceId}
+                        val projects=dao.projectAttachments().filter {it.attachmentId==sourceId}
+                        require(nodes.isNotEmpty() || projects.isNotEmpty()) {"La imagen ya no pertenece al elemento."}
+                        dao.attachNode(nodes.map {NodeAttachmentEntity(it.nodeId,copy.id)})
+                        nodes.forEach {link->val node=requireNotNull(database.nodeDao().getById(link.nodeId));check(database.nodeDao().updateContent(node.id,node.title,if(replace) AttachmentReferences.replace(node.description,sourceId,copy.id) else node.description+"\n"+AttachmentReferences.token(copy.id),System.currentTimeMillis())==1)}
+                        dao.attachProject(projects.map {ProjectAttachmentEntity(it.projectId,copy.id)})
+                        projects.forEach {link->val project=requireNotNull(database.projectDao().getById(link.projectId));check(database.projectDao().update(project.id,project.name,if(replace) AttachmentReferences.replace(project.description,sourceId,copy.id) else project.description+"\n"+AttachmentReferences.token(copy.id),System.currentTimeMillis())==1)}
+                        if(replace) {
+                            nodes.forEach {dao.detachNode(it.nodeId,sourceId)}
+                            projects.forEach {dao.detachProject(it.projectId,sourceId)}
+                            if(dao.references(sourceId)==0 && !store.reserved(sourceId)) dao.pending(sourceId)
+                        }
+                    }
+                }
+                if(draftId==null) withContext(NonCancellable) {runCatching {store.release(copy.id)}}
+                copy
+            } catch(failure:Throwable) {
+                withContext(NonCancellable) {imported?.let {if(dao.get(it.id)==null&&store.delete(it.storageName))store.release(it.id)}}
+                throw failure
+            }
+        }
+        if(replace && draftId==null) withContext(NonCancellable) {runCatching {cleanup()}}
+        saved
+    }
+
+    internal suspend fun importPrivatePhoto(uri:Uri,draft:String):AttachmentFileEntity=withContext(Dispatchers.IO) {
+        val clean=store.cleanPhoto(uri)
+        try {deduplicatePhoto(importGuestBytes(clean.bytes,draft,if(clean.mime=="image/jpeg") "fotografia.jpg" else "fotografia.png"),draft)}
+        finally {clean.bytes.fill(0)}
+    }
+
     internal suspend fun importGallery(uri:Uri,draft:String):AttachmentFileEntity {
-        val imported=import(uri,draft)
+        return deduplicatePhoto(import(uri,draft),draft)
+    }
+    internal suspend fun deduplicatePhoto(imported:AttachmentFileEntity,draft:String):AttachmentFileEntity {
         return withContext(Dispatchers.IO) {fileOperations.withLock {
             val owned=store.reservations(draft)
             val shared=dao.files().firstOrNull {it.id!=imported.id && it.lifecycleState=="READY" && it.sha256==imported.sha256 && it.byteSize==imported.byteSize && it.mimeType==imported.mimeType && (dao.references(it.id)>0 || it.id in owned)}
@@ -39,6 +90,13 @@ class AttachmentRepository(private val database: Arachn0deDatabase, private val 
                 shared
             }
         }}
+    }
+    internal suspend fun importGuestBytes(bytes:ByteArray,draft:String,name:String="captura-invitado.jpg"):AttachmentFileEntity=withContext(Dispatchers.IO) {
+        fileOperations.withLock {
+            val hash=java.security.MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") {"%02x".format(it)}
+            store.reservations(draft).mapNotNull {dao.get(it)}.firstOrNull {it.sha256==hash && it.byteSize==bytes.size.toLong() && it.lifecycleState=="READY"}
+                ?: store.importBytes(bytes,name,draft).also {dao.insert(it)}
+        }
     }
     suspend fun pendingImports(draftId: String): List<AttachmentFileEntity> = withContext(Dispatchers.IO) {
         fileOperations.withLock { store.reservations(draftId).mapNotNull { dao.get(it) } }
@@ -161,7 +219,7 @@ class AttachmentRepository(private val database: Arachn0deDatabase, private val 
             }
             // A committed save must not become a failed editor save due to deferred file cleanup.
             withContext(NonCancellable) {
-                reserved.forEach { id -> runCatching { store.release(id) }.onFailure { android.util.Log.w("Attachments", "Reservation cleanup deferred") } }
+                reserved.forEach { id -> runCatching { store.releaseGallery(id,draftId) }.onFailure { android.util.Log.w("Attachments", "Reservation cleanup deferred") } }
             }
             result
         }

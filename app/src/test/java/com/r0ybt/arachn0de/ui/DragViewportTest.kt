@@ -7,6 +7,8 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.unit.dp
 import org.junit.Assert.*
@@ -20,6 +22,37 @@ import org.robolectric.annotation.Config
 @Config(sdk = [28])
 class DragViewportTest {
     @get:Rule val compose = createComposeRule()
+
+    @Test fun grabbedCardKeepsSizeAndFollowsFingerWithoutChangingOrder() {
+        val list=LazyListState()
+        val motor=DragReorderState(list,"node:")
+        val order=listOf("a","b")
+        var commits=0
+        motor.groups=mapOf(false to order)
+        motor.commit={_,_,_->commits++}
+        compose.setContent {
+            LazyColumn(state=list,modifier=Modifier.height(220.dp)) {
+                items(order,key={"node:$it"}) {id->
+                    Text(id,Modifier.height(100.dp).then(motor.cardModifier(id)).testTag(id))
+                }
+            }
+        }
+        val before=compose.onNodeWithTag("a").fetchSemanticsNode().boundsInRoot
+        compose.runOnIdle {
+            val item=list.layoutInfo.visibleItemsInfo.first()
+            motor.startDrag(item.offset+item.size/2f)
+            motor.dragTo(motor.fingerY+12f)
+        }
+        val during=compose.onNodeWithTag("a").fetchSemanticsNode().boundsInRoot
+        assertEquals(before.width,during.width,.1f)
+        assertEquals(before.height,during.height,.1f)
+        assertEquals(before.top+12f,during.top,.1f)
+        compose.runOnIdle {motor.finishDrag()}
+        val after=compose.onNodeWithTag("a").fetchSemanticsNode().boundsInRoot
+        assertEquals(before,after)
+        assertEquals(order,motor.orderFor(false,order))
+        assertEquals(0,commits)
+    }
 
     @Test fun movingToZeroKeepsViewportAndPersistsSameOrder() {
         val list = LazyListState()

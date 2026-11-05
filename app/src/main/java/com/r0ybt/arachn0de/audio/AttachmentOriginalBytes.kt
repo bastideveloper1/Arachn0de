@@ -27,3 +27,12 @@ internal suspend fun originalAttachmentBytes(repository:AttachmentRepository,row
 internal class WipingByteArrayOutputStream:ByteArrayOutputStream() {
     fun erase() {buf.fill(0);reset()}
 }
+
+/** Shared public-image policy; non-image attachments retain their functional bytes. */
+internal suspend fun publicAttachmentBytes(repository:AttachmentRepository,row:AttachmentFileEntity):ByteArray {
+    val bytes=originalAttachmentBytes(repository,row)
+    if(!row.mimeType.startsWith("image/")) return bytes
+    return try {
+        com.r0ybt.arachn0de.photos.PublicImages.prepare(bytes).also {if(it!==bytes) bytes.fill(0)}
+    } catch(failure:Throwable) {bytes.fill(0);throw failure}
+}

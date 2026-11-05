@@ -42,7 +42,8 @@ class FinancialUiTest {
                 root=app.nodeRepository.createNode(project,null,"Salud", purpose = com.r0ybt.arachn0de.domain.model.NodePurpose.LAYER).id
                 val inner=app.nodeRepository.createNode(project,root,"Tratamiento", purpose = com.r0ybt.arachn0de.domain.model.NodePurpose.LAYER).id
                 bill=app.nodeRepository.createNode(project,inner,"Cuenta",dueAt=fixed,obligation=Obligation(50000,"CLP")).id
-                undated=app.nodeRepository.createNode(project,null,"Sin fecha",obligation=Obligation(1050,"USD")).id
+                undated=app.nodeRepository.createNode(project,null,"Sin fecha").id
+                app.database.openHelper.writableDatabase.execSQL("UPDATE nodes SET amountMinor=1050,currencyCode='USD' WHERE id=?",arrayOf(undated))
                 app.personRepository.save("r","Roy",null);app.personRepository.save("s","Scarlett",null)
                 app.personRepository.setResponsiblePeople(bill,setOf("r","s"))
             }
@@ -51,7 +52,7 @@ class FinancialUiTest {
     }).around(compose)
     private fun awaitText(text:String)=compose.waitUntil(10_000){compose.onAllNodesWithText(text,substring=true).fetchSemanticsNodes().isNotEmpty()}
     private fun awaitEmptyObligations() {
-        val text = "No hay obligaciones para este filtro."
+        val text = "No hay pagos para este filtro."
         compose.waitUntil(10_000) {
             runCatching {
                 compose.onNodeWithTag("obligations-list").performScrollToNode(hasText(text))
@@ -65,7 +66,7 @@ class FinancialUiTest {
         else restorer.setContent { Arachn0deTheme { AppSafeArea { AppRoot(app.projectRepository,app.nodeRepository){clock.get()} } } }
     }
     private fun open() {
-        awaitText("Personal");compose.onNodeWithContentDescription("Abrir menú").performClick();compose.onNodeWithText("Seguimiento").performScrollTo().performClick(); compose.onNodeWithText("Obligaciones").performScrollTo().performClick()
+        awaitText("Personal");compose.onNodeWithContentDescription("Abrir menú").performClick();compose.onNodeWithText("Seguimiento").performScrollTo().performClick(); compose.onNodeWithText("Pagos").performScrollTo().performClick()
         awaitTag("financial-summary")
     }
     private fun row(id:String) { awaitTag("financial-summary"); compose.onNodeWithTag("obligations-list").performScrollToNode(hasTestTag("obligation-task:$id"));awaitTag("obligation-task:$id") }
@@ -160,7 +161,7 @@ class FinancialUiTest {
         compose.onNodeWithTag("nodes-list").performScrollToNode(hasText("Completar"));compose.onNodeWithText("Completar").performClick()
         compose.waitUntil(10_000){runBlocking { app.nodeRepository.getNode(bill)!!.isCompleted }}
         compose.runOnUiThread { compose.activity.onBackPressedDispatcher.onBackPressed() }
-        awaitText("Obligaciones");row(bill);compose.onNodeWithTag("obligation-task:$bill").assert(hasText("Completada"))
+        awaitText("Pagos");row(bill);compose.onNodeWithTag("obligation-task:$bill").assert(hasText("Completada"))
         filter("Todo");compose.onNodeWithText("Todo").assertIsSelected();compose.onNodeWithText("Persona: Roy").assertExists()
         assertEquals(before.map { it.copy(isCompleted=it.id==bill,updatedAt=0) },runBlocking { app.nodeRepository.getProjectNodes(project).map { it.copy(updatedAt=0) } })
     }
@@ -189,7 +190,7 @@ class FinancialUiTest {
         compose.onNodeWithTag("nodes-list").performScrollToNode(hasText("Salud"));compose.onNodeWithText("Salud").performClick();awaitText("CAPA 1")
         compose.onNodeWithTag("nodes-list").performScrollToNode(hasText("Total",substring=true))
         compose.onNodeWithTag("financial-currency:CLP").assertExists();compose.onNodeWithTag("financial-currency:USD").assertDoesNotExist()
-        compose.onNodeWithContentDescription("Abrir menú").performClick();compose.onNodeWithText("Seguimiento").performScrollTo().performClick(); compose.onNodeWithText("Obligaciones").performScrollTo().performClick();awaitTag("financial-summary")
+        compose.onNodeWithContentDescription("Abrir menú").performClick();compose.onNodeWithText("Seguimiento").performScrollTo().performClick(); compose.onNodeWithText("Pagos").performScrollTo().performClick();awaitTag("financial-summary")
         compose.onNodeWithText("Volver").performClick();awaitText("CAPA 1")
         compose.onNodeWithTag("nodes-list").performScrollToNode(hasText("Tratamiento"));compose.onNodeWithText("Tratamiento").assertExists()
     }

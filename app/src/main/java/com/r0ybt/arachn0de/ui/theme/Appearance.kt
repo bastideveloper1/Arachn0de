@@ -21,6 +21,14 @@ private fun palette(background: Long, middle: Long, end: Long, surface: Long, ra
     AppearancePalette(Color(background), Color(middle), Color(end), Color(scrim), Color(surface), Color(raised),
         Color(text), Color(muted), Color(primary), Color(secondary), Color(solid), Color(outline), Color(controls), Color(selection), Color(accentSurface))
 
+/** Built-in monochrome themes reuse the existing preference and portable theme codecs. */
+private fun monochrome(background:Long,surface:Long,raised:Long,outline:Long,text:Long=0xFFEEEEEE)=
+    BlackWhite90.palette.copy(background=Color(background),middle=Color(background),end=Color(background),scrim=Color(background),
+        surface=Color(surface),raised=Color(raised),panel=Color(surface),taskPanel=Color(surface),
+        text=Color(text),muted=Color(0xFFD0D0D0),primary=Color(0xFFD0D0D0),secondary=Color(0xFFD0D0D0),
+        controls=Color(raised),solidPrimary=Color(raised),onSolidPrimary=Color(text),outline=Color(outline),
+        selection=Color(outline),accentSurface=Color(raised))
+
 enum class AppearanceTheme(val label: String, val palette: AppearancePalette) {
     Arachn0de("Charcoal", BlackWhite90.palette),
     Dark("Dark", BlackWhite90.palette.copy(
@@ -46,39 +54,73 @@ enum class AppearanceTheme(val label: String, val palette: AppearancePalette) {
         outline=Color(0xFF515963),controls=Color(0xFFD4D9DE),selection=Color(0xFFD4D9DE),accentSurface=Color(0xFFD4D9DE),onSolidPrimary=Color(0xFFEDF0F2),light=true)),
 
     GreenBash("Green Bash", BashColors.palette(BlackWhite90.palette)),
+    DarkGrey("Dark Grey",monochrome(0xFF1C1C1C,0xFF282828,0xFF383838,0xFF555555)),
+    PureBlack("Pure Black",monochrome(0xFF000000,0xFF0C0C0C,0xFF202020,0xFF484848)),
+    BlackAndWhite("Black & White",monochrome(0xFF000000,0xFF101010,0xFF242424,0xFFD0D0D0,0xFFFFFFFF)),
+    Graphite("Graphite",monochrome(0xFF262626,0xFF343434,0xFF424242,0xFF606060)),
 }
+/** Historical definitions remain readable by portable skins and backups. */
+// Resolve after enum initialization: monochrome() initializes this file facade while
+// AppearanceTheme is still constructing its entries on a locked cold start.
+internal val retiredAppearanceThemes get()=setOf(AppearanceTheme.DarkGrey,AppearanceTheme.BlackAndWhite,AppearanceTheme.Graphite)
+internal val selectableAppearanceThemes get()=AppearanceTheme.entries.filterNot {it in retiredAppearanceThemes}
+private fun AppearanceTheme.currentSelection()=if(this in retiredAppearanceThemes) AppearanceTheme.Arachn0de else this
+
 /** Every destination shares the selected colors; terminal layout remains scoped to General. */
 internal val AppearanceTheme.applicationPalette get() = palette
 enum class AppearanceTextSize(val label: String) { Small("Pequeña"), Medium("Mediana"), Large("Grande") }
 enum class IndicatorColor(val label:String,val color:Color) {
-    WHITE("Blanco",BlackWhite90.Text), GREY("Gris",Color(0xFF8D8D8D)), RED("Rojo",Color(0xFFFF8C8C)),
-    ORANGE("Naranja",Color(0xFFFFAD70)), YELLOW("Amarillo",Color(0xFFE6D477)), GREEN("Verde",Color(0xFF98CA9D)),
-    BLUE("Azul",Color(0xFF83BFFF)), VIOLET("Violeta",Color(0xFFC3A1E6))
+    WHITE("Blanco",BlackWhite90.Text), GREY("Gris",Color(0xFF8D8D8D)), RED("Rojo",Color(0xFFFF1744)),
+    ORANGE("Naranja",Color(0xFFFF9100)), YELLOW("Amarillo",Color(0xFFFFEA00)), GREEN("Verde",Color(0xFF00E676)),
+    BLUE("Azul",Color(0xFF2979FF)), VIOLET("Morado",Color(0xFFAA00FF)), LILAC("Lila",Color(0xFFD966FF))
 }
-internal val cardIndicatorNames=setOf("people","technologies","notes","tasks","files","due","today","high")
-data class AppearanceSettings(val theme: AppearanceTheme = AppearanceTheme.Arachn0de, val textSize: AppearanceTextSize = AppearanceTextSize.Small, val indicatorColors:Map<String,IndicatorColor> = emptyMap()) {
+internal val effortIndicatorNames=(1..5).map {"effort_$it"}.toSet()
+internal val cardIndicatorNames=setOf("people","technologies","notes","tasks","files","due","today","high","verify","birthday")+effortIndicatorNames
+enum class StatusSelectorDirection(val label:String) { VERTICAL("Vertical"), HORIZONTAL("Horizontal") }
+data class AppearanceSettings(val theme: AppearanceTheme = AppearanceTheme.Arachn0de, val textSize: AppearanceTextSize = AppearanceTextSize.Small, val indicatorColors:Map<String,IndicatorColor> = emptyMap(),val statusSelectorDirection:StatusSelectorDirection=StatusSelectorDirection.VERTICAL,val completionSoundEnabled:Boolean=true) {
+    val palette get()=theme.applicationPalette
     val bashTheme get() = theme == AppearanceTheme.GreenBash
 }
 
-/** Reads before the first composition; apply updates memory immediately and persists locally. */
-class AppearancePreferences(private val storage: SharedPreferences) {
+/** Session startup reads on IO; callers keep durable writes off the UI thread. */
+class AppearancePreferences private constructor(private val storage: SharedPreferences,private val cacheScope:com.r0ybt.arachn0de.security.PrivateCacheScope?) {
+    constructor(storage:SharedPreferences):this(storage,null)
+    internal constructor(storage:SharedPreferences,session:com.r0ybt.arachn0de.security.SecureFiles.Session):this(storage,session.caches)
     private fun read():AppearanceSettings {
-        if(storage.all[THEME]=="Minimalist") check(storage.edit().putString(THEME,AppearanceTheme.Arachn0de.name).commit()) {"No se pudo conservar la apariencia."}
-        return AppearanceSettings(if (storage.all[BASH] == true) AppearanceTheme.GreenBash else AppearanceTheme.entries.firstOrNull {it.name==storage.all[THEME]} ?: AppearanceTheme.Arachn0de,
-            AppearanceTextSize.entries.firstOrNull {it.name==storage.all[TEXT]} ?: AppearanceTextSize.Small,
-            cardIndicatorNames.mapNotNull {name->IndicatorColor.entries.firstOrNull {it.name==storage.all[INDICATOR+name]}?.let {name to it}}.toMap())
+        val values=storage.all
+        if(values[THEME]=="Minimalist" || retiredAppearanceThemes.any {it.name==values[THEME]}) check(storage.edit().putString(THEME,AppearanceTheme.Arachn0de.name).commit()) {"No se pudo conservar la apariencia."}
+        return AppearanceSettings(if (values["custom_theme"] is String) AppearanceTheme.Arachn0de else if (values[BASH] == true) AppearanceTheme.GreenBash else AppearanceTheme.entries.firstOrNull {it.name==values[THEME]}?.currentSelection() ?: AppearanceTheme.Arachn0de,
+            AppearanceTextSize.entries.firstOrNull {it.name==values[TEXT]} ?: AppearanceTextSize.Small,
+            cardIndicatorNames.mapNotNull {name->IndicatorColor.entries.firstOrNull {it.name==values[INDICATOR+name]}?.let {name to it}}.toMap(),StatusSelectorDirection.entries.firstOrNull {it.name==values[DIRECTION]} ?: StatusSelectorDirection.VERTICAL,storage.getBoolean(COMPLETION_SOUND,true))
     }
     var settings by mutableStateOf(read())
         private set
-    fun reload() {settings=read()}
+    init {cacheScope?.register(AutoCloseable {synchronized(this) {settings=AppearanceSettings()}})}
+    fun reload() {
+        if(cacheScope?.isOpen==false)return
+        val next=try {read()} catch(failure:Exception) {if(cacheScope?.isOpen==false)return;throw failure}
+        synchronized(this) {if(cacheScope?.isOpen!=false)settings=next}
+    }
+    suspend fun setCompletionSoundEnabled(enabled:Boolean) {
+        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {check(storage.edit().putBoolean(COMPLETION_SOUND,enabled).commit()) {"No se pudo guardar el sonido."}}
+        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {settings=settings.copy(completionSoundEnabled=enabled)}
+    }
+    fun setStatusSelectorDirection(value:StatusSelectorDirection) {
+        check(storage.edit().putString(DIRECTION,value.name).commit()) {"No se pudo guardar la orientación."}
+        settings=settings.copy(statusSelectorDirection=value)
+    }
     fun observe(listener:android.content.SharedPreferences.OnSharedPreferenceChangeListener) {storage.registerOnSharedPreferenceChangeListener(listener)}
     fun unobserve(listener:android.content.SharedPreferences.OnSharedPreferenceChangeListener) {storage.unregisterOnSharedPreferenceChangeListener(listener)}
-    fun setTheme(theme: AppearanceTheme) { storage.edit().putString(THEME, theme.name).remove(BASH).apply();settings = settings.copy(theme = theme) }
+    fun setTheme(value: AppearanceTheme) { val theme=value.currentSelection();storage.edit().putString(THEME, theme.name).remove(BASH).remove("custom_theme").apply();settings = settings.copy(theme = theme) }
     fun setTextSize(size: AppearanceTextSize) { storage.edit().putString(TEXT, size.name).apply();settings = settings.copy(textSize = size) }
     fun setIndicatorColor(name:String,color:IndicatorColor) {
         require(name in cardIndicatorNames)
         storage.edit().putString(INDICATOR+name,color.name).apply()
         settings=settings.copy(indicatorColors=settings.indicatorColors+(name to color))
+    }
+    fun resetEffortColors() {
+        val editor=storage.edit();effortIndicatorNames.forEach {editor.remove(INDICATOR+it)};editor.apply()
+        settings=settings.copy(indicatorColors=settings.indicatorColors-effortIndicatorNames)
     }
     fun resetIndicatorColors() {
         val editor=storage.edit();cardIndicatorNames.forEach {editor.remove(INDICATOR+it)};editor.apply()
@@ -88,6 +130,9 @@ class AppearancePreferences(private val storage: SharedPreferences) {
         private const val INDICATOR="indicator_color_"
         fun validate(payload:String) {
             val values=com.r0ybt.arachn0de.security.EncryptedPreferences.decode(payload)
+            com.r0ybt.arachn0de.backup.legacy.CustomThemeCodec.validatePreferences(values)
+            require(COMPLETION_SOUND !in values || values[COMPLETION_SOUND] is Boolean) {"Sonido de tareas inválido."}
+            require(DIRECTION !in values || StatusSelectorDirection.entries.any {it.name==values[DIRECTION]}) {"Orientación de selector inválida."}
             require(THEME !in values || values[THEME] is String) {"Tema inválido."}
             require(BASH !in values || values[BASH] is Boolean) {"Modo Bash inválido."}
             require(TEXT !in values || values[TEXT] is String) {"Tamaño de texto inválido."}
@@ -95,6 +140,12 @@ class AppearancePreferences(private val storage: SharedPreferences) {
                 require(key.removePrefix(INDICATOR) in cardIndicatorNames && IndicatorColor.entries.any {it.name==value}) {"Color de indicador inválido."}
             }
         }
+        const val COMPLETION_SOUND="task_completion_sound"
+        fun hasCompletionSoundData(payload:String):Boolean {
+            val values=com.r0ybt.arachn0de.security.EncryptedPreferences.decode(payload)
+            return COMPLETION_SOUND in values || com.r0ybt.arachn0de.backup.legacy.CustomThemeCodec.library(values[com.r0ybt.arachn0de.backup.legacy.CustomThemeCodec.LIBRARY] as? String).any {it.completionSound!=null}
+        }
+        const val DIRECTION="status_selector_direction"
         private const val BASH="bash_theme"
         const val FILE = "appearance_preferences"; private const val THEME = "theme"; private const val TEXT = "text_size" }
 }
@@ -105,7 +156,7 @@ internal val LocalAppearancePalette = staticCompositionLocalOf { AppearanceTheme
 internal object UnlockAppearanceCache {
     const val FILE="appearance_unlock_cache"
     private const val KEY="theme"
-    fun read(context:android.content.Context)=AppearanceTheme.entries.firstOrNull {it.name==context.getSharedPreferences(FILE,0).all[KEY]} ?: AppearanceTheme.Arachn0de
+    fun read(context:android.content.Context)=AppearanceTheme.entries.firstOrNull {it.name==context.getSharedPreferences(FILE,0).all[KEY]}?.currentSelection() ?: AppearanceTheme.Arachn0de
     fun update(context:android.content.Context,theme:AppearanceTheme) {
         val storage=context.getSharedPreferences(FILE,0)
         if(storage.all[KEY]!=theme.name) storage.edit().putString(KEY,theme.name).apply()

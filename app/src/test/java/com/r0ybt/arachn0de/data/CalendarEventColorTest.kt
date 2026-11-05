@@ -65,7 +65,7 @@ class CalendarEventColorTest {
             assertEquals("Conservar",db.calendarEventDao().all().single().description)
             assertEquals("roy",db.calendarEventDao().people().single().personId)
             CalendarEventRepository(db).save(event(),setOf("roy"),true)
-            assertEquals(47,db.openHelper.writableDatabase.version)
+            assertEquals(50, db.openHelper.writableDatabase.version)
         } finally {db.close()}
     }
 }

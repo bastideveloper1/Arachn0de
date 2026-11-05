@@ -11,8 +11,11 @@ import java.util.TimeZone
 internal fun rememberFinancial(
     tree: NodeTreeSnapshot, responsibleByNode: Map<String, List<Person>>,
     selection: FinancialSelection, currentMonth: CalendarMonth, zoneId: String,
-): State<FinancialSnapshot?> = produceState<FinancialSnapshot?>(null, tree, responsibleByNode, selection, currentMonth, zoneId) {
-    value = withContext(Dispatchers.Default) {
-        FinancialSnapshot(tree, responsibleByNode, selection, currentMonth, TimeZone.getTimeZone(zoneId))
+): State<FinancialSnapshot?> {
+    val paid=com.r0ybt.arachn0de.ui.LocalBankPaid.current
+    return produceState<FinancialSnapshot?>(null, tree, responsibleByNode, selection, currentMonth, zoneId,paid) {
+        value = withContext(Dispatchers.Default) {
+            FinancialSnapshot(tree, responsibleByNode, selection, currentMonth, TimeZone.getTimeZone(zoneId),paid)
+        }
     }
 }

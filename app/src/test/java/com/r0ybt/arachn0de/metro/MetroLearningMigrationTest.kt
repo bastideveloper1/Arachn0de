@@ -39,7 +39,7 @@ class MetroLearningMigrationTest {
         repeat(2) {
             val db=Arachn0deDatabase.create(context)
             try {
-                assertEquals(39,db.openHelper.writableDatabase.version)
+                assertEquals(50, db.openHelper.writableDatabase.version)
                 assertEquals(before,snapshot(db.openHelper.writableDatabase))
                 assertTrue(db.metroLearningDao().events().isEmpty());assertNull(db.metroLearningDao().clock())
                 db.openHelper.writableDatabase.query("PRAGMA foreign_key_check").use {assertFalse(it.moveToFirst())}

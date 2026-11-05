@@ -14,6 +14,6 @@ import androidx.compose.ui.unit.dp
 @Composable internal fun InformationalTitle(title:String,onClose:()->Unit) {
     Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(8.dp)) {
         Text(title,Modifier.weight(1f),maxLines=2,overflow=TextOverflow.Ellipsis)
-        IconButton(onClick=onClose,modifier=Modifier.size(48.dp)) {Icon(Icons.Default.Close,"Cerrar")}
+        IconButton(onClick=onClose,modifier=Modifier.size(48.dp)) {LucideIcon(Icons.Default.Close,"Cerrar",tint=androidx.compose.material3.LocalContentColor.current)}
     }
 }

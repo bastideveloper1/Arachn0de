@@ -4,7 +4,7 @@ package com.r0ybt.arachn0de.domain.model
  * Images are atomic: captions and IDs never enter the formatting grammar. Unpaired markers are literal.
  */
 object DescriptionParser {
-    enum class Format(val marker: String) { Bold("**"), Italic("*"), Underline("__") }
+    enum class Format(val marker: String) { Bold("**"), Italic("*"), Underline("__"), Highlight("[[arachnode:highlight]]"), Title("[[arachnode:title]]"), Code("[[arachnode:code]]") }
     data class Part(val text: String = "", val imageId: String? = null, val label: String? = null,
         val formats: Set<Format> = emptySet(), val audio:Boolean=false)
     private data class Delimiter(val at: Int, val format: Format, val opening: Boolean, val mate: Int = -1)
@@ -31,22 +31,22 @@ object DescriptionParser {
             val url=web[i]
             if(url!=null) {i+=url.length;continue}
             if (image != null) { i = image.range.last + 1; continue }
-            if (text[i] == '\\' && i + 1 < text.length && text[i + 1] in escapable) { i += 2; continue }
+            if (stack.lastOrNull()?.format != Format.Code && text[i] == '\\' && i + 1 < text.length && text[i + 1] in escapable) { i += 2; continue }
             val top = stack.lastOrNull()
             // A pair of stars inside italic text opens bold; an odd run can close italic first.
             var starEnd = i
             if (top?.format == Format.Italic) while (starEnd < text.length && text[starEnd] == '*') starEnd++
             val canClose = top?.format != Format.Italic || (starEnd - i) % 2 != 0
-            if (top != null && canClose && text.startsWith(top.format.marker, i) && i > top.at + top.format.marker.length && !text[i - 1].isWhitespace()) {
+            if (top != null && canClose && text.startsWith(top.format.marker, i) && i > top.at + top.format.marker.length && (top.format in setOf(Format.Code,Format.Title,Format.Highlight) || !text[i - 1].isWhitespace())) {
                 paired[top.at] = top.copy(mate = i)
                 paired[i] = Delimiter(i, top.format, false, top.at)
                 stack.removeAt(stack.lastIndex)
                 i += top.format.marker.length
             } else {
-                val format = Format.entries.firstOrNull { text.startsWith(it.marker, i) }
+                val format = Format.entries.firstOrNull { text.startsWith(it.marker, i) && (top?.format != Format.Code || it == Format.Highlight) }
                 if (format != null) {
                     val end = i + format.marker.length
-                    if (end < text.length && !text[end].isWhitespace()) stack.add(Delimiter(i, format, true))
+                    if (end < text.length && (format in setOf(Format.Code,Format.Title,Format.Highlight) || !text[end].isWhitespace())) stack.add(Delimiter(i, format, true))
                     i = end
                 } else i++
             }
@@ -62,7 +62,7 @@ object DescriptionParser {
         val active = mutableListOf<Format>()
         val buffer = StringBuilder()
         fun flush() {
-            if (buffer.isNotEmpty()) { parts.add(Part(text = buffer.toString(), formats = active.toSet())); buffer.clear() }
+            if (buffer.isNotEmpty()) { parts.add(Part(text = buffer.toString(), formats = active.filterNot { it == Format.Highlight }.toSet())); buffer.clear() }
         }
         var i = 0
         while (i < text.length) {
@@ -72,7 +72,7 @@ object DescriptionParser {
             val delimiter = paired[i]
             when {
                 image != null -> {
-                    flush(); parts.add(Part(imageId = image.groupValues[1], label = AttachmentReferences.label(image), formats = active.toSet(),audio=AttachmentReferences.isAudio(image)))
+                    flush(); parts.add(Part(imageId = image.groupValues[1], label = AttachmentReferences.label(image), formats = active.filterNot { it == Format.Highlight }.toSet(),audio=AttachmentReferences.isAudio(image)))
                     i = image.range.last + 1
                 }
                 delimiter != null -> {
@@ -80,11 +80,33 @@ object DescriptionParser {
                     if (delimiter.opening) active.add(delimiter.format) else active.remove(delimiter.format)
                     i += delimiter.format.marker.length
                 }
-                text[i] == '\\' && i + 1 < text.length && text[i + 1] in escapable -> { buffer.append(text[i + 1]); i += 2 }
+                Format.Code !in active && text[i] == '\\' && i + 1 < text.length && text[i + 1] in escapable -> { buffer.append(text[i + 1]); i += 2 }
                 else -> buffer.append(text[i++])
             }
         }
         flush()
         return parts
     }
+    /** Source correspondence shared by word gestures and the editor; references stay atomic. */
+    data class Projection(val text:String,val sources:List<Int>,val references:Set<Int>)
+    fun projection(text:String,labels:Map<String,String> = emptyMap()):Projection {
+        val paired=delimiters(text);val images=AttachmentReferences.matches(text).associateBy {it.range.first}
+        val out=StringBuilder();val sources=mutableListOf<Int>();val refs=mutableSetOf<Int>()
+        val active=mutableSetOf<Format>();var i=0
+        while(i<text.length) {
+            val d=paired[i];val image=images[i]
+            when {
+                image!=null->{
+                    val label=AttachmentReferences.label(image) ?: labels[image.groupValues[1]] ?: if(AttachmentReferences.isAudio(image)) "Audio no disponible" else "Imagen no disponible"
+                    label.forEach {refs.add(out.length);out.append(it);sources.add(i)};i=image.range.last+1
+                }
+                d!=null->{if(d.opening)active.add(d.format) else active.remove(d.format);i+=d.format.marker.length}
+                Format.Code !in active && text[i]=='\\' && i+1<text.length && text[i+1] in escapable->{out.append(text[i+1]);sources.add(i);i+=2}
+                else->{out.append(text[i]);sources.add(i);i++}
+            }
+        }
+        return Projection(out.toString(),sources,refs)
+    }
+    fun hasExtendedFormats(text:String)=formatRanges(text).any {it.format in setOf(Format.Highlight,Format.Title,Format.Code)}
+
 }

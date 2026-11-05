@@ -129,7 +129,7 @@ private fun EventEditorPilot(draft:CalendarEventDraft,repo:CalendarEventReposito
         key(mode) {ModularPanelLayout(outlinedBody=mode!="COMPACT",headerDivider=mode!="COMPACT",bodyModifier=Modifier.testTag("event-fields"),fullScreen=mode=="DESCRIPTION" && descriptionFull,fieldOwnsScroll=mode=="DESCRIPTION",
             header={Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically) {
                 Text(labels[mode] ?: if(draft.isNew) "Nuevo evento" else "Editar evento",style=MaterialTheme.typography.titleLarge,modifier=Modifier.weight(1f).padding(bottom=if(mode=="COMPACT") 0.dp else 8.dp))
-                if(draft.isNew && mode=="COMPACT") IconButton(enabled=!busy,onClick=::requestClose,modifier=Modifier.testTag("event-close")) {Icon(Icons.Default.Close,"Cerrar")}
+                if(draft.isNew && mode=="COMPACT") IconButton(enabled=!busy,onClick=::requestClose,modifier=Modifier.testTag("event-close")) {LucideIcon(Icons.Default.Close,"Cerrar",tint=androidx.compose.material3.LocalContentColor.current)}
             }},
             actions={Column(Modifier.fillMaxWidth().testTag("event-actions")) {
                 if(mode=="DESCRIPTION" && !descriptionFull) TextButton(enabled=!busy,onClick={descriptionFull=true},modifier=Modifier.testTag("event-description-expand")) {Text("Ampliar")}

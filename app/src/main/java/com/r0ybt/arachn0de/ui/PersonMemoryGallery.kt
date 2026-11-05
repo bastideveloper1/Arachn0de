@@ -53,11 +53,11 @@ private fun imageFrom(values:List<String>)=PersonMemoryImageEntity(values[0],val
 private val MemoryImagesSaver=listSaver<List<PersonMemoryImageEntity>,String>(save={it.flatMap(::imageValues)},restore={it.chunked(7).map(::imageFrom)})
 private val MemoryImageSaver=listSaver<PersonMemoryImageEntity?,String>(save={it?.let(::imageValues).orEmpty()},restore={if(it.isEmpty()) null else imageFrom(it)})
 private val MemoryRequestSaver=listSaver<MemoryEditRequest?,String>(save={request->
-    if(request==null) emptyList() else listOf(request.entry.id,request.entry.personId,request.entry.date.orEmpty(),request.entry.description,request.entry.position.toString(),request.draft,request.image.orEmpty(),request.creating.toString(),request.entry.isPinned.toString())+request.images.flatMap(::imageValues)
+    if(request==null) emptyList() else listOf(request.entry.id,request.entry.personId,request.entry.date.orEmpty(),request.entry.description,request.entry.position.toString(),request.draft,request.image.orEmpty(),request.creating.toString(),request.entry.isPinned.toString(),request.entry.peopleVisible.toString())+request.images.flatMap(::imageValues)
 },restore={
     if(it.isEmpty()) null else {
-        val header=if((it.size-8)%7==0) 8 else 9
-        MemoryEditRequest(PersonMemoryEntity(it[0],it[1],it[2].ifEmpty {null},it[3],it[4].toInt(),header==9 && it[8].toBoolean()),it.drop(header).chunked(7).map(::imageFrom),it[5],it[6].ifEmpty {null},it[7].toBoolean())
+        val header=if((it.size-10)%7==0) 10 else if((it.size-8)%7==0) 8 else 9
+        MemoryEditRequest(PersonMemoryEntity(it[0],it[1],it[2].ifEmpty {null},it[3],it[4].toInt(),header>=9 && it[8].toBoolean(),if(header>=10) it[9].toBoolean() else true),it.drop(header).chunked(7).map(::imageFrom),it[5],it[6].ifEmpty {null},it[7].toBoolean())
     }
 })
 
@@ -67,6 +67,7 @@ private val MemoryRequestSaver=listSaver<MemoryEditRequest?,String>(save={reques
     val attachments=app.attachmentRepository
     val repository=remember(app.database,people) {PersonMemoryRepository(app.database,privateStorageContext(context),attachments,people)}
     val state by remember(repository) {repository.observe()}.collectAsState(initial=null)
+    var visitingPerson by rememberSaveable(person) {mutableStateOf<String?>(null)}
     var viewing by rememberSaveable(person) {mutableStateOf<String?>(null)}
     var editing by rememberSaveable(person,stateSaver=MemoryRequestSaver) {mutableStateOf<MemoryEditRequest?>(null)}
     var historical by rememberSaveable(person) {mutableStateOf<String?>(null)}
@@ -76,22 +77,31 @@ private val MemoryRequestSaver=listSaver<MemoryEditRequest?,String>(save={reques
     var busy by remember {mutableStateOf(false)}
     var error by remember {mutableStateOf<String?>(null)}
     val scope=rememberCoroutineScope()
-    val picker=rememberLauncherForActivityResult(ActivityResultContracts.PickMultipleVisualMedia()) {uris->
-        if(uris.isNotEmpty()) {
+    fun createFromPhotos(uris:List<android.net.Uri>,done:(Boolean)->Unit={},cameraPhoto:com.r0ybt.arachn0de.photos.CameraPhoto?=null) {
+        if(uris.isNotEmpty() || cameraPhoto!=null) {
             busy=true
             scope.launch {
-                val draft=UUID.randomUUID().toString()
+                val draft=UUID.randomUUID().toString();var succeeded=false
                 try {
-                    val files=uris.map {attachments.importGallery(it,draft)}.distinctBy {it.id}
+                    val files=cameraPhoto?.let {attachments.retainGallery(draft,setOf(it.attachment.id));listOf(it.attachment)} ?: uris.map {attachments.importPrivatePhoto(it,draft)}.distinctBy {it.id}
                     val id=UUID.randomUUID().toString()
                     editing=MemoryEditRequest(PersonMemoryEntity(id,person,LocalDate.now().toString(),"",0),
                         files.mapIndexed {i,file->PersonMemoryImageEntity(UUID.randomUUID().toString(),id,file.id,null,i)},draft,null,true)
+                    succeeded=true
                 } catch(c:CancellationException) {withContext(NonCancellable) {attachments.discardDraft(draft)};throw c}
                 catch(e:Exception) {withContext(NonCancellable) {attachments.discardDraft(draft)};error=e.message ?: "No se pudieron agregar las fotografías."}
-                finally {busy=false}
+                finally {busy=false;done(succeeded)}
             }
         }
     }
+    var sourceOpen by remember {mutableStateOf(false)}
+    val picker=rememberLauncherForActivityResult(ActivityResultContracts.PickMultipleVisualMedia()) {uris->createFromPhotos(uris)}
+    val camera=rememberPrivatePhotoCamera(!busy && editing==null,{error=it}) {photo,done->createFromPhotos(emptyList(),done,photo)}
+    if(sourceOpen) ModularPanelDialog(onDismissRequest={sourceOpen=false},compact=true,plainBody=true,showActions=false,
+        title={Text("Agregar fotografías")},text={ModularFieldMenu(listOf(
+            ModularPanelOption("Cámara",Icons.Default.CameraAlt,"memory-camera",!busy) {sourceOpen=false;camera()},
+            ModularPanelOption("Galería",Icons.Default.Image,"memory-gallery",!busy) {sourceOpen=false;picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))}
+        ),compact=true)},confirmButton={})
     val entries=state?.entries.orEmpty().filter {it.personId==person}
     LaunchedEffect(state,viewing) {if(state!=null && viewing!=null && entries.none {it.id==viewing}) viewing=null}
     drag.groups=entries.associate {it.id to it.isPinned};drag.enabled=!busy && editing==null && viewing==null
@@ -104,7 +114,7 @@ private val MemoryRequestSaver=listSaver<MemoryEditRequest?,String>(save={reques
         beforeGallery()
         item(key="gallery-header") {Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically) {
             Text("Fotografías",Modifier.weight(1f),style=MaterialTheme.typography.titleMedium)
-            IconButton(enabled=!busy && state!=null,onClick={picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))},modifier=Modifier.size(48.dp)) {Icon(Icons.Default.Add,"Agregar fotografías")}
+            IconButton(enabled=!busy && state!=null,onClick={sourceOpen=true},modifier=Modifier.size(48.dp)) {Icon(Icons.Default.Add,"Agregar fotografías")}
         }}
         if(state==null) item {Text("Cargando fotografías…")}
         else if(entries.isEmpty()) item {Text("Sin fotografías.",color=Arachn0deColors.TextSecondary)}
@@ -168,9 +178,10 @@ private val MemoryRequestSaver=listSaver<MemoryEditRequest?,String>(save={reques
         }
     }
     val selected=entries.firstOrNull {it.id==viewing}
-    if(selected!=null && state!=null) MemoryViewer(selected,entries,state!!,repository,people,attachments,onEntryChanged={viewing=it},onEdit={active,image->
+    if(selected!=null && state!=null && visitingPerson==null) MemoryViewer(selected,entries,state!!,repository,people,attachments,onEntryChanged={viewing=it},onEdit={active,image->
         editing=MemoryEditRequest(active,state!!.photos(active.id),UUID.randomUUID().toString(),image)
-    },onClose={viewing=null},onError={error=it})
+    },onClose={viewing=null},onError={error=it},onOpenPerson={visitingPerson=it})
+    visitingPerson?.let {id->PersonDetailDialog(id) {visitingPerson=null}}
     editing?.let {request->if(state!=null) MemoryEditor(request,state!!,repository,people,attachments,
         onClose={editing=null},onError={error=it})}
     error?.let {AlertDialog(onDismissRequest={error=null},text={Text(it)},confirmButton={TextButton(onClick={error=null}) {Text("Cerrar")}})}
@@ -182,14 +193,14 @@ private val MemoryRequestSaver=listSaver<MemoryEditRequest?,String>(save={reques
         value=withContext(Dispatchers.IO) {if(file==null) null else runCatching {repository.thumbnail(image,state,256)}.getOrNull()}
     }
     Box(modifier.background(Arachn0deColors.ControlSurface),contentAlignment=Alignment.Center) {
-        if(bitmap!=null) Image(bitmap!!.asImageBitmap(),"Fotografía",Modifier.fillMaxSize(),contentScale=ContentScale.Crop)
+        if(bitmap!=null) FramedAvatar(bitmap!!,com.r0ybt.arachn0de.domain.model.AvatarFraming(image.zoom,image.x,image.y),Modifier.fillMaxSize(),shape=androidx.compose.ui.graphics.RectangleShape,filterQuality=androidx.compose.ui.graphics.FilterQuality.High)
         else Icon(Icons.Default.Image,"Fotografía no disponible",Modifier.size(24.dp))
     }
 }
 
 @OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable private fun MemoryViewer(initialEntry:PersonMemoryEntity,entries:List<PersonMemoryEntity>,state:PersonMemoryState,repository:PersonMemoryRepository,people:PersonRepository,attachments:AttachmentRepository,
-    onEntryChanged:(String)->Unit,onEdit:(PersonMemoryEntity,String?)->Unit,onClose:()->Unit,onError:(String)->Unit) {
+    onEntryChanged:(String)->Unit,onEdit:(PersonMemoryEntity,String?)->Unit,onClose:()->Unit,onError:(String)->Unit,onOpenPerson:(String)->Unit) {
     val publications=rememberPagerState(initialPage=entries.indexOfFirst {it.id==initialEntry.id}.coerceAtLeast(0),pageCount={entries.size})
     val entry=entries.getOrNull(publications.currentPage) ?: return
     LaunchedEffect(entry.id) {onEntryChanged(entry.id)}
@@ -213,7 +224,7 @@ private val MemoryRequestSaver=listSaver<MemoryEditRequest?,String>(save={reques
     BottomModulesDialog(onDismissRequest={if(!busy) onClose()},properties=DialogProperties(usePlatformDefaultWidth=false,decorFitsSystemWindows=false)) {
         Column(Modifier.fillMaxSize().background(Arachn0deColors.Background).safeDrawingPadding().padding(top=12.dp).testTag("memory-viewer")) {
             Row(Modifier.fillMaxWidth().padding(horizontal=12.dp),verticalAlignment=Alignment.CenterVertically) {
-                IconButton(enabled=!busy,onClick=onClose,modifier=Modifier.size(48.dp)) {Icon(Icons.Default.ArrowBack,"Volver")}
+                IconButton(enabled=!busy,onClick=onClose,modifier=Modifier.size(48.dp)) {LucideIcon(Icons.Default.ArrowBack,"Volver",tint=androidx.compose.material3.LocalContentColor.current)}
                 Spacer(Modifier.weight(1f));Text("${if(images.isEmpty()) 0 else photoIndex+1}/${images.size}")
             }
             VerticalPager(publications,Modifier.fillMaxWidth().padding(horizontal=12.dp).weight(1f).testTag("memory-publications"),userScrollEnabled=!busy,key={entries[it].id}) {publication->
@@ -239,6 +250,7 @@ private val MemoryRequestSaver=listSaver<MemoryEditRequest?,String>(save={reques
             Column(Modifier.fillMaxWidth().padding(horizontal=12.dp).heightIn(max=160.dp).verticalScroll(rememberScrollState()),verticalArrangement=Arrangement.spacedBy(4.dp)) {
                 Text(current?.date ?: entry.date ?: "Sin fecha",style=MaterialTheme.typography.bodySmall)
                 if(entry.description.isNotBlank()) Text(entry.description)
+                MemoryPeoplePresentation(entry,state,onOpenPerson)
             }
             ModularPanelSurface(Modifier.fillMaxWidth(),shadowElevation=0.dp) {
             Row(Modifier.fillMaxWidth().padding(4.dp),horizontalArrangement=Arrangement.spacedBy(6.dp)) {
@@ -278,6 +290,10 @@ private val MemoryRequestSaver=listSaver<MemoryEditRequest?,String>(save={reques
     var date by rememberSaveable(request.draft) {mutableStateOf(request.entry.date)}
     var description by rememberSaveable(request.draft) {mutableStateOf(request.entry.description)}
     var images by rememberSaveable(request.draft,stateSaver=MemoryImagesSaver) {mutableStateOf(request.images)}
+    var participants by rememberSaveable(request.draft,stateSaver=MemoryPeopleSaver) {mutableStateOf(state.people(request.entry.id))}
+    var confirmedParticipants by rememberSaveable(request.draft,stateSaver=MemoryPeopleSaver) {mutableStateOf(state.people(request.entry.id))}
+    var peopleVisible by rememberSaveable(request.draft) {mutableStateOf(request.entry.peopleVisible)}
+    var confirmedPeopleVisible by rememberSaveable(request.draft) {mutableStateOf(request.entry.peopleVisible)}
     var confirmedDate by rememberSaveable(request.draft) {mutableStateOf(request.entry.date)}
     var confirmedDescription by rememberSaveable(request.draft) {mutableStateOf(request.entry.description)}
     var confirmedImages by rememberSaveable(request.draft,stateSaver=MemoryImagesSaver) {mutableStateOf(request.images)}
@@ -310,35 +326,40 @@ private val MemoryRequestSaver=listSaver<MemoryEditRequest?,String>(save={reques
         } catch(c:CancellationException) {throw c} catch(e:Exception) {onError(e.message ?: "No se pudieron preparar las fotografías.")}
     }
     fun cancel() {if(!busy) {busy=true;scope.launch {try {release();onClose()} catch(c:CancellationException) {throw c} catch(e:Exception) {onError(e.message ?: "No se pudo cancelar.")} finally {busy=false}}}}
-    val picker=rememberLauncherForActivityResult(ActivityResultContracts.PickMultipleVisualMedia()) {uris->if(uris.isNotEmpty()) {
+    fun addPhotos(uris:List<android.net.Uri>,done:(Boolean)->Unit={},cameraPhoto:com.r0ybt.arachn0de.photos.CameraPhoto?=null) {if(uris.isNotEmpty() || cameraPhoto!=null) {
         busy=true;scope.launch {
-            val batch=UUID.randomUUID().toString()
+            val batch=UUID.randomUUID().toString();var succeeded=false
             try {
-                val files=uris.map {attachments.importGallery(it,batch)}.distinctBy {it.id}
+                val files=cameraPhoto?.let {attachments.retainGallery(batch,setOf(it.attachment.id));listOf(it.attachment)} ?: uris.map {attachments.importPrivatePhoto(it,batch)}.distinctBy {it.id}
                 attachments.retainGallery(request.draft,files.mapTo(hashSetOf()) {it.id})
                 attachments.discardDraft(batch)
                 val additions=files.filter {file->images.none {it.attachmentId==file.id}}.mapIndexed {i,file->PersonMemoryImageEntity(UUID.randomUUID().toString(),request.entry.id,file.id,null,images.size+i)}
                 images=images+additions
                 if(selected==null) selected=images.firstOrNull()?.id
+                succeeded=true
             } catch(c:CancellationException) {withContext(NonCancellable) {attachments.discardDraft(batch)};throw c}
             catch(e:Exception) {withContext(NonCancellable) {attachments.discardDraft(batch)};onError(e.message ?: "No se pudieron agregar las fotografías.")}
-            finally {busy=false}
+            finally {busy=false;done(succeeded)}
         }
     }}
+    val picker=rememberLauncherForActivityResult(ActivityResultContracts.PickMultipleVisualMedia()) {uris->addPhotos(uris)}
+    val camera=rememberPrivatePhotoCamera(!busy && ready,onError) {photo,done->addPhotos(emptyList(),done,photo)}
     val current=images.firstOrNull {it.id==selected} ?: images.firstOrNull()
-    fun cancelField() {date=confirmedDate;description=confirmedDescription;images=confirmedImages;frames=emptyList();field=null}
+    fun cancelField() {participants=confirmedParticipants;peopleVisible=confirmedPeopleVisible;date=confirmedDate;description=confirmedDescription;images=confirmedImages;frames=emptyList();field=null}
     BackHandler(enabled=field!=null) {if(!busy) cancelField()}
     ModularPanelDialog(showActions=field!=null,onDismissRequest={if(field!=null) {if(!busy) cancelField()} else cancel()},compact=true,plainBody=true,
         title={Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically) {
             Text(field ?: if(savedOnce) "Editar entrada" else "Nueva entrada",Modifier.weight(1f))
-            if(field==null) IconButton(enabled=!busy,onClick=::cancel) {Icon(Icons.Default.Close,"Cerrar entrada")}
+            if(field==null) IconButton(enabled=!busy,onClick=::cancel) {LucideIcon(Icons.Default.Close,"Cerrar entrada",tint=androidx.compose.material3.LocalContentColor.current)}
         }},text={Column(Modifier.fillMaxWidth(),verticalArrangement=Arrangement.spacedBy(8.dp)) {
             if(field==null) ModularFieldMenu(listOfNotNull(
                 ModularPanelOption("Fecha",Icons.Default.CalendarMonth,"memory-field-date",!busy) {field="Fecha"},
                 ModularPanelOption("Descripción de la entrada",Icons.Default.Subject,"memory-field-description",!busy) {field="Descripción de la entrada"},
+                ModularPanelOption("Personas",Icons.Default.Groups,"memory-field-people",!busy) {field="Personas"},
                 ModularPanelOption("Fotografías",Icons.Default.Image,"memory-field-photos",!busy) {field="Fotografías"},
                 current?.let {ModularPanelOption("Avatar principal",Icons.Default.Person,"memory-field-avatar",!busy) {field="Avatar principal"}}
             ),compact=true)
+            if(field=="Personas") MemoryPeoplePanel(request.entry.id,participants,state.profiles,peopleVisible,!busy,{participants=it},{peopleVisible=it})
             if(field=="Fecha") {
                     Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically) {
                         TextButton(enabled=!busy,onClick={dateTarget="entry"},modifier=Modifier.weight(1f).heightIn(min=48.dp)) {Icon(Icons.Default.CalendarMonth,null,Modifier.size(20.dp));Spacer(Modifier.width(6.dp));Text(date ?: "Seleccionar fecha")}
@@ -363,7 +384,10 @@ private val MemoryRequestSaver=listSaver<MemoryEditRequest?,String>(save={reques
                             }
                         }
                     }
-                    if(field=="Fotografías") TextButton(enabled=!busy && ready,onClick={picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))}) {Text("Agregar fotografías")}
+                    if(field=="Fotografías") Row {
+                        TextButton(enabled=!busy && ready,onClick={picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))}) {Text("Galería")}
+                        TextButton(enabled=!busy && ready,onClick=camera) {Text("Cámara")}
+                    }
                     if(current!=null) {
                         val legacy=state.legacy.firstOrNull {it.id==current.legacyPhotoId}
                         if(legacy!=null) TextButton(enabled=!busy && framing==null,onClick={if(!busy && framing==null) framing=framed(legacy)}) {Text("Ajustar encuadre")}
@@ -382,25 +406,28 @@ private val MemoryRequestSaver=listSaver<MemoryEditRequest?,String>(save={reques
                         state.legacy.filter {photo->frames.chunked(4).any {it[0]==photo.id}}.forEach {people.savePhoto(framed(it),request.draft)}
                         current?.let {repository.setAvatar(request.entry.personId,it,framedState)}
                     } else {
-                        val latest=request.entry.copy(date=confirmedDate,description=confirmedDescription)
+                        val latest=request.entry.copy(date=confirmedDate,description=confirmedDescription,peopleVisible=confirmedPeopleVisible)
                         val updated=when(field) {
+                            "Personas"->latest.copy(peopleVisible=peopleVisible)
                             "Fecha"->latest.copy(date=date)
                             "Descripción de la entrada"->latest.copy(description=description)
                             else->latest
                         }
-                        repository.save(updated,if(field=="Fotografías" || !savedOnce) images else confirmedImages,request.draft)
+                        val savedParticipants=repository.save(updated,if(field=="Fotografías" || !savedOnce) images else confirmedImages,request.draft,participants=if(field=="Personas") participants else null)
                         if(field=="Fotografías") state.legacy.filter {photo->frames.chunked(4).any {it[0]==photo.id}}.forEach {people.savePhoto(framed(it),request.draft)}
+                        confirmedParticipants=savedParticipants
+                        if(field=="Personas") confirmedPeopleVisible=peopleVisible
                         savedOnce=true
                         confirmedDate=updated.date;confirmedDescription=updated.description;confirmedImages=images
                         attachments.retainGallery(request.draft,images.mapNotNullTo(hashSetOf()) {it.attachmentId})
                     }
-                    date=confirmedDate;description=confirmedDescription;images=confirmedImages;frames=emptyList();field=null
+                    participants=confirmedParticipants;peopleVisible=confirmedPeopleVisible;date=confirmedDate;description=confirmedDescription;images=confirmedImages;frames=emptyList();field=null
                 } catch(c:CancellationException) {throw c} catch(e:Exception) {onError(e.message ?: "No se pudo guardar.")} finally {busy=false}
             }
         },modifier=Modifier.fillMaxWidth().heightIn(min=48.dp)) {Text("Confirmar")}})
     if(preview && current!=null) BottomModulesDialog(onDismissRequest={preview=false},properties=DialogProperties(usePlatformDefaultWidth=false)) {
         Column(Modifier.fillMaxSize().background(Arachn0deColors.Background).safeDrawingPadding()) {
-            IconButton(onClick={preview=false}) {Icon(Icons.Default.Close,"Cerrar previsualización")}
+            IconButton(onClick={preview=false}) {LucideIcon(Icons.Default.Close,"Cerrar previsualización",tint=androidx.compose.material3.LocalContentColor.current)}
             val file=runCatching {repository.file(current,state)}.getOrNull()
             val loaded by produceState<Pair<android.graphics.Bitmap?,Boolean>>(null to false,file?.absolutePath) {
                 value=withContext(Dispatchers.IO) {(if(file==null) null else runCatching {decodeAttachment(file)}.getOrNull()) to true}

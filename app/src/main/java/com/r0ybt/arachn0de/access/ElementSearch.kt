@@ -4,7 +4,7 @@ import com.r0ybt.arachn0de.domain.model.*
 import java.text.Normalizer
 import java.util.Locale
 
-internal data class ElementResult(val key:String,val projectId:String,val nodeId:String?,val title:String,val description:String,val type:String,val path:String,val destination:Boolean)
+internal data class ElementResult(val key:String,val projectId:String?,val nodeId:String?,val title:String,val description:String,val type:String,val path:String,val destination:Boolean,val parentKey:String?=null)
 internal object ElementSearch {
     fun normalize(text:String)=Normalizer.normalize(text,Normalizer.Form.NFD).replace(Regex("\\p{M}+"),"").lowercase(Locale.ROOT).replace(Regex("\\s+")," ").trim()
     fun index(projects:List<Project>,nodes:List<Node>):List<ElementResult> {
@@ -14,7 +14,7 @@ internal object ElementSearch {
             return (listOf(names[n.projectId].orEmpty())+titles.reversed()).joinToString(" › ")
         }
         return projects.map {ElementResult("project:${it.id}",it.id,null,it.name,it.description,"Proyecto",it.name,true)}+
-            nodes.filter {it.projectId in names}.map {ElementResult("node:${it.id}",it.projectId,it.id,it.title,it.description,if(it.isStructural) "Capa" else if(it.purpose==NodePurpose.NOTE) "Nota" else "Tarea",path(it),it.canReceiveChildren)}
+            nodes.filter {it.projectId==null || it.projectId in names}.map {ElementResult("node:${it.id}",it.projectId,it.id,it.title,it.description,if(it.isStructural) "Capa" else if(it.purpose==NodePurpose.NOTE) "Nota" else "Tarea",if(it.projectId==null) "Borradores" else path(it),it.projectId!=null && it.canReceiveChildren,it.parentId?.let {id->"node:$id"} ?: it.projectId?.let {id->"project:$id"})}
     }
     fun find(index:List<ElementResult>,query:String):List<ElementResult> {
         val q=normalize(query);return if(q.isEmpty()) index else index.filter {q in normalize(it.title)+" "+normalize(it.description)}

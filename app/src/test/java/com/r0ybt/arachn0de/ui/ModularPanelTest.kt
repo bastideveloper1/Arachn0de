@@ -86,6 +86,9 @@ class ModularPanelTest {
         compose.onNodeWithTag("modular-text-field").assert(hasText(multiline))
     }
 
+    // Legacy graphics reports a 36px single line for labelSmall (16sp line height),
+    // inflating 8px top/bottom padding to 52px. Native uses Android font metrics.
+    @org.robolectric.annotation.GraphicsMode(org.robolectric.annotation.GraphicsMode.Mode.NATIVE)
     @Test fun compactMenuUsesHorizontalContentAndFallsBackForLargeFonts() {
         var large by mutableStateOf(false)
         compose.setContent {Arachn0deTheme {
@@ -111,6 +114,30 @@ class ModularPanelTest {
         val enlargedSecond=compose.onNodeWithTag("compact:1").fetchSemanticsNode().boundsInRoot
         assertTrue(enlargedSecond.top>=enlargedFirst.bottom)
         compose.onNodeWithText("Fecha de nacimiento").assertIsDisplayed()
+    }
+
+    @org.robolectric.annotation.GraphicsMode(org.robolectric.annotation.GraphicsMode.Mode.NATIVE)
+    @Test fun compactMenuGrowsForLargeMultilineLabelsWithoutShrinkingTouchTargets() {
+        val text="Descripción de una propiedad suficientemente larga para ocupar varias líneas"
+        compose.setContent {Arachn0deTheme {
+            CompositionLocalProvider(LocalDensity provides Density(LocalDensity.current.density,3f)) {
+                Box(Modifier.width(320.dp)) {
+                    ModularFieldMenu(listOf(ModularPanelOption(text,androidx.compose.material.icons.Icons.Default.Subject,"large-option") {}),compact=true)
+                }
+            }
+        }}
+        val button=compose.onNodeWithTag("large-option")
+        button.assertHeightIsAtLeast(48.dp).assertIsDisplayed()
+        val bounds=button.fetchSemanticsNode().boundsInRoot
+        val label=compose.onNodeWithText(text,useUnmergedTree=true)
+        val labelBounds=label.fetchSemanticsNode().boundsInRoot
+        val layouts=mutableListOf<androidx.compose.ui.text.TextLayoutResult>()
+        label.performSemanticsAction(androidx.compose.ui.semantics.SemanticsActions.GetTextLayoutResult) {it(layouts)}
+        assertTrue(layouts.single().lineCount>1)
+        assertTrue(bounds.height>with(compose.density) {48.dp.toPx()})
+        val padding=with(compose.density) {8.dp.toPx()}
+        assertTrue(labelBounds.top>=bounds.top+padding-1f)
+        assertTrue(labelBounds.bottom<=bounds.bottom-padding+1f)
     }
 
     @Test fun textSectionsKeepConfirmedFieldsAndCancelOnlyTheCurrentBufferAcrossRecreation() {

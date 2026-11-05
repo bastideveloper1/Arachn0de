@@ -70,13 +70,13 @@ internal class CardShareFiles(private val context:Context,private val clock:()->
     suspend fun cleanup()=withContext(Dispatchers.IO) {AttachmentRepository.fileOperations.withLock {cleanupLocked()}}
     private fun cleanupLocked() {
         if(!directory.isDirectory) return
-        // Under the common mutex no writer or sharing pipe can still own a staging file.
+        // The common mutex excludes writers and snapshot preparation; deliveries own RAM only.
         directory.listFiles().orEmpty().filter {it.name.endsWith(".part") && validName(it.name.removeSuffix(".part"))}.forEach {it.delete()}
         directory.listFiles().orEmpty().filter {validName(it.name)}.forEach {file->
             val pending=File(directory,file.name+".delete")
             if(pending.exists() || clock()-file.lastModified()>=RETENTION) {
                 if(!pending.exists()) {SecureFiles.write(pending,byteArrayOf(1));sync(directory)}
-                // Revoke delivery grants first; the mutex also excludes live read pipes.
+                // Revoke future deliveries first; existing snapshots no longer reference this file.
                 context.revokeUriPermission(contentUri(file),Intent.FLAG_GRANT_READ_URI_PERMISSION)
                 if(file.delete()) {pending.delete();sync(directory)}
             }

@@ -9,23 +9,28 @@ internal object SecureFiles {
     internal class Session(val id:UUID,root:File,key:ByteArray) : AutoCloseable {
         val root:File=root.canonicalFile
         private val key=key.copyOf()
+        val caches=PrivateCacheScope().apply {register(AutoCloseable {com.r0ybt.arachn0de.data.local.PrivateImageCache.retireLegacy()})}
+        val toolPreviews by lazy {com.r0ybt.arachn0de.visual.ToolPreviewCache(caches)}
+        val imageCache by lazy {com.r0ybt.arachn0de.data.local.PrivateImageCache.Entries(caches)}
         private val handles=ConcurrentHashMap.newKeySet<AutoCloseable>()
         @Volatile private var open=true
         init { require(key.size==32) }
         @Synchronized fun <T> withKey(work:(ByteArray)->T):T { checkOpen();return work(key) }
         fun checkOpen() { check(open) { "Almacén bloqueado." } }
-        fun retain(handle:AutoCloseable) {checkOpen();handles.add(handle)}
+        @Synchronized fun retain(handle:AutoCloseable) {checkOpen();handles.add(handle)}
         fun release(handle:AutoCloseable) {handles.remove(handle)}
+        /** Close admission before waiting for file cleanup or any other owner. */
+        @Synchronized fun beginClosing() {open=false;key.fill(0);caches.close()}
         override fun close() {
-            synchronized(this) {open=false;key.fill(0)}
-            handles.toList().forEach {runCatching {it.close()}}
-            handles.clear()
+            val pending=synchronized(this) {beginClosing();handles.toList().also {handles.clear()}}
+            pending.forEach {runCatching {it.close()}}
         }
     }
     @Volatile var activeProfile:UUID?=null
     private val roots=ConcurrentHashMap<String,Session>()
     private val knownRoots=ConcurrentHashMap.newKeySet<String>()
     @Synchronized fun register(session:Session) {
+        com.r0ybt.arachn0de.data.local.PrivateImageCache.retireLegacy()
         require(roots.keys.none { it.startsWith(session.root.path+File.separator) || session.root.path.startsWith(it+File.separator) })
         knownRoots.add(session.root.path)
         check(roots.putIfAbsent(session.root.path,session)==null) { "La raíz ya tiene una sesión." }
@@ -41,6 +46,9 @@ internal object SecureFiles {
         return owner
     }
     fun protected(file:File)=session(file)?.let {it.checkOpen();true} ?: false
+    internal fun owner(file:File)=session(file)
+    fun clearImageCaches() {roots.values.forEach {it.imageCache.clear()}}
+    fun imageCacheBytes()=roots.values.sumOf {it.imageCache.sizeBytes()}
     fun ownerId(file:File)=session(file)?.id
     fun requireActive(file:File) { val owner=requireNotNull(session(file));check(owner.id==activeProfile);owner.checkOpen() }
     fun input(file:File):InputStream {

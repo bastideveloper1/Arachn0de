@@ -36,7 +36,7 @@ class SprintMigrationTest {
         helper.close()
         val db=Arachn0deDatabase.create(context)
         try {
-            assertEquals(37,db.openHelper.readableDatabase.version)
+            assertEquals(50, db.openHelper.readableDatabase.version)
             val rows=db.nodeDao().getProjectNodes("p");assertTrue(rows.all { !it.sprintMode && it.workState==null })
             assertEquals(NodeEntity("task","p","layer","Task","",true,4,11,21,110,210,"ACTION",15000,"CLP","HIGH","group"),db.nodeDao().getById("task"))
             assertEquals("LAYER",db.nodeDao().getById("layer")!!.purpose);assertEquals("NOTE",db.nodeDao().getById("note")!!.purpose)

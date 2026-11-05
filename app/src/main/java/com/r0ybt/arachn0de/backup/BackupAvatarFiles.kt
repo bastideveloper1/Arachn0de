@@ -16,12 +16,12 @@ internal class BackupAvatarFiles(context: Context, private val directoryName: St
     internal val syncDirectory: (File) -> Unit = ::syncBackupDirectory) {
     constructor(context: Context, syncDirectory: (File) -> Unit = ::syncBackupDirectory) :
         this(context, "avatars", "backup-restore-journal", syncDirectory)
-    init { require(directoryName in setOf("avatars", "technology-icons", "project-photos")); require(journalName in setOf("backup-restore-journal", "technology-icon-journal", "project-photo-journal")) }
+    init { require(directoryName in setOf("avatars", "technology-icons", "project-photos", "theme-originals")); require(journalName in setOf("backup-restore-journal", "technology-icon-journal", "project-photo-journal", "theme-original-restore-journal")) }
     private val lifecycle = ImageFileLifecycle(context, directoryName, syncDirectory)
     private val directory = File(context.filesDir, directoryName)
     private val journal = File(context.filesDir, "$journalName.json")
     fun file(name: String): File {
-        require(BackupLimits.avatarName.matches(name))
+        require(imageNameValid(directoryName,name))
         return File(directory, name)
     }
     fun read(name: String): ByteArray {
@@ -30,7 +30,7 @@ internal class BackupAvatarFiles(context: Context, private val directoryName: St
         return SecureFiles.input(image).use { input -> input.readBytesBounded(imageByteLimit(directoryName)) }
     }
     fun record(names: Set<String>) {
-        require(names.all { BackupLimits.avatarName.matches(it) })
+        require(names.all { imageNameValid(directoryName,it) })
         val temporary = File(journal.parentFile, "${journal.nameWithoutExtension}.part")
         durableWrite(temporary, JSONObject().put("files", JSONArray(names.sorted())).toString().toByteArray())
         check(temporary.renameTo(journal)) { "No se pudo preparar la restauración." }
@@ -48,7 +48,7 @@ internal class BackupAvatarFiles(context: Context, private val directoryName: St
         if (!journal.exists()) return emptySet()
         require(SecureFiles.size(journal) <= 8L * 1024 * 1024) { "Diario de restauración inválido." }
         val array = JSONObject(SecureFiles.text(journal)).getJSONArray("files")
-        return (0 until array.length()).map { array.getString(it).also { name -> require(BackupLimits.avatarName.matches(name)) } }.toSet()
+        return (0 until array.length()).map { array.getString(it).also { name -> require(imageNameValid(directoryName,name)) } }.toSet()
     }
     fun delete(name: String) = lifecycle.remove(name) {
         val image = file(name); check(!image.exists() || image.delete())

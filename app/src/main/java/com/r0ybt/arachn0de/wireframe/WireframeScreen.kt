@@ -1,5 +1,6 @@
 package com.r0ybt.arachn0de.wireframe
 
+import com.r0ybt.arachn0de.visual.*
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -68,13 +69,22 @@ private val DocumentSaver=Saver<WireDocument?,String>(save={it?.let(WireCodec::e
     var pendingScreenFormat by rememberSaveable {mutableStateOf<WireFormat?>(null)}
     var pendingScreenModified by rememberSaveable {mutableStateOf<Long?>(null)}
     var pendingImageTemplate by rememberSaveable {mutableStateOf("image")}
+    var annotationId by rememberSaveable(document?.id) {mutableStateOf<String?>(null)}
+    var placingAnnotation by rememberSaveable(document?.id) {mutableStateOf(false)}
+    var showAnnotations by rememberSaveable {mutableStateOf(true)}
+    var observedExport by rememberSaveable {mutableStateOf(false)}
+    var sharedOutputs by rememberSaveable {mutableStateOf<ArrayList<String>?>(null)}
     var signature by rememberSaveable {mutableStateOf(false)}
     var exportOptions by rememberSaveable(stateSaver=DocumentSaver) {mutableStateOf<WireDocument?>(null)}
     var exportSignature by rememberSaveable {mutableStateOf(false)}
     var export by rememberSaveable(stateSaver=DocumentSaver) {mutableStateOf<WireDocument?>(null)}
+    var templateLibrary by rememberSaveable {mutableStateOf(false)}
+    var initialScreenChoice by rememberSaveable {mutableStateOf<String?>(null)}
+    var templateGroup by rememberSaveable {mutableStateOf<String?>(null)}
+    val galleryMode=rememberToolGalleryMode("wireframe")
     val history=remember(document?.id) {WireHistory()}
     fun operation(block:suspend ()->Unit) {if(!busy) scope.launch {busy=true;try {block()} catch(e:CancellationException) {throw e} catch(e:Exception) {message=e.message ?: "No se pudo completar la operación."} finally {busy=false}}}
-    fun change(next:WireDocument) {val old=document ?: return;require(next.prune().assets.size<=16) {"Máximo 16 imágenes por dibujo."};creatingFromScreen=false;document=history.record(old,next.prune()).copy(modified=maxOf(System.currentTimeMillis(),old.modified))}
+    fun change(next:WireDocument) {val old=document ?: return;require(next.prune().assets.size<=16) {"Máximo 16 imágenes por dibujo."};creatingFromScreen=false;document=history.record(old,next.prune().preserveAnnotations(old)).copy(modified=maxOf(System.currentTimeMillis(),old.modified))}
     var route by rememberSaveable(document?.id) {mutableStateOf("Herramientas")}
     var propertyReturn by rememberSaveable(document?.id) {mutableStateOf("Herramientas")}
     var minimized by rememberSaveable(document?.id) {mutableStateOf(false)}
@@ -98,17 +108,20 @@ private val DocumentSaver=Saver<WireDocument?,String>(save={it?.let(WireCodec::e
             pendingScreen=screen.id;pendingScreenDocument=current.id;pendingScreenFormat=current.format;pendingScreenModified=current.modified
         } else insertScreen(screen)
     }
+    LaunchedEffect(document?.id,initialScreenChoice) {
+        initialScreenChoice?.let {id->WireScreens.items.firstOrNull {it.id==id}?.let {requestScreen(it);route="Herramientas"};initialScreenChoice=null}
+    }
     val panelStates=rememberSaveableStateHolder()
     fun panelBack():Boolean {
         if(route=="Herramientas") return false
-        route=when {route=="Propiedades"->propertyReturn;route.startsWith("screen-detail:")->"screen-group:${WireScreens.items.first {it.id==route.substringAfter(':')}.group}";route.startsWith("screen-group:")->"Pantallas";route=="Pantallas"->"Añadir";route.startsWith("category:")->"Añadir";else->"Herramientas"}
+        route=when {route.startsWith("icon:")->"Propiedades";route=="Propiedades"->propertyReturn;route.startsWith("screen-detail:")->"screen-group:${WireScreens.items.first {it.id==route.substringAfter(':')}.group}";route.startsWith("screen-group:")->"Pantallas";route=="Pantallas"->"Añadir";route.startsWith("category:")->"Añadir";else->"Herramientas"}
         return true
     }
     fun selectForEditing(id:String?) {
         selected=id
         if(id!=null) {if(route!="Propiedades") propertyReturn=route;route="Propiedades";minimized=false}
     }
-    fun back() {if(busy) return;if(document!=null && WireCodec.encode(document!!)!=baseline) leave=true else if(document!=null) {document=null;selected=null} else onBack()}
+    fun back() {if(busy) return;if(templateLibrary) {templateLibrary=false;return};if(document!=null && WireCodec.encode(document!!)!=baseline) leave=true else if(document!=null) {document=null;selected=null} else onBack()}
     BackHandler {if(document==null || !panelBack()) back()}
     val imagePicker=rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) {uri->if(uri!=null) operation {
         val original=document ?: return@operation
@@ -120,42 +133,58 @@ private val DocumentSaver=Saver<WireDocument?,String>(save={it?.let(WireCodec::e
         withContext(Dispatchers.IO) {try {context.contentResolver.openOutputStream(uri,"wt")!!.use {out->WireframeRenderer(context,target.assets).use {it.png(target,exportSignature,out)}}} catch(e:Exception) {runCatching {android.provider.DocumentsContract.deleteDocument(context.contentResolver,uri)};throw e}}
         message="PNG exportado"
     }}
+    val observedPicker=rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) {uri->
+        val target=export;export=null
+        if(uri!=null && target!=null) operation {sharedOutputs=ArrayList(wireExportObserved(context,target,exportSignature,uri).map {it.toString()});message="PNG con observaciones exportados"}
+    }
+    LaunchedEffect(route) {if(route!="Anotaciones") placingAnnotation=false}
     val d=document
     val renderer=remember(d?.assets) {WireframeRenderer(context,d?.assets.orEmpty())}
     DisposableEffect(renderer) {onDispose {renderer.close()}}
     BoxWithConstraints(Modifier.fillMaxSize().imePadding()) {
     val bodyLimit=(maxHeight*.43f).coerceAtMost(280.dp)
     Column(Modifier.fillMaxSize()) {
-        Row(Modifier.fillMaxWidth().padding(horizontal=12.dp),horizontalArrangement=Arrangement.SpaceBetween) {
+        if(d==null) ToolLibraryHeader("Wireframe",onBack={back()})
+        else Row(Modifier.fillMaxWidth().padding(horizontal=12.dp),horizontalArrangement=Arrangement.SpaceBetween) {
             GlobalChromeActions(enabled=!busy,leading=true)
             NavigationHeading(d?.name ?: "Wireframe",Modifier.weight(1f).padding(vertical=14.dp))
             GlobalChromeActions(enabled=!busy)
             if(d!=null) WireVisualBarButton(visualBar,!busy) {visualBar=!visualBar}
-            TextButton(onClick={back()},enabled=!busy) {Text("Volver")}
+            OutlinedButton(onClick={back()},enabled=!busy) {Icon(Icons.AutoMirrored.Filled.ArrowBack,null,Modifier.size(20.dp));Spacer(Modifier.width(4.dp));Text("Volver")}
         }
         if(d==null) {
-            LazyColumn(Modifier.weight(1f).fillMaxWidth(),contentPadding=PaddingValues(12.dp),verticalArrangement=Arrangement.spacedBy(8.dp)) {
-                if(library.isEmpty()) item {Text("Crea un dibujo estático de interfaz.")}
-                items(library,key={it.id}) {entry->OutlinedCard(Modifier.fillMaxWidth()) {Column(Modifier.padding(12.dp)) {
-                    WireThumbnail(entry)
-                    Text(entry.name,style=MaterialTheme.typography.titleMedium)
-                    Text(java.text.DateFormat.getDateTimeInstance(java.text.DateFormat.SHORT,java.text.DateFormat.SHORT).format(java.util.Date(entry.modified)),style=MaterialTheme.typography.bodySmall)
-                    Text("${entry.format.label} · ${entry.elements.size} elementos")
-                    ActionRow {
-                        TextButton(onClick={operation {val (loaded,raw)=repository.load(entry.id);creatingFromScreen=false;document=loaded;baseline=raw;selected=null}},enabled=!busy) {Text("Abrir")}
-                        TextButton(onClick={name=entry.name;rename=entry.id;naming=true},enabled=!busy) {Text("Renombrar")}
-                        TextButton(onClick={operation {repository.duplicate(entry.id)}},enabled=!busy) {Text("Duplicar")}
-                        TextButton(onClick={exportOptions=entry},enabled=!busy) {Text("PNG")}
-                        TextButton(onClick={operation {deletion=repository.load(entry.id)}},enabled=!busy) {Text("Eliminar")}
-                    }
-                }}}
-            }
-            Row(Modifier.fillMaxWidth().padding(12.dp).horizontalScroll(rememberScrollState()),horizontalArrangement=Arrangement.SpaceBetween) {
-                TextButton(onClick={creatingFromScreen=true;baseline=null;selected=null;document=WireDocument(name="Nuevo dibujo")},enabled=!busy) {Text("Crear desde molde")}
-                TextButton(onClick={name="Nuevo dibujo";rename=null;naming=true},enabled=!busy) {Text("Crear dibujo")}
+            if(templateLibrary) {
+                val screens=WireScreens.items.filter {templateGroup==null || it.group==templateGroup}
+                Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal=12.dp),horizontalArrangement=Arrangement.spacedBy(6.dp)) {
+                    (listOf<String?>(null)+WireScreens.items.map {it.group}.distinct()).forEach {group->FilterChip(templateGroup==group,{templateGroup=group},label={Text(group ?: "Todas")})}
+                }
+                ToolDocumentGallery(screens.map {screen->
+                    ToolLibraryItem(screen.id,screen.label,screen.group,open={
+                        templateLibrary=false;creatingFromScreen=true;baseline=null;selected=null
+                        document=WireDocument(name="Nuevo dibujo");initialScreenChoice=screen.id
+                    },preview={modifier->ToolThumbnail("wire-template:${screen.id}",screen.label,modifier) {
+                        WireframeRenderer(context,emptyMap()).use {it.bitmap(screen.preview(),minOf(240,(240f*screen.format.width/screen.format.height).toInt()).coerceAtLeast(1))}
+                    }})
+                },true,{},Modifier.weight(1f),title="Plantillas",onBack={templateLibrary=false},layoutToggle=false)
+            } else {
+                ToolDocumentGallery(library.map {entry->
+                    ToolLibraryItem(entry.id,entry.name,"${entry.format.label} · ${entry.elements.size} elementos",open={if(!busy)operation {val (loaded,raw)=repository.load(entry.id);creatingFromScreen=false;document=loaded;baseline=raw;selected=null}},
+                        preview={modifier->ToolThumbnail("wire:${entry.id}:${entry.modified}:${entry.hashCode()}",entry.name,modifier) {
+                            WireframeRenderer(context,entry.assets).use {it.bitmap(entry,minOf(240,(240f*entry.format.width/entry.format.height).toInt()).coerceAtLeast(1))}
+                        }},actions=listOf(
+                            "Renombrar" to {if(!busy) {name=entry.name;rename=entry.id;naming=true}},
+                            "Duplicar" to {operation {repository.duplicate(entry.id)}},
+                            "Exportar PNG" to {if(!busy) {observedExport=false;exportOptions=entry}},
+                            "Eliminar" to {operation {deletion=repository.load(entry.id)}}))
+                },galleryMode.first,galleryMode.second,Modifier.weight(1f))
+                ToolCreationActions(!busy,onBlank={name="Nuevo dibujo";rename=null;naming=true},onTemplate={templateLibrary=true})
             }
         } else {
-            Box(Modifier.weight(1f).fillMaxWidth()) {WireCanvas(d,renderer,selected,!busy,{selectForEditing(it)},{change(it)},guides,magnetic,margins,device,visualBar,composition=composition,onCompositionChange={composition=it}) {tool->
+            Box(Modifier.weight(1f).fillMaxWidth()) {WireCanvas(d,renderer,selected,!busy,{selectForEditing(it)},{change(it)},guides,magnetic,margins,device,visualBar,composition=composition,onCompositionChange={composition=it},showAnnotations=showAnnotations,annotationMode=route=="Anotaciones",placingAnnotation=placingAnnotation,selectedAnnotation=annotationId,
+                onAnnotationSelect={annotationId=it},onAnnotationPlace={point->
+                    val a=WireAnnotation(x=point.x.coerceIn(0f,1f),y=point.y.coerceIn(0f,1f))
+                    change(d.copy(annotations=d.annotations+a));annotationId=a.id;placingAnnotation=false
+                }) {tool->
                 when(tool) {WireVisualTool.GUIDES->guides=!guides;WireVisualTool.MARGINS->margins=!margins;WireVisualTool.DEVICE->device=!device;WireVisualTool.MAGNET->magnetic=!magnetic}
             }}
             val palette=LocalAppearancePalette.current
@@ -168,7 +197,7 @@ private val DocumentSaver=Saver<WireDocument?,String>(save={it?.let(WireCodec::e
                     },verticalAlignment=Alignment.CenterVertically) {
                         if(route!="Herramientas") IconButton(onClick={panelBack()},enabled=!busy) {Icon(Icons.AutoMirrored.Filled.ArrowBack,"Volver al nivel anterior",Modifier.size(20.dp))}
                         else Spacer(Modifier.width(12.dp))
-                        Text(if(route.startsWith("screen-detail:")) "Molde" else if(route.startsWith("category:") || route.startsWith("screen-group:")) route.substringAfter(':') else route,Modifier.weight(1f),style=MaterialTheme.typography.labelLarge,maxLines=2,overflow=TextOverflow.Ellipsis)
+                        Text(if(route.startsWith("icon:")) "Iconos" else if(route.startsWith("screen-detail:")) "Molde" else if(route.startsWith("category:") || route.startsWith("screen-group:")) route.substringAfter(':') else route,Modifier.weight(1f),style=MaterialTheme.typography.labelLarge,maxLines=2,overflow=TextOverflow.Ellipsis)
                         IconButton(onClick={document=history.undo(d)},enabled=!busy && history.canUndo) {Icon(Icons.AutoMirrored.Filled.Undo,"Deshacer",Modifier.size(20.dp))}
                         IconButton(onClick={document=history.redo(d)},enabled=!busy && history.canRedo) {Icon(Icons.AutoMirrored.Filled.Redo,"Rehacer",Modifier.size(20.dp))}
                         IconButton(onClick={minimized=!minimized},modifier=Modifier.testTag("wireframe-panel-fold")) {Icon(if(minimized) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,if(minimized) "Expandir panel de Wireframe" else "Minimizar panel de Wireframe")}
@@ -177,11 +206,13 @@ private val DocumentSaver=Saver<WireDocument?,String>(save={it?.let(WireCodec::e
                     if(!minimized) panelStates.SaveableStateProvider("${d.id}:$route") {
                         if(route=="Archivo") Column(Modifier.heightIn(max=bodyLimit).verticalScroll(rememberScrollState()).padding(horizontal=8.dp)) {
                             ActionRow {
-                                TextButton(onClick={operation {baseline=repository.save(document!!,baseline);message="Dibujo guardado"}},enabled=!busy) {Text(if(WireCodec.encode(d)==baseline) "Guardado" else "Guardar")}
-                                TextButton(onClick={operation {val now=System.currentTimeMillis();val copy=document!!.copy(id=UUID.randomUUID().toString(),name=document!!.name.take(90)+" · copia",created=now,modified=now);baseline=repository.save(copy,null);document=copy;message="Copia guardada"}},enabled=!busy) {Text("Guardar copia")}
-                                TextButton(onClick={exportOptions=d},enabled=!busy) {Text("Exportar PNG")}
+                                ToolActionButton(if(WireCodec.encode(d)==baseline) "Guardado" else "Guardar",Icons.Default.Save,enabled=!busy) {operation {baseline=repository.save(document!!,baseline);message="Dibujo guardado"}}
+                                ToolActionButton("Guardar copia",Icons.Default.ContentCopy,enabled=!busy) {operation {val now=System.currentTimeMillis();val copy=document!!.copy(id=UUID.randomUUID().toString(),name=document!!.name.take(90)+" · copia",created=now,modified=now);baseline=repository.save(copy,null);document=copy;message="Copia guardada"}}
+                                ToolActionButton("Exportar PNG",Icons.Default.IosShare,enabled=!busy) {observedExport=false;exportOptions=d}
                             }
-                        } else WireControls(d,selected,{selectForEditing(it)},{change(it)},{template->pendingImageTemplate=template.id;imagePicker.launch(arrayOf("image/*"))},route,{next->if(next=="Propiedades") propertyReturn=route;route=next},bodyLimit,!busy,{requestScreen(it)}) {selected=it}
+                        } else if(route=="Anotaciones") WireAnnotationControls(d,annotationId,selected,showAnnotations,placingAnnotation,!busy,bodyLimit,
+                            {annotationId=it},{showAnnotations=it},{placingAnnotation=!placingAnnotation;showAnnotations=true},{change(it)})
+                        else WireControls(d,selected,{selectForEditing(it)},{change(it)},{template->pendingImageTemplate=template.id;imagePicker.launch(arrayOf("image/*"))},route,{next->if(next=="Propiedades") propertyReturn=route;route=next},bodyLimit,!busy,{requestScreen(it)}) {selected=it}
                     }
                 }
             }
@@ -194,7 +225,7 @@ private val DocumentSaver=Saver<WireDocument?,String>(save={it?.let(WireCodec::e
     pendingScreen?.let {id->WireScreens.items.find {it.id==id}?.let {screen->
         val current=document
         val incompatible=current?.format!=screen.format
-        ModularPanelDialog(onDismissRequest={pendingScreen=null},title={Text(if(incompatible) "Formato del molde" else "Insertar pantalla")},text={
+        ModularPanelDialog(onDismissRequest={pendingScreen=null},title={Text(if(incompatible) "Formato de la plantilla" else "Insertar pantalla")},text={
             Text(if(incompatible) "«${screen.label}» requiere formato ${screen.format.label}. Elige ese formato en Lienzo y vuelve al catálogo. El dibujo no se modifica automáticamente."
             else "Se añadirán ${screen.elements().size} elementos sobre el contenido actual. No se eliminará ningún elemento. La inserción se puede deshacer de una vez.")
         },confirmButton={TextButton(onClick={
@@ -206,12 +237,20 @@ private val DocumentSaver=Saver<WireDocument?,String>(save={it?.let(WireCodec::e
     }}
     exportOptions?.let {target->
         ModularPanelDialog(onDismissRequest={exportOptions=null},compact=true,title={Text("Exportar PNG")},text={
-            Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically) {
-                Checkbox(signature,{signature=it},modifier=Modifier.testTag("wire-export-signature"))
-                Text("Firma fuera del lienzo")
+            Column {
+                if(target.annotations.isNotEmpty()) {
+                    Row(Modifier.clickable {observedExport=false},verticalAlignment=Alignment.CenterVertically) {RadioButton(!observedExport,null);Text("Exportar normal")}
+                    Row(Modifier.clickable {observedExport=true},verticalAlignment=Alignment.CenterVertically) {RadioButton(observedExport,null);Text("Exportar con observaciones")}
+                    if(observedExport) Text("Elige una carpeta para guardar el diseño con marcadores y las hojas de observaciones. Después podrás compartirlos.",style=MaterialTheme.typography.bodySmall)
+                }
+                Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically) {
+                    Checkbox(signature,{signature=it},modifier=Modifier.testTag("wire-export-signature"))
+                    Text("Firma fuera del lienzo")
+                }
             }
-        },confirmButton={TextButton(onClick={export=target;exportSignature=signature;exportOptions=null;pngPicker.launch("wireframe.png")},enabled=!busy) {Text("Exportar")}},dismissButton={TextButton(onClick={exportOptions=null}) {Text("Cancelar")}})
+        },confirmButton={TextButton(onClick={export=target;exportSignature=signature;exportOptions=null;if(observedExport && target.annotations.isNotEmpty()) observedPicker.launch(null) else pngPicker.launch("wireframe.png")},enabled=!busy) {Text("Exportar")}},dismissButton={TextButton(onClick={exportOptions=null}) {Text("Cancelar")}})
     }
+    sharedOutputs?.let {files->ModularPanelDialog(onDismissRequest={sharedOutputs=null},title={Text("PNG exportados")},text={Text("Se guardaron ${files.size} imágenes en la carpeta elegida.")},confirmButton={TextButton(onClick={operation {context.startActivity(android.content.Intent.createChooser(wireShareIntent(files.map(android.net.Uri::parse)),"Compartir Wireframe"))}},enabled=!busy) {Text("Compartir")}},dismissButton={TextButton(onClick={sharedOutputs=null}) {Text("Cerrar")}})}
     if(naming) ModularPanelDialog(onDismissRequest={naming=false},title={Text(if(rename==null) "Crear dibujo" else "Renombrar")},text={Column {
         OutlinedTextField(name,{name=it.take(100)},label={Text("Nombre")},singleLine=true)
         if(rename==null) ActionRow {WireFormat.entries.forEach {f->FilterChip(format==f,{format=f},label={Text(f.label)})}}
@@ -225,14 +264,14 @@ private val DocumentSaver=Saver<WireDocument?,String>(save={it?.let(WireCodec::e
 @Composable private fun WireControls(d:WireDocument,selected:String?,select:(String?)->Unit,change:(WireDocument)->Unit,import:(WireTemplate)->Unit,
     route:String,navigate:(String)->Unit,limit:androidx.compose.ui.unit.Dp,enabled:Boolean,insertScreen:(WireScreen)->Unit,selectInserted:(String?)->Unit) {
     val e=d.elements.find {it.id==selected}
-    fun update(next:WireElement) {change(d.copy(elements=d.elements.map {if(it.id==next.id) next.bounded() else it}))}
+    fun update(next:WireElement) {change(d.copy(elements=d.elements.map {if(it.id==next.id) next.bounded().copy(icons=next.icons.filterKeys {slot->slot in wireIconDefaults(next).indices}) else it}))}
     when {
         route=="Herramientas"->BoxWithConstraints(Modifier.fillMaxWidth().padding(horizontal=8.dp,vertical=4.dp)) {
             val fontScale=androidx.compose.ui.platform.LocalDensity.current.fontScale
-            val width=maxOf(maxWidth,320.dp*fontScale)
-            val tools=listOf("Añadir" to Icons.Default.Add,"Elementos" to Icons.AutoMirrored.Filled.List,"Propiedades" to Icons.Default.Tune,"Lienzo" to Icons.Default.Crop,"Archivo" to Icons.Default.Save)
+            val width=maxOf(maxWidth,384.dp*fontScale)
+            val tools=listOf("Añadir" to Icons.Default.Add,"Elementos" to Icons.AutoMirrored.Filled.List,"Propiedades" to Icons.Default.Tune,"Lienzo" to Icons.Default.Crop,"Archivo" to Icons.Default.Save,"Anotaciones" to Icons.Default.Comment)
             Row(Modifier.horizontalScroll(rememberScrollState())) {
-                Box(Modifier.width(width)) {ModularFieldMenu(tools.map {(label,icon)->ModularPanelOption(label,icon,"wire-tool:$label",enabled) {navigate(label)}},columns=5)}
+                tools.forEach {(label,icon)->ToolLabeledButton(label,enabled=enabled,tag="wire-tool:$label",onClick={navigate(label)}) {Icon(icon,null,Modifier.size(22.dp))}}
             }
         }
         route=="Añadir"->Column(Modifier.heightIn(max=limit).verticalScroll(rememberScrollState()).padding(horizontal=8.dp,vertical=4.dp)) {
@@ -289,6 +328,10 @@ private val DocumentSaver=Saver<WireDocument?,String>(save={it?.let(WireCodec::e
                 }
             }
         }
+        route.startsWith("icon:")-> {
+            val parts=route.split(':');val element=d.elements.find {it.id==parts.getOrNull(1)};val slot=parts.getOrNull(2)?.toIntOrNull()
+            if(element!=null && slot!=null) WireIconPicker(element,slot,enabled) {update(it)}
+        }
         route=="Elementos"->LazyColumn(Modifier.fillMaxWidth().heightIn(max=limit)) {
             if(d.elements.isEmpty()) item {Text("Sin elementos",Modifier.padding(12.dp))}
             items(d.elements.asReversed(),key={it.id}) {item->
@@ -306,6 +349,8 @@ private val DocumentSaver=Saver<WireDocument?,String>(save={it?.let(WireCodec::e
             } else if(e!=null) key(e.id) {
                 Text(WireTemplates.items.find {it.id==e.template}?.label ?: e.kind.label,style=MaterialTheme.typography.titleSmall)
                 if(e.editableText) OutlinedTextField(e.text,{update(e.copy(text=it.take(4000)))},enabled=enabled,label={Text("Texto")},modifier=Modifier.fillMaxWidth())
+                WireIconSlots(e,enabled) {slot->navigate("icon:${e.id}:$slot")}
+                TextButton(onClick={navigate("Anotaciones")},enabled=enabled) {Text("Anotar elemento")}
                 if(e.fillEditable) WireColorControl("Relleno",e.fill,enabled) {update(e.copy(fill=it))}
                 if(e.kind!=WireKind.IMAGE && (e.kind.textCapable || e.kind==WireKind.ICON || e.template!=null && !e.template.startsWith("shape_"))) WireColorControl("Texto / icono",e.ink,enabled) {update(e.copy(ink=it))}
                 ActionRow {

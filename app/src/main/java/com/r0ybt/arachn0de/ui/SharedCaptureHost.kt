@@ -9,7 +9,7 @@ import com.r0ybt.arachn0de.sharing.SharedCaptureQueue
 internal class CaptureGate {var active by mutableStateOf<String?>(null)}
 internal val LocalCaptureGate=staticCompositionLocalOf<CaptureGate> {CaptureGate()}
 
-@Composable internal fun SharedCaptureHost(index:List<ElementResult>,repo:AccessRepository,ordinaryOpen:Boolean) {
+@Composable internal fun SharedCaptureHost(index:List<ElementResult>?,repo:AccessRepository,ordinaryOpen:Boolean) {
     val app=LocalContext.current.applicationContext as Arachn0deApplication
     val session=app.security.current.value ?: return
     val queue=session.sharedCaptures
@@ -22,7 +22,11 @@ internal val LocalCaptureGate=staticCompositionLocalOf<CaptureGate> {CaptureGate
     entries.firstOrNull()?.let {entry->
         DisposableEffect(queue) {val hold=app.security.captures.holdPrivateView();onDispose {hold.close()}}
         if(!ordinaryOpen && (gate.active==null || gate.active==entry.id)) key(entry.id) {
-            QuickCaptureDialog(index,repo,{},pending=entry,queue=queue)
+            val available=index ?: quickCaptureIndex()
+            if(available==null) NavigationIndexLoading {
+                operation.submit("No se pudo descartar la captura. Se conserva para reintentar.",{queue.discard(entry.id);true})
+            }
+            else QuickCaptureDialog(available,repo,{},pending=entry,queue=queue)
         }
     }
     OperationErrorDialog(operation)

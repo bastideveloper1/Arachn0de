@@ -18,6 +18,7 @@ internal open class EncryptedPreferences(private val session:SecureFiles.Session
             finally { plain.fill(0) }
             DurableVaultFile.replace(file,encrypted.toByteArray(),sync)
         })
+    private val writes=Any()
     private var values:Map<String,Any> = load()
     private val listeners=java.util.concurrent.CopyOnWriteArraySet<SharedPreferences.OnSharedPreferenceChangeListener>()
     companion object {
@@ -70,14 +71,20 @@ internal open class EncryptedPreferences(private val session:SecureFiles.Session
             override fun clear():SharedPreferences.Editor { clear=true;return this }
             override fun commit():Boolean {
                 val changed:Set<String>
-                synchronized(this@EncryptedPreferences) {
-                    session.checkOpen()
-                    val next=if(clear) linkedMapOf() else this@EncryptedPreferences.values.toMutableMap()
-                    pending.forEach { (key,value)->if(value==null) next.remove(key) else next[key]=value }
-                    changed=(next.keys+this@EncryptedPreferences.values.keys).filter { next[it]!=this@EncryptedPreferences.values[it] }.toSet()
+                synchronized(writes) {
+                    val next=synchronized(this@EncryptedPreferences) {
+                        session.checkOpen()
+                        (if(clear) linkedMapOf() else this@EncryptedPreferences.values.toMutableMap()).apply {
+                            pending.forEach { (key,value)->if(value==null) remove(key) else this[key]=value }
+                        }
+                    }
                     try {
                         persist(next)
-                        this@EncryptedPreferences.values=next
+                        synchronized(this@EncryptedPreferences) {
+                            session.checkOpen()
+                            changed=(next.keys+values.keys).filter {next[it]!=values[it]}.toSet()
+                            values=next
+                        }
                     } catch(_:Exception) { return false }
                 }
                 changed.forEach { key->listeners.forEach { it.onSharedPreferenceChanged(this@EncryptedPreferences,key) } }
@@ -88,9 +95,12 @@ internal open class EncryptedPreferences(private val session:SecureFiles.Session
     }
     fun reload() {
         val changed:Set<String>
-        synchronized(this) {
+        synchronized(writes) {
             session.checkOpen();val next=load()
-            changed=(values.keys+next.keys).filter {values[it]!=next[it]}.toSet();values=next
+            synchronized(this) {
+                session.checkOpen()
+                changed=(values.keys+next.keys).filter {values[it]!=next[it]}.toSet();values=next
+            }
         }
         changed.forEach { key -> listeners.forEach {it.onSharedPreferenceChanged(this,key)} }
     }

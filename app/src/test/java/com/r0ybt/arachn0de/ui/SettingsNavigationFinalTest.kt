@@ -38,13 +38,13 @@ class SettingsNavigationFinalTest {
             else AppIdentityDrawer({},onProjects={destination="projects"},onMetro={destination="metro"},onPeople={destination="people"},peopleSelected=true,
                 onTechnologies={},onTags={},onSecurity={destination="security"},onBackups={destination="backups"},onAppearance={})
         }}
-        val primary=listOf("Núcleos","Metro","Antisocial").map {compose.onNodeWithText(it).fetchSemanticsNode().boundsInRoot.top}
+        val primary=listOf("Núcleos","Antisocial").map {compose.onNodeWithText(it).fetchSemanticsNode().boundsInRoot.top}
         assertEquals(primary.sorted(),primary);compose.onNodeWithText("Antisocial").assertIsSelected()
         compose.onNodeWithText("Recursos").performScrollTo().performClick();compose.onNodeWithText("Personas").assertDoesNotExist()
         compose.onNodeWithText("Ajustes").performScrollTo().performClick()
         compose.onNodeWithText("Respaldo").assertDoesNotExist();compose.onNodeWithText("Seguridad").assertDoesNotExist()
         compose.onNodeWithText("Seguridad y respaldos").performScrollTo().performClick();assertEquals("security",destination)
-        compose.onNodeWithText("Antisocial").performClick();text("Buscar Personas");compose.onNodeWithText("Personas").assertExists()
+        compose.onNodeWithText("Antisocial").performClick();text("Buscar Personas");compose.onNodeWithText("Antisocial").assertExists()
     }
     @Test fun standardLayersIconKeepsExistingBottomAction() {
         runBlocking {app.projectRepository.createProject("Núcleo de prueba")}

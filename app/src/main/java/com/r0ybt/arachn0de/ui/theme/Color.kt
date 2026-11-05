@@ -21,6 +21,7 @@ object SemanticColors {
 
 /** Existing token names keep all callers on one composition-scoped appearance palette. */
 object Arachn0deColors {
+    val Icon: Color @Composable get() = LocalAppearancePalette.current.role("icons")
     val Background: Color @Composable get() = LocalAppearancePalette.current.background
     val BackgroundMiddle: Color @Composable get() = LocalAppearancePalette.current.middle
     val BackgroundEnd: Color @Composable get() = LocalAppearancePalette.current.end
@@ -47,7 +48,7 @@ object Arachn0deColors {
 }
 
 /** Light-theme status contrast; semantic roles remain unchanged. */
-internal fun AppearancePalette.semantic(color:Color):Color = if(!light) color else when(color) {
+internal fun AppearancePalette.semantic(color:Color,role:String?=null):Color = if(!light) color else when(color) {
     SemanticColors.Error->text
     SemanticColors.HighPriority,SemanticColors.Upcoming,SemanticColors.Attention->primary
     SemanticColors.ImageLink->primary
@@ -55,4 +56,4 @@ internal fun AppearancePalette.semantic(color:Color):Color = if(!light) color el
     SemanticColors.SprintUnplanned->muted
     else->text
 }
-@Composable internal fun semanticColor(color:Color)=LocalAppearancePalette.current.semantic(color)
+@Composable internal fun semanticColor(color:Color,role:String?=null)=LocalAppearancePalette.current.semantic(color,role)

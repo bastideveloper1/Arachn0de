@@ -57,7 +57,7 @@ class CalendarEventsTest {
             val row=event(minute=780);val other=event("2027-01-01")
             val repo=CalendarEventRepository(db);repo.save(row,setOf("roy"),true);repo.save(other,emptySet(),true)
             val before=backup.snapshot();val bytes=BackupJson.encode(before)
-            assertEquals(37,JSONObject(String(bytes)).getInt("dataVersion"))
+            assertEquals(39,JSONObject(String(bytes)).getInt("dataVersion"))
             val decoded=BackupJson.decode(bytes)
             assertEquals(before.calendarEvents,decoded.calendarEvents);assertEquals(before.calendarEventPeople,decoded.calendarEventPeople)
             repo.delete(row.id);repo.delete(other.id);backup.restore(decoded)
@@ -115,7 +115,7 @@ class CalendarEventsTest {
             assertEquals("Tarea",db.nodeDao().getById("t")!!.title)
             assertEquals(listOf("roy"),db.personDao().assignmentIds("t"));assertTrue(db.calendarEventDao().all().isEmpty())
             CalendarEventRepository(db).save(event(),setOf("roy"),true)
-            assertEquals(47,db.openHelper.writableDatabase.version)
+            assertEquals(50, db.openHelper.writableDatabase.version)
         } finally {db.close()}
     }
 }

@@ -11,6 +11,8 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.input.pointer.PointerEventPass
@@ -29,15 +31,18 @@ internal fun AttachmentDescriptionField(value: TextFieldValue, onValueChange: (T
     var layout by remember { mutableStateOf<TextLayoutResult?>(null) }
     val transformed = transformation.filter(AnnotatedString(value.text))
     val references = AttachmentReferences.matches(value.text).toList()
-    BasicTextField(value = value, onValueChange = onValueChange, enabled = enabled, maxLines = maxLines,
-        modifier = (focusRequester?.let { Modifier.focusRequester(it) } ?: Modifier).fillMaxWidth().defaultMinSize(minHeight = OutlinedTextFieldDefaults.MinHeight), interactionSource = interactions,
+    val codeBackground=MaterialTheme.colorScheme.surfaceVariant
+    val codeOutline=MaterialTheme.colorScheme.onSurfaceVariant
+    // The enclosing editor owns vertical scrolling; text and code decorations share one coordinate space.
+    BasicTextField(value = value, onValueChange = onValueChange, enabled = enabled, maxLines = Int.MAX_VALUE,
+        modifier = (focusRequester?.let { Modifier.focusRequester(it) } ?: Modifier).fillMaxWidth().clipToBounds().defaultMinSize(minHeight = OutlinedTextFieldDefaults.MinHeight), interactionSource = interactions,
         textStyle = LocalTextStyle.current.copy(color = MaterialTheme.colorScheme.onSurface, fontWeight = androidx.compose.ui.text.font.FontWeight.Normal),
         cursorBrush = SolidColor(MaterialTheme.colorScheme.primary), visualTransformation = transformation,
         onTextLayout = { layout = it }, decorationBox = { inner ->
             OutlinedTextFieldDefaults.DecorationBox(value = value.text, enabled = enabled, singleLine = false,
                 visualTransformation = transformation, interactionSource = interactions, label = { Text("Descripción") },
                 innerTextField = {
-                    Box(Modifier.testTag("description-inner").pointerInput(value.text, enabled, transformed.text) {
+                    Box(Modifier.testTag("description-inner").clipToBounds().drawBehind {layout?.let {drawDescriptionCodeBlocks(it,codeBackground,codeOutline)}}.pointerInput(value.text, enabled, transformed.text) {
                         awaitEachGesture {
                             val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
                             val result = layout

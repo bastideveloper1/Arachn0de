@@ -19,8 +19,12 @@ import com.r0ybt.arachn0de.ui.state.*
 @Composable internal fun NodeBottomModule(node:Node,repository:NodeRepository,actions:NodeActions,
     people:List<Person>,assigned:List<Person>,assignmentsLoaded:Boolean,tags:TagState,technologies:TechnologyState,
     maxHeight:Dp,contextActions:ContextActions.()->Unit,creationActions:@Composable ()->Unit,
-    editRequest:NodeProperty?,onRequestHandled:()->Unit) {
-    var context by remember(node.id) {mutableStateOf(CoreBottomContext.Content)}
+    editRequest:NodeProperty?,onRequestHandled:()->Unit,viewControls:TaskViewControls?=null,onRecurrence:(()->Unit)?=null,contentRequest:Int=0) {
+    var context by remember(node.id) {mutableStateOf<CoreBottomContext?>(null)}
+    LaunchedEffect(contentRequest) {if(contentRequest>0) context=CoreBottomContext.Content}
+    var effortOpen by remember(node.id) {mutableStateOf(false)}
+    var paymentOpen by rememberSaveable(node.id) {mutableStateOf(false)}
+    if(effortOpen) TaskEffortPanel(node.id,node.effort,repository) {effortOpen=false}
     val drafts=rememberSaveable(node.id,saver=EditorDraftStore.Saver) {EditorDraftStore()}
     var fieldName by rememberSaveable(node.id) {mutableStateOf<String?>(null)}
     var baseline by rememberSaveable(node.id) {mutableStateOf(emptyList<String>())}
@@ -28,10 +32,12 @@ import com.r0ybt.arachn0de.ui.state.*
     val draft=drafts.active
     val field=fieldName?.let(NodeProperty::valueOf)
     val busy=actions.operation.busy
-    val ready=assignmentsLoaded && technologies.loaded && !busy
+    val ready=assignmentsLoaded && !busy
     fun finish() {drafts.clear();fieldName=null;groupIds=null;context=CoreBottomContext.Content}
-    fun open(property:NodeProperty) {
-        if(!ready || draft!=null) return
+    fun open(property:NodeProperty,correctAmount:Boolean=false) {
+        if(property==NodeProperty.TECHNOLOGIES)return
+        if(!ready || (property==NodeProperty.TECHNOLOGIES && !technologies.loaded) || draft!=null) return
+        if(property==NodeProperty.PAYMENT && node.obligation!=null && !correctAmount) {paymentOpen=true;return}
         baseline=nodePropertyValues(property,node,tags.nodeIds[node.id].orEmpty(),assigned.map {it.id},technologies.forOwner(node.id,false).map {it.id})
         fieldName=property.name
         drafts.open(node.parentId,node.id) {
@@ -39,7 +45,7 @@ import com.r0ybt.arachn0de.ui.state.*
                 purpose=node.purpose,obligation=node.obligation,priority=node.priority).apply {
                 tagIds=tags.nodeIds[node.id].orEmpty().toList()
                 responsibleIds=assigned.map {it.id}
-                technologyIds=technologies.forOwner(node.id,false).map {it.id};technologiesLoaded=true
+                technologyIds=technologies.forOwner(node.id,false).map {it.id};technologiesLoaded=technologies.loaded
                 creationGroupId=node.creationGroupId;captureSharedBaseline()
             }
         }
@@ -55,33 +61,36 @@ import com.r0ybt.arachn0de.ui.state.*
         } else save()
     }
     LaunchedEffect(editRequest,ready) {if(editRequest!=null && ready) {open(editRequest);onRequestHandled()}}
+    if(paymentOpen) CardPaymentPanel(node.id,{paymentOpen=false},{paymentOpen=false;open(NodeProperty.PAYMENT,correctAmount=true)})
     LaunchedEffect(draft?.id) {if(draft!=null) context=CoreBottomContext.Content}
-    BackHandler(enabled=draft==null && context!=CoreBottomContext.Creation) {context=CoreBottomContext.Creation}
+    BackHandler(enabled=draft==null && context!=null) {context=null}
     if(draft!=null && field!=null) {
         Box(Modifier.imePadding()) {
             NodePropertyEditor(draft,field,!busy,maxHeight*1.7f,people,tags,repository.tags,technologies.catalog,
-                onCancel={actions.discardDraft(draft,::finish)},onConfirm={confirm()})
+                onCancel={actions.discardDraft(draft,::finish)},onConfirm={confirm()},
+                onAssignTags={ids,closeAfterSave->submitTagAssignment(draft,ids,actions.operation,{values->
+                    repository.updateProperty(requireNotNull(draft.id),NodeProperty.TAGS,baseline,values.sorted())
+                },{baseline=ids.sorted();if(closeAfterSave)actions.discardDraft(draft,::finish)})})
         }
     } else {
         val properties=buildList {
             fun property(label:String,icon:androidx.compose.ui.graphics.vector.ImageVector,value:NodeProperty) {
-                add(ContextAction(label,icon,{open(value)},enabled=ready))
+                add(ContextAction(label,icon,{open(value)},enabled=ready && (value!=NodeProperty.TECHNOLOGIES || technologies.loaded)))
             }
             property("Título",Icons.Default.Title,NodeProperty.TITLE)
             property("Descripción",Icons.Default.Description,NodeProperty.DESCRIPTION)
             if(node.isCompletable) {
                 property("Planificación",Icons.Default.Settings,NodeProperty.DATES)
-                add(ContextAction(if(node.priority==Priority.HIGH) "Prioritario" else "Común",
-                    if(node.priority==Priority.HIGH) Icons.Default.Flag else androidx.compose.material.icons.Icons.Outlined.Flag,
-                    {actions.togglePriority(node.id)},enabled=!busy))
+                add(ContextAction(if(node.priority==Priority.HIGH) "Prioritario" else "Común",Icons.Default.Flag,{actions.togglePriority(node.id)},enabled=!busy))
+                add(ContextAction("Esfuerzo",Icons.Default.LocalFireDepartment,{effortOpen=true},enabled=!busy))
                 property("Pago",Icons.Default.Payments,NodeProperty.PAYMENT)
             }
             property("Responsables",Icons.Default.People,NodeProperty.PEOPLE)
             property("Etiquetas",Icons.Default.Label,NodeProperty.TAGS)
-            property("Editar tecnologías",Icons.Default.Code,NodeProperty.TECHNOLOGIES)
-            addAll(ContextActions().apply(contextActions).items.filter {it.label=="Valores predeterminados"})
+            if(node.isCompletable && node.workState==null) add(ContextAction(if(onRecurrence==null) "Sin recurrencia" else "Regla de recurrencia",Icons.Default.Refresh,onRecurrence ?: {},enabled=onRecurrence!=null))
+            addAll(ContextActions().apply(contextActions).items.filter {it.label in setOf("Valores iniciales","Cambiar estado")+FavoriteActionLabels})
         }
-        CoreBottomModule(context,{context=it},maxHeight,contextActions,creationActions,contentActions=properties)
+        CoreBottomModule(context,{context=it},maxHeight,contextActions,creationActions,contentActions=properties,viewControls=viewControls)
     }
     groupIds?.let {ids->
         AlertDialog(onDismissRequest={if(!busy) groupIds=null},title={Text("Aplicar cambios compartidos")},

@@ -24,12 +24,9 @@ class PersonRepository(private val database: Arachn0deDatabase, private val avat
     internal fun observePublications()=database.personMemoryDao().observeMemories()
     internal suspend fun exportAvatar(file:String,destination:Uri)=files {avatars.export(file,destination)}
     internal fun observeSelf()=database.cascadeRelationDao().observeSelf()
-    internal suspend fun identifySelf(person:String?)=database.withTransaction {
-        if(person==null) database.cascadeRelationDao().clearIdentity() else {
-            require(database.personDao().get(person)!=null) {"La Persona ya no existe."}
-            database.cascadeRelationDao().save(LocalIdentityEntity(personId=person))
-        }
-    }
+    internal suspend fun ensurePrincipal()=ensurePrincipalProfile(database)
+    /** Compatibility entry point; identity can no longer be changed manually. */
+    internal suspend fun identifySelf(person:String?) {require(person==ensurePrincipal()) {"El perfil principal se asigna automáticamente."}}
     private val dao = database.personDao()
     internal fun observePersonTechnologies()=database.personIntegrationDao().observeTechnologies()
     internal fun observeTechnologyCatalog()=database.technologyDao().observeCatalog()
@@ -47,8 +44,8 @@ class PersonRepository(private val database: Arachn0deDatabase, private val avat
     internal suspend fun saveBirthday(id:String,date:String)=database.withTransaction {
         require(dao.get(id)!=null)
         if(date.isBlank()) database.personGalleryDao().removeBirthday(id) else {
-            try {validatePersonGallery(setOf(id),emptyList(),listOf(PersonBirthdayEntity(id,date)))} catch(e:Exception) {throw IllegalArgumentException("Escribe una fecha real con formato AAAA-MM-DD.",e)}
-            require(!java.time.LocalDate.parse(date).isAfter(java.time.LocalDate.now())) {"La fecha no puede estar en el futuro."}
+            try {validatePersonGallery(setOf(id),emptyList(),listOf(PersonBirthdayEntity(id,date)))} catch(e:Exception) {throw IllegalArgumentException("Selecciona un día y mes válidos; el año es opcional.",e)}
+            require(PersonBirthDate.valid(date)) {"La fecha no puede estar en el futuro."}
             database.personGalleryDao().save(PersonBirthdayEntity(id,date))
         }
     }
@@ -118,7 +115,7 @@ class PersonRepository(private val database: Arachn0deDatabase, private val avat
         try { return files {
             val coroutine = currentCoroutineContext()
             source?.let {require(it.canonicalFile.parentFile in listOf(java.io.File(avatars.privateRoot(),"attachments").canonicalFile,java.io.File(avatars.privateRoot(),"avatars").canonicalFile))}
-            avatars.import(uri,sourceFile=source) { coroutine.ensureActive() }.also { file = it }
+            avatars.importPhoto(uri,sourceFile=source) { coroutine.ensureActive() }.also { file = it }
         } } catch (cancelled: CancellationException) {
             withContext(NonCancellable) { discardAvatar(file) }; throw cancelled
         }
@@ -149,7 +146,8 @@ class PersonRepository(private val database: Arachn0deDatabase, private val avat
                 if(saved) {
                     profile?.let {require(it.personId==id);saveProfile(it)}
                     if(birthday!=null) saveBirthday(id,birthday)
-                    if(identity!=null) identifySelf(if(identity) id else null)
+                    val principal=ensurePrincipalProfile(database)
+                    if(identity!=null) require(if(identity) principal==id else principal!=id) {"El perfil principal se asigna automáticamente."}
                 }
                 saved
             }
@@ -158,6 +156,18 @@ class PersonRepository(private val database: Arachn0deDatabase, private val avat
             } }
             result
         } finally { withContext(NonCancellable) { runCatching { recoverLocked() } } }
+    }
+    /** Atomic guard: guest recovery must never replace an avatar chosen concurrently by the owner. */
+    internal suspend fun setGuestAvatarIfAbsent(id:String,file:String,framing:com.r0ybt.arachn0de.domain.model.AvatarFraming):Boolean=files {
+        framing.validate();require(avatars.exists(file))
+        try {database.withTransaction {
+            val current=requireNotNull(dao.get(id))
+            if(current.avatarFile!=null) false else {
+                avatars.durable.record(setOf(file))
+                check(dao.update(id,current.name,file,framing.zoom,framing.x,framing.y)==1)
+                true
+            }
+        }} finally {withContext(NonCancellable) {runCatching {recoverLocked()}}}
     }
     internal suspend fun setPhotoAsAvatar(personId: String, photoId: String): Boolean = files {
         recoverLocked()
@@ -179,6 +189,7 @@ class PersonRepository(private val database: Arachn0deDatabase, private val avat
         recoverLocked()
         try { database.withTransaction {
             val old = dao.get(id) ?: return@withTransaction false
+            require(ensurePrincipalProfile(database)!=id) {"El perfil principal no se puede eliminar."}
             avatars.durable.record(database.personGalleryDao().photos().filter {it.personId==id}.map {it.file}.toSet()+setOfNotNull(old.avatarFile))
             database.personMemoryDao().removeOwner(id)
             val removed=dao.delete(id)==1

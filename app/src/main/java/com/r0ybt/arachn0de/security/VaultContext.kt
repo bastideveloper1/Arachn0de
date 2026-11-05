@@ -7,11 +7,19 @@ import java.io.File
 
 /** Captured context never follows the application's next session. */
 internal open class VaultContext(base:Context,val session:SecureFiles.Session,subdirectory:String?=null):ContextWrapper(base) {
+    // Room work belongs to this store, including queries collected by the UI.
+    internal val queryJob=kotlinx.coroutines.SupervisorJob()
+    internal val queryContext=kotlinx.coroutines.Dispatchers.IO+queryJob
     private val dataRoot=if(subdirectory==null) session.root else File(session.root,subdirectory.also { require(it.matches(Regex("[a-z-]+"))) })
     var primary:Boolean=true
     lateinit var database:com.r0ybt.arachn0de.data.local.Arachn0deDatabase
     private val secrets=mutableListOf<ByteArray>()
     @Synchronized fun rememberSecret(bytes:ByteArray):ByteArray { session.checkOpen();secrets.add(bytes);return bytes }
+    suspend fun preparePreferences()=kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+        listOf(com.r0ybt.arachn0de.ui.theme.AppearancePreferences.FILE,ScreenCapturePreference.NAME,
+            com.r0ybt.arachn0de.calendar.CalendarSpecialPreferences.NAME,
+            com.r0ybt.arachn0de.domain.model.CalendarPresentationPreference.NAME).forEach {getSharedPreferences(it,0)}
+    }
     private val preferences=mutableMapOf<String,EncryptedPreferences>()
     override fun getApplicationContext():Context=this
     override fun getFilesDir():File { session.checkOpen();return File(dataRoot,"files").apply { check(mkdirs() || isDirectory) } }
@@ -21,10 +29,17 @@ internal open class VaultContext(base:Context,val session:SecureFiles.Session,su
         session.checkOpen();require(name==File(name).name && name=="arachn0de.db")
         return File(dataRoot,"databases/$name").apply { check(parentFile!!.isDirectory || parentFile!!.mkdirs()) }
     }
-    @Synchronized override fun getSharedPreferences(name:String,mode:Int):SharedPreferences {
+    override fun getSharedPreferences(name:String,mode:Int):SharedPreferences {
         session.checkOpen();require(name.matches(Regex("[a-zA-Z0-9_-]+")))
-        return preferences.getOrPut(name) { EncryptedPreferences(session,load={ kotlinx.coroutines.runBlocking(kotlinx.coroutines.Dispatchers.IO) { database.privatePreferenceDao().get(name)?.payload?.let(EncryptedPreferences::decode) ?: emptyMap() } },persist={ values -> kotlinx.coroutines.runBlocking(kotlinx.coroutines.Dispatchers.IO) { database.privatePreferenceDao().save(com.r0ybt.arachn0de.data.local.PrivatePreferenceEntity(name,EncryptedPreferences.encode(values))) } }) }
+        synchronized(this) {preferences[name]?.let {return it}}
+        val loaded=EncryptedPreferences(session,
+            load={kotlinx.coroutines.runBlocking(kotlinx.coroutines.Dispatchers.IO) {database.privatePreferenceDao().get(name)?.payload?.let(EncryptedPreferences::decode) ?: emptyMap()}},
+            persist={values->kotlinx.coroutines.runBlocking(kotlinx.coroutines.Dispatchers.IO) {database.privatePreferenceDao().save(com.r0ybt.arachn0de.data.local.PrivatePreferenceEntity(name,EncryptedPreferences.encode(values)))}})
+        return synchronized(this) {session.checkOpen();preferences.getOrPut(name) {loaded}}
     }
-    @Synchronized fun reloadPreferences() { preferences.values.forEach(EncryptedPreferences::reload) }
-    @Synchronized fun clearMemory() { preferences.values.forEach(EncryptedPreferences::clearMemory);preferences.clear();secrets.forEach {it.fill(0)};secrets.clear() }
+    fun reloadPreferences() {
+        val loaded=synchronized(this) {preferences.values.toList()}
+        loaded.forEach(EncryptedPreferences::reload)
+    }
+    @Synchronized fun clearMemory() { queryJob.cancel();preferences.values.forEach(EncryptedPreferences::clearMemory);preferences.clear();secrets.forEach {it.fill(0)};secrets.clear() }
 }

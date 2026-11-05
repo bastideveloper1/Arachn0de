@@ -10,6 +10,9 @@ import com.r0ybt.arachn0de.security.SecureFiles
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.sync.Mutex
 import java.io.File
@@ -139,20 +142,36 @@ internal class AudioController(private val base:Context,private val session:Vaul
                 if(start) media.start()
                 state.value=state.value.copy(paused=!start,loading=false)
                 if(!start) notifyInactive()
-                ticker=scope.launch {var ticks=0;while(isActive && player===media) {delay(500);if(!state.value.paused) {state.value=state.value.copy(positionMs=media.currentPosition.toLong().coerceIn(0,state.value.durationMs));if(++ticks%2==0) persistPosition()}}}
+                startPlaybackUpdates(media)
             } catch(c:CancellationException) {throw c}
             catch(e:Exception) {player?.release();player=null;source?.close();source=null;state.value=AudioState(error="No se pudo reproducir el audio.");stopService()}
         }
     }
+    private fun startPlaybackUpdates(media:MediaPlayer) {
+        ticker?.cancel()
+        ticker=scope.launch {
+            state.map {it.fileId!=null && !it.recording && !it.paused && !it.loading}.distinctUntilChanged().collectLatest {playing->
+                if(playing) {
+                    var ticks=0
+                    while(isActive && player===media) {
+                        delay(500)
+                        if(state.value.paused || player!==media) break
+                        state.value=state.value.copy(positionMs=media.currentPosition.toLong().coerceIn(0,state.value.durationMs))
+                        if(++ticks%2==0) persistPosition()
+                    }
+                }
+            }
+        }
+    }
     suspend fun pause() {
-        if(state.value.recording) {capture?.paused?.set(true);state.value=state.value.copy(paused=true)}
+        if(state.value.recording) {capture?.pause(true);state.value=state.value.copy(paused=true)}
         else {runCatching {player?.pause()};val position=runCatching {player?.currentPosition?.toLong()}.getOrNull() ?: state.value.positionMs;state.value=state.value.copy(paused=true,loading=false,positionMs=position.coerceIn(0,state.value.durationMs));persistPosition()}
         abandonFocus();notifyInactive()
     }
     suspend fun toggle() {
         if(!canToggle) return
         if(!state.value.paused) pause() else if(acquireFocus()) {
-            if(state.value.recording) capture?.paused?.set(false) else {if(state.value.positionMs>=state.value.durationMs) {player?.seekTo(0);state.value=state.value.copy(positionMs=0)};player?.start()}
+            if(state.value.recording) capture?.pause(false) else {if(state.value.positionMs>=state.value.durationMs) {player?.seekTo(0);state.value=state.value.copy(positionMs=0)};player?.start()}
             state.value=state.value.copy(paused=false)
         }
     }
@@ -179,7 +198,12 @@ internal class AudioController(private val base:Context,private val session:Vaul
         if(!switching) playGeneration++
         val preparing=prepareJob;prepareJob=null
         if(preparing!==currentCoroutineContext()[Job]) preparing?.cancelAndJoin()
-        persistPosition();ticker?.cancel();ticker=null;player?.release();player=null;source?.close();source=null;abandonFocus()
+        ticker?.cancelAndJoin();ticker=null
+        if(!state.value.recording && player!=null) {
+            val position=runCatching {player!!.currentPosition.toLong()}.getOrNull()
+            if(position!=null) state.value=state.value.copy(positionMs=position.coerceIn(0,state.value.durationMs))
+        }
+        persistPosition();player?.release();player=null;source?.close();source=null;abandonFocus()
         if(!switching) {if(!state.value.recording) state.value=AudioState();stopService()}
         }}
     fun dispose() {isClosed=true;capture?.stop();runCatching {player?.release()};source?.close();abandonFocus();scope.cancel()}

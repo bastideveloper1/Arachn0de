@@ -135,7 +135,7 @@ class NavigationErgonomicsUiTest {
         var destination=""
         var dismissed=0
         mount {AppSafeArea {AppIdentityDrawer({dismissed++},onProjects={destination="Proyectos"},onMetro={destination="Metro"},
-            onObligations={destination="Obligaciones"},onCalendar={destination="Calendario"},onAttention={destination="Avisos"},onRecurrences={destination="Recurrencias"})}}
+            onObligations={destination="Pagos"},onCalendar={destination="Calendario"},onAttention={destination="Avisos"},onRecurrences={destination="Recurrencias"})}}
         compose.onNodeWithText("Proyectos").performClick();assertEquals("Proyectos",destination)
         compose.onNodeWithText("Metro").performClick();assertEquals("Metro",destination)
         compose.onNodeWithText("Seguimiento").performClick()
@@ -145,7 +145,7 @@ class NavigationErgonomicsUiTest {
         assertEquals(24f*compose.density.density,icon.height,1f)
         assertEquals(row.center.y,icon.center.y,1f)
         preview("drawer")
-        listOf("Recurrencias","Avisos","Obligaciones","Calendario").forEach {label ->
+        listOf("Recurrencias","Avisos","Pagos","Calendario").forEach {label ->
             compose.onNodeWithText(label).performScrollTo().performClick();assertEquals(label,destination)
         }
         assertEquals(6,dismissed)

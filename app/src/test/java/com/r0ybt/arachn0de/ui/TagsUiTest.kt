@@ -26,37 +26,46 @@ class TagsUiTest {
         compose.onNodeWithText("Todas las etiquetas").performClick()
         compose.runOnIdle { assertTrue(selected.isEmpty()) }
     }
-    @Test fun compactSheetReplacesTheSelectionAndKeepsRemovalAndDone() {
+    @Test fun compactSheetAssignsAndRemovesImmediatelyWithoutFooter() {
+        var visible by mutableStateOf(true)
         var selected by mutableStateOf(emptySet<String>())
         compose.setContent { com.r0ybt.arachn0de.ui.theme.Arachn0deTheme {
-            TagSelector(listOf(Tag("a","Alpha","alpha"),Tag("b","Beta","beta")),selected,{selected=it})
+            if(visible) TagSelector(listOf(Tag("a","Alpha","alpha"),Tag("b","Beta","beta")),selected,{selected=it})
         } }
         compose.onNodeWithText("Etiquetas: Ninguna").performClick()
         compose.onNodeWithText("Alpha").performClick();compose.onNodeWithText("Beta").performClick()
         compose.runOnIdle {assertEquals(setOf("b"),selected)}
         compose.onNodeWithText("Alpha").performClick()
         compose.runOnIdle {assertEquals(setOf("a"),selected)}
-        compose.onNodeWithText("Quitar etiqueta").performClick()
+        compose.onNodeWithText("Alpha").performClick()
         compose.runOnIdle {assertTrue(selected.isEmpty())}
-        compose.onNodeWithText("Listo").assertIsDisplayed().performClick()
-        compose.onNodeWithText("Buscar o crear etiqueta").assertDoesNotExist()
+        compose.onNodeWithText("Listo").assertDoesNotExist()
+        compose.onNodeWithText("Cancelar").assertDoesNotExist()
+        compose.runOnIdle {visible=false}
+        compose.waitForIdle()
+        compose.runOnIdle {visible=true}
+        compose.onNodeWithText("Etiquetas: Ninguna").performClick()
+        compose.onNodeWithTag("tag-choice:a").assertIsNotSelected()
     }
     @Test fun legacyAssociationsStayUntouchedUntilAnExplicitChoice() {
+        var visible by mutableStateOf(true)
         var selected by mutableStateOf(setOf("a","b"))
         val tags=listOf(Tag("a","Alpha","alpha"),Tag("b","Beta","beta"))
         compose.setContent {com.r0ybt.arachn0de.ui.theme.Arachn0deTheme {
-            TagSelector(tags,selected,{selected=it})
+            if(visible) TagSelector(tags,selected,{selected=it})
         }}
         compose.onNodeWithText("Etiquetas: Alpha, Beta").performClick()
         compose.onNodeWithTag("legacy-tags").assertIsDisplayed()
         compose.onNodeWithTag("tag-choice:a").assertIsSelected()
         compose.onNodeWithTag("tag-choice:b").assertIsSelected()
         compose.onNodeWithText("Eliminar").assertDoesNotExist()
-        compose.onNodeWithText("Listo").performClick()
+        compose.runOnIdle {visible=false}
+        compose.waitForIdle()
+        compose.runOnIdle {visible=true}
         compose.runOnIdle {assertEquals(setOf("a","b"),selected)}
         compose.onNodeWithText("Etiquetas: Alpha, Beta").performClick()
         compose.onNodeWithTag("tag-choice:b").performClick()
-        compose.runOnIdle {assertEquals(setOf("b"),selected)}
+        compose.runOnIdle {assertEquals(setOf("a"),selected)}
         compose.onNodeWithTag("legacy-tags").assertDoesNotExist()
     }
     @Test fun selectionAndScopeSurviveRecreation() {

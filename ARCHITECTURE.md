@@ -3175,6 +3175,54 @@ atajos nuevos en este bloque.
 
 ## Contrato de persistencia y backup
 
+Editor de imágenes: color y grosor reutilizan el namespace privado opcional
+`image_annotation_style`, transportado por el snapshot de preferencias existente.
+Se valida la paleta y los grosores antes de reemplazar datos; los respaldos
+históricos sin la fila conservan los valores iniciales. No cambia Room ni el
+formato de backup. La lupa solo existe en el lienzo interactivo; no se guarda ni
+se exporta. Detalle y pruebas en `docs/IMAGE_EDITOR_GROUP_4.md`.
+
+Grupo 2 de Ordenar/Filtrar: posición de Favoritos se almacena en el payload
+`SORT1:` de `node_sort_preferences`, con ausencia equivalente a sin preferencia.
+La lista general de Núcleos usa el contexto reservado `@projects` de esa misma
+tabla; no añade almacenamiento paralelo ni una migración Room. JSON 59 conserva
+este contexto y el nuevo campo, con lectores históricos y validación antes de
+restaurar. No se cambia la versión de app. Especificación en `BACKUP_FORMAT.md`
+y resultados focalizados en `docs/SORT_FILTER_GROUP_2.md`.
+
+Banco/Pago unificado: Room 55 reconstruye transaccionalmente las tablas de
+operaciones y asignaciones para admitir DIRECT sin cuenta y personas opcionales.
+Conserva exactamente las filas históricas, índices, FKs y triggers; comprueba
+igualdad y `foreign_key_check` antes del commit. JSON 58 representa los nuevos
+nulls y mantiene los lectores 1–57. No cambia el contenedor ni la versión de app.
+Los nuevos pagos requieren una tarjeta explícita y no distribuyen automáticamente.
+La especificación definitiva del check conserva el estado con abonos parciales y
+completa al pagar exactamente el pendiente, después de insertar el pago y dentro
+de la misma transacción. El check con deuda abre el formulario compartido sobre
+la lista, preseleccionado y con pendiente precargado; el check saldado completa sin
+generar pagos. Se bloquean nuevas completaciones con deuda CLP y correcciones
+que creen deuda en Completadas; los estados históricos permanecen intactos.
+El primer pago desde tarjeta puede crear un Núcleo Banco real, sin cuentas,
+solo dentro de la misma transacción del pago. Cancelación y fallo no lo crean.
+Inventario, pruebas y límite de validación nativa en `docs/BANK_PAYMENT_IMPLEMENTATION.md`.
+
+Los nuevos importes operativos se limitan a CLP en creación individual, lotes,
+recurrencias e inserción de plantillas. Los importes históricos en otras monedas
+se leen y restauran sin convertirlos; sus campos monetarios no se pueden modificar
+ni retirar mediante editores o conversiones de tipo. Se permiten ediciones de
+otras propiedades que conserven el importe y la moneda. Las recurrencias históricas
+no CLP no se materializan ni avanzan su cursor, sin bloquear reglas CLP.
+Los valores iniciales históricos se conservan, pero los nuevos borradores usan
+CLP. No cambia el esquema, el formato de backup ni los estados de las tareas.
+
+Bloque 6: el catálogo activo se simplifica sin retirar esquemas históricos.
+Las plantillas estructurales reutilizan `saved_templates` con payload v2, recursos
+inline cifrados y remapeo de identidades al insertar. Se conservan lectores v1.
+El único archivo operacional nuevo es el diario privado de reservas
+`template-insertions`; está excluido del backup y se recupera al reiniciar sin
+expiraciones. Reglas, límites y validación en
+`docs/SIMPLIFICATION_STRUCTURAL_TEMPLATES_BLOCK_6.md` y `BACKUP_FORMAT.md`.
+
 Toda funcionalidad nueva que incorpore tablas o columnas persistentes, preferencias o configuraciones, archivos, imágenes o adjuntos, relaciones entre entidades o nuevos tipos de datos locales debe evaluar e implementar su exportación, restauración, integridad, compatibilidad y pruebas en la misma intervención.
 
 Si una función introduce datos que el backup no puede recuperar, **la implementación no debe considerarse terminada**. No basta con exportar registros si faltan archivos para reconstruirlos. Un respaldo incompleto debe fallar explícitamente y nunca informar éxito.
@@ -5643,3 +5691,1359 @@ completo. El backup existente recupera sus posiciones, colores, textos e IDs sin
 necesitar el catálogo de pantallas. Miniaturas e historial siguen siendo de sesión.
 Las pruebas dirigidas cubren los 25 diseños, edición y eliminación individual,
 confirmación, navegación, formato, undo/redo, PNG y restauración cifrada en vacío.
+
+### Wireframe: bordes, iconos y capa de anotaciones
+
+El catálogo de 80 componentes y los 25 moldes no cambian. Los cuatro tiradores
+centrales redimensionan el contenedor por eje; capturan la unidad tipográfica y
+las dimensiones de referencia del contenido para recortarlo sin reducir textos
+ni iconos. Las formas con proporción bloqueada la conservan y respetan mínimos.
+La esquina existente permite escalar; guías y ajuste magnético reconocen también
+el borde activo. Los gestos mantienen un borrador local: cancelar no confirma y
+levantar el dedo produce una sola operación de historial.
+
+Propiedades abre un selector horizontal reutilizable para cada posición de icono
+compatible. Las sustituciones usan claves estables de los recursos Lucide locales;
+no cambian geometría, colores ni valores predeterminados de las plantillas. El
+renderizador nativo compartido las aplica en lienzo, miniatura y PNG.
+
+Las anotaciones son una lista documental independiente de los elementos. Su orden
+asigna los números. Guardan título opcional, texto y posición relativa al lienzo o
+a un elemento. Al mover el elemento conservan su desplazamiento relativo, incluso fuera del
+contenedor (limitado visualmente al lienzo);
+al eliminarlo se desvinculan conservando la posición absoluta. Deshacer recupera
+el vínculo. La visibilidad de marcadores pertenece a la sesión del editor.
+
+WireCodec escribe v3 solo cuando hay nuevas propiedades; lee v1/v2 sin cambiar su
+renderizado ni su codificación. Guarda todo en el namespace cifrado existente y
+valida las referencias antes del commit/restauración; no hay migración Room ni
+nuevos archivos privados. Las versiones antiguas de la aplicación rechazan v3.
+
+La exportación normal nunca dibuja anotaciones. La modalidad con observaciones
+usa OpenDocumentTree y crea documentos PNG nuevos: diseño numerado y hojas de
+texto medidas por líneas, de 1240 px de ancho y hasta 2048 px de alto. Pagina títulos
+y textos completos; no aplica elipsis al contenido de observaciones. Comparte las
+URI con ACTION_SEND_MULTIPLE, ClipData y permiso de lectura temporal.
+
+Los PNG exportados son archivos externos del usuario, regenerables desde el dibujo;
+no son adjuntos ni fuentes del documento y no se incluyen en backup. No se almacenan
+rutas ni URI de exportación en los dibujos. Cancelar el selector no crea archivos;
+compartir/cancelar el diálogo no elimina los ya exportados. Cada exportación crea
+archivos independientes sin reemplazar los anteriores. Ante fallo solo intenta
+retirar los documentos recién creados por esa operación; si el proveedor rechaza
+la limpieza informa de los parciales para revisión en la carpeta elegida. No hay
+barridos, caché privada, reservas de adjuntos ni eliminación de documentos previos.
+El dibujo cifrado permanece intacto ante errores o interrupciones de exportación.
+
+Validación dirigida de esta ampliación: compilación Kotlin y 40 pruebas aprobadas
+(16 de interfaz, seis de geometría, ocho de edición/exportación/backup, seis de
+compatibilidad Wireframe y cuatro de los 25 moldes). Incluye cancelación de gestos,
+restauración de estado, permisos del intent de compartir, proveedor SAF simulado,
+archivos previos, fallos de creación/limpieza y restauración cifrada en vacío.
+Pendiente verificar tacto, proveedores SAF reales y aplicaciones receptoras en un
+dispositivo físico; las pruebas JVM no acreditan esas integraciones de fabricante.
+
+## Anotaciones de imágenes adjuntas
+
+`annotations/` contiene el modelo normalizado de marcas, historial, render nativo y
+exportación de observaciones independiente. Wireframe conserva sus adaptadores y
+reutiliza la paginación medida de `ObservationExport`; no cambian sus catálogos.
+`AttachmentViewer` ofrece «Anotar imagen» para PNG/JPEG. El editor separa dibujo,
+selección (mover / ajustar el último extremo) y desplazamiento con zoom. Cada gesto
+terminado añade una operación al historial (40); ediciones consecutivas de una
+observación se agrupan. Cancelar un gesto no modifica el documento. Volver o cerrar
+con modificaciones pide conservar la edición o descartarla. El estado del documento
+sobrevive a recreación mediante el mismo patrón saveable del editor Wireframe;
+solo una copia guardada constituye contenido confirmado y recuperable en backup.
+
+Guardar nunca reemplaza el original ni una copia anterior. Produce un nuevo PNG
+que contiene sus píxeles marcados y un chunk privado ancillary `arNd` autocontenido:
+versión binaria 1, bytes originales PNG/JPEG sin alteración y JSON de marcas. Al
+reeditar se parte de esa fuente, sin acumular compresión ni fuentes anidadas. No hay
+rutas, referencias externas, tablas, preferencias ni migraciones nuevas. La fuente
+incrustada permite eliminar posteriormente el adjunto original sin romper la copia.
+El dibujo y las observaciones no producen archivos por gesto.
+
+La copia usa `AttachmentStore.importBytes`, que comparte el importador validado,
+cifrado, staging, reserva durable y fsync de los adjuntos existentes. Guardado y
+asociación se serializan con `AttachmentRepository.fileOperations`. En un editor
+abierto, su reserva pertenece a `attachmentDraftId` y su referencia se inserta en
+el borrador; al reabrir se recupera mediante `pendingImports`, y cancelar el borrador
+la libera. En el visor de contenido confirmado, una transacción añade la copia junto
+al original en sus ubicaciones de Núcleos/Capas/Notas/Tareas. Nunca se altera la
+referencia original. Si no hay destino confirmado se exige abrir el editor del
+propietario. Un fallo anterior al commit elimina exclusivamente la importación propia;
+tras commit las reservas y los registros pendientes permiten reintentar la limpieza.
+
+El ciclo de liberación es el de cualquier adjunto: cada copia tiene identidad propia;
+quitar una referencia compartida no borra sus bytes. La última referencia, sin
+reservas ni protección de backup/restauración, permite marcar DELETE_PENDING y
+borrar; un fallo físico conserva el registro para reintentar al reiniciar. La fuente
+incrustada no es un archivo aparte ni una relación que pueda quedar huérfana. Las
+pruebas dirigidas cubren cancelación del borrador, reedición como nueva copia,
+referencias compartidas, fallo de commit, borrado fallido y recuperación.
+
+Límites: 20 MiB por PNG editable completo; 256 marcas, 16.000 puntos totales,
+4.096 puntos por marca, 20.000 caracteres por observación y 1 MiB de JSON. El visor
+trabaja con decodificación muestreada de hasta 2.048 px por lado, conservando relación
+de aspecto y orientación EXIF; la copia y exportación usan esa resolución, que se
+indica cuando difiere de la fuente. Los bytes originales siguen íntegros en el chunk.
+Solo las copias guardadas sobreviven a un cierre forzado sin estado de instancia.
+
+Los PNG externos no contienen el chunk editable ni la fuente sin marcar: tanto
+el exportador del editor como «Guardar copia» y «Compartir» del visor producen solo
+píxeles públicos. Las hojas de observaciones se paginan sin truncar texto. SAF crea
+archivos nuevos en el destino elegido; al fallar solo se retiran los creados en esa
+invocación y se informa si el proveedor impide retirarlos. No se introduce caché
+privada de exportaciones ni archivos en claro. El compartidor conserva sus permisos
+temporales de lectura y revocación al bloquear el almacén. Los archivos públicos SAF
+son del usuario y quedan fuera del backup privado, igual que las exportaciones previas.
+
+## Personas asociadas a publicaciones de Antisocial
+
+La unidad de publicación sigue siendo `person_memories`, con una o varias
+fotografías y un perfil propietario. Room 48 añade una tabla aditiva de asociaciones
+`person_memory_people` y `peopleVisible` (true por defecto, publicaciones anteriores
+sin asociaciones). No cambia fotografías, rutas, adjuntos ni versiones de aplicación.
+
+Cada asociación tiene ID independiente y orden propio. Un perfil registrado se
+identifica por FK nullable a `persons`, nunca por nombre. Su presentación consulta
+el nombre público actual. `label` conserva el texto libre original al vincularlo;
+`profileName` conserva el nombre conocido del perfil. El borrado oficial de Personas
+captura el último nombre antes de aplicar SET NULL en la misma transacción. Eliminar
+una asociación no elimina el perfil. Eliminar una publicación elimina solo sus
+asociaciones; eliminar el perfil propietario mantiene el comportamiento histórico
+de borrar sus publicaciones. Las asociaciones en publicaciones de otros propietarios
+se convierten en referencias textuales, sin FK inválida ni fusión de homónimos.
+
+El ID de asociación permite añadir en el futuro una tabla de marcadores por imagen
+que la referencie. Este bloque no guarda coordenadas ni procesa rostros. El selector
+permite añadir perfiles existentes o nombres libres y vincular estos últimos después
+sin cambiar la identidad de asociación ni crear automáticamente perfiles. Se evitan
+perfiles repetidos y duplicados textuales accidentales. Los homónimos con perfiles
+diferentes conservan identidades distintas.
+
+`MemoryPeoplePanel` vive dentro del campo modular Personas del editor actual.
+Confirmar guarda publicación, imágenes, asociaciones y visibilidad atómicamente con
+el bloqueo de archivos ya usado por la galería; Cancelar/Atrás descartan solo el campo.
+Editar otra sección conserva las asociaciones y visibilidad confirmadas. El estado
+temporal de Personas usa Saver y no forma parte del backup hasta confirmar, igual
+que los demás campos. No se altera el host global ni las acciones superiores.
+
+La presentación del visor muestra Personas presentes solo si `peopleVisible` está
+activado. Tocar un perfil abre su consulta existente, retirando temporalmente el visor;
+Volver recupera la publicación. Los nombres libres no intentan abrir perfiles. No
+se añaden controles de edición a las tarjetas. Ocultar no es un permiso ni un sistema
+de consentimiento; no borra datos, y el backup privado conserva toda la información.
+La descarga de fotografías no incorpora nombres ni asociaciones.
+
+Backup JSON 40 añade todas las asociaciones y el booleano; lectura histórica 1–39
+con defaults explícitos. Snapshot, validación estructural y referencial, límites,
+restauración transaccional y pruebas cifradas se amplían en la misma tarea. No hay
+archivos nuevos del usuario que liberar: se mantienen intactos los ciclos existentes
+de fotografías y adjuntos. La migración y el esquema exportado 48 se incluyen junto
+con pruebas de preservación desde 47. Ver BACKUP_FORMAT.md para el formato portable.
+
+## Diagramas: documento y biblioteca cifrada
+
+Diagramas tiene modelo propio (`DiagramDocument`, nodos, conexiones y `DiagramFlow`)
+y una biblioteca `diagram_library` en `private_preferences` de la bóveda. Cada nodo
+y conexión tiene UUID estable; los extremos hacen referencia a los nodos, no a sus
+coordenadas. Mover/redimensionar recalcula anclajes y geometrías. Rectas, ortogonales
+y curvas comparten `edgePath`; el renderer estático y las partículas usan el mismo
+Path/PathMeasure, incluyendo puntos intermedios. No hay simulación ni red.
+
+Se reutilizan `ModularPanelSurface`, cromado de navegación, SAF/Android Share,
+almacenamiento cifrado y respaldo transaccional existentes. Se extraen a `visual/`
+el importador/validador acotado de imágenes de Wireframe, la transformación de
+viewport utilizada por Anotar imagen y un historial genérico de 40 operaciones.
+Las interfaces originales se mantienen mediante adaptadores; no cambia el modelo,
+los catálogos ni los paneles globales de los otros editores.
+
+La biblioteca guarda documentos (`doc_UUID`) y recursos (`asset_SHA256`) como valores
+separados. Cada PNG normalizado se almacena una vez y todos los diagramas/partículas
+lo referencian por hash. Se conserva transparencia, sin marco ni fondo impuesto.
+Importar confirma un icono de la biblioteca personal: descartar un diagrama no borra
+ese icono reutilizable. Eliminar un recurso se rechaza si lo utiliza un documento
+confirmado; eliminar documentos no borra iconos de la colección. No hay archivos
+privados adicionales, rutas, leases, staging o barridos nuevos: los bytes están en la
+misma transacción SQLCipher que el documento. Un fallo anterior al commit conserva
+el payload anterior; el mutex común con backup serializa cambios y snapshots.
+
+El recurso importado se normaliza a PNG de hasta 1024 px/lado y 1 MiB, leyendo como
+máximo 20 MiB de origen y rechazando dimensiones superiores a 100 megapíxeles. Las
+miniaturas son de hasta 64 px y solo viven en memoria. El renderer carga únicamente
+recursos del documento activo (máximo 12); geometrías se cachean mientras el
+documento no cambia y bitmaps se liberan al salir. No se cargan recursos desde Internet.
+
+Los gestos separan Seleccionar/mover, Desplazar/zoom y Conectar. Solo el arrastre
+iniciado en un puerto explícito crea una conexión. Un gesto confirma una sola entrada
+al historial; cancelar no confirma el borrador del gesto. Las guías opcionales ajustan
+a una cuadrícula normalizada. Seleccionar no abre automáticamente paneles. Elementos,
+Conexiones y Opciones alternan abrir/cerrar; cambiar sustituye y Atrás minimiza primero.
+Cambios no guardados se protegen al salir. El documento y viewport usan estado
+guardable ante recreación; solo Guardar/Guardar copia confirma el documento en backup.
+
+Edición mantiene partículas pausadas. Presentación oculta herramientas, tiradores y
+guías y permite pausar/reanudar sin modificar el documento. El reloj usa withFrameNanos
+y repeatOnLifecycle RESUMED: no avanza en segundo plano ni al salir del editor.
+Si Android desactiva animadores, no se ejecuta el reloj. La velocidad, dirección,
+repetición, cantidad y tamaño son propiedades independientes de cada conexión; las
+imágenes móviles no cambian los tamaños de los nodos. Una reproducción sin bucle
+termina, y puede reiniciarse regresando a Edición y Presentación.
+
+Límites explícitos: 32 documentos, 48 recursos, 3 MiB de payload de biblioteca; por
+documento 512 KiB, 128 nodos, 192 conexiones y 12 recursos distintos; 8 puntos por
+conexión; 8 partículas por conexión y 64 activas en total. Exportación estática del
+lienzo completo 1600×1000, con alpha y sin herramientas ni partículas. La animación
+permanece editable: PNG no se presenta como GIF/video. SAF crea un documento nuevo;
+si falla, solo se intenta retirar ese archivo y se informa si el proveedor lo impide.
+Los PNG exportados son del usuario, fuera del backup privado; no hay caché en claro.
+
+Cinco plantillas editables y el lienzo vacío usan el mismo modelo. Los nombres/textos
+son simples, con saltos de línea manuales; no hay enrutamiento automático de obstáculos,
+texto enriquecido, exportación animada ni motor de simulación. El contraste, gestos
+multitáctiles, consumo en hardware y proveedores reales de compartir requieren
+validación en dispositivo físico además de las pruebas automatizadas.
+
+### Refinamiento Diagramas: cámara y exportación animada
+
+El viewport de Diagramas ocupa toda la superficie disponible y admite pan desde el
+espacio vacío. No cambia el viewport compartido de Anotar imagen. La cámara opcional
+`{cx,cy,scale}` del documento v1 guarda centro normalizado y escala dp/píxel lógico;
+los documentos históricos sin cámara calculan fit por contenido. Cambio de panel y
+orientación conservan la cámara, y Ajustar solicita otro fit. El panel tiene estados
+Compacto/Normal/Ampliado y separa creación, conexiones, propiedades contextuales y
+opciones. Vista previa es una acción primaria; el renderer usa el mismo tiempo de
+flujo en pantalla, GIF y MP4. Los bucles distribuyen partículas desde el instante cero.
+
+Las exportaciones públicas PNG/GIF/MP4 se generan desde una instantánea del modelo,
+sin controles, en streaming/background y con memoria acotada por un fotograma.
+GIF89a utiliza paleta RGB332 y LZW con reinicios; MP4 usa MediaCodec AVC/YUV420Flexible
+respetando stride de planos y MediaMuxer, desde API26 y con SAF buscable. Alpha MP4
+se compone sobre blanco. Límites: 96 MiB, 24 s seleccionables (recorridos Una vez
+completos), GIF 320/640 a 10 fps, MP4 320/640/960 a 20 fps, proporción 1600:1000.
+PNG conserva su tamaño y alpha. Las limitaciones de paleta/codec y la comprobación
+H.264 pendiente en hardware constan en DIAGRAMAS.md.
+
+A diferencia de los recursos confirmados inline descritos arriba, exportar crea un
+archivo público a petición del usuario y un diario **operativo** privado cifrado en
+`files/diagram-export-journal`. Este registra intención/nombre único antes de SAF,
+URI tras creación y confirmación al terminar, mediante escritura SecureFiles durable,
+rename y fsync. Comparte AttachmentRepository.fileOperations con el backup y excluye
+exportadores activos de la recuperación. Cancelación/error elimina solo su propia
+salida. Borrado rechazado conserva marcador sin caducidad y reintenta al abrir
+Diagramas. La recuperación no elimina salidas con marcador completado ni archivos
+anteriores; tampoco recorre carpetas ajenas. Los `.next` reconocidos solo contienen
+metadatos operativos y se retiran cuando no hay operación activa. No se crean frames
+o videos privados temporales. Los archivos públicos son propiedad del usuario tras
+confirmar y no pertenecen al backup del documento. Diario y permisos SAF son estado
+operativo local excluido; documentos, cámara y todos sus PNG siguen en el snapshot
+cifrado y su validador. Sin nueva tabla, migración ni versión de aplicación/backup.
+
+### Diagramas: menú visual, selección múltiple y fondo documental
+
+Este bloque sustituye la organización anterior de cuatro pestañas y el panel ampliado
+por tres categorías Elementos/Conexiones/Opciones con subpaneles de altura natural:
+cuerpo máximo 176 dp o 24 % del espacio útil. Selección muestra una fila contextual;
+un icono abre solo su editor. Minimizar conserva ruta y cambios. Los controles tienen
+48 dp, semántica/selección y tooltip, y usan LocalAppearancePalette/ModularPanelSurface.
+No se altera Wireframe: se reutilizan wireSmartAlign mediante adaptador normalizado y
+wireCompositionLines; alineación/distribución múltiple propia añade selección mínima
+por toque. Cuadrícula y ajuste son independientes y la cuadrícula cubre el viewport.
+
+Números de conexión son un orden de UUID de sesión, conservado ante borrar/deshacer
+y recreación, sin modificar la identidad. Los indicadores se dibujan después del
+renderer, con tamaño de pantalla y hit-testing propio. Solo aparecen en Conexiones;
+no entran en datos confirmados ni exportaciones. Selección, guías, cuadrícula, rutas
+de panel y opciones de exportación siguen siendo estado de instancia excluido del
+backup; las modificaciones confirmadas del documento y cámara sí se respaldan.
+
+Documento v1 añade `backgroundAsset` opcional, `backgroundFit` FIT/FILL y por conexión
+`strokeStyle` SOLID/DASHED/DOTTED. Ausencia histórica da null/FIT/SOLID. El fondo se
+incluye en DiagramDocument.assets(), por lo que comparte hash, bytes, validación,
+control de referencias, atomicidad y backup con iconos de nodos/partículas. No se
+crean archivos ni propietarios nuevos: colección confirmada existente, retirada solo
+por acción explícita sin referencias. Reemplazar/quitar fondo no borra recursos
+compartidos. El renderer conserva proporción, aplica FIT/FILL dentro del documento y
+lo dibuja antes de conexiones/nodos; nunca participa en selección. Elegir negro no
+reescribe colores; Adaptar contraste es opcional y deshacible.
+
+Los estilos de línea y el fondo se representan por el mismo renderer en editor,
+preview en vivo, Presentación y PNG/GIF/MP4. Los DashPathEffect se reutilizan. Preview
+en vivo mantiene edición y refleja ajustes; Presentación oculta controles. Comparten
+reloj/modelo, tiempo determinista, pausa por lifecycle y reducción de movimiento.
+Exportación/journal/límites no se alteran. Plantillas nuevas consultan orientación al
+crear: composiciones verticales en teléfono vertical, horizontales en apaisado;
+ninguna lectura/guardado redistribuye documentos existentes. Room48/backupJSON40 y
+versión 0.6.0/code20 permanecen intactos. Validación y límites físicos: DIAGRAMAS.md.
+
+### Diagramas: límites, manipulación y diseño documental ampliado
+
+El diagnóstico del arrastre encontró dos errores además del límite real: identificar
+el nodo después del umbral táctil podía convertir un arrastre en pan de todo el
+viewport; recortar el puntero a 0..1 antes de calcular el delta alteraba el movimiento
+cerca de los bordes. Ahora se captura el objetivo en DOWN, se usa el puntero sin
+recortar y se limita exclusivamente el resultado contra el documento. Pan requiere
+su herramienta explícita. MULTI conserva movimiento de grupo. Cambiar selección al
+final evita que el panel contextual cambie el tamaño del escenario durante el gesto.
+El aviso aparece superpuesto, sin reencuadrar ni desplazar nodos.
+
+Hay ocho tiradores en unidades de pantalla, borde opuesto/centro, proporción de imagen
+por defecto y tipografía uniforme opcional. Duplicar y conectar devuelve UUID del
+nodo nuevo, lo selecciona y confirma nodo+enlace en un único paso del historial.
+Busca espacio libre sin recolocar nodos; agotarlo ofrece ampliar, dirección o
+colocación manual. Los límites siguen siendo finitos y visibles; Libre muestra sus
+dimensiones y solo se amplía mediante confirmación.
+
+El modelo v1 añade campos opcionales de página, reproducción, degradados, estilo de
+nodo y partículas; `favorite_colors` pertenece a la biblioteca, no a un documento.
+La página admite 320..4096 por lado y hasta 8 millones de píxeles lógicos. Cada nodo
+conserva mínimo físico de 8 px; al ampliar cambian sus coordenadas normalizadas, no
+su tamaño ni posición físicos. Los formatos fijos validan su proporción. Ajustar
+contenido es explícito y uniforme. Las resoluciones de salida son independientes.
+
+OFF conserva configuraciones. SEGMENT usa UUID elegido. SEQUENTIAL sigue relaciones
+reales y solicita elección en raíces ambiguas/bifurcaciones; los ciclos recorren una
+vez cada arista antes de repetir según el modo global. La transición atraviesa el
+nodo común sin reiniciar objeto/imagen. SIMULTANEOUS conserva flujos independientes.
+Un solo renderer/timeline sirve edición, presentación, GIF y fotogramas H.264.
+
+Los nuevos datos confirmados entran en el namespace cifrado completo y su validación
+antes de restaurar. No se crean archivos privados, tablas, migraciones ni servicios.
+Recursos y diario de exportación mantienen el contrato de liberación existente.
+Selector de color/degradado mantiene cambios temporales hasta Aplicar; guardar un
+favorito es una operación explícita e independiente de esa confirmación.
+
+### Temas personalizados — 0.6.0/code20, Room 48 / JSON 40
+
+Apariencia amplía su selector y AppearancePreferences existentes mediante
+CustomTheme (base oficial + overrides semánticos + paints + encabezado). Los
+recursos de identidad son PNG inline validados y protegidos con SHA-256 en el
+namespace cifrado `appearance_preferences`; no se crean archivos de imagen ni
+migraciones. El snapshot oficial exporta/restaura biblioteca, activo, favoritos y
+bytes íntegros. La validación del namespace existente ejecuta CustomThemeCodec
+antes de sustituir datos. La biblioteca es opcional para respaldos históricos.
+
+Las escrituras de temas usan commit atómico, revisión optimista y bloqueo común
+con backup/restauración. Eliminar el activo confirma simultáneamente el fallback
+Charcoal. Eliminar/reemplazar bytes inline solo libera la referencia al confirmar;
+las copias mantienen sus propios bytes. Cancelar descarta memoria, sin limpieza de
+archivos compartidos. La edición conserva recursos en un ViewModel durante cambios
+de configuración para no desbordar el Bundle; no son datos confirmados ni se
+incluyen en el backup. Guardar es necesario para conservar el diseño entre procesos.
+
+Los degradados se renderizan con brushes/shaders nativos en superficies de la UI,
+sin modificar documentos ni sus exportadores. La semántica de Green Bash depende
+de la base y sus ámbitos mantienen overrides. La identidad se limita al encabezado
+existente del menú. La caché de desbloqueo solo recibe la base oficial.
+
+Exportar JSON SAF reutiliza el diario de exportación cifrado, con namespace de
+archivos `theme-export-journal`, reservas y bloqueo común; registra antes de crear,
+confirma tras cerrar y retira únicamente salidas parciales propias. Los fallos
+conservan diario para recuperación al abrir Apariencia tras reiniciar. Salidas
+confirmadas pertenecen al usuario. Los diarios y el borrador del editor se excluyen
+del backup; los PNG confirmados no se excluyen. Límites, formato, ciclo de vida,
+interfaz y validaciones se describen en TEMAS.md y BACKUP_FORMAT.md.
+
+Validación de temas personalizados: compilación Kotlin Debug y batería dirigida
+conjunta **178/178**; incluye backup íntegro con PNG/encuadre/favoritos, rollback,
+corrupción e histórico, degradados nativos, administración/edición, fuentes 200/300 %,
+16 pruebas nuevas de temas, 55 de Diagramas y 40 de Wireframe. El subconjunto
+compartido de 48/52 dp permanece **39/39** sin alterar su geometría. Detalle, fixtures
+actualizados y comprobaciones físicas pendientes en TEMAS.md. Sin APK ni release.
+
+
+## Informes jerárquicos PDF / DOCX
+
+El paquete `document/` exporta Núcleos o Capas desde un snapshot de solo lectura
+bajo transacción y bloqueo común de archivos. PDF comparte maquetación con su
+vista previa; DOCX usa encabezados, campos de índice y anclajes flotantes reales.
+Las imágenes se normalizan en memoria; no se incluyen audios ni se alteran los
+adjuntos. No se añaden tablas, preferencias confirmadas ni archivos privados de
+contenido: Room 48 y compatibilidad JSON 1–40 permanecen intactos.
+
+La salida SAF reutiliza el diario cifrado con namespace `document-export-journal`.
+Registra antes de crear, confirma tras cerrar y retira solo parciales propios;
+un borrado fallido queda registrado para recuperación al reabrir la exportación,
+sin caducidad. Salidas confirmadas pertenecen al usuario. Memoria de preparación
+y diario operativo se excluyen del backup; los originales siguen respaldándose
+con sus bytes. Contrato, límites, archivos y validación: EXPORTACION_DOCUMENTOS.md.
+No hay APK ni cambio de versión: empaquetado pendiente por decisión del usuario.
+
+
+## Simplificación del editor de temas personalizados
+
+`CustomThemeEditor` ofrece solo Color, Imágenes opcionales y Previsualizar/Guardar.
+Diez variantes sólidas derivan de Charcoal sin alterar paletas oficiales. Cinco
+fondos independientes se aplican a superficies reales: menú (con logo), Núcleo,
+Capa, Tarea y Nota. `GeneralCard` dibuja decoración sin cambiar medidas ni acciones;
+la previsualización reutiliza `ProjectCard`, `NodeCard` y `ThemeDrawerIdentity`.
+El diálogo táctil de avatares y `AvatarFraming` admiten ahora rectángulos conservando
+el comportamiento cuadrado por defecto. No hay otro editor de imágenes.
+
+Se extiende el codec de temas con esquema portable 2, leyendo también 1 y
+preservando ajustes antiguos hasta elegir explícitamente una muestra. PNG/hash y
+encuadres viven inline en las mismas preferencias cifradas y entran al respaldo
+oficial. No cambian Room 48 ni JSON máximo 40; no hay archivos privados nuevos.
+Guardado, reemplazo y eliminación son atómicos y las copias conservan sus bytes.
+Compatibilidad, límites, liberación y pruebas dirigidas: TEMAS.md y BACKUP_FORMAT.md.
+Versión 0.6.0/code20; sin APK ni cambios de PDF/DOCX, Diagramas o temas oficiales.
+
+
+## Corrección táctil de Diagramas
+
+Se reutilizan DiagramCanvas, tiradores, viewport, historial y panel modular.
+Conexiones activa directamente el arrastre entre cuatro caras y permite reasignar
+extremos. DiagramEdge incorpora solo anclajes opcionales, conservando el cálculo
+histórico cuando faltan; codec documental 1/2, persistencia y backup comparten la
+validación. Room 48 y JSON 40 permanecen intactos. Las guías de movimiento/tamaño
+son automáticas, el ajuste magnético se controla aparte de la malla y usa los
+límites reales del nodo y la escala del viewport. No se modifica Wireframe ni
+los demás módulos. Límites y contrato de respaldo: DIAGRAMAS.md/BACKUP_FORMAT.md.
+
+
+## Diagramas: usabilidad y tabla ERD
+
+Mover, Redimensionar, Conectar, Elementos, Opciones y Eliminar usan seis iconos
+fijos de 48 dp en la barra inferior. Conectar activa el modo sin abrir panel;
+Opciones ofrece etiquetas de texto y mantiene la lista existente de conexiones
+del documento. Historial contenía solo Rehacer, ahora accesible directamente allí.
+Vista previa en vivo queda en las acciones superiores. El candado reutiliza
+GlobalChromeActions a la derecha de la cabecera de biblioteca y editor.
+El primer Guardar solicita nombre; Guardar actualiza el documento, Guardar copia
+crea un UUID distinto y Exportar documento produce PNG/GIF/MP4 mediante SAF.
+El nombre sigue siendo editable posteriormente. Puntos de recorrido conserva
+los mismos puntos intermedios, trayectorias y extremos reasignables.
+
+El nodo TABLE añade una lista fields: id UUID, name (hasta 100 caracteres), type
+opcional (hasta 64), pk y fk booleanos estrictos. Máximo 32 campos por tabla;
+encabezado en text (hasta 100). Las marcas son visuales y no introducen relaciones
+SQL: las conexiones siguen referenciando el UUID del nodo. Los campos pertenecen
+al nodo; borrar/reemplazar la tabla los elimina en la misma transacción. Duplicar
+conserva una copia independiente de sus valores. No se crean archivos ni recursos.
+
+El codec escribe versión documental 3 solo cuando hay tablas, y mantiene 1/2 para
+los documentos anteriores. Lee 1/2/3, valida IDs, tipos, límites y relaciones antes
+de confirmar o restaurar. Los nodos históricos conservan fields vacío y su
+representación. No cambian Room 48, JSON global 40 ni el contenedor de backup.
+Los campos confirmados viajan íntegros en diagram_library, dentro del snapshot
+cifrado y la restauración transaccional existentes. Una carga inválida se rechaza
+sin sustituir el estado anterior. Sin rutas absolutas ni nuevos ciclos de archivos.
+
+El renderer compartido representa encabezado, campos, tipos y marcas PK/FK en
+edición y en exportación PNG/GIF/fotogramas MP4. Ajusta el texto a las filas de la
+tabla; los gestos y anclajes existentes mueven/redimensionan/conectan el nodo.
+Las ediciones no guardadas siguen siendo estado temporal de instancia; cancelar
+el nombre del primer guardado no confirma un documento.
+
+
+## Skins: originales cifrados y encabezado inmersivo
+
+Los temas personalizados mantienen la biblioteca cifrada existente. ThemeImage
+schema 3 añade una referencia opcional a un original inmutable con nombre UUID.img,
+SHA-256, tamaño, MIME, dimensiones y EXIF. ThemeOriginalStore reutiliza SecureFiles,
+ImageFileLifecycle, el bloqueo común y BackupAvatarFiles con un directorio/journal
+controlados propios. No hay nuevas tablas ni migración Room (48). La selección
+copia los bytes sin recomprimir; el PNG histórico se conserva como preview de carga.
+La visualización decodifica como máximo un lado de 2048 px y nunca modifica la fuente.
+El conjunto de bitmaps pertenece al tema/composición, sin caché global entre almacenes.
+
+Cada editor reserva fuentes con propietario durable antes de usarlas. El guardado
+valida las fuentes y confirma primero los metadatos cifrados. La finalización del
+propietario escribe un registro durable de liberación; se reintenta después de un
+fallo. La limpieza consulta referencias confirmadas de todos los temas y reservas
+compartidas. Cancelación, reemplazo y eliminación solo retiran originales propios
+sin referencias; las reservas pendientes no caducan. Un proceso interrumpido antes
+de finalizar puede conservar una reserva indefinidamente antes que arriesgar datos.
+Los originales confirmados se incluyen íntegros en backup; los registros operativos
+y bitmaps decodificados son exclusiones regenerables/operativas documentadas.
+
+El backup conserva el contenedor v2, añade JSON 41 para originales y lee 1–40.
+Usa el manifiesto de imágenes por streaming y valida bytes/metadatos antes de
+staging y reemplazo. La restauración genera nombres nuevos, reescribe referencias
+solo en los temas afectados y recupera rollback/limpieza con el journal existente.
+El intercambio individual de temas usa un JSON identificado que incluye originales;
+los documentos históricos siguen admitidos. No se serializan rutas del dispositivo.
+
+El dibujo de tarjetas elimina la opacidad global: gradiente del fondo de 0 a 55 %
+y fotografía sin velo a la derecha; el encabezado no añade capa de oscurecimiento.
+El drawer usa su propia ventana edge-to-edge con imagen hasta arriba e insets para
+logo/cierre y acciones. Los temas oficiales y las dimensiones de tarjetas se conservan.
+
+## Borradores — Room 49 / JSON 42
+
+Una nota o tarea puede tener `Node.projectId = null` y `parentId = null`. Es una
+ubicación real sin organizar, sin proyecto oculto ni contenedor adicional. No admite
+LAYER, hijos, grupo de creación, Sprint ni estado de trabajo. Se reutilizan Node,
+NodeDialog, NodeActions, relaciones de adjuntos e historial existentes. Borradores
+se abre junto a Favoritos y ordena por updatedAt descendente, con ID como desempate.
+La captura rápida y las capturas compartidas pueden confirmar un destino nulo;
+las capturas rápidas permiten elegir Nota/Tarea. Un título vacío no confirma datos.
+
+`observeAllState` representa el trabajo organizado y excluye los borradores;
+`observeDrafts` es su observación separada. Las consultas por proyecto nunca incluyen
+ubicaciones nulas. Los borradores se pueden encontrar en Buscar/Favoritos y abrir en
+el mismo editor, conservando claves `node:ID`. No participan en progreso por
+proyecto, Atención, Calendario, finanzas ni limpieza de completados. No caducan.
+
+Room 48→49 reconstruye únicamente el esquema de nodes para permitir projectId
+nulo. Como SQLite puede aplicar CASCADE y SET NULL al reconstruir una tabla,
+la migración conserva snapshots temporales de las tablas y los triggers, suspende
+los triggers durante la reconstrucción y repone las filas sin REPLACE de propietarios.
+Compara ambas direcciones con EXCEPT y verifica foreign_key_check antes de terminar.
+Todo ocurre en la transacción de migración de Room; un error conserva la base anterior.
+Las bóvedas cifradas mantienen temp_store=MEMORY; no se crean archivos en claro.
+Los índices y triggers se conservan, excepto la antigua inmutabilidad de proyecto:
+la identidad sigue siendo inmutable y triggers nuevos validan ubicaciones de borrador.
+
+Mover cambia proyecto/padre/posición/updatedAt dentro de una sola transacción,
+conservando ID, contenido, fechas, prioridad, pago, responsables, etiquetas,
+tecnologías, historial, adjuntos y Favoritos. Solo ofrece proyectos y capas existentes,
+sin convertir tareas de destino. Se rechazan capas, grupos y elementos con pertenencia
+Sprint, recurrencia o relaciones dependientes de un contexto; se explica la limitación.
+La comprobación examina las FK hacia nodes y permite únicamente las relaciones
+portables conocidas. Un destino obsoleto, fallo o cancelación revierte el movimiento.
+
+Los audios se guardan mediante el controlador y diario existentes en una tarea sin
+proyecto. Una grabación existente se traslada con su tarea propietaria, sin extraer
+ni duplicar sus bytes. No hay nuevos marcadores, transcripción ni edición de audio.
+Los bytes de todos los adjuntos confirmados siguen viajando en el backup oficial;
+JSON 42 representa projectId nulo y los lectores mantienen 1–41. El ID y los metadatos
+se restauran con los vínculos de archivos dentro del procedimiento transaccional previo.
+Los formularios no confirmados y las reservas siguen siendo estado de edición, no
+contenido confirmado del backup. No se añaden preferencias ni directorios privados.
+
+Liberación: mover no crea ni elimina archivos. Editar, reemplazar, cancelar y borrar
+reutilizan reservas, bloqueo común, DELETE_PENDING y recuperación de AttachmentRepository.
+La última referencia y todas las reservas deben desaparecer antes del borrado físico;
+una referencia compartida en otro borrador/proyecto sigue protegiendo el archivo.
+No hay limpieza automática de borradores ni vencimiento de reservas.
+
+Los recibos de recurrencia, que intencionalmente no usan FK hacia nodes, se revisan
+explícitamente antes de mover; la restauración rechaza un recibo con nodo sin proyecto.
+Las preferencias de orden existentes se remapean entre `projectId:nodeId` y
+`draft:nodeId`, sin perder su valor; al borrar el borrador un trigger retira su clave.
+Confirmar audio en un borrador actualiza updatedAt para que el orden incluya esa
+modificación. Los formularios sin confirmar reutilizan EditorDraftStore/Saver en
+AppRoot, por lo que cerrar y reabrir el editor o navegar conserva la entrada durante
+la sesión y la recreación de estado; descartarla libera sus reservas explícitamente.
+
+El adaptador del editor reserva duramente sus adjuntos confirmados antes de habilitar
+Guardar y al plegarse, para que un editor conservado no pierda archivos al eliminar
+otra referencia. Reutiliza las reservas compartidas de AttachmentStore, también para
+AAC. Guardar libera únicamente las reservas del editor que confirma, después del
+commit; cancelar/descartar usa la misma liberación. La limpieza y recuperación
+conservan las reservas de otros editores sin caducidad.
+
+## Selector de estados — Room 50 / JSON 43
+
+La cápsula compartida `StatusSelector` solo cambia filtros locales guardables de
+interfaz. Tareas normales usan `TaskStatus` (Pendiente, Por verificar, Completada);
+la gestión conserva `WorkState` y sus cinco fases y transiciones históricas.
+La opción `Project.verificationEnabled` pertenece al Núcleo y se hereda por todas
+sus capas. `Node.awaitingVerification` conserva `isCompleted=false`, por lo que
+no aumenta el progreso ni permite limpieza automática de completadas. Las
+transiciones reales pasan por NodeRepository en transacción. Los movimientos,
+conversiones y cambios Sprint incompatibles se rechazan sin perder el estado.
+
+La migración aditiva 49→50 conserva los datos históricos con defaults false;
+triggers verifican propietario, tipo hoja, completado, fases y desactivación.
+Backup JSON 43 conserva ambos campos y la orientación global de Apariencia;
+versiones anteriores aplican false/Vertical. La validación precede al reemplazo
+transaccional y no hay nuevos archivos privados. Véanse BACKUP_FORMAT.md y
+SELECTOR_ESTADOS.md para el formato, decisiones de conversión y pruebas.
+
+## Skins: guardado con presupuesto y preferencias grandes
+
+Guardar/Aplicar conserva los límites del formato (2 MiB por tema, 4 MiB de
+biblioteca) y prepara las vistas previas antes de confirmar. Si es necesario,
+reduce únicamente previews del candidato con original verificado. Para PNG
+históricos inline, publica primero sus bytes exactos como original durable y
+reservado, usando el protocolo ThemeOriginalStore existente; conserva encuadre,
+coordenadas y otros temas. No convierte automáticamente PNG históricos cuyo
+EXIF introduciría una orientación distinta. Cancelación, fallo y recuperación
+reutilizan reservas y limpieza tras commit, sin caducidad ni barridos nuevos.
+
+PrivatePreferenceDao lee payloads por bloques de bytes de 128 KiB en una
+transacción y decodifica UTF-8 después de reunirlos, evitando CursorWindow para
+bibliotecas válidas grandes. No cambia tablas, filas ni cifrado. Se mantienen
+Room 50, JSON de backup 43 y schemas de temas 1–3. El backup incluye originales
+completos con el manifiesto existente, también para PNG históricos promovidos.
+Evidencia, archivos, 49 pruebas y límites pendientes en SKINS_FAILED_REQUIREMENT.md.
+
+### Estados de tareas heredados (Room 51 / JSON 44)
+
+La configuración efectiva sigue Núcleo → ancestros → tarea: el override nullable
+`nodes.taskStateCount` se resuelve por proximidad. El Núcleo conserva el booleano
+histórico de verificación. La reducción efectiva 3→2 convierte Por verificar a
+Pendiente únicamente tras confirmar el alcance, según el contrato siguiente.
+Un único control recorre Pendiente/Por verificar/Completada en modo 3 y
+Pendiente/Completada en modo 2. Una tarea Por verificar conservada en modo 2
+mantiene su icono y puede avanzar a Completada; nunca se convierte sola.
+El filtro normal utiliza la acción «Ver» de la barra inferior; el selector Sprint sigue independiente.
+La selección es única en memoria de la Activity, sin preferencias, SavedStateHandle
+ni campos de backup; se reinicia en Todas con un proceso nuevo (TASK_VIEW.md).
+El cálculo existente cuenta Por verificar como pendiente, sin barras ni porcentajes
+en tarjetas o contenido. La señal de contenedores
+es derivada y no persistente. Formato, migración, integridad y compatibilidad:
+BACKUP_FORMAT.md, sección JSON 44 / Room 51. Sin nuevos archivos privados.
+
+### Cambio confirmado de 3 a 2 estados
+
+Las acciones de configuración previsualizan el modo efectivo antes/después de cada
+hoja normal. Solo convierten Por verificar → Pendiente cuando el modo pasa de 3 a 2,
+respetando las excepciones. Si hay conversiones, se confirma el número antes de
+escribir. Configuración, estados e historial REOPENED se guardan en una transacción;
+cancelación, alcance cambiado o error conservan los datos anteriores. Volver a 3 no
+recupera estados previos. Las APIs sin confirmación rechazan conversiones pendientes.
+Room 51, JSON 44 y el cifrado no cambian: se reutilizan los campos y eventos existentes.
+La carga y restauración históricas no convierten datos; solo una acción confirmada
+puede hacerlo. Se verifican rollback, reapertura y backup/restauración cifrados.
+
+### Antisocial: cabecera continua, banners y captura de invitado en preparación
+
+La ficha integra banner, fotografía cuadrada superpuesta, nombre, estadísticas,
+biografía completa y pestañas en el scroll de la galería. Room 52 añade solamente
+`person_banners`; el encuadre es no destructivo. El original es un adjunto cifrado
+con referencias compartidas y reservas existentes. Backup JSON 45 incluye relación,
+encuadre y bytes; versiones históricas no contienen banners. Limpieza observa la
+tabla nueva y libera archivos exclusivamente tras commit y última referencia.
+
+El flujo de invitado está implementado **sin habilitar el acceso** (`VERIFIED=false`):
+primero prepara destino cifrado, después bloquea/cierra la sesión principal y solo
+entonces abre una Activity no exportada con FLAG_SECURE. Camera2 entrega JPEG en
+memoria; repetir descarta el buffer, encuadrar modifica parámetros y aceptar publica
+únicamente ciphertext mediante diario durable. La cola usa una clave AES-256 de
+Android Keystore independiente de las contraseñas y claves de bóveda. Hasta ocho
+capturas de 20 MiB, sin expiración ni limpieza indiscriminada. Volver lleva al
+bloqueo; una confirmación no permite otra captura.
+
+Solo un desbloqueo principal importa capturas de su UUID de almacén. La entrada
+fotográfica utiliza el UUID de la cola para tolerar reintentos; si el perfil no tiene
+avatar se deriva uno conservando el original en la galería. Se verifica el adjunto
+confirmado antes de eliminar el ciphertext. Un error conserva la cola. La cola es
+operativa, local y no portable; un backup/restauración se rechaza si hay capturas
+aceptadas pendientes para ese almacén. El dispositivo debe conservar su Keystore.
+Pendiente: validar la Activity y su aislamiento/ciclo de vida en Android antes de
+habilitarla; no se declara segura ni disponible por una compilación correcta.
+
+Estado de activación de invitado: pendientes las pruebas reales de cámara,
+recreación y bloqueo, y los reintentos de importación/decoy en un almacén real.
+Por ello el acceso permanece ausente y `GuestCaptureStart.VERIFIED=false`;
+no debe habilitarse cambiando únicamente esa constante. Room 52 también añade
+zoom/x/y a person_memory_images con valores históricos 1/0/0. JSON 45 incluye
+estos parámetros; la galería utiliza el encuadre y el editor de metadatos conserva
+el encuadre existente incluso al restaurar su borrador. Los originales y su
+exportación siguen íntegros. El selector de banners incluye fotografías históricas
+mediante copia cifrada de sus bytes originales al almacén de adjuntos, sin borrar
+ni modificar el avatar o la galería originales.
+
+Validación focalizada de esta etapa: compilación final correcta; 2 pruebas de cola
+(cifrado/alteración/reinicio y rollback de escritura) y 2 de datos (banner, bytes
+originales, referencias compartidas, cancelación, backup/restauración, encuadre,
+primer avatar/no sustitución y migración 51→52) aprobadas. No se generó APK.
+La interfaz de perfiles requiere revisión visual; Captura de invitado continúa
+sin habilitar hasta validar aislamiento y ciclo de vida en Android.
+
+### Tragaperras independiente
+
+Sección propia del menú lateral, independiente de Juego, con premios exclusivamente ficticios en Tradicional. El selector Tradicional/Tareas comparte moneda, botón, luces y temporización; sus estados permanecen separados. Tareas consulta los Núcleos y descendientes actuales, reutiliza NodeCard y la navegación al editor, sin escribir tareas ni configuraciones. El resultado se conserva en memoria mientras se visita la tarea y se revalida antes de abrirla. Los sonidos de prueba se sintetizan mediante ToneGenerator, con volumen multimedia, silencio temporal y liberación al salir. Moneda, resultados y animación son estado efímero en memoria: se pausan en segundo plano y se descartan al salir. No añade preferencias, tablas ni archivos de usuario. Los catorce PNG originales son recursos estáticos de `assets/slots` incluidos en la APK, no datos del backup; sus bitmaps se decodifican una vez por apertura, con muestreo acotado, y se liberan al salir junto con la composición.
+
+El modo Tradicional usa créditos ficticios de sesión: moneda +5, giro −1 y premios por tres símbolos iguales en la línea central (Limón 3, Cereza 5, Campana 8, BAR 10, Diamante 20, Estrella 30, Siete 50). Se acreditan una sola vez al finalizar; los resultados conservan su azar independiente. El panel de puntos muestra saldo/resultado y abre la tabla al tocarlo. No hay dinero real, compras ni canje, ni saldo persistente; salir reinicia estos créditos. Tareas conserva una moneda por sorteo y no participa de premios.
+
+### Sonido de completado de tareas
+
+El repositorio emite candidatos únicamente al cambiar realmente de no completada a
+Completada. El propietario de la sesión valida el ID de evento desde otra transacción,
+tras el commit o rollback, y reproduce una sola vez en primer plano. No se observan
+emisiones históricas de la base ni restauraciones. Bloqueo, cierre y segundo plano
+paran y liberan los reproductores; un fallo de audio no revierte una operación de datos.
+La skin aplicada es la selección global existente de Apariencia: no hay asignaciones
+por Núcleo/Capa que deban resolverse de otra manera.
+
+`task_completion_sound` en Apariencia cifrada es true por defecto y domina todas las
+skins. CustomTheme schema 4 añade `completionSound`, con los mismos bytes/base64 y
+SHA-256 de Pomodoro, límite 512 KiB y duración real máxima 3000 ms. Los sonidos sin
+asignación usan el tin sintetizado. No hay archivos nuevos ni rutas externas: importar,
+restaurar predeterminado, eliminar una skin y cancelar actúan sobre el JSON cifrado y
+el borrador existente; la copia anterior se conserva si falla el commit. La caché de
+validación está acotada a cuatro clips y se vacía al cerrar editor o sesión. El usuario
+conserva intacto su archivo original. Las pruebas focalizadas cubren decisiones de
+reproducción, transiciones, rollback, límites, skins históricas y round-trip de backup;
+la audición y los codecs MP3/OGG requieren revisión en Android.
+
+### Antisocial: cumpleaños sin año
+
+El selector compartido BirthdayField edita día/mes y año opcional sin completar
+el año actual. Guardar/Confirmar usa PersonBirthDate.valid; elegir un año no
+bisiesto para el 29 de febrero requiere corregir el día o retirar el año, sin
+correcciones silenciosas. Quitar fecha elimina el registro al confirmar; cancelar
+conserva el original. PersonBirthDate valida los formatos canónicos `AAAA-MM-DD`
+y `--MM-DD` en la misma tabla cifrada person_birthdays (Room sin cambios).
+JSON 47 identifica la nueva variante para que lectores antiguos no la acepten
+como un respaldo anterior compatible. No se crean archivos, notificaciones ni
+registros de calendario adicionales. CalendarBirthdays ya proyectaba MonthDay:
+sin año no calcula edad y el 29 de febrero aparece en años bisiestos, conservando
+la política existente. Lista, perfil y editor muestran la fecha disponible.
+
+La intervención de interfaz asociada utiliza Opciones del panel inferior para
+Soy yo y Banner; la selección de fotografía utiliza encuadre predeterminado y
+conserva Ajustar encuadre como acción opcional. El banner reutiliza su editor
+modular en línea. La captura de invitado existente permanece protegida por
+GuestCaptureStart.VERIFIED=false: falta validación del aislamiento en Android;
+no se ha habilitado ni se ha añadido un flujo alternativo.
+
+Validación dirigida de esta intervención: OptionalBirthdayTest (2 pruebas)
+aprobó validación/formatos/edad/calendario, guardado, añadir/quitar año,
+reapertura, borrado, backup JSON 47, restauración histórica y rollback inválido.
+OptionalBirthdayUiTest (1 prueba) aprobó quitar/añadir año conservando el 29 de
+febrero, quitar fecha y seleccionar día/mes sin año. La primera ejecución UI
+detectó que Sin año quedaba fuera del tramo visible de la lista; se corrigió
+como acción fija y aprobó en la segunda ejecución. Compilación final aprobada.
+No se repitieron las dos pruebas de datos aprobadas. Quedan revisión visual en
+Android del banner/avatar y fuentes ampliadas, comprobación manual de selección
+de fotos y de Soy yo; no se habilitó captura de invitado sin validar aislamiento.
+
+### Antisocial: originales fotográficos privados
+
+El alcance se limita al avatar de Persona y a las publicaciones de su cuadrícula.
+No se modifica el importador genérico de adjuntos ni el de fotografías de proyectos,
+capas, tecnologías o skins. Banner mantiene su flujo; únicamente su lector de
+avatares existentes reconoce también los nuevos nombres JPEG. Invitado sigue
+inactivo. No se cambian tablas ni la versión de aplicación.
+
+PrivatePhoto admite JPEG y PNG estáticos de hasta 20 MiB y 100 MP (lado <=32000).
+JPEG se analiza por segmentos y por cada scan: descarta APP/COM originales,
+XMP, IPTC, EXIF original, miniaturas y bytes posteriores al final. Conserva el
+codestream; solo reconstruye orientación EXIF mínima, sin etiquetas sensibles,
+y el transformador Adobe de color con campos fijos. PNG valida CRC de todos los
+chunks y conserva únicamente IHDR/PLTE/IDAT/tRNS/IEND y los campos estructurales
+sRGB/gAMA/cHRM. No se conservan textos ni bloques opacos. APNG y otros formatos
+se rechazan explícitamente. El original del proveedor no se modifica.
+
+Un ICC confirmado como sRGB por el decodificador se retira sin recomprimir.
+Una fuente con otro ICC, o PNG con eXIf que exige reorientación, se convierte a sRGB/PNG sin reducir resolución;
+se aplica orientación a los píxeles cuando corresponde. Esta excepción requiere
+decodificación completa, limitada a 16 MP y presupuesto de memoria. PNG comprime
+sin pérdidas, pero la conversión de color puede introducir redondeos. Si supera
+memoria o 20 MiB, se rechaza sin sustituir imágenes existentes. No se promete
+conservar los bytes originales en esta excepción. Las miniaturas permanecen en
+la caché LRU existente; los avatares nuevos usan su orientación al visualizarse.
+
+Cámara utiliza TakePicture y un FileProvider no exportado, con un único directorio
+cache antisocial-camera. Solo se concede la URI del archivo temporal. Tras el
+resultado se limpia, se previsualiza y se confirma; después se importa con el
+cifrado y las reservas existentes. Cancelar/error/cierre elimina el temporal y
+revoca la URI. Un lease durable identifica cada captura; un nuevo proceso cancela
+las capturas no confirmadas del proceso anterior, retirando únicamente sus UUID
+registrados. Un error deja el lease para reintentar en el próximo inicio. Cache y
+leases son operativos, están excluidos del backup y no equivalen a originales
+confirmados. El borrado no garantiza eliminación forense. No se usa la galería
+pública. El bloqueo automático no se suspende: una captura cancelada por bloqueo
+o reinicio debe repetirse; los datos confirmados permanecen intactos.
+
+AvatarStore.importPhoto conserva el original limpio como UUID.jpg o UUID.png,
+con reserva durable, escritura cifrada y confirmación/reemplazo transaccional
+existentes. No redimensiona a 2048. Las publicaciones importan con el mismo
+limpiador, conservando la gestión de relaciones/reservas y deduplicación de
+AttachmentRepository. Cancelar o reemplazar libera exclusivamente referencias
+de su operación; una imagen compartida se conserva hasta la última referencia.
+Backup JSON 48 identifica nuevos JPEG o PNG de avatar mayores de 2048 px; la
+exportación real por streaming conserva bytes, tamaño y SHA-256, sin rutas
+absolutas. No se cambian los formatos de skins ni el contenedor cifrado.
+
+Validación focalizada de originales privados: PrivatePhotoTest, seis casos,
+aprobó JPEG sin recomprimir, PNG conservando sus datos, ICC no sRGB y orientación
+PNG, avatar cifrado a 3072 px con backup/restauración, galería con referencias
+compartidas/deduplicación/cancelación y TakePicture con URI completa más limpieza
+y reintento de temporales. Posteriormente se reforzaron y aprobaron únicamente
+los tres casos JPEG/avatar/galería con EXIF TIFF estructurado: orientación,
+fecha, modelo y GPS racionales, además de XMP/IPTC/COM. El avatar aprobó también
+writeSnapshot por streaming y restauración desde archivos de inspección, lectura
+de PNG históricos y fallo después de escritura sin dejar una imagen nueva.
+Compilación final de producción aprobada; no se ejecutaron suites generales.
+
+Pendiente en teléfono: cámara OEM y concesión/denegación del permiso existente,
+retorno/confirmación/cancelación, orientación visual y fotografías ICC reales,
+fuentes ampliadas, y cancelación si vence el bloqueo automático o se reinicia el
+proceso. El proceso reiniciado cancela las capturas que todavía no se confirmaron;
+no existe recuperación de una captura no confirmada como publicación automática.
+JPEG conserva únicamente orientación técnica reconstruida: no se declara que
+carezca de todo EXIF. La garantía comprobada es retirar datos sensibles y bloques
+opacos en JPEG/PNG admitidos. HEIC/WebP/APNG no se admiten en estos dos flujos.
+
+### Antisocial: cuatro secciones e identidad principal automática
+
+Antisocial expone Inicio, Personas, Tecnologías y Proyectos. Inicio conserva
+banner/avatar, nombre, biografía y publicaciones; sus datos se editan en el panel
+inferior Información (Nombre, Biografía, Cumpleaños, Teléfono, Correo electrónico,
+Enlaces). Personas concentra perfiles, relaciones, favoritos y su administración;
+al volver desde otro perfil se recupera Personas del perfil previo. Tecnologías
+y Proyectos reutilizan sus componentes y filtros. La valoración UNEVALUATED no
+se repite en la cuadrícula de tecnologías; sigue disponible en su editor.
+
+Los demás campos históricos permanecen en person_profiles y en el backup, pero
+no se ofrecen en menús, formularios ni consulta del perfil. Nombre visible usa
+el givenName existente sin concatenar apellidos/apodos; si está vacío, usa el
+nombre actual de Person. Los cambios de otros campos usan copy del perfil
+persistido y no vacían alias, apellidos, documento, direcciones, notas, cualidades,
+habilidades, intereses ni disponibilidad. Editar Nombre explícitamente actualiza
+givenName y el nombre público de Person; no cambia sus IDs ni vínculos.
+
+Se reutiliza local_identity/SELF. ensurePrincipalProfile transaccional conserva
+SELF existente o toma el primer rowid insertado una sola vez. Crear el primer
+perfil lo asigna atómicamente; renombrar u ordenar la lista no vuelve a elegirlo.
+La entrada normal inicia su perfil. No hay controles Soy yo. El repositorio
+rechaza su borrado antes de modificar relaciones o archivos; la UI omite esa
+acción. El distintivo vectorial CheckBox es decorativo, usa Accent del tema y
+solo aparece junto al nombre del principal.
+
+La base antigua no incluye fechas de creación de Personas; los backups históricos
+sin SELF ordenaban por UUID y no permiten recuperar la cronología original.
+En ese caso se conserva el primer registro restaurado disponible y se persiste
+SELF. No se inventan fechas ni perfiles. Snapshot inicializa SELF antes de ordenar
+por UUID, por lo que los respaldos siguientes conservan la elección; restauración
+recupera SELF existente o establece ese fallback dentro de la misma transacción.
+No cambia Room, JSON, el cifrado ni los formatos fotográficos. La protección
+impide borrar un perfil principal individual; no impide la restauración completa
+autorizada de un respaldo, que conserva o inicializa su propia identidad.
+
+Validación de simplificación: PrincipalProfileTest (2 casos) aprobó conservación
+de SELF existente, selección por primera inserción, estabilidad tras renombrar,
+protección de borrado/cambio manual, preservación de campos históricos y backup/
+restauración existente e histórico. AntisocialContextualSectionsTest aprobó
+navegación con cuatro secciones, información limitada a seis campos, edición de
+biografía sin tocar campos retirados, acceso a Personas/relaciones y retorno al
+perfil anterior, ausencia de Soy yo y distintivo exclusivo del principal.
+El distintivo aprobó además ausencia de acción y coincidencia de píxeles con el
+acento de Charcoal/Dark/Green Bash mediante dibujo directo de la vista en Canvas;
+PixelCopy no devolvió resultado en el primer intento del entorno de pruebas.
+Compilación de producción aprobada. No se repitieron las pruebas extensas de
+cámara, metadatos ni originales fotográficos. Pendiente: inspección en teléfono
+de espaciados, nombres/contactos largos y fuentes ampliadas.
+
+### Banca — primera integración (Room 53 / JSON 49)
+
+Banca utiliza Núcleos reales (`projects`) identificados por `bank_roots`, y Capas reales (`nodes`, `LAYER`) identificadas por `bank_accounts`. La cuenta tiene un propietario estable de Personas; varias cuentas pueden pertenecer a la misma persona. No se identifica por títulos ni se añade una sección lateral. No existe saldo persistido: se deriva de operaciones vigentes, en pesos CLP enteros (`Long`, aritmética exacta).
+
+`bank_operations` registra ingresos, egresos, transferencias indivisibles, pagos desde saldo y pagos directos. `bank_allocations` conserva las aplicaciones a nodos originales, identidades y nombres históricos del responsable y del origen del dinero, título y recibo de recurrencia cuando corresponde. Un pago directo no toca cuentas. Las anulaciones permanecen en el historial. Una corrección anula y reemplaza en una misma transacción; se rechaza si la anulación intermedia produce saldo negativo.
+
+Solo las obligaciones CLP de tareas normales con exactamente un responsable pueden recibir pagos. Las compartidas se muestran en la consulta de su responsable con «Pago compartido no disponible», sin selección ni distribución. No se crean cuotas ni se modifican asignaciones. Las tareas sin responsable y las completadas manualmente no son elegibles. Los pagos parciales conservan el estado; al saldar se aplica Completada en dos estados y Por verificar en tres, resolviendo la herencia existente. El pendiente económico es independiente del checkbox. Una anulación reabre únicamente un estado automático todavía no modificado por el usuario; cambios efectivos de estado liberan esa titularidad mediante trigger, incluso con marcas de tiempo iguales. Aumentar un importe saldado automáticamente lo reabre; reducirlo por debajo de pagos vigentes o retirar su moneda/obligación se bloquea.
+
+La vista previa no escribe datos. La confirmación compara el estado consultado y revalida fondos, elegibilidad y cada asignación dentro de Room. Un ID confirmado impide duplicar operaciones por doble pulsación. Los pagos entre personas conservan ambos orígenes sin cambiar responsables. Las recurrencias se vinculan al nodo y al recibo existente de cada ocurrencia, sin generar un calendario nuevo.
+
+Las cuentas/Núcleos Banca y las tareas con asignaciones históricas se protegen de eliminación física mediante triggers, incluyendo eliminaciones de ancestros y rutas de limpieza. También se protege la eliminación del propietario de una cuenta. No hay archivos financieros nuevos ni cachés persistentes que liberar; se conserva el historial confirmado. Las instantáneas de backup incluyen las cuatro tablas en la transacción existente y la restauración las reemplaza junto a sus referencias, después de validar todo el contenido. No cambia el cifrado ni se introducen servicios externos.
+
+Validación dirigida y revisión visual: resultados registrados al terminar la intervención; no se genera APK ni se modifica la versión de la aplicación.
+
+Integración de presentación financiera: una única consulta reactiva de asignaciones vigentes alimenta `LocalBankPaid`. El resumen existente resta los abonos sin reescribir el importe de la tarea. Una obligación saldada en Por verificar tiene pendiente económico cero; una completada manualmente sigue excluida de pagos sin inventar un movimiento. Las tarjetas originales muestran el abono y el pendiente o la finalización manual sin movimiento. No se crean temporizadores ni observadores por tarjeta. Los paneles financieros reutilizan el desplazamiento del componente modular existente.
+
+Banca no admite destinos de reglas recurrentes: las obligaciones siguen en Núcleos normales. Las rutas generales de inserción/movimiento se protegen para no introducir tareas o capas sin cuenta registrada en un Núcleo Banca. La lectura de respaldos rechaza destinos de recurrencia incompatibles y ciclos o correcciones duplicadas del historial.
+
+Validación efectiva de Banca: seis pruebas de integración distintas y una de interfaz aprobadas. Cubren ingresos, transferencia, pagos desde saldo/directos/entre personas, distribución determinista y manual con varios parciales, exclusión de compartidas/sin responsable, cancelación, saldo insuficiente, confirmación repetida y obsoleta, rollback inducido después de insertar la operación, estados de dos/tres fases, anulación/corrección, reducción de importe y eliminación de ancestros protegidas, migración aditiva con filas existentes, aislamiento de ocurrencias, backup nuevo/antiguo y rechazo de restauración incoherente. El flujo de interfaz confirma un ingreso, cancela un egreso y anula el ingreso mediante los paneles existentes. Compilación aprobada. Registros: `/tmp/arachnode-bank-validation.log` (cinco casos aprobados inicialmente), `/tmp/arachnode-bank-final.log` (interfaz aprobada), `/tmp/arachnode-bank-backup-final.log` (backup aprobado) y `/tmp/arachnode-bank-correction-final.log` (anulación/corrección revalidadas). No se repitieron suites generales. Pendiente revisión visual de temas, fuentes ampliadas, teclado y navegación en teléfono. Sin APK de distribución, cambio de versión de aplicación, commit ni push.
+
+### Banca — integración visual y jerarquía plana
+
+La organización es exclusivamente Núcleo Banca → cuentas `LAYER` con `parentId=null`. `NodeRepository` rechaza hijos dentro de Banca; las conversiones impiden anidar un Núcleo Banca, introducir otro Núcleo en él o promover una cuenta. Los triggers cubren inserciones/actualizaciones directas y registros de cuenta incompatibles. Se instalan idempotentemente al abrir Room 53, sin migrar filas ni cambiar la versión. El backup ya valida la misma relación antes de sustituir datos (JSON 49 sin cambios). Copiar contexto exporta texto, no duplica entidades; las inserciones de copias no registradas quedan igualmente protegidas.
+
+`BankHierarchy` diagnostica elementos incompatibles mediante nombre, ID y referencia del padre. La interfaz los identifica sin moverlos ni eliminarlos. Una corrección futura debe aprobarse explícitamente: revisar cada ID y su historial, acordar su cuenta/Núcleo de destino y aplicar una reparación transaccional validada con respaldo previo. Esta intervención no inspecciona la base privada del teléfono ni presupone que carezca de registros afectados.
+
+Banca reutiliza `HeaderBar` (menú global, retorno contextual y bloqueo), `CoreBottomModule` y `GeneralCard` con imagen/tema de Capa y favoritos. Mientras carga el tipo de Núcleo no se muestran acciones de creación normales. Las cuentas presentan nombre, responsable y saldo; el menú Crear dentro de ellas contiene operaciones financieras, sin Capas. El formulario de Núcleo ofrece dos selecciones exclusivas independientes (Núcleo/Banca y Común/Prioritario). Ingresar/retirar dinero guarda directamente con las validaciones y transacción existentes; transferencias excluyen la misma cuenta en ambos selectores y conservan confirmación. Los pagos mantienen vista previa y confirmación explícita. La propiedad Pago abre los campos financieros del editor existente sin un segundo checkbox; cancelar conserva el nodo y eliminar un pago existente mantiene su confirmación.
+
+No se añaden tablas, columnas, preferencias, archivos ni recursos gráficos; no cambia el motor financiero ni los estados/responsables de las tareas. Pendiente revisión visual en teléfono de Charcoal/Dark/Green Bash, fuentes ampliadas, teclado, barras del sistema y tarjetas con skins.
+
+Validación de integración visual/jerarquía: compilación de producción aprobada y cinco casos focalizados aprobados: `BankHierarchyTest` (2), `BankEditorUiTest` (2) y `BankUiTest` (1). Verifican varias cuentas de una persona, rechazo de hijos/copias no registradas, traslados/conversiones y modificaciones directas incompatibles, jerarquía normal intacta, restauración anidada rechazada sin pérdida, diagnóstico sin reparación y reinstalación de guardas en Room 53. La interfaz valida menú/bloqueo global, creación de cuenta, campos de Pago sin checkbox y cancelación, selectores de transferencia con distinto destino, ingreso guardado directamente, retiro cancelado y anulación. Se corrigieron dos sincronizaciones/selectores del test UI (responsable homónimo y espera del saldo confirmado); no requirieron cambios adicionales de producción. Registros: `/tmp/arachnode-bank-hierarchy-ui-final.log` (cuatro casos aprobados), `/tmp/arachnode-bank-ui-final.log` (flujo UI final aprobado). No se repitió la suite financiera previa.
+
+### Banca — pagos en un panel y tres acciones
+
+Las acciones nuevas disponibles en una cuenta son Ingresar dinero, Retirar dinero y Pagar. Las transferencias históricas permanecen en el registro, conservan sus efectos sobre saldos y pueden consultarse/anularse; su creación y corrección ya no se ofrecen en la interfaz. No se cambia Room 53, JSON 49, entidades, responsables ni jerarquía.
+
+Ingresos y retiros usan cuenta preseleccionada, cantidad CLP exacta con separadores chilenos y nombre opcional. Sin nombre se registran Ingreso/Retiro; un pago sin nombre se registra Pago. Se conserva la fecha histórica al corregir, sin añadir un campo obligatorio de fecha. El guardado directo utiliza las comprobaciones y transacción existentes, con ID estable del formulario y controles deshabilitados ante cantidades inválidas o saldo insuficiente.
+
+`BankPaymentEditor` reúne persona, modalidad Desde saldo/Directamente, cuenta de la persona cuando corresponde, saldo, cantidad, tareas pendientes, asignaciones y nombre opcional. Las sugerencias utilizan `BankState.suggest`; modificar la selección y las cantidades actualiza total, pendiente de distribuir, saldo posterior y disponibilidad de confirmación. Una persona sin cuenta puede pagar Directamente desde este panel. Las tareas compartidas se muestran deshabilitadas, sin incluirse en el reparto; no se duplican ni se modifican sus responsables. Las tareas sin responsable o sin pendiente no son pagables.
+
+Las tareas se representan mediante `NodeCard` con `selectionOnly`, reutilizando fondo/skin, bordes, título, etiquetas y checkbox de selección. Solo este contexto oculta controles de estado, favoritos, tecnologías y edición. El pie contextual añade identidad, procedencia y cantidades; los otros usos de NodeCard conservan sus valores predeterminados. Una única confirmación final muestra las tareas seleccionadas sin solicitar más campos. `ModularPanelDialog`, `ModularPanelLayout`, `ModularPanelActions` y `PrimaryControlButton` conservan desplazamiento del cuerpo, acciones separadas, zonas táctiles y ajuste de teclado/insets.
+
+`BankPaymentSelection` valida inmediatamente persona/cuenta, fondos, positividad, elegibilidad, límites de cada tarea y suma exacta. `BankRepository.confirmPayment` vuelve a exigir suma exacta y cuenta de quien paga dentro de la transacción; delega revalidación de snapshot, idempotencia, estados y rollback en `confirm`, sin retirar las capacidades financieras históricas. El borrador de selección es estado temporal de interfaz, no una preferencia ni entidad nueva. Los nombres automáticos son valores del campo de texto ya exportado; no se añaden archivos ni datos fuera del backup existente.
+
+La terminología visible de gestión, navegación, informes y campos relacionados cambia a Pago/Pagos; los nombres internos y claves persistentes se conservan. Revisión manual pendiente: skins con imágenes, Charcoal/Dark/Green Bash, fuentes ampliadas, teclado real y listas extensas en teléfono.
+
+Validación final de este panel: compilación de producción y siete casos focalizados aprobados. `BankPaymentPanelTest` (3) comprueba nombres opcionales, entrada monetaria exacta, rechazo de retiros excesivos, suma/distribución estricta, exclusión de compartidas/sin responsable, pago desde saldo y directo, idempotencia, snapshot obsoleto, rollback inducido, anulación y restauración de transferencias históricas con sus saldos. `BankUiTest` (1) verifica menú/bloqueo y cuenta existentes, ingreso sin nombre, validación inmediata de retiro, cancelación e historial/anulación. `BankPaymentUiTest` (2) comprueba tarjetas originales seleccionables sin controles de estado, reparto automático/manual, límites, cancelación del formulario y confirmación final, pago desde saldo y pago directo de persona sin cuenta. `ObligationReportDataTest.undatedCompletedCountsAndGenerationUseFrozenLocalTexts` verifica el texto Pagos afectado. Registros: `/tmp/arachnode-bank-payments.log` y `/tmp/arachnode-bank-payment-labels.log`. No se repitieron pruebas de jerarquía ni la suite financiera completa. `git diff --check` aprobado. Sin APK, cambio de versión, commit ni push; revisión visual real en teléfono pendiente.
+
+### Tragaperras — transparencia estable al parpadear
+
+Las fachadas encendida/apagada originales contienen aberturas y zonas translúcidas distintas. `sharedSlotApertures` prepara copias en memoria con el mismo canal alfa para cada par (mínimo por píxel), conservando colores y suavizado; se calcula una vez durante la carga en IO, para Tradicional y Tareas. No modifica PNG originales, geometría, controles, sonidos, motor, persistencia ni backup. Compilación aprobada y `SlotFacadeTest` aprobado con ambos pares reales, igualdad de transparencias, fuentes intactas y conservación de color (incluido redondeo de premultiplicación nativa). Registro final: `/tmp/arachnode-slot-apertures-final.log`. Sin APK, cambio de versión, commit ni push; comprobación visual en teléfono pendiente.
+
+### Indicadores de Personas — suscripción global independiente de la pantalla
+
+Corrección posterior a la APK oficial 0.16.0/code30: AppRoot observaba las asignaciones globales únicamente al abrir Atención, Calendario o Pagos. Las tarjetas de Núcleos/Capas/Tareas utilizan esa proyección global, mientras que el interior del Núcleo tiene su propio observador por proyecto. Una entrada directa podía dejar el icono Personas inactivo aunque el avatar interior ya estuviera disponible; abandonar las vistas transversales detenía además las actualizaciones globales.
+
+El observador existente de `PersonRepository.observeAllAssignments` permanece suscrito durante la vida de AppRoot, independientemente del destino visible. Sigue siendo una lectura de las mismas relaciones, sin observadores por tarjeta ni cambios de persistencia, jerarquía, asignaciones, recurrencias o fechas. El avatar de una tarea se resuelve desde `node_person`; la materialización mensual copia los responsables de `recurrence_person` al crear cada ocurrencia. Cambiar una plantilla no reasigna retroactivamente tareas existentes. La activación de Personas no depende del vencimiento ni del estado de la regla. La agregación hacia Capas/Núcleos y la ausencia de herencia descendente se conservan.
+
+Validación: compilación y `CardPeopleObservationTest.overdueMonthlyTaskAndAncestorsObservePeopleWithoutOpeningOtherScreens` aprobadas. El caso crea una tarea de pago mensual vencida, comprueba la asignación copiada a su ocurrencia, activa los indicadores de Núcleo/Capa/Tarea sin visitar vistas transversales y observa cambios de asignación en vivo. Comprueba también que una asignación conservada solo en la plantilla no reactive la tarea y que asignar la Capa no asigne a su hija; fechas y contenido de la tarea se conservan. Registro: `/tmp/arachnode-card-people.log`. Sin acceso a datos del teléfono, APK nueva, cambio de versión, commit ni push. La APK oficial 0.16.0/code30 ya entregada permanece intacta y no incluye este ajuste posterior.
+
+## Detector local de compras CMR (validado localmente; identificación del emisor pendiente)
+
+`purchases/` separa reconocimiento conservador sin red, política explícita de paquetes/certificados, entrada cifrada de dispositivo, estado en la bóveda, puente idempotente y servicio Android. `ui/PurchaseUi.kt` reutiliza `NodeDialog`, `EditorDraft`, selectores y operaciones existentes. Se incorpora en Seguridad y respaldos. `MainActivity` recibe únicamente el UUID de una sugerencia; el editor vive dentro de la composición autenticada. La notificación propia contiene solo «Compra detectada / ¿Crear tarea de pago?» y acciones Crear tarea/Descartar; no expone comercio ni cantidades. No se accede a SMS, correo, accesibilidad ni servicios bancarios. No se agregan recursos gráficos ni dependencias.
+
+La aplicación candidata es Banco Falabella Chile (`cl.android`), publicada en Google Play; falta verificar su identidad criptográfica y que sea el emisor real de los avisos. La política está cerrada (ningún paquete autorizado) hasta contar con esa evidencia. No debe declararse detección real operativa ni sustituirse este control por una comparación de texto. Las comprobaciones físicas pendientes incluyen consentimiento/revocación, entrega con aplicación cerrada/bóveda bloqueada, POST_NOTIFICATIONS, certificado del emisor y apertura segura del editor.
+
+Validación del detector: compilación final correcta y siete pruebas focalizadas aprobadas mediante filtros por método; reconocimiento/CLP, política cerrada de emisores, cifrado de entrada y recuperación de reemplazo fallido, aviso genérico, duplicados, respaldo/restauración/histórico/corrupción, rollback de creación, Pago pendiente sin movimientos en Banca, editor/destino/cancelación y activación. La preferencia de una bóveda principal abierta prevalece inmediatamente sobre la copia operativa, incluso tras restaurar. Sin APK, cambio de versión, commit ni push. Informe e inventario: docs/CMR_DETECTION.md. Verificación física del emisor/certificado y entrega Android aún pendiente.
+
+
+## Retirada de integración CMR por notificaciones
+
+Se retiran PurchaseListener/NotificationListenerService, receptor Descartar, runtime, reconocimiento/emisores, repositorio de creación desde sugerencias, bridge y UI de configuración/editor. Se eliminan sus llamadas en MainActivity, AppRoot y Ajustes, y la consulta del paquete candidato. No quedan declaraciones de acceso a notificaciones de otras aplicaciones. Los permisos de cámara, audio, avisos propios y actualizador se conservan.
+
+La única compatibilidad residual está en backup/legacy y no tiene acceso a notificaciones ni a creación de tareas: conserva codec JSON 50, validación histórica y lectura archivística de entradas cifradas anteriores durante snapshot. No modifica tablas, versión, cuentas ni pagos. Véase BACKUP_FORMAT.md. No se eliminan datos ni claves existentes.
+
+Validación de retirada: compilación correcta y seis métodos focalizados aprobados (cuatro de retirada/compatibilidad histórica y dos flujos de pago). Manifiesto fusionado sin listener. Informe: docs/CMR_REMOVAL.md. Sin APK, cambio de versión, commit ni push.
+
+
+## Explorador de destinos y traslados completos
+
+DestinationExplorer comparte navegación jerárquica, búsqueda global inferior, ruta y pie de confirmación entre movimientos individuales, selección múltiple y Borradores. No se escribe al explorar, buscar o cancelar. El índice añade parentKey calculado en memoria; no se almacena.
+
+NodeRepository.moveToContainer conserva las identidades y los archivos mediante UPDATE dentro de una transacción. Solo acepta Núcleos normales y Capas como destinos, excluye ciclos y Banco, conserva descendientes y remapea configuraciones/orden y recurrencias internas. Se mantienen las restricciones de contexto, grupos, ocurrencias y estados. Para las FK compuestas se usa defer_foreign_keys en la transacción y comprobación final de referencias, como en las migraciones existentes; no se desactiva foreign_keys.
+
+La restricción drafts_project_move se actualiza para impedir estructuras al mover a Borradores sin impedir un traslado completo entre Núcleos reales. Se instala idempotentemente al abrir Room 53 para incluir bases existentes; no cambia versión Room, tablas ni registros. Backups y archivos conservan el formato actual. No hay creaciones/eliminaciones de archivos por traslado ni nuevas preferencias.
+
+Validación del explorador y mejoras UX: compilación final correcta y 14 métodos focalizados aprobados, incluyendo archivos/referencias, backup, abonos, rollback, migración histórica, navegación, búsqueda/teclado y presentación. Informe: docs/UX_FUNCTIONAL_CORRECTIONS.md. Sin APK, cambio de versión, commit ni push. Volumen percibido y aspecto final requieren comprobación en teléfono.
+
+
+## Tragaperras Ahorro — integración validada
+
+Ahorro reutiliza fachada clásica, símbolos, sonidos y cinemática. SavingsRepository enlaza entradas y retiros reales con BankRepository dentro de una misma transacción Room que el libro tipado en private_preferences cifrado. Configuraciones por compra preservan precio y probabilidades. Resultados se confirman antes de animar; la recuperación reproduce el mismo giro sin nuevo consumo. Premios se reservan al adjudicarse y solo salen del libro de pendientes mediante retirada física o conservación como ahorro, ambas idempotentes.
+
+La cuenta asociada debe cubrir todos los fondos y el fondo libre debe cubrir el máximo antes de cada giro. Fondos protegidos y premios pendientes nunca respaldan giros nuevos. Cambios externos insuficientes congelan el juego; movimientos propios vinculados no admiten anulación aislada en Banco. No se modifican probabilidades por saldo ni resultados pasados. Se reutilizan preferencias cifradas, transacciones y respaldo JSON 51, sin cambio de Room ni archivos adicionales. Especificación y resultados: docs/SLOT_SAVINGS_DESIGN.md.
+
+Validación de Ahorro: compilación de producción correcta y 29 métodos focalizados aprobados, incluyendo matemáticas (un millón de tiradas), simulación operativa separada, transacciones con Banco, recuperación y backup, interfaz y regresiones de los modos existentes. Recursos y manifiesto sin cambios; sin APK ni cambio de versión. Revisión física/visual pendiente en teléfono, detallada en docs/SLOT_SAVINGS_DESIGN.md.
+
+
+## Eliminación de cuentas Banco
+
+Opciones → Eliminar cuenta utiliza un panel destructivo explícito y una instantánea volátil revalidada en transacción. El servicio BankAccountDeletionService elimina las relaciones financieras de la cuenta y su Capa mediante NodeRepository, conservando Banco/personas/tareas. Pagos eliminados recalculan pendientes y solo reabren estados todavía controlados por Banco. Se advierte antes de eliminar los datos de Ahorro exclusivos de la cuenta; libros de varias cuentas se protegen. No hay migraciones ni cambios de formato/archivos. Compilación y cinco pruebas focalizadas aprobadas; detalles y límites en docs/BANK_ACCOUNT_DELETION.md.
+
+## Cuenta vinculada como caja de Ahorro
+
+Se sustituye la exclusión anterior del saldo preexistente: seleccionar una cuenta hace disponible su saldo entero en múltiplos de 1.000 CLP para el fondo de premios. SavingsRepository reconoce también el saldo no atribuido de cuentas ya vinculadas, bajo transacción y sin ingresos duplicados. ASSIGN identifica esta incorporación contable; se muestra separada de compras, recargas y ahorro generado. El exceso se calcula contra protegido + libre + pendiente, impidiendo reutilizar reservas. Probabilidades, coste, créditos y pagos no cambian. Los saldos externos inferiores al respaldo siguen congelando el juego. Formato y compatibilidad: BACKUP_FORMAT.md, JSON 52 / SavingsCodec 2, Room 53 sin migración destructiva ni archivos nuevos. Compilación correcta y 19 métodos focalizados aprobados: 10 de repositorio Ahorro, 4 de su interfaz, 1 simulación operativa y 4 de eliminación de cuentas.
+
+## Fachada selvática de Tragaperras
+
+JungleSlots sustituye la composición clásica conservando motores y repositorios existentes. Los 31 PNG originales se cargan una vez fuera del hilo principal y se presentan proporcionalmente con alpha, aperturas independientes y controles de al menos 48 dp. GIRAR, MODO y SALIR tienen luz de contacto; PAGAR depende de premios realmente cobrables y VOLUMEN del mute. El usuario autorizó ocho símbolos, premios del cartel y mantener 30 % de RTP en Ahorro con máscara al 0,01 % y cerezas al 7,30 %. Los créditos históricos de siete símbolos mantienen tabla, índices, probabilidades y conceptos. Solo se amplía compatibilidad a codec 3 / JSON 53; no se alteran Room/SQLCipher ni las transacciones financieras. Informe y pruebas: docs/JUNGLE_SLOTS.md.
+
+Validación selvática final: compilación correcta y 40 pruebas focalizadas aprobadas entre el pase funcional y el último pase visual nativo. PNG originales verificados por SHA-256, ocho premios exactos, créditos históricos y backup conservados. No se genera APK ni cambia versión de aplicación; revisión física pendiente detallada en docs/JUNGLE_SLOTS.md.
+
+## Pago: depósito directo y premios pendientes
+
+CAJA y el botón inferior de moneda abren directamente importe CLP → tiradas → DEPOSITAR. Opciones de Pago, en la franja de modalidad, conserva estadísticas, historial y configuración fuera de ese flujo. La conversión nueva aprobada es fija: 1.000 CLP compra cinco tiradas. Los premios mantienen importes y la tabla aprobada produce E[premio]=60 CLP por giro de 200, RTP exacto 30 %. El depósito acredita una única operación INCOME y créditos, en transacción; cada giro no mueve Banco. Ganar reserva; RETIRAR registra EXPENSE y liquida la reserva una sola vez. Cerrar el cartel deja el premio pendiente.
+
+El campo monetario elimina la confusión previa entre importe y número de créditos. No se corrigen datos antiguos de forma automática. Codec 4 / JSON 54 mantienen explícitamente las reglas antiguas y las nuevas por configuración. No hay cambios Room ni archivos privados. Informes: docs/SLOT_RTP_REVIEW.md y docs/JUNGLE_UX_CORRECTIONS.md.
+
+### Contenido: destacado por palabra, título, código y GIF
+
+La barra compartida conserva sus herramientas y añade Destacador, Título y
+Código, sin nuevos menús. DescriptionParser extiende la gramática portable
+existente, con proyección visible→fuente para selección y gestos; los adjuntos
+siguen siendo tokens atómicos. El destacado aplica amarillo con texto negro
+independientemente del tema y no modifica letras ni otros estilos. El editor
+mantiene el estado del modo de forma efímera, sin una preferencia nueva.
+
+AttachmentText permite activar el destacador en el visor interior de Núcleos,
+Capas, Tareas y Notas. Guardar usa updateField/updateProperty y su comparación
+con el contenido original; un conflicto no reemplaza el texto de otro editor.
+Con el modo apagado siguen disponibles selección/copia y los enlaces habituales.
+Título usa un único tamaño 1.2 em y negrita. Código usa monoespaciado y fondo
+oscuro con texto claro; conserva espacios/saltos y no ejecuta contenido.
+
+Imagen admite GIF a través del importador cifrado actual. ContentGif verifica
+estructura y límites antes de decodificar/restaurar; AnimatedAttachment usa el
+decodificador Android y una vista que conserva proporción, reproduce fotogramas
+solo mientras es visible y RESUMED, y libera sus referencias al salir. No se
+añaden bibliotecas ni archivos temporales descifrados. JSON 55 conserva los
+bytes completos y los nuevos marcadores; no requiere una migración Room.
+
+### Buscador — panel modular y contexto de solo lectura
+
+El buscador conserva ElementSearch, criterios de sesión, IDs y navegación.
+Todas usa el orden general; Recientes y Frecuentes priorizan los recibos y
+contadores existentes y conservan al final los demás resultados, con orden
+estable. Los filtros Favoritos/Atención/Pagos/Recurrencias/Etiqueta conservan
+su intersección y significado. El panel comparte Surface/Layout/Actions,
+controles táctiles y BashGeneralScope; Aplicar retira foco/teclado y pliega.
+Las acciones de resultados no se activan mientras está expandido ni durante
+un cálculo obsoleto. El contexto financiero reutiliza LocalBankPaid y Personas;
+las fechas de recurrencia se derivan con RecurrenceSchedule sin materializar
+ni avanzar cursores. No hay cambios de persistencia, esquema, backups,
+seguridad o permisos. Detalle, archivos y 17 pruebas focalizadas aprobadas en
+docs/SEARCH_REDESIGN.md. La revisión visual/IME en teléfono está pendiente.
+
+## Seguridad — Fase A: copias públicas y decisiones locales
+
+`photos/PublicImages` es la política común de salida de imágenes: adjuntos
+individuales, paquetes Markdown/JSON, fuentes de PDF/DOCX, descargas de fotografías
+y documentos de intercambio de temas. PNG utiliza una lista de bloques
+estructurales permitidos y descarta `arNd`, texto, EXIF/XMP y bloques auxiliares;
+JPEG elimina segmentos auxiliares y conserva únicamente la orientación EXIF
+reconstruida cuando es necesaria. Se reutiliza `PrivatePhoto`: no se recomprimen
+los datos de imagen salvo conversión de color/orientación necesaria. Una conversión
+ICC de JPEG mantiene el tipo JPEG mediante una única recompresión a calidad 95.
+GIF conserva fotogramas, paletas, transparencia, tiempos y bucle; omite comentarios
+y extensiones de aplicación opacas. Fase A.1 conserva también Plain Text validado;
+las extensiones desconocidas sin semántica gráfica se omiten. Otros formatos no saneables no se entregan
+como originales alternativos. No se modifican las fuentes privadas.
+
+Los paquetes preparan las copias y sus tamaños/hashes antes de emitir el documento;
+los hashes públicos describen las copias, nunca reemplazan los de Room. El presupuesto
+público sigue siendo 256 MiB. PDF/DOCX, tarjetas, diagramas y observaciones generadas
+renderizan píxeles en documentos nuevos, sin copiar bloques de los originales.
+Audio AAC se entrega sin conversión: no se afirma limpieza de metadatos de audio.
+El intercambio de temas conserva su esquema, pero sanea tanto previews como fuentes
+y recalcula solo el manifiesto de salida. La biblioteca cifrada no cambia.
+
+La restauración conserva íntegro `security_preferences` del receptor dentro de la
+misma transacción que reemplaza los datos. El namespace del backup se sigue leyendo,
+validando y exportando por compatibilidad, pero no se importa. Sin configuración
+local se mantienen los defaults existentes: capturas bloqueadas y autobloqueo de
+30 segundos. No se transporta consentimiento de seguridad entre bóvedas/dispositivos.
+No hay tablas, archivos privados, migraciones ni claves nuevas.
+
+Validación Fase A: 66 pruebas JVM/Robolectric focalizadas aprobadas (API 24 y 28),
+compilación Kotlin de aplicación y de pruebas instrumentadas aprobadas, sin APK.
+Se inspeccionaron bytes de ZIP Markdown/JSON, PNG y medios incrustados en DOCX;
+se comprobaron píxeles, bloques y hashes públicos. PDF utiliza el mismo recurso
+saneado y se comprobó su plan de dibujo, pero el escritor nativo PdfDocument no
+está implementado por Robolectric: `PublicExportPdfTest` queda compilado y pendiente
+de ejecución en Android. Antes de API 26, una conversión ICC no disponible falla
+explícitamente; el saneamiento estructural ordinario conserva soporte API 24.
+
+## Seguridad — Fase A.1: formatos públicos y exportación incremental
+
+`PublicImages.file` devuelve bytes, MIME, dimensiones, orientación y condición
+estática/animada; `prepare` conserva la interfaz histórica. `PublicImages.render`
+solicita explícitamente un bitmap estático muestreado para documentos (1600 px,
+máximo solicitado 2048); PDF/DOCX codifican ese bitmap directamente a PNG, sin
+PNG→JPEG→PNG. Los originales privados/editables y el backup nunca pasan por esta
+política. JPEG ordinario conserva sus datos comprimidos y orientación mínima.
+
+Los validadores internos `PublicPng` y `PublicWebp` pertenecen a esa política,
+no a los consumidores. PNG/APNG valida CRC, orden, secuencias, rectángulos,
+recuento de frames y cada flujo zlib con Adler, filtros y longitud de scanlines
+(incluido Adam7). Conserva IDAT/fdAT y controles acTL/fcTL byte por byte, y elimina
+arNd y auxiliares privados. WebP valida RIFF, canvas, controles y cada frame con
+decodificación nativa muestreada; conserva VP8/VP8L/ALPH, ANIM y ANMF, reconstruye
+flags y EXIF mínimo, elimina ICCP/XMP/EXIF opacos. GIF conserva paletas, GCE,
+loop y Plain Text válido; omite comentarios y extensiones opacas. No hay fallback.
+
+Límites de publicación: fuente de 20 MiB, lados de 1–32000, hasta 1000 frames en
+APNG/WebP y presupuesto agregado de 512 MiB de scanlines descomprimidas PNG/APNG
+(la validación usa un buffer de 32 KiB, no un bitmap completo). Estos límites
+pueden rechazar animaciones válidas muy grandes. ICC sRGB usa saneamiento sin
+recompresión; otro ICC estático requiere API 26 y una conversión sRGB, con
+presupuesto `8 × píxeles + 40 MiB ≤ mitad del heap máximo`. No se conserva el
+antiguo techo fijo de 16 MP en esta ruta pública. ICC animado no sRGB se rechaza
+controladamente: no se aplana ni se altera su color silenciosamente. API 24/25
+rechaza imágenes ICC en la política pública; los casos ordinarios siguen admitidos.
+No se promete que perfiles inválidos o no reconocidos por Android puedan convertirse.
+
+La orientación PNG/WebP se lee con el parser TIFF acotado común, también antes
+de API 26. Registros históricos de temas con orientación 1 siguen siendo válidos:
+la salida respeta la orientación almacenada que usaba su visor. No se reescriben
+registros ni fuentes, ni cambia el esquema de intercambio o backup.
+
+`ElementExport.write` verifica AAC por flujo y lo vuelve a copiar por flujo al ZIP
+con comprobación de tamaño/hash. Prepara una imagen cada vez y conserva únicamente
+su manifiesto y un identificador de staging; temas preparan también una fuente
+cada vez. El presupuesto de paquete sigue en 256 MiB. Los mapas históricos inline
+mantienen el presupuesto existente de metadatos de backup; no se agrega el ZIP en
+RAM. La escritura no cambia hashes ni metadatos de Room.
+
+`PublicExportStaging` usa exclusivamente `cache/public-exports-v1`, UUIDs y archivos
+`.enc` cifrados mediante los streams existentes, con clave aleatoria efímera solo
+en RAM. No altera primitivas ni claves de la bóveda. Antes de crear derivados,
+escribe y sincroniza una reserva durable `.lease`; sincroniza archivos/directorios.
+Operaciones de producción usan el bloqueo común de archivos. Reservas activas no
+caducan por edad, y la recuperación no toca archivos desconocidos ni fuentes.
+Completar, cancelar o fallar borra derivados y reserva; un fallo de borrado conserva
+la reserva para reintentar al abrir una exportación o al activar la bóveda. Tras un
+reinicio, la pérdida de la clave cancela exclusivamente derivados regenerables.
+Caché cifrada acotada a 512 MiB antes de cada escritura; si no puede limpiarse,
+la siguiente exportación falla controladamente. Queda excluida del backup. No hay
+nuevos datos confirmados, preferencias, tablas o migraciones.
+
+## SEG-05 — entrega de tarjetas y cierre de sesión
+
+El proveedor prepara una instantánea autenticada de la tarjeta bajo el mutex
+común, con un único buffer del tamaño exacto. Cierra el archivo y libera el mutex
+antes de publicar bytes. La entrega ya no reserva el archivo de caché: su descarte
+puede completarse mientras un destinatario consume la instantánea. No hay nuevas
+rutas, archivos, preferencias ni datos que exportar o restaurar.
+
+`CardShareDelivery` usa un pipe no bloqueante, escrituras de hasta 4096 bytes y
+poll de hasta 100 ms. La revocación no espera al lector ni cierra su descriptor
+desde otro hilo. Comprueba autorización antes de cada intento; cancelación, error,
+fin o inactividad borran el buffer y liberan la cuota. Admite hasta cuatro entregas
+y 64 MiB agregados en RAM. Sesenta segundos sin progreso cancelan solo la entrega,
+nunca bloquean la bóveda; una lectura lenta que progresa puede continuar. Ese
+límite es higiene de recursos, no la corrección del cierre: el mutex ya está libre
+y la sesión puede revocarse sin esperar a que venza.
+
+Al solicitar bloqueo se inhabilitan las URI privadas mediante el perfil activo.
+La finalización local existente de audio conserva sus borradores; inmediatamente
+después `Session.beginClosing` cierra la admisión y borra la clave principal antes
+de esperar la cancelación y el mutex de limpieza. Nuevos `withKey`, streams y
+reservas se rechazan. Registrar reservas y revocar comparten el mismo monitor para
+evitar adquisiciones perdidas durante una carrera; su liberación es idempotente.
+La finalización de recursos conserva el protocolo existente. No cambian primitivas,
+SQLCipher, contraseñas, formatos ni versiones.
+
+Se descartaron mantener el mutex con timeout (conserva la dependencia del lector)
+y crear otro staging cifrado (añade E/S y ciclo de vida sin necesidad para tarjetas
+ya acotadas). La instantánea evita copias de crecimiento/duplicación y falla de
+forma controlada ante capacidad insuficiente. Los bytes ya entregados al kernel
+o al destinatario no se pueden revocar retroactivamente.
+
+La política de recientes y de autobloqueo no cambia. El modo Manual puede mantener
+la sesión abierta; caducar una entrega no modifica esa decisión.
+
+Las consultas Room del almacén usan un contexto hijo del `VaultContext`. Al cerrar,
+se cancela y espera ese trabajo antes de cerrar SQLCipher: una composición de UI
+que aún no ha procesado la sesión nula no puede seguir consultando un pool cerrado.
+Esta espera local sucede con la admisión criptográfica ya revocada. No cambia el
+esquema ni la persistencia. Véase `docs/SECURITY_SEG05.md` para pruebas y límites.
+
+## Fase C — cámara y conservación prudente
+
+La cámara externa conserva su interfaz. Al devolver una fotografía, `CameraPhotoImport`
+la incorpora a un adjunto cifrado reservado y verifica el archivo completo antes
+de retirar el JPEG del proveedor de cámara. Confirmación y edición usan el adjunto
+privado; cada consumidor confirma la transferencia antes de liberar la reserva de
+cámara. Se reutilizan Room, `SecureFiles`, `AttachmentRepository`, el mutex común,
+los diarios y las reservas existentes. Ninguna escritura externa mantiene el mutex.
+
+Las reservas de cámara usan estados durables CAPTURING/RETURNED/IMPORTED/DISCARD y
+el UUID propietario, sin claves ni rutas absolutas. Reiniciar no significa cancelar:
+no se eliminan solicitudes no resueltas ni archivos de procedencia desconocida.
+Se acotan a ocho las nuevas solicitudes con propietario; las reservas históricas
+ambiguas no consumen esa cuota y no caducan por antigüedad. La recuperación
+tras autenticar reintenta importaciones devueltas y cancelaciones pendientes. Las
+reservas antiguas sin propietario se conservan. Las fotografías confirmadas usan
+las relaciones y backups normales; los temporales operativos quedan excluidos.
+
+No se implementa una eliminación automática de originales históricos de migración:
+no se ha demostrado que el snapshot lógico sustituya todos sus bytes y estados.
+Pomodoro conserva su checkpoint técnico y notificaciones; no contiene contenido
+ni claves de la bóveda. La rotación completa de claves permanece aplazada.
+Detalles, límites y pruebas: `docs/SECURITY_PHASE_C.md`.
+
+## Guardar con descendientes — PNG por elemento
+
+Compartir y exportar ofrece la opción solo para Núcleos/Capas con descendientes
+reales. Se captura la jerarquía completa de Room y se reutiliza el preorden de
+Copiar con descendientes, sin filtros y con Notas/completadas. Se elige una carpeta
+SAF una vez y se exporta el origen más cada descendiente como PNG independiente,
+con ordinal y UUID, mediante CardShareSource/CardShareRenderer existentes.
+
+El lote procesa una tarjeta a la vez, por streaming al staging cifrado de A.1.
+El modo de tarjetas del diario SAF registra el nombre antes de crear el documento;
+las llamadas externas no mantienen el mutex de archivos. Las fuentes y los datos
+no se modifican. La cancelación/fallo retira el PNG parcial actual, conserva los
+anteriores ya confirmados e informa el número guardado sin declarar éxito total.
+Los fallos de borrado conservan diarios/reservas reintentables. Staging y diarios
+son estado operativo excluido del backup; las fuentes confirmadas conservan su
+exportación/restauración completa. Detalles y pruebas: docs/GUARDAR_CON_DESCENDIENTES.md.
+
+## Ordenación jerárquica con aplicación explícita
+
+El panel inferior Ordenar usa SortConfiguration: siete reglas únicas con
+activación, dirección y jerarquía, modo Manual independiente y Capas primero.
+La configuración se guarda automáticamente en la fila existente de
+node_sort_preferences. No hay tabla, columna ni archivo nuevo. El contrato y la
+compatibilidad del payload SORT1 están descritos en BACKUP_FORMAT.md (JSON 56).
+
+Editar no cambia posiciones ni filtros. Aplicar se serializa con el guardado y
+reordena en una transacción los slots de hermanos visibles usando el escritor de
+posiciones que usa el arrastre manual. Nunca mueve un nodo a otro padre. Las
+vistas leen después las posiciones físicas: es posible arrastrar manualmente y
+reaplicar sin perder criterios. Las tareas completadas permanecen al final; los
+empates conservan posición, creación e identidad. Etiqueta utiliza la primera
+clave normalizada según dirección, sin duplicar ni ocultar tarjetas; valores
+sin etiqueta, fecha o responsable quedan al final de su grupo.
+
+Las Capas sin orden propio resuelven los criterios vigentes del Núcleo. Aplicar
+no convierte una Capa heredada en propia. Las Capas primero conservan su orden
+manual entre sí y el estado aplicado se distingue de la elección guardada. El
+panel reutiliza ModularPanelDialog, colores del tema, OutlinedCard y el mismo
+rememberDragReorderState de las tarjetas. Los filtros conservan sus valores y
+acciones; solo cambia su presentación y navegación entre selectores.
+
+La pantalla espera la primera lectura de preferencias antes de habilitar Ordenar.
+En el perfil autenticado, los guardados usan el scope existente de VaultSession y
+un mutex del repositorio de nodos compartido entre recreaciones de pantalla;
+Aplicar se serializa con ellos. Cerrar la sesión cancela el trabajo conforme a su
+ciclo de vida existente. Durante un arrastre de criterios se suspende solo el
+scroll táctil de esa lista, conservando el autoscroll del mecanismo compartido;
+el área de los checks no inicia arrastres. Las excepciones heredadas de dos y
+tres estados se resuelven por tarea sin cambiar sus estados.
+
+## Esfuerzo manual de Tareas — Room 54 / JSON 57
+
+`nodes.effort` es un entero independiente 0–5 (0 sin definir); no representa tiempo,
+estado, prioridad ni progreso. La migración 53→54 añade el valor con default 0 sin
+reescribir contenido y valida el rango en SQLite. `NodeRepository.setEffort` solo
+acepta Tareas y usa la transacción y el cifrado existentes. La minibarra de cinco
+segmentos se muestra bajo el título de las Tareas y abre un panel inferior de
+selección inmediata, sin confirmación; volver a elegir el nivel lo borra. Los tres
+primeros niveles usan intensidades del acento; los dos últimos son naranja rojizo
+y rojo. Sin definir conserva cinco segmentos neutros. No afecta las barras de
+progreso de Núcleos/Capas ni su cálculo.
+
+La ordenación añade EFFORT al motor jerárquico existente: descendente por defecto,
+inversión ascendente, 0 siempre al final y completadas al final por la regla previa.
+Configuración, precedencia, herencia y Aplicar reutilizan las preferencias existentes;
+no se recalculan posiciones automáticamente al modificar esfuerzo. Los payloads
+SORT1 de siete criterios se leen sin reescribir y añaden Esfuerzo desactivado.
+
+El atributo se conserva al mover/reordenar. Al cambiar de tipo queda latente sin
+mostrarse; `conversion_roots.effort` conserva el dato si una Capa pasa a Núcleo y
+regresa. No se crean archivos ni recursos de caché. Backup exporta/restaura ambos
+campos y la configuración de orden, con validación anterior al reemplazo.
+
+## Identidad institucional monocromática
+
+Paleta predeterminada centralizada en BlackWhite90; catálogo ampliado mediante
+AppearanceTheme, con las mismas preferencias, backup y selector existentes.
+Recursos originales/anteriores y detalles: docs/IDENTIDAD_VISUAL.md.
+AnimatedBrandLogo reutiliza ContentGifView con el ciclo RESUMED/dispose y recursos
+locales del paquete; no interviene en autenticación ni añade archivos de usuario.
+
+
+## Bloque 4: iconografía y colores existentes
+
+La dificultad conserva `Node.effort` (0 sin definir, 1–5) y sus controles y pasa a flama más número dentro de la fila de metadatos; no cambia su persistencia ni ordenación. Prioridad conserva su bandera y elimina texto redundante. Los recursos de identidad originales se dibujan con el color de iconos del tema, sin modificar archivos de skins. El filtro contextual Atención mantiene el mismo booleano y superficie táctil; solo cambia intensidad del glifo, sin círculo de selección.
+
+`verify` y `birthday` se añaden a la lista de identificadores admitidos por el selector existente de colores. Reutilizan íntegramente `indicator_color_<id>` en `appearance_preferences`, validación, snapshot, restauración transaccional y restablecimiento existentes. No hay nueva tabla, archivo, namespace, tipo de dato ni cambio de codec o formato. Las preferencias históricas sin estas claves conservan el valor visual por defecto. Un lector anterior que desconozca estas claves las rechaza de forma explícita en su validación estricta; no se promete compatibilidad de importación hacia versiones anteriores. La prueba dirigida de preferencias privadas cubre conservación de ambos colores, rollback y restauración histórica. Detalles: docs/ICONOGRAPHY_BLOCK_4.md.
+
+
+## Ajustes posteriores al bloque 4
+
+La barra contextual del calendario conserva una sola fila, con bandera de prioridad, estrella y plegado accesibles. La navegación de periodo se agrupa en un menú; Hoy y Semana/Mes pasan a ese menú solo cuando no caben con objetivos de 48 dp. Las etiquetas que no caben con fuente ampliada muestran el icono del mismo control y mantienen su nombre accesible. Se conservan los callbacks y el estado del calendario.
+
+Tarjetas y barras habituales de Núcleos/interior comparten márgenes exteriores de 4 dp, ampliando las tarjetas y manteniendo la barra anclada al fondo. Dificultad conserva el ancho medido del antiguo grupo flama/número, con insignia superpuesta dentro de la silueta, sin ocupar altura adicional ni mover otros metadatos.
+
+Apariencia utiliza dos columnas y dibuja ojo, torta y flama con sus recursos reales. Una sola celda Dificultad abre cinco niveles; `effort_1` a `effort_5` amplían las preferencias `indicator_color_<id>` existentes. Esta ampliación fue autorizada expresamente después de informar que lectores anteriores rechazarían respaldos con esas claves. No requiere migrar Room ni cambiar cifrado, estructura de backup o restauración. Las elecciones anteriores se conservan; los cinco niveles sin claves usan el color por defecto. Restablecer dificultad elimina solo esas cinco claves; Restablecer colores sigue retirando todas las elecciones de indicadores. Detalles y validación: docs/POST_BLOCK_4_VISUAL_ADJUSTMENTS.md.
+
+### Presentación compartida del calendario contextual
+
+La elección minimizado/expandido utiliza `calendar_presentation.collapsed` en
+las preferencias de la sesión cifrada. Los ámbitos comparten esa elección;
+fechas, filtros, anclas y vista semana/mes siguen perteneciendo a cada ámbito.
+La lectura es síncrona antes del primer dibujo; fallar al guardar conserva el
+estado anterior. El snapshot y la restauración de `privatePreferences` incluyen
+la preferencia y validan su tipo; su ausencia histórica significa expandido.
+No se añaden archivos ni migraciones.
+
+### Bibliotecas de Wireframe y Diagramas: presentación compartida
+
+`visual/ToolLibraryUi` comparte tarjetas, menú contextual, cuadrícula/lista,
+creación y botones con icono y etiqueta. Los repositorios, formatos, plantillas y
+motores siguen separados. Las vistas previas usan los renderizadores existentes,
+fuera del hilo UI, con lado mayor de 240 píxeles, dos trabajos simultáneos y LRU
+compartido de 6 MiB. No hay caché en disco: se regenera desde documentos y recursos
+confirmados, y no forma parte del backup. La expulsión del LRU no recicla bitmaps
+que aún estén en uso por Compose; su liberación corresponde al GC.
+
+La única preferencia nueva es la vista por herramienta en
+`visual_gallery_preferences`, dentro de la sesión cifrada y del mecanismo
+transaccional de backup/restauración existente. Sin clave, cuadrícula; se rechazan
+tipos inválidos antes de sustituir datos. No hay tablas, archivos o migraciones.
+
+## Bloque 2: anotador básico y fichas con múltiples imágenes
+
+El anotador ofrece Rectángulo, Óvalo, Flecha y Libre, seis colores, tres grosores,
+Deshacer, Cancelar y Guardar. Dibujar no añade el contorno auxiliar de selección.
+Los PNG históricos `arNd` se muestran con sus píxeles ya anotados; sus lectores
+siguen vigentes. Guardar genera un PNG plano a resolución original orientada.
+La vista previa sigue acotada a 2048 px; el guardado limita la fuente a 12 MP
+(hasta 96 MB para fuente y copia ARGB, más vista previa y buffers) y al máximo
+existente de 20 MiB por adjunto. Ante límites o fallos se conserva la imagen previa.
+
+El reemplazo prepara y valida un adjunto cifrado reservado antes de cambiar
+referencias/leyendas en una transacción. En un borrador solo cambia su referencia;
+el commit/cancelar del editor exterior confirma o descarta el recurso. La limpieza
+existente comprueba últimas referencias, reservas y diarios del backup; los fallos
+se reintentan al recuperar. No hay nuevas tablas, directorios ni formatos.
+
+La ficha conserva su diseño si cabe en 8192 px. Si las imágenes exceden ese alto,
+las ajusta proporcionalmente sin recorte; si no caben los textos/etiquetas, falla
+con motivo explícito. Sigue decodificando y liberando una imagen por vez. El lote
+recuerda los elementos completos mientras vive su controlador para reanudar el
+mismo lote/carpeta sin duplicarlos; tras recreación o reinicio esa continuación
+no se conserva. Antes de escribir recupera los diarios propios y detiene el
+reintento si queda un parcial que el proveedor no permite retirar.
+Pruebas y diagnóstico: `docs/IMAGE_EDITOR_EXPORT_BLOCK_2.md`.
+
+
+## Rendimiento — Grupo 4: retirada de Skins personalizadas
+
+El sistema visual activo usa exclusivamente `AppearanceTheme`, sus paletas,
+preferencias y tipografía oficiales, incluido CMD. Se retiran creación, edición,
+selección, importación/exportación y previews de Skins, sus borradores y cachés.
+`CardPhotoBitmaps` conserva únicamente el LRU de 4 MiB de fotografías normales y
+su frontera `PrivateCacheScope`; no cambia el almacenamiento de fotos/adjuntos.
+
+Los payloads y originales de Skins confirmados se conservan cifrados. Solo
+`backup/legacy/LegacySkins.kt` y `LegacySkinOriginals.kt` los interpretan para
+validar respaldos y remapear referencias. Las preferencias activas ignoran el
+payload, usan Charcoal ante una selección histórica y no construyen modelos,
+bitmaps ni cachés de Skins. Las reservas persistentes se mantienen sin caducidad;
+no se ejecuta el antiguo barrido de originales de Skins ni se observa Apariencia
+como propietaria activa de imágenes. Las demás recuperaciones de archivos siguen
+funcionando. El lector compartido de diarios de exportación puede recuperar,
+una vez por sesión autenticada, operaciones históricas parciales; no permite
+iniciar nuevas exportaciones de temas ni elimina documentos completados.
+
+No hay migración, cambio de formatos ni borrado masivo. Detalles de alcance,
+pruebas y limitaciones en `docs/PERFORMANCE_GROUP_4.md`.
+
+
+## Grupo 5A — Juego retirado, datos históricos conservados
+
+Se retiran los accesos, pantallas, motores y recursos estáticos exclusivos de
+Juego/Carrera táctica. Tragaperras sigue siendo una herramienta independiente y
+no cambia. Los apartados históricos del Juego describen formatos compatibles,
+no una funcionalidad activa.
+
+`game_state`, la preferencia histórica `experimental_game/session` y el campo
+`gameSession` siguen el protocolo existente. `backup/legacy/game` conserva solo
+modelos, codecs, topología canónica y validación/normalización requeridos por
+partidas v1–v4 y por la migración 22→23. No carga imágenes ni reanuda partidas.
+No se elimina ningún dato privado ni se cambia Room, el formato JSON, el
+contenedor, las transacciones o la política de rechazo de datos corruptos.
+Los recursos empaquetados retirados no son archivos personales del backup.
+Inventario, medidas y validación: `docs/PERFORMANCE_GROUP_5A.md`.
+
+
+## Grupo 6 — reservas del lector de miniaturas
+
+`ProjectThumbnailCache` usa la reserva durable existente de ImageFileLifecycle
+para proteger el original mientras lee/decodifica/genera fuera del mutex común.
+El mutex común solo cubre adquisición, metadatos y liberación; la liberación se
+completa en contexto no cancelable. El mutex propio serializa los lectores de
+miniaturas y protege derivados/partes frente a su poda. La poda de lecturas se
+amortiza a un minuto; tras generar se fuerza para conservar el límite de 64 MiB.
+
+El propietario operativo `project-thumbnail-reader` identifica exclusivamente
+estas lecturas. Al adquirir el mutex propio, sin otro lector activo, la siguiente
+lectura recupera las reservas que dejó su predecesora interrumpida. No caducan
+por antigüedad ni se liberan reservas de editores, backup u otros propietarios.
+Si no hay otra lectura, una reserva pendiente conserva el original. No se borra
+ningún original en recuperación: la limpieza normal sigue verificando referencias
+y reservas bajo el bloqueo común, después del commit.
+
+No se añaden datos confirmados ni se cambia Room o el formato de backups. Los
+marcadores conservan el formato y la exclusión operacional existentes; derivados
+cifrados y partes de `cache/project-thumbnails` siguen siendo regenerables y
+excluidos del backup. No se cambian bytes originales, cifrado, firmas o versiones.
+Medidas y pruebas específicas: `PERFORMANCE_GROUP_6.md`.

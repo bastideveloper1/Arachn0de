@@ -18,21 +18,26 @@ import com.r0ybt.arachn0de.ui.theme.Arachn0deColors
 internal class BottomModulesState {
     var audioCompact by mutableStateOf(false)
     var pomodoroCompact by mutableStateOf(false)
+    var globalBarSelected by mutableStateOf(false)
+    val contextBars=mutableStateListOf<Any>()
+    val contextualPanels = mutableStateListOf<Pair<Any, @Composable () -> Unit>>()
     val foldedPanels = mutableStateListOf<Pair<Any, @Composable () -> Unit>>()
     private val hosts = mutableStateListOf<Pair<Any, Int>>()
     fun enter(token: Any, depth: Int) { hosts.add(token to depth) }
     fun leave(token: Any) { hosts.removeAll { it.first === token } }
+    val dialogActive get()=hosts.any {it.second>1}
     fun owns(token: Any) = hosts.lastOrNull { it.second == hosts.maxOfOrNull { h -> h.second } }?.first === token
     companion object {
         val Saver = listSaver<BottomModulesState, Boolean>(
-            save = { listOf(it.audioCompact, it.pomodoroCompact) },
-            restore = { BottomModulesState().apply { audioCompact=it[0];pomodoroCompact=it[1] } })
+            save = { listOf(it.audioCompact, it.pomodoroCompact,it.globalBarSelected) },
+            restore = { BottomModulesState().apply { audioCompact=it[0];pomodoroCompact=it[1];globalBarSelected=it.getOrNull(2) ?: false } })
     }
 }
 
 internal val LocalBottomModulesActionScope = staticCompositionLocalOf<kotlinx.coroutines.CoroutineScope?> { null }
 internal val LocalBottomModulesState = staticCompositionLocalOf<BottomModulesState?> { null }
 internal val LocalBottomModulesContent = staticCompositionLocalOf<(@Composable (Boolean) -> Unit)?> { null }
+internal val LocalBottomViewportHeight = staticCompositionLocalOf {androidx.compose.ui.unit.Dp.Unspecified}
 private val LocalBottomModulesDepth = staticCompositionLocalOf { 0 }
 @Composable internal fun bottomModulesInDialog() = LocalBottomModulesDepth.current>1
 
@@ -61,9 +66,13 @@ private val LocalBottomModulesDepth = staticCompositionLocalOf { 0 }
 /** Insets are already owned by AppSafeArea, or by the containing dialog window. */
 @Composable internal fun BottomModulesFrame(modifier: Modifier=Modifier, content: @Composable ColumnScope.() -> Unit) {
     BottomModulesHost { footer ->
-        Column(modifier.fillMaxSize().imePadding()) {
-            Column(Modifier.weight(1f).fillMaxWidth(),content=content)
-            footer()
+        BoxWithConstraints(modifier.fillMaxSize().imePadding()) {
+            CompositionLocalProvider(LocalBottomViewportHeight provides maxHeight) {
+                Column(Modifier.fillMaxSize()) {
+                    Column(Modifier.weight(1f).fillMaxWidth(),content=content)
+                    footer()
+                }
+            }
         }
     }
 }
@@ -121,4 +130,35 @@ private val LocalBottomModulesDepth = staticCompositionLocalOf { 0 }
 
 @Composable internal fun FoldedBottomPanels() {
     LocalBottomModulesState.current?.foldedPanels?.forEach { (token,content) -> key(token) {content()} }
+}
+
+/** Context controls occupy measured footer space instead of covering scrollable cards. */
+@Composable internal fun ContextualBottomPanel(content:@Composable ()->Unit) {
+    val state=LocalBottomModulesState.current
+    val visible=LocalAudioFooterVisible.current
+    val token=remember {Any()}
+    val current by rememberUpdatedState(content)
+    val currentVisible by rememberUpdatedState(visible)
+    val sourceLocals by rememberUpdatedState(currentCompositionLocalContext)
+    // Move the same composition back to its source while a dialog owns the footer.
+    // This keeps editor drafts and the dialog itself alive during ownership transfer.
+    val retained=remember {movableContentOf {CompositionLocalProvider(sourceLocals) {current()}}}
+    DisposableEffect(state,visible) {
+        if(visible) state?.contextualPanels?.add(token to {if(currentVisible && !state.dialogActive)retained()})
+        onDispose {state?.contextualPanels?.removeAll {it.first===token}}
+    }
+    if(state==null && visible) NavigationBarFrame("contextual-bottom-bar") {retained()}
+    else if(!visible || state?.dialogActive==true) {
+        androidx.compose.ui.layout.Layout(content={retained()}) {children,constraints->
+            children.forEach {it.measure(constraints.copy(minWidth=0,minHeight=0))}
+            layout(0,0) {}
+        }
+    }
+}
+
+@Composable internal fun ContextualBottomPanels() {
+    if(bottomModulesInDialog()) return
+    LocalBottomModulesState.current?.contextualPanels?.forEach {(token,content)->
+        key(token) {NavigationBarFrame("contextual-bottom-bar",content)}
+    }
 }

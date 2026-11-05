@@ -44,7 +44,7 @@ class CascadeMigrationTest {
         val before=snapshot(sql);helper.close()
         val db=Arachn0deDatabase.create(app)
         try {
-            assertEquals(37,db.openHelper.writableDatabase.version);assertEquals(before,snapshot(db.openHelper.readableDatabase))
+            assertEquals(50, db.openHelper.writableDatabase.version);assertEquals(before,snapshot(db.openHelper.readableDatabase))
             assertTrue(db.managementLayerDao().all().isEmpty());assertTrue(db.cascadeRelationDao().stories().isEmpty())
             com.r0ybt.arachn0de.data.repository.ManagementCascadeRepository(db).ensure("stable")
             assertEquals("DOING",db.nodeDao().getById("t")!!.workState)

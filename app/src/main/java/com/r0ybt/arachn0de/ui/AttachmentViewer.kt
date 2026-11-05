@@ -8,6 +8,8 @@ import android.media.ExifInterface
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.gestures.rememberTransformableState
 import androidx.compose.foundation.gestures.transformable
 import androidx.compose.foundation.layout.*
@@ -52,13 +54,21 @@ internal fun decodeAttachment(file: java.io.File): Bitmap? {
 }
 
 @Composable
-internal fun AttachmentViewer(id: String, repository: AttachmentRepository, onEditName: (() -> Unit)? = null, onRemove: (() -> Unit)? = null, onClose: () -> Unit) {
+internal fun AttachmentViewer(id: String, repository: AttachmentRepository, onEditName: (() -> Unit)? = null, onRemove: (() -> Unit)? = null,
+    annotationDraftId: String? = null, onAnnotationSaved: ((String) -> Unit)? = null, canAnnotate: Boolean = true, onClose: () -> Unit) {
+    var annotating by androidx.compose.runtime.saveable.rememberSaveable(id) { mutableStateOf(false) }
     var image by remember(id) { mutableStateOf<Bitmap?>(null) }
     val files by repository.observeFiles().collectAsState(emptyList())
     val row=files.firstOrNull {it.id==id}
     if(row?.mimeType=="audio/aac") {AudioViewer(id,repository,onRemove=onRemove,onClose=onClose);return}
-    // Editors keep their portrait policy; only the standalone image viewer may rotate.
+    // Keep the viewer's orientation policy while its editor is open.
     ScreenOrientation(allowLandscape = onEditName == null && onRemove == null)
+    if(annotating && canAnnotate && row!=null && row.mimeType!="image/gif") {
+        ImageAnnotationEditor(row,repository,annotationDraftId,
+            onSaved={copy->onAnnotationSaved?.invoke(copy);annotating=false;onClose()},onClose={annotating=false})
+        return
+    }
+    // Editors keep their portrait policy; only the standalone image viewer may rotate.
     var loaded by remember(id) { mutableStateOf(false) }
     LaunchedEffect(id) {
         image = withContext(Dispatchers.IO) {
@@ -70,13 +80,15 @@ internal fun AttachmentViewer(id: String, repository: AttachmentRepository, onEd
     BackHandler(onBack = onClose)
     BottomModulesDialog(onDismissRequest = onClose, properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)) {
         Column(Modifier.fillMaxSize().background(Arachn0deColors.Background).safeDrawingPadding().testTag("attachment-viewer")) {
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End, verticalAlignment = Alignment.CenterVertically) {
+            Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.End, verticalAlignment = Alignment.CenterVertically) {
                 AttachmentExportActions(row,repository,compact=true)
+                TextButton(enabled=image!=null && canAnnotate && row?.mimeType!="image/gif",onClick={annotating=true}) { Text("Anotar imagen") }
                 onEditName?.let { TextButton(onClick = it) { Text("Editar nombre") } }
                 onRemove?.let { TextButton(onClick = it) { Text("Quitar") } }
                 TextButton(onClick = onClose) { Text("Cerrar", color = Arachn0deColors.Accent) }
             }
-            ZoomableImage(image, loaded, "Imagen adjunta", Modifier.fillMaxWidth().weight(1f))
+            if(row?.mimeType=="image/gif")AnimatedAttachment(row,repository,Modifier.fillMaxWidth().weight(1f))
+            else ZoomableImage(image, loaded, "Imagen adjunta", Modifier.fillMaxWidth().weight(1f))
         }
     }
 }
